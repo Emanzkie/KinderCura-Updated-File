@@ -227,6 +227,16 @@ function AcceptInvitation() {
   const [justAccepted, setJustAccepted] = useState(false);
   const toastRef               = useRef([]);
 
+  // ── Bridge to the static #aiLoading div outside the React root ──
+  useEffect(() => {
+    /* ── Idle / re-entry ── */
+    if (!status)                               { document.getElementById('aiLoading').style.display = 'none'; return; }
+    /* ── Actively verifying ── */
+    if (status === 'loading') {                 document.getElementById('aiLoading').style.display = 'block'; return; }
+    /* ── Terminal states: invalid / expired / used / error / ok ── */
+    document.getElementById('aiLoading').style.display = 'none';
+  }, [status]);
+
   useEffect(() => {
     // Also refresh login state on focus
     const onFocus = () => setIsLoggedIn(!!getToken());
@@ -242,11 +252,17 @@ function AcceptInvitation() {
 
   /* ── Auto-verify on mount if ?code= present ── */
   useEffect(() => {
-    if (rawCode) { setCode(rawCode); verifyInvitation(rawCode); }
+    /* ── No token in URL → stop loading, show the manual-entry prompt ── */
+    if (!rawCode?.trim()) {
+      /* reset so the token-sent state is clean */
+      if (status === 'loading') setStatus('');
+      return;
+    }
+    setCode(rawCode); verifyInvitation(rawCode);
   }, [rawCode]);
 
   async function verifyInvitation(c) {
-    if (!c.trim()) { setStatus(''); return; }
+    if (!c.trim()) return;
     setStatus('loading'); setMsg('');
     try {
       const res = await fetch(`/api/v2/guardians/verify/${encodeURIComponent(c.trim())}`);
@@ -336,7 +352,7 @@ function AcceptInvitation() {
   const loggedIn = !!getToken();
 
   if (!loggedIn) {
-    setStatus(''); setInv(null);
+    setInv(null);
   }
 
   /* ══════════════════════════════════
@@ -350,6 +366,7 @@ function AcceptInvitation() {
                     display:'flex', flexDirection:'column', gap:8, pointerEvents:'none' }}>
       </div>
 
+      {/* ── Not logged in → Auth gate (always) ── */}
       {!loggedIn && (
         <div
           className="ai-auth-gate"
@@ -374,17 +391,28 @@ function AcceptInvitation() {
       {loggedIn && (
         <div style={{ maxWidth:'680px', margin:'0 auto', paddingTop:'1rem' }}>
 
-          {/* ═══════ EMPTY / LOADING ═══════ */}
+          {/* ═══════ EMPTY / IDLE — token entry prompt ═══════ */}
           {status === '' && (
             <div style={{ textAlign:'center', padding:'3rem 1rem', color:'var(--text-light)' }}>
-              <p style={{ fontSize:'1.05rem' }}>Paste or scan your invitation code or link to begin.</p>
-            </div>
-          )}
-
-          {status === 'loading' && (
-            <div style={{ textAlign:'center', padding:'3rem 1rem', color:'var(--text-light)' }}>
-              <div className="ai-spinner" style={{ width:'32px',height:'32px',marginBottom:'12px' }}  />
-              <p>Verifying invitation…</p>
+              <p style={{ marginBottom:'1rem', fontSize:'1.05rem' }}>
+                Paste or scan your invitation code or link to begin.
+              </p>
+              <div style={{ display:'flex', justifyContent:'center', gap:8 }}>
+                <input  id="aiManualCode"
+                        type="text"
+                        placeholder="Paste code here…"
+                        onKeyDown={e => { if (e.key === 'Enter') { if (e.target.value.trim()) { setCode(e.target.value.trim()); } }}}
+                        style={{ padding:'10px 14px', border:'2px solid var(--border)',
+                                 borderRadius:10, minWidth:280, textAlign:'center',
+                                 fontSize:'1rem', letterSpacing:'.12em' }} />
+                <button className="btn btn-primary"
+                        onClick={() => {
+                          const v = document.getElementById('aiManualCode').value.trim();
+                          if (v) setCode(v);
+                        }}>
+                  Verify
+                </button>
+              </div>
             </div>
           )}
 
