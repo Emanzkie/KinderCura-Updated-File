@@ -3,9 +3,61 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Accept Invitation - KinderCura</title>
-  <link rel="stylesheet" href="/css/styles.css">
-  <link rel="stylesheet" href="/css/landing-styles.css">
+  <title>Accept Invitation — KinderCura</title>
+  <link rel="stylesheet" href="/css/dashboard-new-styles.css">
+  <link rel="stylesheet" href="/css/notifications-styles.css">
+  <link rel="stylesheet" href="/notifications-card-ui.css">
+  <style>
+    /* ── Auth gate full-screen ── */
+    .ai-auth-gate {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: calc(100vh - 90px);
+      text-align: center; padding: 2rem;
+      gap: 1rem;
+    }
+    .ai-auth-gate h2 { color: var(--primary); font-size: 1.6rem; }
+    .ai-auth-gate p  { color: var(--text-light); max-width: 460px; }
+    .ai-auth-buttons { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; margin-top: 0.5rem; }
+    /* ── Invitation detail card ── */
+    .ai-detail-card {
+      background: white; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      padding: 28px 32px; margin-bottom: 1.5rem;
+    }
+    .ai-child-grid { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
+    .ai-child-card { display:flex; align-items:center; gap:10px;
+                     background:var(--bg-primary); border:2px solid var(--border);
+                     border-radius:10px; padding:10px 14px; }
+    .ai-child-avatar { width:38px;height:38px;object-fit:cover;border-radius:50%; }
+    .ai-child-name { font-weight:600; color:var(--text-dark); font-size:0.95rem; }
+    .ai-child-age  { color:var(--text-light); font-size:0.82rem; }
+    /* ── Permission rows ── */
+    .ai-perm-list { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:10px; }
+    .ai-perm-row   { display:flex; align-items:center; gap:7px; font-size:0.88rem; }
+    .ai-perm-icon  { font-size:0.9rem; }
+    /* ── Status banner ── */
+    .ai-status {
+      border-radius: 10px; padding: 14px 18px; margin-bottom: 1.5rem;
+      font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; gap: 8px;
+    }
+    .ai-status.error    { background:#F4D89F; border-left:4px solid #D4897A; color: var(--text-dark); }
+    .ai-status.success  { background:#A8C49D; color: var(--text-dark); }
+    .ai-status.info     { background:#DDD9CC; color: var(--text-dark); }
+    /* ── Inviter card ── */
+    .ai-inviter-card { display:flex; align-items:center; gap:14px; padding:14px;
+                       background:var(--bg-primary); border:2px solid var(--border); border-radius:10px; margin-top:8px; }
+    .ai-inviter-avatar { width:48px;height:48px;border-radius:50%;object-fit:cover;background:#DDD9CC; }
+    .ai-inviter-name   { font-weight:700; color:var(--text-dark); font-size:1rem; }
+    .ai-inviter-role   { color:var(--text-light); font-size:0.9rem; }
+    .ai-inviter-email  { color:var(--primary); font-size:0.82rem; }
+    /* Loading spinner */
+    .ai-spinner { width:22px;height:22px;border:3px solid var(--border);
+                   border-top-color:var(--primary);border-radius:50%;
+                   animation:ai-spin .7s linear infinite;display:inline-block;vertical-align:middle; }
+    @keyframes ai-spin { to { transform:rotate(360deg); } }
+    /* Responsive */
+    @media(max-width:600px){ .ai-perm-list { grid-template-columns:1fr; } }
+  </style>
 </head>
 <body>
 <header class="top-nav">
@@ -14,112 +66,521 @@
       <img src="/icons/logo.png" alt="KinderCura Logo" class="logo-img">
       <span class="logo-text"><span class="logo-kinder">Kinder</span><span class="logo-cura">Cura</span></span>
     </a>
-    <nav class="main-nav">
-      <a href="/parent/dashboard.html" class="nav-link">Dashboard</a>
-      <a href="/parent/guardian-management.html" class="nav-link">Guardians</a>
-      <a href="/accept-invitation" class="nav-link active">Accept Invitation</a>
-    </nav>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:1rem">
+      <span id="aiPageStatus" style="font-size:0.88rem;color:var(--text-light)"></span>
+    </div>
   </div>
 </header>
 
-<main style="padding:2rem; max-width:900px; margin:0 auto;">
-  <div class="card">
-    <h2>Accept Guardian Invitation</h2>
-    <div id="accept-invitation-root"></div>
+<main class="dashboard-container">
+  <!-- ── Auth gate (shown when user is not logged in) ── -->
+  <div id="aiAuthGate" class="ai-auth-gate" style="display:none">
+    <h2>👋 You're Almost In</h2>
+    <p>Sign in or create an account to accept this guardian invitation and access the child's profile.</p>
+    <div class="ai-auth-buttons">
+      <button class="btn btn-primary" onclick="window.location.href='/login.html'">🔐 Log In</button>
+      <button class="btn btn-secondary" onclick="window.location.href='/signup.html'">📝 Create Account</button>
+    </div>
+  </div>
+
+  <!-- ── Main invitation content ── -->
+  <div id="aiMainContent" style="max-width:680px;margin:0 auto;padding-top:1rem">
+
+    <div id="aiLoading" style="text-align:center;padding:3rem 1rem;color:var(--text-light)">
+      <div class="ai-spinner" style="margin-bottom:12px"></div>
+      <p>Loading invitation…</p>
+    </div>
+
+    <!-- Message row (generic toast for errors / info) -->
+    <div id="aiMessageRow" style="display:none"></div>
+
+    <!-- Status banner (error / success / info) -->
+    <div id="aiStatusBanner" style="display:none"></div>
+
+    <!-- Invitation detail card -->
+    <div id="aiDetailCard" class="ai-detail-card" style="display:none">
+      <h2 style="color:var(--primary);margin-bottom:0.25rem">Guardian Invitation</h2>
+      <p id="aiSubtitle" style="color:var(--text-light);font-size:0.95rem;margin-bottom:1.25rem"></p>
+
+      <!-- Inviter -->
+      <div class="ai-section-label" style="font-size:0.82rem;font-weight:700;text-transform:uppercase;
+                  letter-spacing:0.06em;color:var(--text-light);margin-bottom:6px">Invited by</div>
+      <div id="aiInviterCard" class="ai-inviter-card"></div>
+
+      <!-- Children -->
+      <div style="margin-top:1.5rem">
+        <div class="ai-section-label" style="font-size:0.82rem;font-weight:700;text-transform:uppercase;
+                    letter-spacing:0.06em;color:var(--text-light);margin-bottom:6px">Child${'ren'}</div>
+        <div id="aiChildGrid" class="ai-child-grid"></div>
+      </div>
+
+      <!-- Permissions -->
+      <div style="margin-top:1.5rem">
+        <div class="ai-section-label" style="font-size:0.82rem;font-weight:700;text-transform:uppercase;
+                    letter-spacing:0.06em;color:var(--text-light);margin-bottom:6px">Access Permissions</div>
+        <div id="aiPermList" class="ai-perm-list"></div>
+      </div>
+
+      <!-- Personal message -->
+      <div id="aiPersonalMsgWrap" style="display:none;margin-top:1.5rem">
+        <div class="ai-section-label" style="font-size:0.82rem;font-weight:700;text-transform:uppercase;
+                    letter-spacing:0.06em;color:var(--text-light);margin-bottom:6px">Message from inviter</div>
+        <div id="aiPersonalMsg" style="background:var(--bg-primary);border:2px solid var(--border);
+                    border-radius:8px;padding:12px 14px;font-size:0.92rem;font-style:italic;
+                    color:var(--text-dark);line-height:1.6"></div>
+      </div>
+
+      <!-- CTA buttons -->
+      <div id="aiActionRow" style="margin-top:2rem;display:flex;gap:10px;flex-wrap:wrap"></div>
+    </div>
   </div>
 </main>
 
 <script src="/api.js"></script>
-
 <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react.development.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
 <script type="text/babel">
-const { useState, useEffect } = React;
+// ─── AcceptInvitation reactor ───────────────────────────────────────────────
+const { useState, useEffect, useMemo, useRef } = React;
+
+const RELATIONSHIP_LABEL = {
+  mother:'Mother', father:'Father', grandparent:'Grandparent',
+  legal_guardian:'Legal Guardian', foster_parent:'Foster Parent',
+  court_appointed:'Court-Appointed', nanny:'Nanny / Babysitter',
+  therapist:'Therapist', teacher:'Teacher', other:'Other',
+};
+
+let _toasts = [];
+
+function addToast(msg, type = 'success', duration = 5000) {
+  const id = Date.now() + Math.random();
+  _toasts.push({ id, msg, type });
+  renderToasts();
+  setTimeout(() => { _toasts = _toasts.filter(t => t.id !== id); renderToasts(); }, duration);
+}
+
+function renderToasts() {
+  const el = document.getElementById('aiToastRoot');
+  if (!el) return;
+  el.innerHTML = _toasts.map(t => `
+    <div key="${t.id}"
+         style="display:flex;align-items:center;gap:8px;min-width:270px;max-width:420px;
+                padding:12px 16px;border-radius:10px;margin-bottom:8px;
+                background:${t.type==='error'?'#E8A5A5':'#A8C49D'};
+                color:#3D4738;font-weight:600;font-size:0.9rem;
+                box-shadow:0 4px 18px rgba(0,0,0,0.18);
+                animation:aiSlideIn .3s ease"
+         onClick={() => { _toasts = _toasts.filter(x => x.id !== t.id); renderToasts(); }}
+         role="alert" tabIndex="0">
+      <span>${t.type==='error'?'⚠️':'✅'}</span>
+      <span>${t.msg}</span>
+    </div>
+  `).join('');
+}
+
+function getToken() {
+  return localStorage.getItem('token')?.trim() || localStorage.getItem('kc_token')?.trim() || '';
+}
+
+function apiCall(path, opts = {}) {
+  const t = getToken();
+  const headers = { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) };
+  return fetch(path, { ...opts, headers: { ...headers, ...(opts.headers||{}) } });
+}
+
+function userPayload() {
+  try {
+    const t = getToken();
+    if (!t) return null;
+    const [, payloadB64] = t.split('.');
+    return JSON.parse(atob(payloadB64));
+  } catch { return null; }
+}
+
+function uidStr(user) { return user ? String(user.userId || user.id || user._id) : ''; }
+
+// ─── helpers for tag level ───
+function isExpired(inv) {
+  if (!inv?.expiresAt) return false;
+  return new Date(inv.expiresAt) < new Date();
+}
+function getExpiryLabel(inv) {
+  if (!inv?.expiresAt) return 'No expiration';
+  const d = new Date(inv.expiresAt);
+  const now = new Date();
+  const ms = d - now;
+  if (ms < 0) return 'Expired';
+  const days = Math.floor(ms / 86400000);
+  const hrs  = Math.floor((ms % 86400000) / 3600000);
+  return days > 0 ? `Expires in ${days}d ${hrs}h` : `Expires in ${hrs}h`;
+}
 
 function AcceptInvitation() {
-  const [code, setCode] = useState('');
-  const [info, setInfo] = useState(null);
-  const [message, setMessage] = useState(null);
-  const token = localStorage.getItem('token');
+  const [code, setCode]        = useState('');
+  const [inv, setInv]          = useState(null);
+  const [status, setStatus]    = useState('');   // '' | 'loading' | 'error' | 'invalid' | 'expired' | 'used' | 'ok'
+  const [msg, setMsg]          = useState('');
+  const [isLoggedIn, setIsLoggedIn] = useState(!!getToken());
+  const [processing, setProcessing] = useState(false);
+  const [justAccepted, setJustAccepted] = useState(false);
+  const toastRef               = useRef([]);
 
   useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const q = params.get('code');
-      if (q) {
-        setCode(q);
-        verify(q);
-      }
-    } catch (e) {}
+    // Also refresh login state on focus
+    const onFocus = () => setIsLoggedIn(!!getToken());
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [inv?.used]);
+
+  /* ── Derive invite URL from ?code= param ── */
+  const rawCode = useMemo(() => {
+    try { return new URLSearchParams(window.location.search).get('code') || ''; }
+    catch { return ''; }
   }, []);
 
-  async function verify(c) {
-    setMessage(null);
+  /* ── Auto-verify on mount if ?code= present ── */
+  useEffect(() => {
+    if (rawCode) { setCode(rawCode); verifyInvitation(rawCode); }
+  }, [rawCode]);
+
+  async function verifyInvitation(c) {
+    if (!c.trim()) { setStatus(''); return; }
+    setStatus('loading'); setMsg('');
     try {
-      const res = await fetch(`/api/v2/guardians/verify/${encodeURIComponent(c)}`);
+      const res = await fetch(`/api/v2/guardians/verify/${encodeURIComponent(c.trim())}`);
       const body = await res.json();
-      setInfo(body);
-    } catch (err) {
-      console.error(err);
-      setMessage('Failed to verify invitation.');
-    }
+      if (!res.ok || !body.success) {
+        if (res.status === 410) { setStatus('expired'); setMsg(body.error || 'This invitation has expired.'); }
+        else if (res.status === 409) { setStatus('used'); setMsg(body.error || 'This invitation has already been accepted.'); }
+        else { setStatus('invalid'); setMsg(body.error || 'Invalid invitation code.'); }
+        setInv(null); return;
+      }
+      setInv(body.invitation || body);   // backend sends `{ success:true, invitation:{...} }`
+      setStatus(isExpired(body.invitation) ? 'expired' : 'ok');
+      if (isExpired(body.invitation)) setMsg('This invitation has expired. Please contact the inviter for a new one.');
+    } catch { setStatus('error'); setMsg('Network error. Check your connection and try again.'); }
   }
 
-  async function accept() {
-    setMessage(null);
-    if (!token) return setMessage('You must be logged in to accept this invitation.');
+  const expLabel = getExpiryLabel(inv);
+
+  async function handleAccept() {
+    if (processing || !inv) return;
+    if (!isLoggedIn) { addToast('Please log in or create an account first.', 'error'); return; }
+
+    setProcessing(true);
     try {
-      const res = await fetch('/api/v2/guardians/accept-invitation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ code }),
+      const res = await apiCall('/api/v2/guardians/accept-invitation', {
+        method: 'POST', body: JSON.stringify({ code: inv.rawCode || inv.code || code }),
       });
       const body = await res.json();
       if (res.ok && body.success) {
-        setMessage('Invitation accepted. You now have access to the child profile.');
+        const childFirst = inv?.child?.firstName || inv?.children?.[0]?.firstName || 'the child';
+        const childLast  = inv?.child?.lastName  || inv?.children?.[0]?.lastName  || '';
+        const childName  = `${childFirst} ${childLast}`.trim();
+
+        addToast(`✅ You now have access to ${childName}'s profile!`);
+        setJustAccepted(true);
+
+        // Send welcome + acceptance notification emails via API (fire and forget)
+        try {
+          const userData = userPayload() || {};
+          const myName   = `${userData.firstName || ''} ${userData.lastName || ''}`.trim();
+          const invName  = inv?.createdByName || inv?.inviterName || 'the primary guardian';
+          const invEmail = inv?.inviterEmail  || '';
+          const childFirst = inv?.child?.firstName || inv?.children?.[0]?.firstName || 'the child';
+          const childLast  = inv?.child?.lastName  || inv?.children?.[0]?.lastName  || '';
+          const childName  = `${childFirst} ${childLast}`.trim();
+
+          const token = getToken();
+          fetch('/api/v2/guardians/invitations/accept-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              invitationId: inv?.id || inv?.invitation?.id || inv?.invitationId,
+              inviterName: invName, inviterEmail: invEmail, acceptorName: myName,
+              acceptorEmail: userData.email, childName,
+            }),
+          }).catch(() => {});
+        } catch { /* email best-effort, don't block the redirect */ }
+
+        setTimeout(() => { window.location.href = '/parent/dashboard.html'; }, 2200);
       } else {
-        setMessage(body.error || JSON.stringify(body));
+        addToast(body.error || 'Failed to accept invitation.', 'error');
+        setMsg(body.error || '');
       }
-    } catch (err) {
-      console.error(err);
-      setMessage('Failed to accept invitation.');
-    }
+    } catch { addToast('Network error while accepting invitation.', 'error'); }
+    finally { setProcessing(false); }
   }
 
+  function handleDecline() {
+    if (!window.confirm('Are you sure you want to decline this invitation? You can ask the inviter to send it again.')) return;
+    addToast('Invitation declined. You have been redirected.', 'error');
+    setTimeout(() => { window.location.href = '/'; }, 1800);
+  }
+
+  /* ── derive children from multiple possible shapes ── */
+  const children = useMemo(() => {
+    if (!inv) return [];
+    if (Array.isArray(inv.children) && inv.children.length) return inv.children;
+    if (inv.childIds?.length) return inv.childIds.map(id => ({ _id: id, firstName: '', lastName: '' }));
+    if (inv.child?._id) return [inv.child];
+    return [];
+  }, [inv]);
+
+  /* ── permissions block ── */
+  const perms = inv?.permissions || inv?.customPermissions || {};
+
+  /* ── is logged in check ── */
+  const loggedIn = !!getToken();
+
+  if (!loggedIn) {
+    setStatus(''); setInv(null);
+  }
+
+  /* ══════════════════════════════════
+     RENDER
+     ══════════════════════════════════ */
   return (
     <div>
-      <div style={{ marginBottom: 12 }}>
-        <label style={{ display: 'block', marginBottom: 6 }}>Invitation code or link</label>
-        <input value={code} onChange={(e) => setCode(e.target.value)} style={{ padding: 8, minWidth: 360 }} placeholder="Paste code or use ?code=..." />
-        <button onClick={() => verify(code)} style={{ marginLeft: 8, padding: '8px 12px' }} className="btn btn-primary">Verify</button>
+      {/* Toast root */}
+      <div id="aiToastRoot"
+           style={{ position:'fixed', top:18, right:18, zIndex:9999,
+                    display:'flex', flexDirection:'column', gap:8, pointerEvents:'none' }}>
       </div>
 
-      {info && (
-        <div style={{ marginTop: 12, padding: 12, background: '#fafafa', borderRadius: 6 }}>
-          <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{JSON.stringify(info, null, 2)}</pre>
+      {!loggedIn && (
+        <div
+          className="ai-auth-gate"
+          style={{ minHeight:'calc(100vh - 90px)', padding:'2rem', textAlign:'center' }}
+        >
+          <h2>👋 Accept a Guardian Invitation</h2>
+          <p>Sign in to your KinderCura account to accept this invitation
+             and access the child&apos;s profile, appointments, and medical records.</p>
+          <div className="ai-auth-buttons">
+            <button className="btn btn-primary"
+                    onClick={() => window.location.href = '/login.html?next=' + encodeURIComponent(window.location.pathname + window.location.search)}>
+              🔐 Log In
+            </button>
+            <button className="btn btn-secondary"
+                    onClick={() => window.location.href = '/signup.html?next=' + encodeURIComponent(window.location.pathname + window.location.search)}>
+              📝 Create Account
+            </button>
+          </div>
         </div>
       )}
 
-      <div style={{ marginTop: 12 }}>
-        <button onClick={accept} style={{ padding: '8px 12px' }} className="btn btn-primary">Accept Invitation</button>
-      </div>
+      {loggedIn && (
+        <div style={{ maxWidth:'680px', margin:'0 auto', paddingTop:'1rem' }}>
 
-      {message && <div style={{ marginTop: 16, color: '#333' }}>{message}</div>}
+          {/* ═══════ EMPTY / LOADING ═══════ */}
+          {status === '' && (
+            <div style={{ textAlign:'center', padding:'3rem 1rem', color:'var(--text-light)' }}>
+              <p style={{ fontSize:'1.05rem' }}>Paste or scan your invitation code or link to begin.</p>
+            </div>
+          )}
 
-      {!token && (
-        <div style={{ marginTop: 12, color: 'darkred' }}>
-          You are not logged in. Create an account or log in, then return to accept the invitation.
+          {status === 'loading' && (
+            <div style={{ textAlign:'center', padding:'3rem 1rem', color:'var(--text-light)' }}>
+              <div className="ai-spinner" style={{ width:'32px',height:'32px',marginBottom:'12px' }}  />
+              <p>Verifying invitation…</p>
+            </div>
+          )}
+
+          {/* ═══════ INVALID / EXPIRED / USED ═══════ */}
+          {(status === 'invalid' || status === 'expired' || status === 'used' || status === 'error') && !inv && (
+            <div className="ai-detail-card">
+              <div className={`ai-status ${status}`} role="alert">
+                {status === 'expired'   && '⏰ Invitation Expired'}
+                {status === 'used'      && '✅ Invitation Already Accepted'}
+                {status === 'invalid'   && '❌ Invalid Invitation'}
+                {status === 'error'     && '⚠️ Connection Error'}
+              </div>
+              <p style={{ color:'var(--text-light)', fontSize:'0.92rem', lineHeight:1.6 }}>{msg}</p>
+              {status === 'expired' && (
+                <p style={{ marginTop:'12px', fontSize:'0.9rem', color:'var(--text-light)' }}>
+                  Please contact the person who sent the invitation and ask them to resend it.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ═══════ VERIFIED — SHOW DETAILS ═══════ */}
+          {inv && status === 'ok' && (
+            <>
+              <div className="ai-detail-card">
+                <h2 style={{ color:'var(--primary)', marginBottom:'0.25rem' }}>Guardian Invitation</h2>
+                <p id="aiSubtitle"
+                   style={{ color:'var(--text-light)', fontSize:'0.95rem', marginBottom:'1.25rem' }}>
+                  You&apos;ve been invited to access a child&apos;s profile on KinderCura
+                </p>
+
+                {/* Inviter */}
+                <div style={{ fontSize:'0.82rem', fontWeight:700, textTransform:'uppercase',
+                              letterSpacing:'0.06em', color:'var(--text-light)', marginBottom:'6px' }}>
+                  Invited by
+                </div>
+                <div className="ai-inviter-card">
+                  <div className="ai-inviter-avatar">
+                    {inv.inviterPhoto || inv.createdByPhoto
+                      ? <img src={inv.inviterPhoto || inv.createdByPhoto}
+                             className="ai-inviter-avatar"
+                             alt="" style={{objectFit:'cover'}} />
+                      : <span style={{display:'flex',alignItems:'center',justifyContent:'center',
+                          width:'48px',height:'48px',borderRadius:'50%',background:'#6B8E6F',color:'#fff',
+                          fontWeight:700,fontSize:'1.2rem'}}>
+                        {(inv.inviterName||inv.createdByName||'?')[0].toUpperCase()}
+                      </span>}
+                  </div>
+                  <div>
+                    <div className="ai-inviter-name">{inv.inviterName || inv.createdByName || 'A KinderCura user'}</div>
+                    <div className="ai-inviter-role">{RELATIONSHIP_LABEL[inv.relationship] || 'Guardian'}</div>
+                    <div className="ai-inviter-email">{inv.inviterEmail || inv.createdByEmail || ''}</div>
+                  </div>
+                </div>
+
+                {/* Children */}
+                <div style={{ marginTop: '1.5rem' }}>
+                  <div style={{ fontSize:'0.82rem', fontWeight:700, textTransform:'uppercase',
+                                letterSpacing:'0.06em', color:'var(--text-light)', marginBottom:'6px' }}>
+                    Child{children.length > 1 ? 'ren' : ''} Included
+                  </div>
+                  <div className="ai-child-grid">
+                    {children.map((c, i) => {
+                      const photo = c.profileIcon
+                        && c.profileIcon !== 'child1'
+                        && !c.profileIcon.startsWith('http')
+                        ? `${window.location.origin}${c.profileIcon}`
+                        : null;
+                      return (
+                        <div key={c._id || i} className="ai-child-card">
+                          {photo
+                            ? <img src={photo} alt="" className="ai-child-avatar"
+                                   onError={(e) => { e.target.style.display='none'; }} />
+                            : <div style={{ width:'38px',height:'38px',borderRadius:'50%',
+                                          background:'#F4D89F',display:'flex',
+                                          alignItems:'center',justifyContent:'center',
+                                          fontSize:'1.2rem',flexShrink:0 }}>
+                                👶
+                              </div>}
+                          <div className="ai-child-info">
+                            <div className="ai-child-name">
+                              {(c.firstName||'')} {(c.lastName||'')}
+                            </div>
+                            {c.dateOfBirth && (
+                              <div className="ai-child-age">
+                                Age {Math.max(0, Math.round((Date.now() -
+                                  new Date(c.dateOfBirth.split('T')[0])) / 31557600000))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Permissions */}
+                <div style={{ marginTop:'1.5rem' }}>
+                  <div style={{ fontSize:'0.82rem', fontWeight:700, textTransform:'uppercase',
+                                letterSpacing:'0.06em', color:'var(--text-light)', marginBottom:'6px' }}>
+                    Permissions Granted
+                  </div>
+                  <div className="ai-perm-list">
+                    {Object.entries(perms).map(([k, v]) => {
+                      const label = {
+                        viewAssessments:'View Assessments & Results',
+                        submitAssessments:'Submit Assessments',
+                        viewResults:'View Assessment Results',
+                        uploadDocuments:'Upload Documents & Photos',
+                        manageAppointments:'Manage Appointments',
+                        viewMedicalRecords:'View Medical Records',
+                        modifyChild:'Modify Child Profile',
+                        inviteGuardians:'Invite Other Guardians',
+                        revokeAccess:'Revoke Access',
+                        viewMessages:'View Chat Messages',
+                        sendMessages:'Send Messages',
+                        manageMessages:'Manage Messages',
+                        viewNotifications:'View Notifications',
+                        sendNotifications:'Send Notifications',
+                        manageNotifications:'Manage Notifications',
+                      }[k] || k;
+                      return (
+                        <div key={k} className="ai-perm-row">
+                          <span className="ai-perm-icon">{v ? '✅' : '⬜'}</span>
+                          <span>{label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Personal message */}
+                {inv.personalMessage && (
+                  <div style={{ marginTop:'1.5rem' }}>
+                    <div style={{ fontSize:'0.82rem', fontWeight:700, textTransform:'uppercase',
+                                  letterSpacing:'0.06em', color:'var(--text-light', marginBottom:'6px' }}>
+                      Message from {inv.inviterName || 'the inviter'}
+                    </div>
+                    <div style={{ background:'var(--bg-primary)', border:'2px solid var(--border)',
+                                  borderRadius:'8px', padding:'12px 14px', fontSize:'0.92rem',
+                                  fontStyle:'italic', color:'var(--text-dark)', lineHeight:'1.6' }}>
+                      {inv.personalMessage}
+                    </div>
+                  </div>
+                )}
+
+                {/* Expiry notice */}
+                <div style={{ marginTop:'1.25rem', padding:'10px 14px',
+                               background:'#F4D89F', borderRadius:'8px',
+                               fontSize:'0.85rem', color:'#3D4738', display:'flex', alignItems:'center', gap:'8px' }}>
+                  ⏰ This invitation <strong>{getExpiryLabel(inv)}</strong>
+                </div>
+
+                {/* CTA */}
+                <div id="aiActionRow" style={{ marginTop:'2rem', display:'flex', gap:'10px', flexWrap:'wrap' }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleAccept}
+                    disabled={processing || status === 'expired'}
+                    style={{ opacity: processing ? 0.6 : 1, fontSize:'1.05rem', padding:'0.9rem 2rem' }}
+                  >
+                    {processing ? <><span className="ai-spinner" /> Processing…</> : '✅ Accept Invitation'}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={handleDecline}
+                    disabled={processing}
+                    style={{ borderColor:'var(--accent-red)', color:'var(--accent-red)' }}
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+
+              {/* Security footer */}
+              <div style={{ marginTop:'1rem', padding:'12px 16px',
+                             background:'white', borderRadius:'10px',
+                             border:'1px solid var(--border)',
+                             fontSize:'0.82rem', color:'var(--text-light)', lineHeight:'1.55' }}>
+                🛡️ This invitation is sent directly by <strong>
+                  {inv.inviterName || inv.createdByName || 'the inviter'}</strong>.
+                If you did not expect this invitation, you may safely decline or ignore it.
+                For support, contact{' '}
+                <a href="mailto:support@kindercura.com"
+                   style={{ color:'var(--primary)' }}>support@kindercura.com</a>.
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-const root = document.getElementById('accept-invitation-root');
+const root = document.getElementById('aiMainContent');
 if (root) ReactDOM.createRoot(root).render(React.createElement(AcceptInvitation));
 </script>
-
 </body>
 </html>

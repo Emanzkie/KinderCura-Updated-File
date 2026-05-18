@@ -9,6 +9,23 @@ const User = require('../models/User');
 const { createLog } = require('./auditController');
 const emailService = require('../services/emailService');
 
+/* ─────────────────── In-memory rate limiter ───────────────────
+   Limits: max 10 invitation creations per user per UTC day.
+   No new npm deps — resets at midnight UTC.
+   ─────────────────────────────────────────────────────────── */
+const _inviteCounters = Object.create(null); //  { `${userId}_${dateStr}` : count }
+function _todayStr() { return new Date().toISOString().slice(0, 10); }
+function _rateLimitKey(userId) { return `${String(userId)}_${_todayStr()}`; }
+const MAX_INVITES_PER_DAY = 10;
+function checkInviteRateLimit(userId) {
+  const key = _rateLimitKey(userId);
+  return (_inviteCounters[key] || 0) < MAX_INVITES_PER_DAY;
+}
+function recordInviteAttempt(userId) {
+  const key = _rateLimitKey(userId);
+  _inviteCounters[key] = (_inviteCounters[key] || 0) + 1;
+}
+
 function hashCode(code) {
   return crypto.createHash('sha256').update(String(code)).digest('hex');
 }
@@ -30,40 +47,67 @@ async function verifyPrimaryGuardian({ childId, callerId }) {
 
 async function generateInvitation(req, res) {
   try {
-    const { childId, expiresHours = 48, note = null } = req.body;
-    const inviteEmail = req.body.inviteEmail || null;
-    if (!childId) return res.status(400).json({ error: 'childId is required.' });
+    // Accept single childId or array of childIds
+    const rawChildId = req.body.childId || req.body.childIds?.[0] || null;
+    const childIds   = Array.isArray(req.body.childIds)
+      ? req.body.childIds
+      : (rawChildId ? [rawChildId] : []);
+    const expiresHours = req.body.expiresHours ?? 48;
+    const inviterEmail = req.body.inviteEmail || null;
+    const relationship  = req.body.relationship || 'legal_guardian';
+    const permissionPreset = req.body.permissionPreset || 'standard';
+    const customPermissions = req.body.customPermissions || null;
+    const personalMessage = req.body.message || req.body.note || null;
 
-    const child = await Child.findById(childId).lean();
-    if (!child) return res.status(404).json({ error: 'Child not found.' });
+    if (!childIds.length) return res.status(400).json({ error: 'At least one childId is required.' });
 
-    const isOwner = String(child.parentId) === String(req.user.userId);
+    // Rate limit: max 10 invitations per user per day
+    if (!checkInviteRateLimit(req.user.userId)) {
+      return res.status(429).json({ error: 'Daily invitation limit reached. Please try again tomorrow.' });
+    }
+
+    const children = await Child.find({ _id: { $in: childIds } }).lean();
+    if (!children.length) return res.status(404).json({ error: 'No matching children found.' });
+
+    const isOwner = String(children[0].parentId) === String(req.user.userId);
     const isAdmin = req.user.role === 'admin';
-
-    const primaryLink = await GuardianLink.findOne({ childId, guardianId: req.user.userId, isPrimary: true, status: 'active' }).lean();
-    if (!isOwner && !primaryLink && !isAdmin) {
-      return res.status(403).json({ error: 'Only the primary guardian or admin may generate invitation codes.' });
+    const primaryLinks = await GuardianLink.find({
+      childId: { $in: childIds }, guardianId: req.user.userId, isPrimary: true, status: 'active',
+    }).lean();
+    if (!isOwner && primaryLinks.length < childIds.length && !isAdmin) {
+      return res.status(403).json({ error: 'Only the primary guardian or admin may invite guardians.' });
     }
 
     const rawCode = crypto.randomBytes(12).toString('hex');
     const codeHash = hashCode(rawCode);
-    const expiresAt = expiresHours ? new Date(Date.now() + Number(expiresHours) * 3600 * 1000) : null;
+    const expiresAt = new Date(Date.now() + Number(expiresHours) * 3600 * 1000);
 
-    const inv = await GuardianInvitation.create({ codeHash, childId, createdBy: req.user.userId, expiresAt, singleUse: true, note });
+    const inv = await GuardianInvitation.create({
+      codeHash, childIds, createdBy: req.user.userId, expiresAt, singleUse: true,
+      relationship, permissionPreset, customPermissions, personalMessage,
+      note: req.body.note || null,
+    });
 
-    // If an invite email was provided, attempt to send the invitation link/code
-    if (inviteEmail) {
+    recordInviteAttempt(req.user.userId);
+
+    if (inviterEmail) {
       try {
-        await emailService.sendInvitationEmail({ to: inviteEmail, code: rawCode, child, inviter: req.user, expiresAt });
-        await GuardianInvitation.findByIdAndUpdate(inv._id, { sentTo: inviteEmail, emailSent: true });
-      } catch (e) {
-        console.warn('Failed to send invitation email:', e.message);
-      }
+        await emailService.sendInvitationEmail({
+          to: inviterEmail, code: rawCode, child: children[0], children, inviter: req.user,
+          relationship, permissionPreset, customPermissions, personalMessage,
+          expiresAt, invitation: inv,
+        });
+        await GuardianInvitation.findByIdAndUpdate(inv._id, { sentTo: inviterEmail, emailSent: true });
+      } catch (e) { console.warn('Failed to send invitation email:', e.message); }
     }
-    await createLog({ actorId: req.user.userId, action: 'invitation:create', targetType: 'Child', targetId: childId, details: { invitationId: inv._id }, ip: req.ip });
 
-    // Return the raw code so the caller can email/share it. In production, this should be sent
-    // only via verified email and not logged.
+    await createLog({
+      actorId: req.user.userId, action: 'invitation:create', targetType: 'Child',
+      targetId: childIds[0],
+      details: { invitationId: inv._id, childIds, relationship, permissionPreset },
+      ip: req.ip,
+    });
+
     res.json({ success: true, invitationCode: rawCode, invitationId: inv._id, expiresAt });
   } catch (err) {
     console.error('generateInvitation error:', err);
@@ -130,14 +174,91 @@ async function verifyInvitation(req, res) {
     const { code } = req.params;
     if (!code) return res.status(400).json({ error: 'Code is required.' });
     const codeHash = hashCode(code);
-    const invitation = await GuardianInvitation.findOne({ codeHash }).populate('childId', 'firstName lastName parentId').lean();
+    const invitation = await GuardianInvitation.findOne({ codeHash }).lean();
     if (!invitation) return res.status(404).json({ error: 'Invitation not found or invalid.' });
     if (invitation.used) return res.json({ success: true, valid: true, used: true, usedBy: invitation.usedBy });
-    if (invitation.expiresAt && new Date() > new Date(invitation.expiresAt)) {
-      return res.json({ success: false, valid: false, expired: true });
+
+    // Find first child for details enrichment
+    const firstChildId = invitation.childIds?.[0];
+    let childDetails = null;
+    let inviterDetails = null;
+    let allChildrenDetails = [];
+
+    if (firstChildId) {
+      const child = await Child.findById(firstChildId).populate('parentId', 'firstName lastName email').lean();
+      if (child) {
+        childDetails = {
+          id: child._id,
+          firstName: child.firstName,
+          lastName: child.lastName,
+          dateOfBirth: child.dateOfBirth,
+          profileIcon: child.profileIcon,
+        };
+        const parent = child.parentId;
+        inviterDetails = parent ? {
+          id: parent._id,
+          name: `${parent.firstName || ''} ${parent.lastName || ''}`.trim(),
+          email: parent.email,
+        } : null;
+      }
     }
 
-    res.json({ success: true, valid: true, used: false, invitation: { id: invitation._id, child: invitation.childId, createdBy: invitation.createdBy, expiresAt: invitation.expiresAt, note: invitation.note } });
+    // Resolve all children
+    if (invitation.childIds?.length) {
+      const allChildren = await Child.find({ _id: { $in: invitation.childIds } }).lean();
+      allChildrenDetails = allChildren.map(c => ({
+        id: c._id,
+        firstName: c.firstName,
+        lastName: c.lastName,
+        dateOfBirth: c.dateOfBirth,
+        profileIcon: c.profileIcon,
+      }));
+    }
+
+    if (invitation.expiresAt && new Date() > new Date(invitation.expiresAt)) {
+      return res.json({
+        success: false, valid: false, expired: true,
+        invitation: {
+          id: invitation._id,
+          child: childDetails,
+          children: allChildrenDetails,
+          inviter: inviterDetails,
+          relationship: invitation.relationship,
+          permissionPreset: invitation.permissionPreset,
+          customPermissions: invitation.customPermissions,
+          personalMessage: invitation.personalMessage,
+          expiresAt: invitation.expiresAt,
+          createdBy: invitation.createdBy,
+        },
+      });
+    }
+
+    const rawPerms = invitation.customPermissions || {};
+    const permBreakdown = Object.entries(rawPerms).map(([key, val]) => ({
+      key: key,
+      label: _permLabels[key] || key,
+      value: Boolean(val),
+    }));
+
+    res.json({
+      success: true, valid: true, used: false,
+      invitation: {
+        id:                invitation._id,
+        child:             childDetails,
+        children:          allChildrenDetails,
+        inviter:           inviterDetails,
+        relationship:      invitation.relationship,
+        relationshipLabel: _relationshipLabels[invitation.relationship] || 'Guardian',
+        permissionPreset:  invitation.permissionPreset,
+        customPermissions: invitation.customPermissions,
+        permissionBreakdown: permBreakdown,
+        personalMessage:   invitation.personalMessage,
+        expiresAt:         invitation.expiresAt,
+        createdBy:         invitation.createdBy,
+        sentTo:            invitation.sentTo,
+        note:              invitation.note,
+      },
+    });
   } catch (err) {
     console.error('verifyInvitation error:', err);
     res.status(500).json({ error: err.message });
@@ -352,4 +473,203 @@ async function transferPrimary(req, res) {
   }
 }
 
-module.exports = { generateInvitation, acceptInvitation, verifyInvitation, listGuardians, updatePermissions, revokeGuardian, transferPrimary };
+/* ─────────────────── Enhanced verifyInvitation ─────────────────── */
+
+const _permLabels = {
+  viewAssessments:    'View Assessments & Results',
+  submitAssessments:  'Submit Assessments',
+  viewResults:        'View Assessment Results',
+  uploadDocuments:    'Upload Documents & Photos',
+  manageAppointments: 'Manage Appointments',
+  viewMedicalRecords: 'View Medical Records',
+  modifyChild:        'Modify Child Profile',
+  inviteGuardians:    'Invite Other Guardians',
+  revokeAccess:       'Revoke Access',
+  viewMessages:       'View Chat Messages',
+  sendMessages:       'Send Messages',
+  manageMessages:     'Manage Messages',
+  viewNotifications:  'View Notifications',
+  sendNotifications:  'Send Notifications',
+  manageNotifications:'Manage Notifications',
+};
+
+const _relationshipLabels = {
+  mother:'Mother', father:'Father', grandparent:'Grandparent',
+  legal_guardian:'Legal Guardian', foster_parent:'Foster Parent',
+  court_appointed:'Court-Appointed', nanny:'Nanny / Babysitter',
+  babysitter:'Babysitter', therapist:'Therapist', teacher:'Teacher', other:'Other',
+};
+
+/* ─────────────────── Pending invitations list ─────────────────── */
+
+async function listPendingInvitations(req, res) {
+  try {
+    const invitations = await GuardianInvitation.find({ createdBy: req.user.userId, used: false })
+      .sort({ createdAt: -1 })
+      .lean();
+    res.json({
+      success: true,
+      invitations: invitations.map(inv => {
+        const ms = inv.expiresAt ? new Date(inv.expiresAt) - Date.now() : null;
+        const isExpired = ms !== null && ms < 0;
+        const daysLeft = ms !== null && ms >= 0 ? Math.max(0, Math.floor(ms / 86400000)) : 0;
+        return {
+          id:                   inv._id,
+          childIds:             inv.childIds,
+          relationship:         inv.relationship,
+          permissionPreset:     inv.permissionPreset,
+          customPermissions:    inv.customPermissions,
+          personalMessage:      inv.personalMessage,
+          sentTo:               inv.sentTo,
+          emailSent:            inv.emailSent,
+          expiresAt:            inv.expiresAt,
+          isExpired,
+          daysLeft,
+          viewCount:            inv.viewCount,
+          resentCount:          inv.resentCount,
+          createdAt:            inv.createdAt,
+        };
+      }),
+    });
+  } catch (err) {
+    console.error('listPendingInvitations error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/* ─────────────────── Resend invitation ─────────────────── */
+
+async function resendInvitation(req, res) {
+  try {
+    const { id } = req.params;
+    const invitation = await GuardianInvitation.findById(id).lean();
+    if (!invitation) return res.status(404).json({ error: 'Invitation not found.' });
+    if (!invitation.sentTo) return res.status(400).json({ error: 'No recipient email on file for this invitation.' });
+    if (invitation.used) return res.status(400).json({ error: 'This invitation has already been used.' });
+    if (String(invitation.createdBy) !== String(req.user.userId) && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only the inviter or an admin may resend this invitation.' });
+    }
+
+    // Generate new code, rotate token, extend expiry by 48h from now
+    const rawCode   = crypto.randomBytes(12).toString('hex');
+    const codeHash   = hashCode(rawCode);
+    const newExpiry = new Date(Date.now() + 48 * 3600 * 1000);
+
+    const [child] = await Promise.all([
+      Child.findById(invitation.childIds[0]).lean(),
+      GuardianInvitation.findByIdAndUpdate(invitation._id, {
+        codeHash, expiresAt: newExpiry, resentCount: (invitation.resentCount || 0) + 1, lastResentAt: new Date(),
+      }),
+    ]);
+
+    if (child) {
+      try {
+        await emailService.sendInvitationEmail({
+          to: invitation.sentTo, code: rawCode, child, inviter: req.user, expiresAt: newExpiry,
+        });
+      } catch (e) { console.warn('Resend email error:', e.message); }
+    }
+
+    await createLog({
+      actorId: req.user.userId,
+      action: 'invitation:resend',
+      targetType: 'GuardianInvitation',
+      targetId: invitation._id,
+      details: { sentTo: invitation.sentTo, resentCount: (invitation.resentCount || 0) + 1 },
+      ip: req.ip,
+    });
+
+    res.json({ success: true, newCode: rawCode, expiresAt: newExpiry });
+  } catch (err) {
+    console.error('resendInvitation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/* ─────────────────── Revoke invitation ─────────────────── */
+
+async function revokeInvitation(req, res) {
+  try {
+    const { id } = req.params;
+    const invitation = await GuardianInvitation.findById(id);
+    if (!invitation) return res.status(404).json({ error: 'Invitation not found.' });
+    if (String(invitation.createdBy) !== String(req.user.userId) && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only the inviter or an admin may revoke this invitation.' });
+    }
+
+    invitation.revokedAt   = new Date();
+    invitation.revokedBy   = req.user.userId;
+    invitation.expiresAt   = new Date(); // immediately expire
+    await invitation.save();
+
+    await createLog({
+      actorId: req.user.userId,
+      action: 'invitation:revoke',
+      targetType: 'GuardianInvitation',
+      targetId: invitation._id,
+      details: { sentTo: invitation.sentTo },
+      ip: req.ip,
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('revokeInvitation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/* ─────────────────── Post-acceptance email bump ─────────────────── */
+// Called by the accept-invitation page after a successful acceptance so the browser
+// is never required to import Node modules directly.
+
+async function sendAcceptanceEmails(req, res) {
+  try {
+    const { invitationId, inviterName, inviterEmail, acceptorName, acceptorEmail, childName } = req.body;
+    if (!invitationId) return res.status(400).json({ error: 'invitationId is required.' });
+
+    const invitation = await GuardianInvitation.findById(invitationId).lean();
+    if (!invitation) return res.status(404).json({ error: 'Invitation not found.' });
+
+    // Load child details for the welcome email
+    let childForEmail = null;
+    const firstChildId = invitation.childIds?.[0];
+    if (firstChildId) {
+      const c = await Child.findById(firstChildId).lean();
+      if (c) childForEmail = { firstName: c.firstName, lastName: c.lastName, dateOfBirth: c.dateOfBirth, profileIcon: c.profileIcon };
+    }
+
+    try {
+      await emailService.sendWelcomeEmail({
+        to: acceptorEmail,
+        guardianName: acceptorName || '',
+        childName: childName || (childForEmail ? `${childForEmail.firstName} ${childForEmail.lastName}`.trim() : ''),
+        inviterName: inviterName || '',
+        inviterEmail: inviterEmail || '',
+      });
+    } catch (e) { console.warn('Welcome email error:', e.message); }
+
+    if (inviterEmail) {
+      try {
+        await emailService.sendAcceptanceNotification({
+          to: inviterEmail,
+          inviterName: inviterName || '',
+          acceptorName: acceptorName || '',
+          acceptorEmail: acceptorEmail || '',
+          childName: childName || '',
+        });
+      } catch (e) { console.warn('Acceptance notification error:', e.message); }
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('sendAcceptanceEmails error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+module.exports = {
+  generateInvitation, acceptInvitation, verifyInvitation,
+  listGuardians, updatePermissions, revokeGuardian, transferPrimary,
+  listPendingInvitations, resendInvitation, revokeInvitation,
+  sendAcceptanceEmails,
+};

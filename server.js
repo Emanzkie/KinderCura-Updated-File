@@ -112,9 +112,22 @@ app.get('/api/admin/sse', (req, res) => {
     });
 });
 
+// Explicit route for guardian management and invitation pages
+app.get('/parent/guardians', (req, res) => {
+  res.sendFile(path.join(__dirname, 'PARENT', 'guardian-management.html'));
+});
+
+app.get('/guardian/accept-invitation', (req, res) => {
+  res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
+});
+
+app.get('/parent/accept-invitation', (req, res) => {
+  res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
+});
+
 // Short friendly route to accept guardian invitations
 app.get('/accept-invitation', (req, res) => {
-    res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
+  res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
 });
 
 app.get('*', (req, res) => {
@@ -193,42 +206,38 @@ async function startApp() {
 
         server = http.createServer(app);
 
-        server.on('error', async (err) => {
-            if (err && err.code === 'EADDRINUSE') {
-                console.error(`❌ Port ${PORT} already in use. Inspecting existing process...`);
-                try {
-                    const existing = await checkExistingServer(PORT);
-                    if (existing.running) {
-                        if (existing.isOur) {
-                            console.log(`ℹ️ A KinderCura server is already running at http://localhost:${PORT} (health OK). Exiting.`);
-                            process.exit(0);
-                        } else {
-                            console.error(`❌ Something is listening on port ${PORT} and responded to /api/health.`);
-                        }
-                    } else {
-                        console.error(`❌ Port ${PORT} appears occupied but /api/health did not respond.`);
+  server.on('error', async (err) => {
+        // ── Port already in use ──
+        if (err && err.code === 'EADDRINUSE') {
+            try {
+                const existing = await checkExistingServer(PORT);
+                if (existing.running) {
+                    if (existing.isOur) {
+                        console.log(`ℹ️  A KinderCura server is already running at http://localhost:${PORT} (health OK). Exiting.`);
+                        process.exit(0);
                     }
-
-                    const pid = await findPidByPort(PORT);
-                    if (pid) {
-                        console.error(`Process listening on port ${PORT} has PID: ${pid}`);
-                        if (process.platform === 'win32') {
-                            console.error(`To stop it (PowerShell): Stop-Process -Id ${pid} -Force`);
-                        } else {
-                            console.error(`To stop it: kill ${pid}  # or sudo kill -9 ${pid}`);
-                        }
-                    } else {
-                        console.error(`Run 'netstat -ano | findstr :${PORT}' (Windows) or 'lsof -i :${PORT}' (Unix) to identify the process.`);
-                    }
-                } catch (diagnosticErr) {
-                    console.error('Error while diagnosing port usage:', diagnosticErr && diagnosticErr.stack ? diagnosticErr.stack : diagnosticErr);
+                    console.error(`❌ Port ${PORT} is occupied by another process that responds to /api/health but is not a KinderCura server.`);
+                } else {
+                    console.error(`❌ Port ${PORT} is occupied and does not respond to /api/health.`);
                 }
-                process.exit(1);
-            } else {
-                console.error('❌ Server error:', err && err.stack ? err.stack : err);
-                process.exit(1);
+            } catch {
+                console.error(`❌ Port ${PORT} is occupied.`);
             }
-        });
+            const pid = await findPidByPort(PORT);
+            if (pid) {
+                console.error(`Process on port ${PORT} has PID ${pid}.`);
+                if (process.platform === 'win32') {
+                    console.error(`Stop it: Stop-Process -Id ${pid} -Force`);
+                } else {
+                    console.error(`Stop it: kill ${pid}`);
+                }
+            }
+            process.exit(1);
+        }
+        // ── Any other server error ──
+        console.error('❌ Server error:', err && err.stack ? err.stack : err);
+        process.exit(1);
+    });
 
         server.listen(PORT, () => {
             console.log(`\n🚀 KinderCura running → http://localhost:${PORT}`);

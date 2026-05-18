@@ -7,7 +7,7 @@ const guardianLinkSchema = new mongoose.Schema(
     guardianId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     isPrimary: { type: Boolean, default: false },
     role: { type: String, enum: ['parent', 'legal_guardian', 'foster_parent', 'court_appointed'], default: 'parent' },
-    status: { type: String, enum: ['pending', 'active', 'revoked', 'suspended'], default: 'pending' },
+    status: { type: String, enum: ['pending', 'active', 'revoked', 'suspended', 'archived'], default: 'pending' },
     // Embedded permissions for fast checks; permissionSet may also be referenced.
     permissions: {
       viewAssessments: { type: Boolean, default: true },
@@ -33,6 +33,12 @@ const guardianLinkSchema = new mongoose.Schema(
     startDate: { type: Date, default: null },
     endDate: { type: Date, default: null },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    transferLog: {
+      previousPrimaryGuardianId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      transferredAt: { type: Date, default: null },
+      promotedAt: { type: Date, default: null },
+      reason: { type: String, default: null },
+    },
   },
   { timestamps: true }
 );

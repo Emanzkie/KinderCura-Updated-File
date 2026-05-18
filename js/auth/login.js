@@ -51,6 +51,19 @@ const API = window.location.origin + '/api';
                 if (data.childId) localStorage.setItem('kc_childId', data.childId);
 
                 // Redirect based on role after successful sign-in
+                // Support ?next= parameter for flow continuations (e.g. accept-invitation)
+                const nextUrl = (() => {
+                  try {
+                    const p = new URLSearchParams(window.location.search).get('next');
+                    return p ? decodeURIComponent(p) : null;
+                  } catch { return null; }
+                })();
+
+                if (nextUrl && (nextUrl.startsWith('/') || nextUrl.startsWith(window.location.origin))) {
+                  window.location.href = nextUrl;
+                  return;
+                }
+
                 // Important: 'secretary' gets their own dedicated dashboard, not the pedia one.
                 if (data.user.role === 'admin') {
                     window.location.href = '/admin/admin-dashboard.html';
