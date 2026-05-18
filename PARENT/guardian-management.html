@@ -100,6 +100,33 @@
 // ==================== Guardian Management Component ====================
 const { useState, useEffect, useMemo, useCallback } = React;
 
+const KC_CHILD_KEY = 'kc_childId';
+
+function getUrlChildId() {
+  const params = new URLSearchParams(window.location.search);
+  return String(params.get('childId') || '');
+}
+
+function getStoredChildId() {
+  return String(localStorage.getItem(KC_CHILD_KEY) || '');
+}
+
+function getInitialChildId() {
+  return getUrlChildId() || getStoredChildId();
+}
+
+function persistChildId(id) {
+  if (id) localStorage.setItem(KC_CHILD_KEY, String(id));
+  else localStorage.removeItem(KC_CHILD_KEY);
+}
+
+function resolveSelectedChild(kids, storedId) {
+  if (kids.length === 0) return '';
+  const match = storedId && kids.find(c => String(c.id || c._id) === String(storedId));
+  if (match) return String(match.id || match._id);
+  return String(kids[0].id || kids[0]._id);
+}
+
 // Static lookup tables
 const RELATIONSHIP_OPTIONS = [
   { value: 'mother', label: 'Mother' },
@@ -140,7 +167,7 @@ const PERMISSION_DEFINITIONS = [
 // ===== Main Component =====
 function GuardianManagement() {
   const [children, setChildren] = useState([]);
-  const [selectedChild, setSelectedChild] = useState('');
+  const [selectedChild, setSelectedChild] = useState(getInitialChildId);
   const [invitationEmail, setInvitationEmail] = useState('');
   const [invitationRelationship, setInvitationRelationship] = useState('legal_guardian');
   const [invitationPreset, setInvitationPreset] = useState('standard');
@@ -153,6 +180,7 @@ function GuardianManagement() {
   const [transferTarget, setTransferTarget] = useState(null);
   const [message, setMessage] = useState({ text: '', type: '' });
   const [loading, setLoading] = useState(false);
+  const [childrenLoading, setChildrenLoading] = useState(true);
 
   const token = localStorage.getItem('token');
 
@@ -171,20 +199,55 @@ function GuardianManagement() {
       : 'Guardian Management — KinderCura'; } catch {}
   }, [children]);
 
-  // Auto-select the first child on mount so guardians load immediately
+  // Persist selected child to localStorage on change
   useEffect(() => {
-    if (!selectedChild && children.length > 0) {
-      setSelectedChild(children[0].id || children[0]._id);
+    persistChildId(selectedChild);
+  }, [selectedChild]);
+
+  // Sync selectedChild when kc_childId changes in another tab
+  useEffect(() => {
+    function handleStorageChange(e) {
+      if (e.key !== KC_CHILD_KEY || !e.newValue) return;
+      if (e.newValue === selectedChild) return;
+      if (children.length === 0) return;
+      const match = children.find(c => String(c.id || c._id) === String(e.newValue));
+      if (match) setSelectedChild(String(match.id || match._id));
     }
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, [children, selectedChild]);
 
-  // Load children on mount
+  // Load children on mount & auto-select in one pass
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setChildrenLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
     fetch('/api/children', { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
-      .then(d => setChildren(Array.isArray(d?.children) ? d.children : []))
-      .catch(() => setChildren([]));
+      .then(d => {
+        if (cancelled) return;
+        const kids = Array.isArray(d?.children) ? d.children : [];
+        const urlId = getUrlChildId();
+        const stored = urlId || getStoredChildId();
+        const resolvedId = resolveSelectedChild(kids, stored);
+
+        setChildren(kids);
+        setSelectedChild(resolvedId);
+        if (resolvedId) persistChildId(resolvedId);
+        setChildrenLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setChildren([]);
+          setChildrenLoading(false);
+        }
+      });
+
+    return () => { cancelled = true; };
   }, [token]);
 
   // Load pending invitations
@@ -408,25 +471,43 @@ function GuardianManagement() {
 
   return (
     <div>
-      {/* ===== Child Context Bar ===== */}
-      {selectedChildInfo && (
-        <div style={{
-          background: 'white',
-          borderRadius: 12,
-          padding: '16px 20px',
-          marginBottom: 20,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          flexWrap: 'wrap',
-        }}>
-          <span style={{
-            fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em',
-            color: '#6B7967', flexShrink: 0,
-          }}>Managing guardians for</span>
+      {/* ===== Child Selector Bar ===== */}
+      <div style={{
+        background: 'white',
+        borderRadius: 12,
+        padding: '16px 20px',
+        marginBottom: 20,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 16,
+        flexWrap: 'wrap',
+      }}>
+        <span style={{
+          fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em',
+          color: '#6B7967', flexShrink: 0,
+        }}>Managing guardians for</span>
 
-          {/* Selected-child mini card */}
+        {childrenLoading ? (
+          <span style={{ color: '#888', fontSize: 13 }}>⏳ Loading children...</span>
+        ) : children.length > 1 ? (
+          <select
+            value={selectedChild}
+            onChange={(e) => setSelectedChild(e.target.value)}
+            disabled={childrenLoading}
+            style={{
+              padding: '8px 12px', borderRadius: 8, border: '2px solid var(--border)',
+              fontSize: 14, fontWeight: 600, minWidth: 200, flexShrink: 0,
+            }}
+          >
+            {children.map((c) => (
+              <option key={c.id || c._id} value={c.id || c._id}>
+                {c.firstName} {c.lastName}
+              </option>
+            ))}
+          </select>
+        ) : selectedChildInfo ? (
+          /* Selected-child mini card for single child */
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10,
             background: 'var(--bg-primary)', border: '2px solid var(--border)',
@@ -457,16 +538,15 @@ function GuardianManagement() {
               )}
             </div>
           </div>
+        ) : null}
 
-          {/* Label stripped into own line on narrow viewports */}
-          <span style={{
-            fontSize: 12, color: '#6B7967', marginLeft: 'auto',
-            background: '#F4D89F', borderRadius: 6, padding: '4px 10px',
-          }}>
-            Guardians shown below are tied to this child
-          </span>
-        </div>
-      )}
+        <span style={{
+          fontSize: 12, color: '#6B7967', marginLeft: 'auto',
+          background: '#F4D89F', borderRadius: 6, padding: '4px 10px',
+        }}>
+          Guardians shown below are tied to this child
+        </span>
+      </div>
 
       {/* ===== Invite Section ===== */}
       <div style={{ background: '#fafafa', padding: 16, borderRadius: 10, marginBottom: 24 }}>
@@ -527,8 +607,8 @@ function GuardianManagement() {
             <textarea value={invitationMessage} onChange={e => setInvitationMessage(e.target.value)}
               placeholder="Add a note for the invitee..." rows={2} style={{ width: '100%', padding: 8, borderRadius: 6, marginTop: 4 }} />
           </div>
-          <button type="submit" disabled={loading} className="btn btn-primary" style={{ marginTop: 12 }}>
-            {loading ? 'Sending...' : 'Send Invitation'}
+          <button type="submit" disabled={loading || childrenLoading} className="btn btn-primary" style={{ marginTop: 12 }}>
+            {childrenLoading ? 'Loading...' : loading ? 'Sending...' : 'Send Invitation'}
           </button>
         </form>
       </div>
