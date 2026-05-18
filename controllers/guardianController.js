@@ -128,7 +128,14 @@ async function acceptInvitation(req, res) {
       return res.status(400).json({ error: 'Invitation has expired.' });
     }
 
-    const childId = invitation.childId;
+    const childIds = (() => {
+      const arr = invitation.childIds;
+      if (!arr?.length) return [];
+      const first = arr[0];
+      /* DB stores strings or ObjectIds — normalise to ObjectId strings */
+      return arr.map(id => String(id));
+    })();
+    if (!childIds.length) return res.status(400).json({ error: 'Invitation contains no children.' });
 
     // Find or create a default 'Standard' permission set
     let standard = await PermissionSet.findOne({ name: 'Standard' });
@@ -136,31 +143,33 @@ async function acceptInvitation(req, res) {
       standard = await PermissionSet.create({ name: 'Standard', description: 'Default standard guardian permissions', permissions: {} });
     }
 
-    // Upsert GuardianLink for this user/child
-    const existing = await GuardianLink.findOne({ childId, guardianId: req.user.userId });
-    if (existing) {
-      if (existing.status === 'revoked') {
-        existing.status = 'active';
-        existing.permissionSet = standard._id;
-        existing.permissions = standard.permissions;
-        await existing.save();
+    // Upsert GuardianLink for this user across all children in the invitation
+    await Promise.all(childIds.map(async (childId) => {
+      const existing = await GuardianLink.findOne({ childId, guardianId: req.user.userId });
+      if (existing) {
+        if (existing.status === 'revoked') {
+          existing.status = 'active';
+          existing.permissionSet = standard._id;
+          existing.permissions = standard.permissions;
+          await existing.save();
+        }
+      } else {
+        await GuardianLink.create({
+          childId,
+          guardianId: req.user.userId,
+          isPrimary: false,
+          status: 'active',
+          permissions: standard.permissions,
+          permissionSet: standard._id,
+          createdBy: invitation.createdBy,
+        });
       }
-    } else {
-      await GuardianLink.create({
-        childId,
-        guardianId: req.user.userId,
-        isPrimary: false,
-        status: 'active',
-        permissions: standard.permissions,
-        permissionSet: standard._id,
-        createdBy: invitation.createdBy,
-      });
-    }
+    }));
 
     // Mark invitation used
     await GuardianInvitation.findByIdAndUpdate(invitation._id, { used: true, usedBy: req.user.userId, usedAt: new Date() });
 
-    await createLog({ actorId: req.user.userId, action: 'invitation:accept', targetType: 'Child', targetId: childId, details: { invitationId: invitation._id }, ip: req.ip });
+    await createLog({ actorId: req.user.userId, action: 'invitation:accept', targetType: 'Child', targetId: childIds[0], details: { invitationId: invitation._id, childCount: childIds.length }, ip: req.ip });
 
     res.json({ success: true });
   } catch (err) {

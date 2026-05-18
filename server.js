@@ -54,6 +54,31 @@ app.use(express.static(path.join(__dirname, 'SIGN-UP,LOGIN')));
 app.get('/parent/invite-guardian', (req, res) => res.render('parent/invite-guardian'));
 app.get('/admin/guardian-management', (req, res) => res.render('admin/guardian-management'));
 
+// ── Explicit parent-page routes ────────────────────────────────
+// These MUST appear before /parent/:page so that they are matched
+// before the generic catch-all tries to sendFile a non-existent file.
+
+// Guardian Management page (handles /parent/guardians and /parent/guardians.html)
+app.get('/parent/guardians', (req, res) => {
+  res.sendFile(path.join(__dirname, 'PARENT', 'guardian-management.html'));
+});
+app.get('/parent/guardians.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'PARENT', 'guardian-management.html'));
+});
+
+// Public invitation-acceptance page
+// Authentication-gated by the page itself; route is always accessible.
+app.get('/parent/accept-invitation', (req, res) => {
+  res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
+});
+app.get('/guardian/accept-invitation', (req, res) => {
+  res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
+});
+// Short friendly route to accept guardian invitations (kept for backward compat)
+app.get('/accept-invitation', (req, res) => {
+  res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
+});
+
 // Friendly page routes for parent / pedia / admin pages
 app.get('/parent/:page', (req, res) => res.sendFile(path.join(__dirname, 'PARENT', req.params.page)));
 app.get('/pedia/:page', (req, res) => res.sendFile(path.join(__dirname, 'PEDIA', req.params.page)));
@@ -110,24 +135,6 @@ app.get('/api/admin/sse', (req, res) => {
     req.on('close', () => {
         sse.removeClient(res);
     });
-});
-
-// Explicit route for guardian management and invitation pages
-app.get('/parent/guardians', (req, res) => {
-  res.sendFile(path.join(__dirname, 'PARENT', 'guardian-management.html'));
-});
-
-app.get('/guardian/accept-invitation', (req, res) => {
-  res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
-});
-
-app.get('/parent/accept-invitation', (req, res) => {
-  res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
-});
-
-// Short friendly route to accept guardian invitations
-app.get('/accept-invitation', (req, res) => {
-  res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
 });
 
 app.get('*', (req, res) => {
