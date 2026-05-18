@@ -51,6 +51,9 @@ app.use(express.static(__dirname, { index: false }));
 app.use(express.static(path.join(__dirname, 'SIGN-UP,LOGIN')));
 
 // Minimal EJS test routes for guardian UI (rendered pages)
+// ⚠️ DEPRECATED — /parent/invite-guardian is the older standalone invite page.
+//   All invite/guardian management functionality has moved to /parent/guardians.
+//   Kept here for backward compatibility; remove after migration is confirmed.
 app.get('/parent/invite-guardian', (req, res) => res.render('parent/invite-guardian'));
 app.get('/admin/guardian-management', (req, res) => res.render('admin/guardian-management'));
 
@@ -67,14 +70,16 @@ app.get('/parent/guardians.html', (req, res) => {
 });
 
 // Public invitation-acceptance page
-// Authentication-gated by the page itself; route is always accessible.
+// Serves the standalone accept-invitation page (route kept for backward compat;
+// email links and direct navigation continue to work as before).
 app.get('/parent/accept-invitation', (req, res) => {
   res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
 });
 app.get('/guardian/accept-invitation', (req, res) => {
   res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
 });
-// Short friendly route to accept guardian invitations (kept for backward compat)
+// Short friendly route to accept guardian invitations (kept for backward compat).
+// Serves the same accept-invitation page so existing email links still work.
 app.get('/accept-invitation', (req, res) => {
   res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
 });

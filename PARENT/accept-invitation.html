@@ -120,7 +120,7 @@ function abortableFetch(url, opts = {}) {
   const ctrl = new AbortController();
   const id   = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   const res  = fetch(url, { ...opts, signal: ctrl.signal });
-  clearTimeout(id);
+  // Do NOT clearTimeout here — we want the abort to fire if the fetch hangs.
   return res;
 }
 
@@ -260,8 +260,10 @@ function AcceptInvitation() {
   const [busy, setBusy]             = useState(false);
 
   const rawCode = useMemo(() => {
-    try { return new URLSearchParams(window.location.search).get('code') || ''; }
-    catch { return ''; }
+    try {
+      const p = new URLSearchParams(window.location.search);
+      return p.get('token') || p.get('code') || '';
+    } catch { return ''; }
   }, []);
   /* stable ref — set once here, used everywhere */
   _currentCode = rawCode;
@@ -435,12 +437,42 @@ function AcceptInvitation() {
     }
   }, [state, inv, errMsg]);
 
+   /* ── Collect HTTP error info from accept/decline → show meaningful,
+        non-infinite-loading error UI (Bug: handleAccept POST errors used to
+        early-return from `_pendingAccept` without ever transitioning state,
+        leaving `'accepting'` and the spinner visible forever). ── */
+  useEffect(() => {
+    if (_acceptErrState && _acceptErrMsg) {
+      setState(_acceptErrState);
+      setErrMsg(_acceptErrMsg);
+    }
+    // reset after consuming so the guard above evaluates fresh on next error
+    _acceptErrState = null; _acceptErrMsg = '';
+  }, [_acceptErrState, _acceptErrMsg]);
+
   /* ── Accept ── */
+  /* Maps HTTP status or error objects to state errors
+     used when the accept flow doesn't explicitly setState first. */
+  let _acceptErrState = null;
+  let _acceptErrMsg   = '';
+
+  function errToState(status, body) {
+    if (status === 410 || isExpired(body?.invitation))      return { s: 'expired',  m: body?.error || 'This invitation has expired. Please ask the inviter to send a new one.' };
+    if (status === 409)                                      return { s: 'used',     m: 'This invitation was already accepted. You already have access to this profile.' };
+    if (status === 404 || !body?.success)                    return { s: 'invalid',  m: body?.error || 'Invalid invitation code. Please check the link and try again.' };
+    return { s: 'error', m: body?.error || 'An unexpected error occurred. Please try again.' };
+  }
+  function applyAcceptError(status, body) {
+    const { s, m } = errToState(status, body);
+    _acceptErrState = s; _acceptErrMsg = m;
+  }
+
   const handleAccept = useCallback(async () => {
     if (busy || state !== 'ok') return;
     if (_pendingAccept) return;        // dedup
     _pendingAccept = (async () => {
       setBusy(true);
+      _acceptErrState = null;
       try {
         const res  = await abortableFetch('/api/v2/guardians/accept-invitation', {
           method: 'POST',
@@ -449,7 +481,8 @@ function AcceptInvitation() {
         });
         const body = await res.json();
         if (!res.ok || !body.success) {
-          addToast(body.error || 'Failed to accept invitation.', 'error');
+          applyAcceptError(res.status, body);
+          addToast(_acceptErrMsg, 'error');
           return;
         }
         const fc   = inv?.child?.firstName   || inv?.children?.[0]?.firstName || 'Child';
@@ -463,22 +496,26 @@ function AcceptInvitation() {
           const myN = `${ud.firstName||''} ${ud.lastName||''}`.trim();
           const inN = inv?.createdByName || inv?.inviterName   || '';
           const inE = inv?.inviterEmail  || '';
+          const accEmailPayload = {
+            invitationId: inv?.id || inv?.invitation?.id,
+            inviterName: inN, inviterEmail: inE,
+            acceptorName: myN, acceptorEmail: ud.email, childName: name,
+          };
           abortableFetch('/api/v2/guardians/invitations/accept-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-            body: JSON.stringify({
-              invitationId: inv?.id || inv?.invitation?.id,
-              inviterName: inN, inviterEmail: inE,
-              acceptorName: myN, acceptorEmail: ud.email, childName: name,
-            }),
+            body: JSON.stringify(accEmailPayload),
           }).catch(() => {});
         } catch { /* best-effort */ }
 
         setTimeout(() => { window.location.href = '/parent/dashboard.html'; }, 2000);
       } catch (err) {
-        addToast(err.name === 'AbortError'
-          ? 'Request timed out — please try again.'
-          : 'Network error — please try again.', 'error');
+        if (err.name === 'AbortError') {
+          _acceptErrState = 'error'; _acceptErrMsg = 'Request timed out — please try again.';
+        } else {
+          _acceptErrState = 'error'; _acceptErrMsg = 'Network error — please try again.';
+        }
+        addToast(_acceptErrMsg, 'error');
       } finally { setBusy(false); _pendingAccept = null; }
     })();
   }, [busy, state, inv]);
@@ -566,10 +603,10 @@ function AcceptInvitation() {
 
     /* action buttons */
     document.getElementById('aiActions').innerHTML = `
-      <button class="btn btn-primary" onclick="window._aiAccept()"
-              style="font-size:1.05rem;padding:.9rem 2rem">
-        ✅ Accept Invitation
-      </button>
+        <button class="btn btn-primary" onclick="window._aiAccept()"
+                style="font-size:1.05rem;padding:.9rem 2rem">
+          ✅ Accept
+        </button>
       <button class="btn btn-secondary" onclick="window._aiDecline()"
               style="border-color:var(--accent-red,#D4897A);color:var(--accent-red,#D4897A)">
         Decline

@@ -51,7 +51,7 @@ const API = window.location.origin + '/api';
                 if (data.childId) localStorage.setItem('kc_childId', data.childId);
 
                 // Redirect based on role after successful sign-in
-                // Support ?next= parameter for flow continuations (e.g. accept-invitation)
+                // Support ?next= parameter for flow continuations (e.g. guardians or accept-invitation)
                 const nextUrl = (() => {
                   try {
                     const p = new URLSearchParams(window.location.search).get('next');

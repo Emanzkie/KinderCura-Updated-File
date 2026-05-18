@@ -71,7 +71,7 @@ export default function AcceptInvitation() {
 
       <div style={{ marginTop: 12 }}>
         <button onClick={accept} style={{ padding: '8px 12px' }}>
-          Accept Invitation
+          Accept
         </button>
       </div>
 

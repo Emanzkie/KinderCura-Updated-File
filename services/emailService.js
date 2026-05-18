@@ -189,7 +189,7 @@ async function sendInvitationEmail({
   const baseUrl  = process.env.APP_URL || 'http://localhost:3001';
   const codePath = code ? `?code=${encodeURIComponent(code)}` : '';
   const acceptBtn = `<a href="${baseUrl}/accept-invitation${codePath}"
-    class="km-btn" style="background:#6B8E6F">Accept Invitation</a>`;
+    class="km-btn" style="background:#6B8E6F">Accept</a>`;
 
   const expiryStr = expiresAt
     ? `${Math.max(0, Math.round((new Date(expiresAt) - Date.now()) / 86400000))} days`
@@ -301,7 +301,7 @@ async function sendAcceptanceNotification({ to, inviterName, acceptorName, accep
       and now has access to <strong>${escapeHtml(childName)}</strong>'s profile.
     </p>
     <div style="margin:18px 0">
-      <a href="${process.env.APP_URL || 'http://localhost:3001'}/parent/guardian-management.html"
+      <a href="${process.env.APP_URL || 'http://localhost:3001'}/parent/guardians"
          class="km-btn" style="background:#6B8E6F">Manage Guardians</a>
     </div>
   `;

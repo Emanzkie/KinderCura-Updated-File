@@ -23,7 +23,6 @@
       <a href="/parent/appointments.html" class="nav-link">Appointments</a>
       <a href="/parent/chat.html" class="nav-link">Chat</a>
       <a href="/parent/custom-questions.html" class="nav-link">Questions</a>
-      <a href="/parent/guardians" class="nav-link active">Guardians</a>
     </nav>
     <div class="nav-right">
       <button class="icon-btn notification-btn" onclick="openNotifications()">
@@ -37,13 +36,7 @@
 </header>
 
 <main class="dashboard-container" style="padding-top:1rem;">
-  <div class="card" style="padding:24px 28px;">
-    <h2 style="margin-bottom:4px">Guardian Management</h2>
-    <p style="margin-bottom:20px;color:var(--text-light);font-size:0.92rem;">
-      Invite and manage linked guardians for your children. Only primary guardians can send invitations.
-    </p>
-    <div id="guardian-management-root"></div>
-  </div>
+  <div id="guardian-management-root"></div>
 </main>
 
 <!-- ═══════════════════════════════════════════════════════════
@@ -162,6 +155,28 @@ function GuardianManagement() {
   const [loading, setLoading] = useState(false);
 
   const token = localStorage.getItem('token');
+
+  // Computed: selected-child summary for the context bar below
+  const selectedChildInfo = useMemo(() => {
+    if (!selectedChild) return null;
+    return children.find(c =>
+      String(c.id || c._id) === String(selectedChild)
+    ) || null;
+  }, [children, selectedChild]);
+
+  // Set page title once children are loaded
+  useEffect(() => {
+    try { document.title = children.length
+      ? `Guardians — ${children[0].firstName} ${children[0].lastName} | KinderCura`
+      : 'Guardian Management — KinderCura'; } catch {}
+  }, [children]);
+
+  // Auto-select the first child on mount so guardians load immediately
+  useEffect(() => {
+    if (!selectedChild && children.length > 0) {
+      setSelectedChild(children[0].id || children[0]._id);
+    }
+  }, [children, selectedChild]);
 
   // Load children on mount
   useEffect(() => {
@@ -393,19 +408,81 @@ function GuardianManagement() {
 
   return (
     <div>
+      {/* ===== Child Context Bar ===== */}
+      {selectedChildInfo && (
+        <div style={{
+          background: 'white',
+          borderRadius: 12,
+          padding: '16px 20px',
+          marginBottom: 20,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+          flexWrap: 'wrap',
+        }}>
+          <span style={{
+            fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em',
+            color: '#6B7967', flexShrink: 0,
+          }}>Managing guardians for</span>
+
+          {/* Selected-child mini card */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            background: 'var(--bg-primary)', border: '2px solid var(--border)',
+            borderRadius: 10, padding: '8px 14px', flexShrink: 0,
+          }}>
+            {selectedChildInfo.profileIcon && selectedChildInfo.profileIcon !== 'child1' &&
+             !selectedChildInfo.profileIcon.startsWith('http') ? (
+              <img
+                src={window.location.origin + selectedChildInfo.profileIcon}
+                alt=""
+                style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: '50%' }}
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+            ) : (
+              <div style={{
+                width: 36, height: 36, borderRadius: '50%', background: '#F4D89F',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
+              }}>👶</div>
+            )}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: '#3D4738' }}>
+                {selectedChildInfo.firstName} {selectedChildInfo.lastName}
+              </div>
+              {selectedChildInfo.dateOfBirth && (
+                <div style={{ fontSize: 12, color: '#6B7967' }}>
+                  Age {Math.max(0, Math.round((Date.now() - new Date(selectedChildInfo.dateOfBirth.split('T')[0])) / 31557600000))} yrs
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Label stripped into own line on narrow viewports */}
+          <span style={{
+            fontSize: 12, color: '#6B7967', marginLeft: 'auto',
+            background: '#F4D89F', borderRadius: 6, padding: '4px 10px',
+          }}>
+            Guardians shown below are tied to this child
+          </span>
+        </div>
+      )}
+
       {/* ===== Invite Section ===== */}
       <div style={{ background: '#fafafa', padding: 16, borderRadius: 10, marginBottom: 24 }}>
-        <h3 style={{ margin: '0 0 12px', color: 'var(--primary)' }}>Invite a Guardian</h3>
+        <h3 style={{ margin: '0 0 4px', color: 'var(--primary)' }}>
+          {selectedChildInfo
+            ? `Send Invitation for ${selectedChildInfo.firstName} ${selectedChildInfo.lastName}`
+            : 'Invite a Guardian'}
+        </h3>
+        {selectedChildInfo && (
+          <p style={{ margin: '0 0 12px', color: 'var(--text-light)', fontSize: 12 }}>
+            This invitation will be sent for <strong>{selectedChildInfo.firstName} {selectedChildInfo.lastName}</strong>.
+            Switch the selected child above using the selector on the right.
+          </p>
+        )}
         <form onSubmit={handleInvite}>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600 }}>Child</label>
-              <select value={selectedChild} onChange={e => setSelectedChild(e.target.value)}
-                style={{ padding: 8, minWidth: 180 }}>
-                <option value="">-- Select child --</option>
-                {children.map(c => <option key={c.id || c._id} value={c.id || c._id}>{c.firstName} {c.lastName}</option>)}
-              </select>
-            </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600 }}>Email</label>
               <input type="email" value={invitationEmail} onChange={e => setInvitationEmail(e.target.value)}
@@ -499,9 +576,12 @@ function GuardianManagement() {
 
       {/* ===== Linked Guardians ===== */}
       <div>
-        <h3 style={{ margin: '0 0 12px', color: 'var(--primary)' }}>Linked Guardians</h3>
-        {!selectedChild ? <p style={{ color: 'var(--text-light)' }}>Select a child to view linked guardians.</p> :
-          linkedGuardians.length === 0 ? <p style={{ color: 'var(--text-light)' }}>No linked guardians for this child.</p> :
+        <h3 style={{ margin: '0 0 12px', color: 'var(--primary)' }}>
+          {selectedChildInfo
+            ? `Linked Guardians – ${selectedChildInfo.firstName} ${selectedChildInfo.lastName}`
+            : 'Linked Guardians'}
+        </h3>
+        {linkedGuardians.length === 0 ? <p style={{ color: 'var(--text-light)' }}>No linked guardians for this child.</p> :
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--bg-primary)' }}>
