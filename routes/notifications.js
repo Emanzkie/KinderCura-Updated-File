@@ -361,10 +361,11 @@ router.post('/send', authMiddleware, async (req, res) => {
     const child = await Child.findById(childId).lean();
     if (!child) return res.status(404).json({ error: 'Child not found.' });
 
-    // Only primary guardian or admin may send
+    // Only primary guardian, linked guardian with permission, or admin may send
     const isOwner = String(child.parentId) === String(req.user.userId) || req.user.role === 'admin';
-    const primaryLink = await GuardianLink.findOne({ childId, guardianId: req.user.userId, isPrimary: true, status: 'active' }).lean();
-    if (!isOwner && !primaryLink) return res.status(403).json({ error: 'Only primary guardian or admin may send notifications for this child.' });
+    const link = await GuardianLink.findOne({ childId, guardianId: req.user.userId, status: 'active' }).lean();
+    const hasPerm = link && link.permissions && link.permissions.sendNotifications;
+    if (!isOwner && !hasPerm) return res.status(403).json({ error: 'Only primary guardian or admin may send notifications for this child.' });
 
     const recipients = new Set();
     if (child.parentId) recipients.add(String(child.parentId));

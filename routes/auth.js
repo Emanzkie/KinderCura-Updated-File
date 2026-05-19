@@ -269,22 +269,24 @@ function parseNumberOrNull(value) {
 
 
 async function getParentPreAssessmentState(parentId) {
-  const children = await Child.find({ parentId }).sort({ createdAt: -1 }).select('_id').lean();
-  let defaultChildId = children.length ? String(children[0]._id) : null;
+  const childIds = new Set();
 
-  // For linked guardians (no children by parentId), check GuardianLinks
-  if (!children.length) {
-    const links = await GuardianLink.find({ guardianId: parentId, status: 'active' }).lean();
-    if (links.length) {
-      const linkedChildren = await Child.find({ _id: { $in: links.map(l => l.childId) } }).sort({ createdAt: -1 }).select('_id').lean();
-      children.push(...linkedChildren);
-      defaultChildId = linkedChildren.length ? String(linkedChildren[0]._id) : null;
-    }
+  // Own children (parentId match)
+  const own = await Child.find({ parentId }).sort({ createdAt: -1 }).select('_id').lean();
+  own.forEach(c => childIds.add(String(c._id)));
+
+  // Linked children via GuardianLink
+  const links = await GuardianLink.find({ guardianId: parentId, status: 'active' }).lean();
+  if (links.length) {
+    links.forEach(l => childIds.add(String(l.childId)));
   }
 
-  if (!children.length) {
+  if (!childIds.size) {
     return { defaultChildId: null, needsPreAssessment: false, preAssessmentChildId: null };
   }
+
+  const children = await Child.find({ _id: { $in: [...childIds] } }).sort({ createdAt: -1 }).select('_id').lean();
+  const defaultChildId = children.length ? String(children[0]._id) : null;
 
   // Important:
   // Treat the first completed screening as the end of the required pre-assessment flow.

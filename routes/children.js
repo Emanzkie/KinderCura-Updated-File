@@ -12,29 +12,31 @@ function sameDay(a, b) {
     return new Date(a).toISOString().split('T')[0] === new Date(b).toISOString().split('T')[0];
 }
 
-// Skip a child if it has no active link to the caller.
-// Parents always pass; Linked Guardians must have a link with manageChild permission.
-function hasChildAccess(child, userId, userRole) {
-  if (userRole === 'parent') return true;
-  if (userRole === 'admin') return true;
-  return false; // default deny — caller must pre-filter via guardian links
-}
-
 // Return all children the caller can access:
-//  - Parents  → their own children (parentId match)
+//  - Parents  → their own children (parentId match) + children from active GuardianLink
 //  - Admins   → all children
-//  - Guardians → children from active guardian links with manageChild permission + value
+//  - Guardians → children from active guardian links
 async function getAccessibleChildren(userId, userRole) {
-  const own = userRole === 'parent'
-    ? await Child.find({ parentId: userId }).sort({ createdAt: -1 }).select('+profileIcon').lean()
-    : [];
+  let childIds = new Set();
 
-  if (userRole === 'parent') return own;
-  if (userRole === 'admin') return await Child.find({}).sort({ createdAt: -1 }).select('+profileIcon').lean();
+  // Own children (parentId match) for parent-role users
+  if (userRole === 'parent') {
+    const own = await Child.find({ parentId: userId }).sort({ createdAt: -1 }).select('+profileIcon').lean();
+    own.forEach(c => childIds.add(String(c._id)));
+  }
 
+  // Linked children via GuardianLink for any user role
   const links = await GuardianLink.find({ guardianId: userId, status: 'active' }).lean();
-  if (!links.length) return [];
-  return await Child.find({ _id: { $in: links.map(l => l.childId) } }).sort({ createdAt: -1 }).select('+profileIcon').lean();
+  if (links.length) {
+    links.forEach(l => childIds.add(String(l.childId)));
+  }
+
+  if (childIds.size === 0) {
+    if (userRole === 'admin') return await Child.find({}).sort({ createdAt: -1 }).select('+profileIcon').lean();
+    return [];
+  }
+
+  return await Child.find({ _id: { $in: [...childIds].map(id => id) } }).sort({ createdAt: -1 }).select('+profileIcon').lean();
 }
 
 // Return one child document only if the caller has access to it.
@@ -42,9 +44,13 @@ async function getAccessibleChild(childId, userId, userRole) {
   const child = await Child.findOne({ _id: childId }).lean();
   if (!child) return null;
 
-  if (userRole === 'parent') return child;
+  // Admin can access any child
   if (userRole === 'admin') return child;
 
+  // Own child (parentId match)
+  if (String(child.parentId) === String(userId)) return child;
+
+  // Check GuardianLink
   const link = await GuardianLink.findOne({ childId: child._id, guardianId: userId, status: 'active' }).lean();
   if (link) return child;
 

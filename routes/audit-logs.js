@@ -18,8 +18,8 @@ router.get('/', authMiddleware, async (req, res) => {
 
       const isOwner = String(child.parentId) === String(req.user.userId) || req.user.role === 'admin';
       if (!isOwner) {
-        const primary = await GuardianLink.findOne({ childId, guardianId: req.user.userId, isPrimary: true, status: 'active' }).lean();
-        if (!primary) return res.status(403).json({ error: 'Access denied.' });
+        const link = await GuardianLink.findOne({ childId, guardianId: req.user.userId, status: 'active' }).lean();
+        if (!link) return res.status(403).json({ error: 'Access denied.' });
       }
     } else if (req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Admin only.' });

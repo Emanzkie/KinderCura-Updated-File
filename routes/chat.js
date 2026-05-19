@@ -134,7 +134,18 @@ router.get('/threads', authMiddleware, async (req, res) => {
     let query = {};
     const guardianRoles = ['legal_guardian', 'foster_parent', 'court_appointed'];
 
-    if (role === 'parent') query = { parentId: req.user.userId, status: { $in: ['approved', 'completed'] } };
+    if (role === 'parent') {
+      // Own appointments
+      const ownAppts = { parentId: req.user.userId, status: { $in: ['approved', 'completed'] } };
+      // Linked children via GuardianLink
+      const links = await GuardianLink.find({ guardianId: req.user.userId, status: 'active' }).lean();
+      if (links.length) {
+        const childIds = links.map(l => l.childId);
+        query = { $or: [ownAppts, { childId: { $in: childIds }, status: { $in: ['approved', 'completed'] } }] };
+      } else {
+        query = ownAppts;
+      }
+    }
     else if (role === 'pediatrician') query = { pediatricianId: req.user.userId, status: { $in: ['approved', 'completed'] } };
     else if (guardianRoles.includes(role)) {
       const links = await GuardianLink.find({ guardianId: req.user.userId, status: 'active' }).lean();

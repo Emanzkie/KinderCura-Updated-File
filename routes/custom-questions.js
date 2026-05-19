@@ -17,6 +17,7 @@ const CustomQuestion = require('../models/CustomQuestion');
 const CustomQuestionAssignment = require('../models/CustomQuestionAssignment');
 const QuestionSet = require('../models/QuestionSet');
 const Child = require('../models/Child');
+const GuardianLink = require('../models/GuardianLink');
 const User = require('../models/User');
 const Appointment = require('../models/Appointment');
 const Notification = require('../models/Notification');
@@ -593,8 +594,10 @@ router.get('/assigned/:childId', authMiddleware, hasPermission('view_assessments
       return res.status(404).json({ error: 'Child not found.' });
     }
 
+    // Secondary parents who are linked via GuardianLink should also have access
     if (req.user.role === 'parent' && String(child.parentId) !== String(req.user.userId)) {
-      return res.status(403).json({ error: 'Access denied.' });
+      const link = await GuardianLink.findOne({ childId: child._id, guardianId: req.user.userId, status: 'active' }).lean();
+      if (!link) return res.status(403).json({ error: 'Access denied.' });
     }
 
     if (req.user.role === 'pediatrician') {
