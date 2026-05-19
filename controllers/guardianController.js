@@ -180,7 +180,7 @@ async function acceptInvitation(req, res) {
 
 async function verifyInvitation(req, res) {
   try {
-    const { code } = req.params;
+    const code = req.params.token;
     if (!code) return res.status(400).json({ error: 'Code is required.' });
     const codeHash = hashCode(code);
     const invitation = await GuardianInvitation.findOne({ codeHash }).lean();

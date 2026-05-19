@@ -159,90 +159,8 @@ function renderToasts() {
    fragment); React produces zero DOM nodes; all UI lives in the
    static HTML layer above.
 ═══════════════════════════════════════════════════════════════ */
-renderStaticShell();
-
 let _pendingAccept  = null;   // in-flight accept promise (dedup)
 let _currentCode    = '';      // stable code ref, set once on mount
-
-function renderStaticShell() {
-  const c = document.getElementById('aiMainContent');
-
-  c.innerHTML = `
-    <div id="aiAuthGate" class="ai-auth-gate" style="display:none">
-      <h2>👋 Accept a Guardian Invitation</h2>
-      <p id="aiAuthSub">Sign in to your KinderCura account to accept this invitation.</p>
-      <div class="ai-auth-buttons" id="aiAuthBtns"></div>
-    </div>
-
-    <div id="aiNoToken" class="ai-detail-card" style="display:none">
-      <div class="ai-status no_token" role="alert">🔗 Invalid Link</div>
-      <p style="color:var(--text-light);font-size:.92rem;line-height:1.6;margin-bottom:14px">
-        This invitation link is missing or incomplete. Please use the link from your
-        email to access this page.
-      </p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <a href="/"                class="btn btn-secondary">Go to Home</a>
-        <a href="mailto:support@kindercura.com" class="btn btn-border">Contact Support</a>
-      </div>
-    </div>
-
-    <div id="aiLoading" style="display:none;text-align:center;padding:3rem 1rem;color:var(--text-light)">
-      <div class="ai-spinner" style="width:32px;height:32px;margin-bottom:12px"></div>
-      <p>Verifying invitation…</p>
-      <p style="font-size:.82rem;margin-top:6px">This can take up to 10 seconds.</p>
-    </div>
-
-    <div id="aiErrorBox" class="ai-detail-card" style="display:none">
-      <div id="aiErrorHeader" class="ai-status" role="alert"></div>
-      <p  id="aiErrorBody"   style="color:var(--text-light);font-size:.92rem;line-height:1.6"></p>
-      <div id="aiErrorActions" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"></div>
-    </div>
-
-    <div id="aiDetailCard" class="ai-detail-card" style="display:none">
-      <h2 style="color:var(--primary);margin-bottom:.25rem">Guardian Invitation</h2>
-      <p id="aiSubtitle" style="color:var(--text-light);font-size:.95rem;margin-bottom:1.25rem"></p>
-
-      <div style="font-size:.82rem;font-weight:700;text-transform:uppercase;
-                  letter-spacing:.06em;color:var(--text-light);margin-bottom:6px">Invited by</div>
-      <div id="aiInviter"></div>
-
-      <div style="margin-top:1.5rem">
-        <div style="font-size:.82rem;font-weight:700;text-transform:uppercase;
-                    letter-spacing:.06em;color:var(--text-light);margin-bottom:6px">Child${'ren'}</div>
-        <div id="aiChildGrid" class="ai-child-grid"></div>
-      </div>
-
-      <div style="margin-top:1.5rem">
-        <div style="font-size:.82rem;font-weight:700;text-transform:uppercase;
-                    letter-spacing:.06em;color:var(--text-light);margin-bottom:6px">Access Permissions</div>
-        <div id="aiPermList" class="ai-perm-list"></div>
-      </div>
-
-      <div id="aiPersonalWrap" style="display:none;margin-top:1.5rem">
-        <div style="font-size:.82rem;font-weight:700;text-transform:uppercase;
-                    letter-spacing:.06em;color:var(--text-light);margin-bottom:6px">Message from inviter</div>
-        <div style="background:var(--bg-primary);border:2px solid var(--border);border-radius:8px;
-                    padding:12px 14px;font-size:.92rem;font-style:italic;
-                    color:var(--text-dark);line-height:1.6" id="aiPersonalMsg"></div>
-      </div>
-
-      <div style="margin-top:1.25rem;padding:10px 14px;background:#F4D89F;border-radius:8px;
-                  font-size:.85rem;color:#3D4738;display:flex;align-items:center;gap:8px">
-        ⏰ This invitation <strong id="aiExpiryLabel"></strong>
-      </div>
-
-      <div id="aiActions" style="margin-top:2rem;display:flex;gap:10px;flex-wrap:wrap"></div>
-
-      <div style="margin-top:1rem;padding:12px 16px;background:white;border-radius:10px;
-                  border:1px solid var(--border);font-size:.82rem;color:var(--text-light);line-height:1.55">
-        🛡️ This email was sent directly by
-        <strong id="aiSecInviter"></strong>.
-        For support, contact <a href="mailto:support@kindercura.com"
-        style="color:var(--primary)">support@kindercura.com</a>.
-      </div>
-    </div>
-  `;
-}
 
 /* ── State machine
      PAGE-LOAD    rawCode?  loggedIn?   → state
@@ -343,136 +261,19 @@ function AcceptInvitation() {
     return () => window.removeEventListener('focus', onFocus);
   }, [rawCode, state]);
 
-  /* ═══════════════════════════════════════════════════════════════
-     STATIC DOM BRIDGE
-     React renders <></> (empty fragment). Every visual decision is
-     made here by toggling display on the five static divs that
-     renderStaticShell() placed inside #aiMainContent.
-  ═══════════════════════════════════════════════════════════════ */
-  useEffect(() => {
-    const S = {
-      loading:    document.getElementById('aiLoading'),
-      errorBox:   document.getElementById('aiErrorBox'),
-      errorHdr:   document.getElementById('aiErrorHeader'),
-      errorBody:  document.getElementById('aiErrorBody'),
-      errorAct:   document.getElementById('aiErrorActions'),
-      detail:     document.getElementById('aiDetailCard'),
-      authGate:   document.getElementById('aiAuthGate'),
-      noToken:    document.getElementById('aiNoToken'),
-    };
-    if (!S.loading) return;   // shell not mounted yet
-
-    S.loading.style.display   = 'none';
-    S.errorBox.style.display  = 'none';
-    S.detail.style.display    = 'none';
-    S.noToken.style.display   = 'none';
-
-    switch (state) {
-      case 'no_token':
-        S.noToken.style.display = '';
-        break;
-
-      case 'unauthenticated': {
-        S.authGate.style.display = 'flex';
-        const sub   = document.getElementById('aiAuthSub');
-        const btns  = document.getElementById('aiAuthBtns');
-        if (sub)  sub.textContent   = 'Sign in to your KinderCura account to accept this invitation and access the child\'s profile, appointments, and medical records.';
-        if (btns) btns.innerHTML    = `
-          <button class="btn btn-primary"
-                  onclick="window.location.href='/login.html?next='+encodeURIComponent(window.location.pathname+window.location.search)">
-            🔐 Log In
-          </button>
-          <button class="btn btn-secondary"
-                  onclick="window.location.href='/signup.html?next='+encodeURIComponent(window.location.pathname+window.location.search)">
-            📝 Create Account
-          </button>`;
-        break;
-      }
-
-      case 'verifying':
-        S.loading.style.display = 'block';
-        break;
-
-      case 'expired':
-        S.errorBox.style.display   = '';
-        S.errorHdr.className       = 'ai-status expired';
-        S.errorHdr.textContent     = '⏰ Invitation Expired';
-        S.errorBody.textContent    = errMsg || 'This invitation has expired. Please ask the inviter to send a new one.';
-        S.errorAct.innerHTML       = `<a href="/" class="btn btn-secondary">Go to Home</a>
-                                       <a href="mailto:support@kindercura.com" class="btn btn-border">Contact Support</a>`;
-        break;
-
-      case 'used':
-        S.errorBox.style.display   = '';
-        S.errorHdr.className       = 'ai-status used';
-        S.errorHdr.textContent     = '✅ Already Accepted';
-        S.errorBody.textContent    = 'This invitation was already accepted. You already have access to this profile.';
-        S.errorAct.innerHTML       = `<a href="/parent/dashboard.html" class="btn btn-primary">Go to Dashboard</a>`;
-        break;
-
-      case 'invalid':
-        S.errorBox.style.display   = '';
-        S.errorHdr.className       = 'ai-status invalid';
-        S.errorHdr.textContent     = '❌ Invalid Invitation';
-        S.errorBody.textContent    = errMsg || 'Invalid invitation code. Check your email or contact the inviter.';
-        S.errorAct.innerHTML       = `<a href="/" class="btn btn-secondary">Go to Home</a>`;
-        break;
-
-      case 'error':
-        S.errorBox.style.display   = '';
-        S.errorHdr.className       = 'ai-status error';
-        S.errorHdr.textContent     = '⚠️ Error';
-        S.errorBody.textContent    = errMsg || 'An unexpected error occurred.';
-        S.errorAct.innerHTML       = `<button onclick="window.location.reload()" class="btn btn-secondary">Try Again</button>`;
-        break;
-
-      case 'ok':
-        S.detail.style.display = '';
-        renderDetailCard(inv);
-        break;
-
-      case 'accepting':
-        S.loading.style.display = 'block';
-        break;
-    }
-  }, [state, inv, errMsg]);
-
-   /* ── Collect HTTP error info from accept/decline → show meaningful,
-        non-infinite-loading error UI (Bug: handleAccept POST errors used to
-        early-return from `_pendingAccept` without ever transitioning state,
-        leaving `'accepting'` and the spinner visible forever). ── */
-  useEffect(() => {
-    if (_acceptErrState && _acceptErrMsg) {
-      setState(_acceptErrState);
-      setErrMsg(_acceptErrMsg);
-    }
-    // reset after consuming so the guard above evaluates fresh on next error
-    _acceptErrState = null; _acceptErrMsg = '';
-  }, [_acceptErrState, _acceptErrMsg]);
-
-  /* ── Accept ── */
-  /* Maps HTTP status or error objects to state errors
-     used when the accept flow doesn't explicitly setState first. */
-  let _acceptErrState = null;
-  let _acceptErrMsg   = '';
-
+  /* Maps HTTP status or error objects to state errors */
   function errToState(status, body) {
     if (status === 410 || isExpired(body?.invitation))      return { s: 'expired',  m: body?.error || 'This invitation has expired. Please ask the inviter to send a new one.' };
     if (status === 409)                                      return { s: 'used',     m: 'This invitation was already accepted. You already have access to this profile.' };
     if (status === 404 || !body?.success)                    return { s: 'invalid',  m: body?.error || 'Invalid invitation code. Please check the link and try again.' };
     return { s: 'error', m: body?.error || 'An unexpected error occurred. Please try again.' };
   }
-  function applyAcceptError(status, body) {
-    const { s, m } = errToState(status, body);
-    _acceptErrState = s; _acceptErrMsg = m;
-  }
 
   const handleAccept = useCallback(async () => {
     if (busy || state !== 'ok') return;
-    if (_pendingAccept) return;        // dedup
+    if (_pendingAccept) return;
     _pendingAccept = (async () => {
       setBusy(true);
-      _acceptErrState = null;
       try {
         const res  = await abortableFetch('/api/v2/guardians/accept-invitation', {
           method: 'POST',
@@ -481,41 +282,40 @@ function AcceptInvitation() {
         });
         const body = await res.json();
         if (!res.ok || !body.success) {
-          applyAcceptError(res.status, body);
-          addToast(_acceptErrMsg, 'error');
+          const { s, m } = errToState(res.status, body);
+          setState(s); setErrMsg(m);
+          addToast(m, 'error');
           return;
         }
         const fc   = inv?.child?.firstName   || inv?.children?.[0]?.firstName || 'Child';
         const lc   = inv?.child?.lastName    || inv?.children?.[0]?.lastName  || '';
         const name = `${fc} ${lc}`.trim();
-        addToast(`✅ You now have access to ${name}'s profile!`);
+        addToast(`You now have access to ${name}'s profile!`);
 
-        // fire-and-forget emails (best-effort)
         try {
           const ud  = userPayload() || {};
           const myN = `${ud.firstName||''} ${ud.lastName||''}`.trim();
           const inN = inv?.createdByName || inv?.inviterName   || '';
           const inE = inv?.inviterEmail  || '';
-          const accEmailPayload = {
-            invitationId: inv?.id || inv?.invitation?.id,
-            inviterName: inN, inviterEmail: inE,
-            acceptorName: myN, acceptorEmail: ud.email, childName: name,
-          };
           abortableFetch('/api/v2/guardians/invitations/accept-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-            body: JSON.stringify(accEmailPayload),
+            body: JSON.stringify({
+              invitationId: inv?.id || inv?.invitation?.id,
+              inviterName: inN, inviterEmail: inE,
+              acceptorName: myN, acceptorEmail: ud.email, childName: name,
+            }),
           }).catch(() => {});
         } catch { /* best-effort */ }
 
         setTimeout(() => { window.location.href = '/parent/dashboard.html'; }, 2000);
       } catch (err) {
         if (err.name === 'AbortError') {
-          _acceptErrState = 'error'; _acceptErrMsg = 'Request timed out — please try again.';
+          setState('error'); setErrMsg('Request timed out — please try again.');
         } else {
-          _acceptErrState = 'error'; _acceptErrMsg = 'Network error — please try again.';
+          setState('error'); setErrMsg('Network error — please try again.');
         }
-        addToast(_acceptErrMsg, 'error');
+        addToast(errMsg, 'error');
       } finally { setBusy(false); _pendingAccept = null; }
     })();
   }, [busy, state, inv]);
@@ -526,98 +326,179 @@ function AcceptInvitation() {
     setTimeout(() => { window.location.href = '/'; }, 1500);
   }, []);
 
-  /* ── Build detail card into the static DOM ── */
-  function renderDetailCard(data) {
-    if (!data)  return;
-
-    const fc  = data.child?.firstName   || data.children?.[0]?.firstName || '';
-    const lc  = data.child?.lastName    || data.children?.[0]?.lastName  || '';
-    const nm  = `${fc} ${lc}`.trim()    || 'Child';
-
-    document.getElementById('aiSubtitle').textContent = `You've been invited to access ${nm}'s profile on KinderCura`;
-
-    /* inviter */
-    const ivN = data.inviterName || data.createdByName || 'A KinderCura user';
-    const ivR = REL_LABEL[data.relationship] || 'Guardian';
-    const ivE = data.inviterEmail || data.createdByEmail || '';
-    const ph  = data.inviterPhoto || data.createdByPhoto;
-    const ivEl = document.getElementById('aiInviter');
-    ivEl.innerHTML = ph
-      ? `<img src="${ph}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:50%"/>`
-      : `<span style="display:inline-flex;align-items:center;justify-content:center;
-                      width:48px;height:48px;border-radius:50%;background:#6B8E6F;
-                      color:#fff;font-weight:700;font-size:1.2rem">
-           ${(ivN||'?')[0].toUpperCase()}
-         </span>`;
-    ivEl.innerHTML += `<div style="margin-left:14px">
-      <div class="ai-inviter-name">${ivN}</div>
-      <div class="ai-inviter-role">${ivR}</div>
-      ${ivE ? `<div class="ai-inviter-email">${ivE}</div>` : ''}
-    </div>`;
-
-    /* children */
-    const kids = data.children || (data.child ? [data.child] : []);
-    document.getElementById('aiChildGrid').innerHTML = kids.map(k => {
-      const p = k.profileIcon && k.profileIcon !== 'child1' && !k.profileIcon.startsWith('http')
-                ? window.location.origin + k.profileIcon : null;
-      return `<div class="ai-child-card">
-        ${p
-          ? `<img src="${p}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:50%" onerror="this.style.display='none'"/>`
-          : `<div style="width:38px;height:38px;border-radius:50%;background:#F4D89F;
-                        display:flex;align-items:center;justify-content:center;font-size:1.2rem">👶</div>`
-        }
-        <div class="ai-child-info">
-          <div class="ai-child-name">${k.firstName||''} ${k.lastName||''}</div>
-          ${k.dateOfBirth
-            ? `<div class="ai-child-age">Age ${Math.max(0,Math.round((Date.now()-new Date(k.dateOfBirth.split('T')[0]))/31557600000))}</div>`
-            : ''}
+  /* ── Render based on state ── */
+  if (state === 'no_token') {
+    return (
+      <div className="ai-detail-card">
+        <div className="ai-status no_token" role="alert">Invalid Link</div>
+        <p style={{color:'var(--text-light)',fontSize:'.92rem',lineHeight:1.6,marginBottom:'14px'}}>
+          This invitation link is missing or incomplete. Please use the link from your email to access this page.
+        </p>
+        <div style={{display:'flex',gap:'10px',flexWrap:'wrap'}}>
+          <a href="/" className="btn btn-secondary">Go to Home</a>
+          <a href="mailto:support@kindercura.com" className="btn btn-border">Contact Support</a>
         </div>
-      </div>`;
-    }).join('');
+      </div>
+    );
+  }
 
-    /* permissions */
-    const perms = data.permissions || data.customPermissions || {};
-    document.getElementById('aiPermList').innerHTML = Object.entries(perms).map(([k,v]) =>
-      `<div class="ai-perm-row"><span class="ai-perm-icon">${v?'✅':'⬜'}</span><span>${PERM_LABEL[k]||k}</span></div>`
-    ).join('');
+  if (state === 'unauthenticated') {
+    return (
+      <div className="ai-auth-gate" style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'calc(100vh - 90px)',textAlign:'center',padding:'2rem',gap:'1rem'}}>
+        <h2 style={{color:'var(--primary)',fontSize:'1.6rem'}}>Guardian Invitation</h2>
+        <p style={{color:'var(--text-light)',maxWidth:'460px'}}>
+          Sign in to your KinderCura account to accept this invitation and access the child's profile, appointments, and medical records.
+        </p>
+        <div className="ai-auth-buttons" style={{display:'flex',gap:'1rem',flexWrap:'wrap',justifyContent:'center',marginTop:'.5rem'}}>
+          <button className="btn btn-primary"
+                  onClick={() => window.location.href='/login.html?next='+encodeURIComponent(window.location.pathname+window.location.search)}>
+            Log In
+          </button>
+          <button className="btn btn-secondary"
+                  onClick={() => window.location.href='/signup.html?next='+encodeURIComponent(window.location.pathname+window.location.search)}>
+            Create Account
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-    /* personal message */
-    const pmWrap = document.getElementById('aiPersonalWrap');
-    const pmEl   = document.getElementById('aiPersonalMsg');
-    if (data.personalMessage) {
-      pmWrap.style.display = ''; pmEl.textContent = data.personalMessage;
-    } else {
-      pmWrap.style.display = 'none';
-    }
+  if (state === 'verifying' || state === 'accepting') {
+    return (
+      <div style={{textAlign:'center',padding:'3rem 1rem',color:'var(--text-light)'}}>
+        <div className="ai-spinner" style={{width:'32px',height:'32px',marginBottom:'12px'}}></div>
+        <p>{state === 'accepting' ? 'Accepting invitation\u2026' : 'Verifying invitation\u2026'}</p>
+        <p style={{fontSize:'.82rem',marginTop:'6px'}}>This can take up to 10 seconds.</p>
+      </div>
+    );
+  }
 
-    /* expiry */
+  if (state === 'expired' || state === 'used' || state === 'invalid' || state === 'error') {
+    const cfg = ((s) => {
+      switch(s) {
+        case 'expired': return {cls:'expired', title:'Invitation Expired', msg: errMsg || 'This invitation has expired. Please ask the inviter to send a new one.'};
+        case 'used':    return {cls:'used',    title:'Already Accepted',  msg: 'This invitation was already accepted. You already have access to this profile.'};
+        case 'invalid': return {cls:'invalid', title:'Invalid Invitation', msg: errMsg || 'Invalid invitation code. Check your email or contact the inviter.'};
+        default:        return {cls:'error',   title:'Error',             msg: errMsg || 'An unexpected error occurred.'};
+      }
+    })(state);
+    return (
+      <div className="ai-detail-card">
+        <div className={`ai-status ${cfg.cls}`} role="alert">{cfg.title}</div>
+        <p style={{color:'var(--text-light)',fontSize:'.92rem',lineHeight:1.6}}>{cfg.msg}</p>
+        <div style={{display:'flex',gap:'10px',flexWrap:'wrap',marginTop:'14px'}}>
+          {state === 'used' && <a href="/parent/dashboard.html" className="btn btn-primary">Go to Dashboard</a>}
+          {state === 'error' && <button onClick={() => window.location.reload()} className="btn btn-secondary">Try Again</button>}
+          {(state === 'expired' || state === 'invalid') && <a href="/" className="btn btn-secondary">Go to Home</a>}
+          {state === 'expired' && <a href="mailto:support@kindercura.com" className="btn btn-border">Contact Support</a>}
+        </div>
+      </div>
+    );
+  }
+
+  if (state === 'ok' && inv) {
+    const fc  = inv.child?.firstName   || inv.children?.[0]?.firstName || '';
+    const lc  = inv.child?.lastName    || inv.children?.[0]?.lastName  || '';
+    const nm  = `${fc} ${lc}`.trim()    || 'Child';
+    const ivN = inv.inviterName || inv.createdByName || 'A KinderCura user';
+    const ivR = REL_LABEL[inv.relationship] || 'Guardian';
+    const ivE = inv.inviterEmail || inv.createdByEmail || '';
+    const ph  = inv.inviterPhoto || inv.createdByPhoto;
+    const kids = inv.children || (inv.child ? [inv.child] : []);
+    const perms = inv.permissions || inv.customPermissions || {};
     const lbl  = (() => {
-      if (!data.expiresAt) return 'No expiration';
-      const d = new Date(data.expiresAt), ms = d - Date.now();
+      if (!inv.expiresAt) return 'No expiration';
+      const d = new Date(inv.expiresAt), ms = d - Date.now();
       if (ms < 0)                    return 'Expired';
       const days = Math.floor(ms / 86400000), hrs = Math.floor((ms % 86400000) / 3600000);
       return days > 0 ? `Expires in ${days}d ${hrs}h` : `Expires in ${hrs}h`;
     })();
-    document.getElementById('aiExpiryLabel').textContent = lbl;
-    document.getElementById('aiSecInviter').textContent  = ivN;
 
-    /* action buttons */
-    document.getElementById('aiActions').innerHTML = `
-        <button class="btn btn-primary" onclick="window._aiAccept()"
-                style="font-size:1.05rem;padding:.9rem 2rem">
-          ✅ Accept
-        </button>
-      <button class="btn btn-secondary" onclick="window._aiDecline()"
-              style="border-color:var(--accent-red,#D4897A);color:var(--accent-red,#D4897A)">
-        Decline
-      </button>
-    `;
-    window._aiAccept  = handleAccept;
-    window._aiDecline = handleDecline;
+    return (
+      <div className="ai-detail-card">
+        <h2 style={{color:'var(--primary)',marginBottom:'.25rem'}}>Guardian Invitation</h2>
+        <p style={{color:'var(--text-light)',fontSize:'.95rem',marginBottom:'1.25rem'}}>
+          You've been invited to access {nm}'s profile on KinderCura
+        </p>
+
+        <div style={{fontSize:'.82rem',fontWeight:'700',textTransform:'uppercase',letterSpacing:'.06em',color:'var(--text-light)',marginBottom:'6px'}}>Invited by</div>
+        <div className="ai-inviter-card" style={{display:'flex',alignItems:'center',gap:'14px',padding:'14px',background:'var(--bg-primary)',border:'2px solid var(--border)',borderRadius:'10px',marginTop:'8px'}}>
+          {ph
+            ? <img src={ph} alt="" style={{width:'48px',height:'48px',objectFit:'cover',borderRadius:'50%'}}/>
+            : <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:'48px',height:'48px',borderRadius:'50%',background:'#6B8E6F',color:'#fff',fontWeight:'700',fontSize:'1.2rem'}}>{(ivN||'?')[0].toUpperCase()}</span>
+          }
+          <div style={{marginLeft:'14px'}}>
+            <div className="ai-inviter-name" style={{fontWeight:'700',color:'var(--text-dark)',fontSize:'1rem'}}>{ivN}</div>
+            <div className="ai-inviter-role" style={{color:'var(--text-light)',fontSize:'.9rem'}}>{ivR}</div>
+            {ivE ? <div className="ai-inviter-email" style={{color:'var(--primary)',fontSize:'.82rem'}}>{ivE}</div> : null}
+          </div>
+        </div>
+
+        <div style={{marginTop:'1.5rem'}}>
+          <div style={{fontSize:'.82rem',fontWeight:'700',textTransform:'uppercase',letterSpacing:'.06em',color:'var(--text-light)',marginBottom:'6px'}}>Children</div>
+          <div className="ai-child-grid" style={{display:'flex',flexWrap:'wrap',gap:'10px',marginTop:'10px'}}>
+            {kids.map(k => (
+              <div key={k.id || k._id} className="ai-child-card" style={{display:'flex',alignItems:'center',gap:'10px',background:'var(--bg-primary)',border:'2px solid var(--border)',borderRadius:'10px',padding:'10px 14px'}}>
+                {(k.profileIcon && k.profileIcon !== 'child1' && !k.profileIcon.startsWith('http'))
+                  ? <img src={window.location.origin + k.profileIcon} alt="" style={{width:'38px',height:'38px',objectFit:'cover',borderRadius:'50%'}} onError={(e) => e.target.style.display='none'}/>
+                  : <div style={{width:'38px',height:'38px',borderRadius:'50%',background:'#F4D89F',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1.2rem'}}>👶</div>
+                }
+                <div>
+                  <div className="ai-child-name" style={{fontWeight:'600',color:'var(--text-dark)',fontSize:'.95rem'}}>{k.firstName||''} {k.lastName||''}</div>
+                  {k.dateOfBirth ? <div className="ai-child-age" style={{color:'var(--text-light)',fontSize:'.82rem'}}>Age {Math.max(0,Math.round((Date.now()-new Date(k.dateOfBirth.split('T')[0]))/31557600000))}</div> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{marginTop:'1.5rem'}}>
+          <div style={{fontSize:'.82rem',fontWeight:'700',textTransform:'uppercase',letterSpacing:'.06em',color:'var(--text-light)',marginBottom:'6px'}}>Access Permissions</div>
+          <div className="ai-perm-list" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px',marginTop:'10px'}}>
+            {Object.entries(perms).map(([k,v]) => (
+              <div key={k} className="ai-perm-row" style={{display:'flex',alignItems:'center',gap:'7px',fontSize:'.88rem'}}>
+                <span className="ai-perm-icon" style={{fontSize:'.9rem'}}>{v ? '✅' : '⬜'}</span>
+                <span>{PERM_LABEL[k] || k}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {inv.personalMessage ? (
+          <div style={{marginTop:'1.5rem'}}>
+            <div style={{fontSize:'.82rem',fontWeight:'700',textTransform:'uppercase',letterSpacing:'.06em',color:'var(--text-light)',marginBottom:'6px'}}>Message from inviter</div>
+            <div style={{background:'var(--bg-primary)',border:'2px solid var(--border)',borderRadius:'8px',padding:'12px 14px',fontSize:'.92rem',fontStyle:'italic',color:'var(--text-dark)',lineHeight:1.6}}>{inv.personalMessage}</div>
+          </div>
+        ) : null}
+
+        <div style={{marginTop:'1.25rem',padding:'10px 14px',background:'#F4D89F',borderRadius:'8px',fontSize:'.85rem',color:'#3D4738',display:'flex',alignItems:'center',gap:'8px'}}>
+          This invitation <strong>{lbl}</strong>
+        </div>
+
+        <div style={{marginTop:'2rem',display:'flex',gap:'10px',flexWrap:'wrap'}}>
+          <button className="btn btn-primary" onClick={handleAccept} disabled={busy}
+                  style={{fontSize:'1.05rem',padding:'.9rem 2rem',opacity: busy ? 0.6 : 1}}>
+            {busy ? 'Processing\u2026' : 'Accept'}
+          </button>
+          <button className="btn btn-secondary" onClick={handleDecline}
+                  style={{borderColor:'var(--accent-red,#D4897A)',color:'var(--accent-red,#D4897A)'}}>
+            Decline
+          </button>
+        </div>
+
+        <div style={{marginTop:'1rem',padding:'12px 16px',background:'white',borderRadius:'10px',border:'1px solid var(--border)',fontSize:'.82rem',color:'var(--text-light)',lineHeight:1.55}}>
+          This email was sent directly by <strong>{ivN}</strong>. For support, contact <a href="mailto:support@kindercura.com" style={{color:'var(--primary)'}}>support@kindercura.com</a>.
+        </div>
+      </div>
+    );
   }
 
-  /* React renders nothing — all DOM is driven by the static-layer bridge above */
-  return <React.Fragment />;
+  return (
+    <div style={{textAlign:'center',padding:'3rem 1rem',color:'var(--text-light)'}}>
+      <div className="ai-spinner" style={{width:'32px',height:'32px',marginBottom:'12px'}}></div>
+      <p>Loading\u2026</p>
+    </div>
+  );
 }
 
 /* ── Mount ──────────────────────────────────────────────────── */
