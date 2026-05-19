@@ -4,8 +4,11 @@ const TOKEN_KEY = 'kc_token';
 const FETCH_TIMEOUT_MS = 10000;
 
 function getToken() {
-  if (typeof window === 'undefined') return '';
-  return localStorage.getItem(TOKEN_KEY) || '';
+  if (typeof window === 'undefined') return null;
+  const raw = localStorage.getItem(TOKEN_KEY) || localStorage.getItem('token') || '';
+  const t = String(raw || '').trim();
+  if (!t || t === 'null' || t === 'undefined') return null;
+  return t;
 }
 
 function isLoggedIn() {
@@ -232,7 +235,9 @@ export default function AcceptInvitation() {
       try {
         const endpoint = '/api/v2/guardians/accept-invitation';
         const method = 'POST';
-        const reqHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` };
+        const token = getToken();
+        const reqHeaders = { 'Content-Type': 'application/json' };
+        if (token) reqHeaders.Authorization = `Bearer ${token}`;
         logApiRequest({ endpoint, method, headers: reqHeaders });
         const res = await fetchWithTimeout(endpoint, {
           method,

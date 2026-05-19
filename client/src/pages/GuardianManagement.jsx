@@ -6,7 +6,10 @@ const TOKEN_KEY = 'kc_token';
 
 function getToken() {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem(TOKEN_KEY);
+  const raw = localStorage.getItem(TOKEN_KEY) || localStorage.getItem('token') || '';
+  const t = String(raw || '').trim();
+  if (!t || t === 'null' || t === 'undefined') return null;
+  return t;
 }
 
 function redirectToLogin() {

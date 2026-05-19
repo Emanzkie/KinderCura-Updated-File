@@ -182,7 +182,14 @@ function GuardianManagement() {
   const [loading, setLoading] = useState(false);
   const [childrenLoading, setChildrenLoading] = useState(true);
 
-  const token = localStorage.getItem('token');
+  function _getToken() {
+    const a = localStorage.getItem('kc_token');
+    const b = localStorage.getItem('token');
+    const t = String(a || b || '').trim();
+    if (!t || t === 'null' || t === 'undefined') return '';
+    return t;
+  }
+  const token = _getToken();
 
   // Computed: selected-child summary for the context bar below
   const selectedChildInfo = useMemo(() => {
@@ -226,7 +233,8 @@ function GuardianManagement() {
 
     let cancelled = false;
 
-    fetch('/api/children', { headers: { Authorization: `Bearer ${token}` } })
+    const fetchHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch('/api/children', { headers: fetchHeaders })
       .then(r => r.json())
       .then(d => {
         if (cancelled) return;
@@ -253,7 +261,8 @@ function GuardianManagement() {
   // Load pending invitations
   useEffect(() => {
     if (!token) return;
-    fetch('/api/v2/guardians/pending-invitations', { headers: { Authorization: `Bearer ${token}` } })
+    const pendingHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch('/api/v2/guardians/pending-invitations', { headers: pendingHeaders })
       .then(r => r.json())
       .then(d => setPendingInvitations(d.invitations || []))
       .catch(() => setPendingInvitations([]));
@@ -265,9 +274,8 @@ function GuardianManagement() {
       setLinkedGuardians([]);
       return;
     }
-    fetch(`/api/v2/guardians/children/${selectedChild}/guardians`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const childGuardiansHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch(`/api/v2/guardians/children/${selectedChild}/guardians`, { headers: childGuardiansHeaders })
       .then(r => r.json())
       .then(d => setLinkedGuardians(d.guardians || []))
       .catch(() => setLinkedGuardians([]));
@@ -295,9 +303,10 @@ function GuardianManagement() {
     if (!invitationEmail) return setMessage({ text: 'Enter an email to invite.', type: 'error' });
     setLoading(true);
     try {
+      const inviteHeaders = token ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } : { 'Content-Type': 'application/json' };
       const res = await fetch('/api/v2/guardians/generate-invitation', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: inviteHeaders,
         body: JSON.stringify({
           childIds: [selectedChild],
           inviteEmail: invitationEmail,
@@ -313,7 +322,8 @@ function GuardianManagement() {
         setInvitationEmail('');
         setInvitationMessage('');
         // Refresh pending list
-        fetch('/api/v2/guardians/pending-invitations', { headers: { Authorization: `Bearer ${token}` } })
+        const pendingHeaders2 = token ? { Authorization: `Bearer ${token}` } : {};
+        fetch('/api/v2/guardians/pending-invitations', { headers: pendingHeaders2 })
           .then(r => r.json())
           .then(d => setPendingInvitations(d.invitations || []));
       } else {
@@ -327,14 +337,16 @@ function GuardianManagement() {
 
   const handleResend = async (id) => {
     try {
+      const resendHeaders = token ? { Authorization: `Bearer ${token}` } : {};
       const res = await fetch(`/api/v2/guardians/invitations/${id}/resend`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: resendHeaders,
       });
       const body = await res.json();
       if (res.ok) {
         setMessage({ text: 'Invitation resent!', type: 'success' });
-        fetch('/api/v2/guardians/pending-invitations', { headers: { Authorization: `Bearer ${token}` } })
+        const pendingHeaders3 = token ? { Authorization: `Bearer ${token}` } : {};
+        fetch('/api/v2/guardians/pending-invitations', { headers: pendingHeaders3 })
           .then(r => r.json())
           .then(d => setPendingInvitations(d.invitations || []));
       }
@@ -346,9 +358,10 @@ function GuardianManagement() {
   const handleRevokeInvite = async (id) => {
     if (!confirm('Revoke this invitation?')) return;
     try {
+      const revokeHeaders = token ? { Authorization: `Bearer ${token}` } : {};
       const res = await fetch(`/api/v2/guardians/invitations/${id}/revoke`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: revokeHeaders,
       });
       if (res.ok) {
         setPendingInvitations(p => p.filter(i => i.id !== id));
@@ -365,18 +378,18 @@ function GuardianManagement() {
   const handleTransferPrimary = async (guardianId) => {
     if (!window.confirm('Transfer primary guardian status to this user? They will become the main contact.')) return;
     try {
+      const transferHeaders = token ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } : { 'Content-Type': 'application/json' };
       const res = await fetch(`/api/v2/guardians/children/${selectedChild}/transfer-primary`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: transferHeaders,
         body: JSON.stringify({ targetGuardianId: guardianId }),
       });
       const body = await res.json();
       if (res.ok) {
         setMessage({ text: 'Primary guardian transferred.', type: 'success' });
         // Refresh guardians list
-        fetch(`/api/v2/guardians/children/${selectedChild}/guardians`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        const refreshHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+        fetch(`/api/v2/guardians/children/${selectedChild}/guardians`, { headers: refreshHeaders })
           .then(r => r.json())
           .then(d => setLinkedGuardians(d.guardians || []));
       } else {
@@ -440,17 +453,17 @@ function GuardianManagement() {
       if (el) newPerms[p.key] = el.checked;
     });
     try {
+      const permHeaders = token ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } : { 'Content-Type': 'application/json' };
       const res = await fetch(`/api/v2/guardians/children/${selectedChild}/guardians/${editingGuardian.id}/permissions`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: permHeaders,
         body: JSON.stringify({ permissions: newPerms }),
       });
       if (res.ok) {
         setMessage({ text: 'Permissions updated.', type: 'success' });
         // Refresh guardians
-        fetch(`/api/v2/guardians/children/${selectedChild}/guardians`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        const refreshHeaders3 = token ? { Authorization: `Bearer ${token}` } : {};
+        fetch(`/api/v2/guardians/children/${selectedChild}/guardians`, { headers: refreshHeaders3 })
           .then(r => r.json())
           .then(d => setLinkedGuardians(d.guardians || []));
         window.gmClosePermModal();
@@ -691,9 +704,10 @@ function GuardianManagement() {
                       <button onClick={() => window.gmOpenTransferModal(g)} className="btn btn-border" style={{ marginRight: 6 }}>Transfer</button>
                       <button onClick={() => {
                         if (confirm('Revoke this guardian?')) {
+                          const revokeHdrs = token ? { Authorization: `Bearer ${token}` } : {};
                           fetch(`/api/v2/guardians/children/${selectedChild}/guardians/${g.id}/revoke`, {
                             method: 'DELETE',
-                            headers: { Authorization: `Bearer ${token}` },
+                            headers: revokeHdrs,
                           }).then(() => setLinkedGuardians(lg => lg.filter(l => l.id !== g.id)));
                         }
                       }} className="btn btn-border">Revoke</button>
