@@ -252,8 +252,8 @@ router.get('/:assessmentId', authMiddleware, async (req, res) => {
         return res.status(404).json({ error: 'Child not found.' });
       }
       const isOwner = String(child.parentId) === String(req.user.userId);
-      const hasSharedAccess = assessment.childId
-        ? await hasPermission(req.user.userId, assessment.childId, 'viewRecommendations')
+      const hasSharedAccess = child && child._id
+        ? await hasPermission(req.user.userId, child._id, 'viewRecommendations')
         : false;
       if (!isOwner && !hasSharedAccess) {
         return res.status(403).json({ error: 'Access denied.' });
