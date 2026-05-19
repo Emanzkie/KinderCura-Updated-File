@@ -317,7 +317,7 @@ async function updatePermissions(req, res) {
     if (!link) return res.status(404).json({ error: 'Guardian link not found.' });
 
     // Apply only allowed keys
-    const allowedKeys = ['viewAssessments','submitAssessments','viewResults','uploadDocuments','manageAppointments','viewMedicalRecords','modifyChild','inviteGuardians','revokeAccess'];
+    const allowedKeys = ['viewAssessments','submitAssessments','viewResults','viewRecommendations','uploadDocuments','manageAppointments','viewMedicalRecords','modifyChild','inviteGuardians','revokeAccess'];
     for (const k of Object.keys(permissions || {})) {
       if (allowedKeys.includes(k)) {
         link.permissions[k] = permissions[k];
