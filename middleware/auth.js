@@ -19,7 +19,7 @@ function authMiddleware(req, res, next) {
     }
 
     try {
-        req.user = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = jwt.verify(token, process.env.JWT_SECRET, { clockTolerance: 60 });
         next();
     } catch (err) {
         return res.status(403).json({ error: 'Token invalid or expired. Please log in again.' });

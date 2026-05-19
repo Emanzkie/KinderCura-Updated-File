@@ -865,6 +865,32 @@ router.put('/pediatrician/settings', authMiddleware, async (req, res) => {
   }
 });
 
+// POST /api/auth/refresh
+// Issues a fresh JWT if the existing token is still valid (with a 2-minute grace
+// period for recently expired tokens).  This keeps the user's session alive
+// without forcing a full re-login during normal usage.
+router.post('/refresh', async (req, res) => {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) {
+    return res.status(401).json({ error: 'No token provided.' });
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { clockTolerance: 120 });
+    const user = await User.findById(decoded.userId).lean();
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    if (user.status !== 'active') {
+      return res.status(403).json({ error: 'Account is not active.' });
+    }
+    const newToken = signToken(user);
+    res.json({ success: true, token: newToken, user: publicUser(user) });
+  } catch (err) {
+    return res.status(403).json({ error: 'Token invalid or expired. Please log in again.' });
+  }
+});
+
 // POST /api/auth/logout
 router.post('/logout', (req, res) => {
   res.json({ success: true, message: 'Logged out successfully.' });

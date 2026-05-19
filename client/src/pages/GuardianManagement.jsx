@@ -2,9 +2,109 @@ import React, { useEffect, useState } from 'react';
 
 const KC_CHILD_KEY = 'kc_childId';
 
+const TOKEN_KEY = 'kc_token';
+
 function getToken() {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('token');
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+function redirectToLogin() {
+  if (typeof window === 'undefined') return;
+  const current = window.location.href;
+  const dest = '/login.html?next=' + encodeURIComponent(current);
+  window.location.href = dest;
+}
+
+function isValidJwt(token) {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    if (payload.exp && payload.exp * 1000 < Date.now()) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function validateToken(token) {
+  if (!token) return 'missing';
+  if (!isValidJwt(token)) return 'expired';
+  return 'valid';
+}
+
+async function requireAuth(token) {
+  const status = validateToken(token);
+  if (status !== 'valid') {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      window.location.reload();
+      return false;
+    }
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('kc_token');
+    }
+    redirectToLogin();
+    return false;
+  }
+  return true;
+}
+
+async function tryRefreshToken() {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const res = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.success && data.token) {
+      localStorage.setItem('kc_token', data.token);
+      return data.token;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function handleAuthFailure() {
+  if (typeof window === 'undefined') return;
+  const newToken = await tryRefreshToken();
+  if (newToken) {
+    window.location.reload();
+    return;
+  }
+  localStorage.removeItem('kc_token');
+  redirectToLogin();
+}
+
+function logApiRequest({ endpoint, method, headers }) {
+  console.group(`[REQ] ${method} ${endpoint}`);
+  console.log('Authorization header present:', !!headers?.Authorization);
+  console.log('Headers:', { ...headers, Authorization: headers?.Authorization ? 'Bearer [REDACTED]' : undefined });
+  console.groupEnd();
+}
+
+function logApiCall({ endpoint, method, hasToken, status, body, error }) {
+  console.group(`[API] ${method} ${endpoint}`);
+  console.log('Token present:', hasToken);
+  console.log('Response status:', status);
+  if (body) console.log('Response body:', body);
+  if (error) console.log('Error:', error);
+  console.groupEnd();
+}
+
+function authErrorToast(status, fallback) {
+  if (status === 400) return 'Bad request. Please check your input and try again.';
+  if (status === 401 || status === 403) return 'Your session has expired. Please log in again.';
+  if (status === 404) return 'Resource not found. It may have been removed.';
+  if (status === 429) return 'Invitation limit reached. Try again tomorrow.';
+  if (status >= 500) return 'Server error. Please try again later.';
+  return fallback;
 }
 
 function getUrlChildId() {
@@ -122,6 +222,10 @@ export default function GuardianManagement() {
   const [invitationRelationship, setInvitationRelationship] = useState('legal_guardian');
   const [transferTarget, setTransferTarget] = useState(null);
   const [transferBusy, setTransferBusy] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const [resendingId, setResendingId] = useState(null);
+  const [revokingInviteId, setRevokingInviteId] = useState(null);
+  const [revokingGuardianId, setRevokingGuardianId] = useState(null);
 
   const token = getToken();
 
@@ -131,16 +235,23 @@ export default function GuardianManagement() {
 
   function fetchPendingInvitations() {
     if (!token) return;
+    const endpoint = '/api/v2/guardians/pending-invitations';
+    const method = 'GET';
+    const reqHeaders = { Authorization: `Bearer ${token}` };
+    logApiRequest({ endpoint, method, headers: reqHeaders });
     setPendingLoading(true);
-    fetch('/api/v2/guardians/pending-invitations', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
+    fetch(endpoint, { headers: reqHeaders })
+      .then((r) => {
+        console.log(`[API] ${method} ${endpoint} — status:`, r.status);
+        if (r.status === 401 || r.status === 403) { logApiCall({ endpoint, method, hasToken: !!token, status: r.status }); handleAuthFailure(); throw new Error('auth'); }
+        return r.json();
+      })
       .then((data) => {
+        logApiCall({ endpoint, method, hasToken: !!token, status: 200, body: undefined });
         setPendingInvitations(data.invitations || []);
         setPendingLoading(false);
       })
-      .catch(() => setPendingLoading(false));
+      .catch((err) => { if (err.message !== 'auth') { logApiCall({ endpoint, method, hasToken: !!token, error: err }); setPendingLoading(false); } });
   }
 
   // Auto-dismiss toasts
@@ -178,10 +289,19 @@ export default function GuardianManagement() {
 
     let cancelled = false;
 
-    fetch('/api/children', { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
+    const endpoint = '/api/children';
+    const method = 'GET';
+    const reqHeaders = { Authorization: `Bearer ${token}` };
+    logApiRequest({ endpoint, method, headers: reqHeaders });
+    fetch(endpoint, { headers: reqHeaders })
+      .then((r) => {
+        console.log(`[API] ${method} ${endpoint} — status:`, r.status);
+        if (r.status === 401 || r.status === 403) { logApiCall({ endpoint, method, hasToken: !!token, status: r.status }); handleAuthFailure(); throw new Error('auth'); }
+        return r.json();
+      })
       .then((data) => {
         if (cancelled) return;
+        logApiCall({ endpoint, method, hasToken: !!token, status: 200 });
         const kids = Array.isArray(data?.children) ? data.children : [];
         const urlId = getUrlChildId();
         const stored = urlId || getStoredChildId();
@@ -193,8 +313,8 @@ export default function GuardianManagement() {
         setChildrenLoading(false);
       })
       .catch((err) => {
-        if (!cancelled) {
-          console.warn('Failed to load children', err);
+        if (!cancelled && err.message !== 'auth') {
+          logApiCall({ endpoint, method, hasToken: !!token, error: err });
           setChildrenLoading(false);
         }
       });
@@ -231,18 +351,28 @@ export default function GuardianManagement() {
       return;
     }
 
-    fetch(`/api/v2/guardians/children/${selectedChild}/guardians`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
+    const endpoint = `/api/v2/guardians/children/${selectedChild}/guardians`;
+    const method = 'GET';
+    const reqHeaders = { Authorization: `Bearer ${token}` };
+    logApiRequest({ endpoint, method, headers: reqHeaders });
+    fetch(endpoint, { headers: reqHeaders })
+      .then((r) => {
+        console.log(`[API] ${method} ${endpoint} — status:`, r.status);
+        if (r.status === 401 || r.status === 403) { logApiCall({ endpoint, method, hasToken: !!token, status: r.status }); handleAuthFailure(); throw new Error('auth'); }
+        return r.json();
+      })
       .then((data) => {
+        logApiCall({ endpoint, method, hasToken: !!token, status: 200 });
         setGuardians(data.guardians || []);
       })
-      .catch((err) => console.warn('Failed to load guardians', err));
+      .catch((err) => { if (err.message !== 'auth') { logApiCall({ endpoint, method, hasToken: !!token, error: err }); console.warn('Failed to load guardians', err); } });
   }, [selectedChild, token]);
 
   async function handleInvite(e) {
     e.preventDefault();
+
+    if (!await requireAuth(token)) return;
+
     setChildSelectorError(false);
 
     if (!selectedChild) {
@@ -253,13 +383,15 @@ export default function GuardianManagement() {
       setToasts((prev) => addToast(prev, { type: 'error', text: 'Please enter an email address to invite.' }));
       return;
     }
+    setInviting(true);
+    const endpoint = '/api/v2/guardians/generate-invitation';
+    const method = 'POST';
+    const reqHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    logApiRequest({ endpoint, method, headers: reqHeaders });
     try {
-      const res = await fetch('/api/v2/guardians/generate-invitation', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+      const res = await fetch(endpoint, {
+        method,
+        headers: reqHeaders,
         body: JSON.stringify({
           childIds: [String(selectedChild)],
           inviteEmail,
@@ -268,58 +400,91 @@ export default function GuardianManagement() {
           customPermissions: invitationPreset === 'custom' ? customPermissions : undefined,
         }),
       });
+      if (res.status === 401 || res.status === 403) { logApiCall({ endpoint, method, hasToken: !!token, status: res.status }); handleAuthFailure(); return; }
       const body = await res.json();
+      setInviting(false);
+      logApiCall({ endpoint, method, hasToken: !!token, status: res.status, body: res.ok ? undefined : body });
       if (res.ok && body.success) {
         setToasts((prev) => addToast(prev, { type: 'success', text: `Invitation sent to ${inviteEmail}.`, email: inviteEmail }));
         setInviteEmail('');
         fetchPendingInvitations();
-        fetch(`/api/v2/guardians/children/${selectedChild}/guardians`, {
-          headers: { Authorization: `Bearer ${token}` },
+        const reFetchEndpoint = `/api/v2/guardians/children/${selectedChild}/guardians`;
+        const reFetchHeaders = { Authorization: `Bearer ${token}` };
+        logApiRequest({ endpoint: reFetchEndpoint, method: 'GET', headers: reFetchHeaders });
+        fetch(reFetchEndpoint, {
+          headers: reFetchHeaders,
         })
-          .then((r) => r.json())
+          .then((r) => {
+            console.log(`[API] GET ${reFetchEndpoint} — status:`, r.status);
+            if (r.status === 401 || r.status === 403) { logApiCall({ endpoint: reFetchEndpoint, method: 'GET', hasToken: !!token, status: r.status }); handleAuthFailure(); throw new Error('auth'); }
+            return r.json();
+          })
           .then((data) => setGuardians(data.guardians || []));
       } else {
-        setToasts((prev) => addToast(prev, { type: 'error', text: body.error || 'Failed to send invitation. Please try again.' }));
+        setToasts((prev) => addToast(prev, { type: 'error', text: authErrorToast(res.status, body.error || 'Failed to send invitation. Please try again.') }));
       }
     } catch (err) {
-      console.error(err);
+      logApiCall({ endpoint, method, hasToken: !!token, error: err });
+      setInviting(false);
       setToasts((prev) => addToast(prev, { type: 'error', text: 'Network error. Please check your connection and try again.' }));
     }
   }
 
   async function handleResendInvite(inviteId) {
+    if (!await requireAuth(token)) return;
+    setResendingId(inviteId);
+    const endpoint = `/api/v2/guardians/invitations/${inviteId}/resend`;
+    const method = 'POST';
+    const reqHeaders = { Authorization: `Bearer ${token}` };
+    logApiRequest({ endpoint, method, headers: reqHeaders });
     try {
-      const res = await fetch(`/api/v2/guardians/invitations/${inviteId}/resend`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await fetch(endpoint, {
+        method,
+        headers: reqHeaders,
       });
+      if (res.status === 401 || res.status === 403) { logApiCall({ endpoint, method, hasToken: !!token, status: res.status }); setResendingId(null); handleAuthFailure(); return; }
       const body = await res.json();
+      setResendingId(null);
+      logApiCall({ endpoint, method, hasToken: !!token, status: res.status, body: res.ok ? undefined : body });
       if (res.ok) {
         setToasts((prev) => addToast(prev, { type: 'success', text: 'Invitation resent.' }));
         fetchPendingInvitations();
       } else {
-        setToasts((prev) => addToast(prev, { type: 'error', text: body.error || 'Failed to resend.' }));
+        setToasts((prev) => addToast(prev, { type: 'error', text: authErrorToast(res.status, body.error || 'Failed to resend.') }));
       }
-    } catch {
+    } catch (err) {
+      logApiCall({ endpoint, method, hasToken: !!token, error: err });
+      setResendingId(null);
       setToasts((prev) => addToast(prev, { type: 'error', text: 'Network error. Please try again.' }));
     }
   }
 
   async function handleRevokeInvite(inviteId) {
+    if (!await requireAuth(token)) return;
     if (!confirm('Revoke this invitation?')) return;
+    setRevokingInviteId(inviteId);
+    const endpoint = `/api/v2/guardians/invitations/${inviteId}/revoke`;
+    const method = 'POST';
+    const reqHeaders = { Authorization: `Bearer ${token}` };
+    logApiRequest({ endpoint, method, headers: reqHeaders });
     try {
-      const res = await fetch(`/api/v2/guardians/invitations/${inviteId}/revoke`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await fetch(endpoint, {
+        method,
+        headers: reqHeaders,
       });
+      if (res.status === 401 || res.status === 403) { logApiCall({ endpoint, method, hasToken: !!token, status: res.status }); setRevokingInviteId(null); handleAuthFailure(); return; }
       if (res.ok) {
         setPendingInvitations((prev) => prev.filter((i) => i.id !== inviteId));
         setToasts((prev) => addToast(prev, { type: 'success', text: 'Invitation revoked.' }));
       } else {
         const body = await res.json();
-        setToasts((prev) => addToast(prev, { type: 'error', text: body.error || 'Failed to revoke.' }));
+        logApiCall({ endpoint, method, hasToken: !!token, status: res.status, body });
+        setToasts((prev) => addToast(prev, { type: 'error', text: authErrorToast(res.status, body.error || 'Failed to revoke.') }));
       }
-    } catch {
+      setRevokingInviteId(null);
+    } catch (err) {
+      logApiCall({ endpoint, method, hasToken: !!token, error: err });
+      setRevokingInviteId(null);
       setToasts((prev) => addToast(prev, { type: 'error', text: 'Network error. Please try again.' }));
     }
   }
@@ -334,50 +499,75 @@ export default function GuardianManagement() {
   }
 
   async function handleConfirmTransfer() {
+    if (!await requireAuth(token)) return;
     if (!transferTarget || !selectedChild) return;
     setTransferBusy(true);
+    const endpoint = `/api/v2/guardians/children/${selectedChild}/transfer-primary`;
+    const method = 'POST';
+    const reqHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    logApiRequest({ endpoint, method, headers: reqHeaders });
     try {
-      const res = await fetch(`/api/v2/guardians/children/${selectedChild}/transfer-primary`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      const res = await fetch(endpoint, {
+        method,
+        headers: reqHeaders,
         body: JSON.stringify({ targetGuardianId: transferTarget.id }),
       });
+      if (res.status === 401 || res.status === 403) { logApiCall({ endpoint, method, hasToken: !!token, status: res.status }); handleAuthFailure(); return; }
       const body = await res.json();
-      if (res.ok && body.success) {
-        setToasts((prev) => addToast(prev, { type: 'success', text: 'Primary guardian transferred.' }));
-        handleCloseTransfer();
-        fetch(`/api/v2/guardians/children/${selectedChild}/guardians`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-          .then((r) => r.json())
-          .then((data) => setGuardians(data.guardians || []));
+        logApiCall({ endpoint, method, hasToken: !!token, status: res.status, body: res.ok ? undefined : body });
+        if (res.ok && body.success) {
+          setToasts((prev) => addToast(prev, { type: 'success', text: 'Primary guardian transferred.' }));
+          handleCloseTransfer();
+          const reFetchEndpoint = `/api/v2/guardians/children/${selectedChild}/guardians`;
+          const reFetchHeaders = { Authorization: `Bearer ${token}` };
+          logApiRequest({ endpoint: reFetchEndpoint, method: 'GET', headers: reFetchHeaders });
+          fetch(reFetchEndpoint, {
+            headers: reFetchHeaders,
+          })
+            .then((r) => {
+              console.log(`[API] GET ${reFetchEndpoint} — status:`, r.status);
+              if (r.status === 401 || r.status === 403) { logApiCall({ endpoint: reFetchEndpoint, method: 'GET', hasToken: !!token, status: r.status }); handleAuthFailure(); throw new Error('auth'); }
+              return r.json();
+            })
+            .then((data) => setGuardians(data.guardians || []));
       } else {
-        setToasts((prev) => addToast(prev, { type: 'error', text: body.error || 'Transfer failed.' }));
+        setToasts((prev) => addToast(prev, { type: 'error', text: authErrorToast(res.status, body.error || 'Transfer failed.') }));
         setTransferBusy(false);
       }
-    } catch {
+    } catch (err) {
+      logApiCall({ endpoint, method, hasToken: !!token, error: err });
       setToasts((prev) => addToast(prev, { type: 'error', text: 'Network error. Please try again.' }));
       setTransferBusy(false);
     }
   }
 
   async function handleRevoke(guardianId) {
+    if (!await requireAuth(token)) return;
     if (!selectedChild) return;
     if (!confirm('Revoke access for this guardian?')) return;
+    setRevokingGuardianId(guardianId);
+    const endpoint = `/api/v2/guardians/children/${selectedChild}/guardians/${guardianId}`;
+    const method = 'DELETE';
+    const reqHeaders = { Authorization: `Bearer ${token}` };
+    logApiRequest({ endpoint, method, headers: reqHeaders });
     try {
-      const res = await fetch(`/api/v2/guardians/children/${selectedChild}/guardians/${guardianId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await fetch(endpoint, {
+        method,
+        headers: reqHeaders,
       });
+      if (res.status === 401 || res.status === 403) { logApiCall({ endpoint, method, hasToken: !!token, status: res.status }); setRevokingGuardianId(null); handleAuthFailure(); return; }
       const body = await res.json();
+      setRevokingGuardianId(null);
+      logApiCall({ endpoint, method, hasToken: !!token, status: res.status, body: res.ok ? undefined : body });
       if (res.ok) {
         setToasts((prev) => addToast(prev, { type: 'success', text: 'Guardian access revoked.' }));
         setGuardians((g) => g.filter((x) => x.id !== guardianId));
       } else {
-        setToasts((prev) => addToast(prev, { type: 'error', text: body.error || 'Failed to revoke guardian.' }));
+        setToasts((prev) => addToast(prev, { type: 'error', text: authErrorToast(res.status, body.error || 'Failed to revoke guardian.') }));
       }
     } catch (err) {
-      console.error(err);
+      logApiCall({ endpoint, method, hasToken: !!token, error: err });
+      setRevokingGuardianId(null);
       setToasts((prev) => addToast(prev, { type: 'error', text: 'Network error. Please check your connection and try again.' }));
     }
   }
@@ -388,7 +578,7 @@ export default function GuardianManagement() {
   return (
     <div style={{ padding: 16, maxWidth: 900 }}>
       <h2>Guardian Management</h2>
-      {!token && <div style={{ color: 'darkred' }}>You must be logged in to manage guardians.</div>}
+      {!token && <div style={{ color: 'darkred' }}>Please log in to continue.</div>}
 
       {/* ── Child Selector ── */}
       <div style={{ marginTop: 12 }}>
@@ -464,7 +654,7 @@ export default function GuardianManagement() {
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
             style={{ padding: 8, minWidth: 280 }}
-            disabled={childrenLoading}
+            disabled={childrenLoading || inviting}
           />
 
           <div style={{ marginTop: 12 }}>
@@ -473,7 +663,7 @@ export default function GuardianManagement() {
               value={invitationRelationship}
               onChange={(e) => setInvitationRelationship(e.target.value)}
               style={{ padding: 8, minWidth: 200 }}
-              disabled={childrenLoading}
+              disabled={childrenLoading || inviting}
             >
               {RELATIONSHIP_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -523,7 +713,7 @@ export default function GuardianManagement() {
                       setCustomPermissions(next);
                       setInvitationPreset(presetForPermissions(next));
                     }}
-                    disabled={childrenLoading}
+                    disabled={childrenLoading || inviting}
                   />
                   {pd.label}
                 </label>
@@ -533,10 +723,10 @@ export default function GuardianManagement() {
 
           <button
             type="submit"
-            disabled={!selectedChild || childrenLoading}
-            style={{ marginTop: 14, padding: '10px 24px', background: '#2e7d32', color: '#fff', border: 'none', borderRadius: 6, cursor: !selectedChild || childrenLoading ? 'not-allowed' : 'pointer', fontWeight: 600 }}
+            disabled={!selectedChild || childrenLoading || inviting}
+            style={{ marginTop: 14, padding: '10px 24px', background: inviting ? '#a5d6a7' : '#2e7d32', color: '#fff', border: 'none', borderRadius: 6, cursor: !selectedChild || childrenLoading || inviting ? 'not-allowed' : 'pointer', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
-            {childrenLoading ? 'Loading...' : 'Send Invite'}
+            {inviting ? '⏳ Sending...' : childrenLoading ? 'Loading...' : 'Send Invite'}
           </button>
         </form>
       )}
@@ -583,16 +773,17 @@ export default function GuardianManagement() {
                     <td style={{ padding: 8 }}>
                       <button
                         onClick={() => handleResendInvite(inv.id)}
-                        disabled={inv.isExpired}
-                        style={{ padding: '6px 10px', marginRight: 6 }}
+                        disabled={inv.isExpired || resendingId === inv.id || revokingInviteId === inv.id}
+                        style={{ padding: '6px 10px', marginRight: 6, display: 'inline-flex', alignItems: 'center', gap: 4 }}
                       >
-                        Resend
+                        {resendingId === inv.id ? '⏳' : ''} Resend
                       </button>
                       <button
                         onClick={() => handleRevokeInvite(inv.id)}
-                        style={{ padding: '6px 10px' }}
+                        disabled={revokingInviteId === inv.id || resendingId === inv.id}
+                        style={{ padding: '6px 10px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                       >
-                        Revoke
+                        {revokingInviteId === inv.id ? '⏳' : ''} Revoke
                       </button>
                     </td>
                   </tr>
@@ -625,8 +816,12 @@ export default function GuardianManagement() {
                   <td style={{ padding: 8 }}>{g.email || '—'}</td>
                   <td style={{ padding: 8 }}>{g.role || '—'}</td>
                   <td style={{ padding: 8 }}>
-                    <button onClick={() => handleRevoke(g.id)} style={{ padding: '6px 10px', marginRight: 6 }}>
-                      Revoke
+                    <button
+                      onClick={() => handleRevoke(g.id)}
+                      disabled={revokingGuardianId === g.id}
+                      style={{ padding: '6px 10px', marginRight: 6, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                    >
+                      {revokingGuardianId === g.id ? '⏳' : ''} Revoke
                     </button>
                     {guardians.length > 1 && (
                       <button onClick={() => handleOpenTransfer(g)} style={{ padding: '6px 10px' }}>

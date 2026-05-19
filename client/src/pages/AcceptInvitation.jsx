@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 
+const TOKEN_KEY = 'kc_token';
 const FETCH_TIMEOUT_MS = 10000;
 
 function getToken() {
   if (typeof window === 'undefined') return '';
-  return localStorage.getItem('kc_token') || localStorage.getItem('token') || '';
+  return localStorage.getItem(TOKEN_KEY) || '';
 }
 
 function isLoggedIn() {
@@ -13,6 +14,63 @@ function isLoggedIn() {
 
 function isExpired(inv) {
   return !!inv?.expiresAt && new Date(inv.expiresAt) < new Date();
+}
+
+function logApiRequest({ endpoint, method, headers }) {
+  console.group(`[REQ] ${method} ${endpoint}`);
+  console.log('Authorization header present:', !!headers?.Authorization);
+  console.log('Headers:', { ...headers, Authorization: headers?.Authorization ? 'Bearer [REDACTED]' : undefined });
+  console.groupEnd();
+}
+
+function logApiCall({ endpoint, method, hasToken, status, body, error }) {
+  console.group(`[API] ${method} ${endpoint}`);
+  console.log('Token present:', hasToken);
+  console.log('Response status:', status);
+  if (body) console.log('Response body:', body);
+  if (error) console.log('Error:', error);
+  console.groupEnd();
+}
+
+async function tryRefreshToken() {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const res = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.success && data.token) {
+      localStorage.setItem('kc_token', data.token);
+      return data.token;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function handleAuthFailure() {
+  if (typeof window === 'undefined') return;
+  const newToken = await tryRefreshToken();
+  if (newToken) {
+    window.location.reload();
+    return;
+  }
+  localStorage.removeItem('kc_token');
+  const next = encodeURIComponent(window.location.pathname + window.location.search);
+  window.location.href = '/login.html?next=' + next;
+}
+
+function authErrorToast(status) {
+  if (status === 400) return 'Bad request. Please check your input and try again.';
+  if (status === 401 || status === 403) return 'Your session has expired. Please log in again.';
+  if (status === 404) return 'Resource not found. It may have been removed.';
+  if (status === 429) return 'Invitation limit reached. Try again tomorrow.';
+  if (status >= 500) return 'Server error. Please try again later.';
+  return null;
 }
 
 async function fetchWithTimeout(url, opts = {}) {
@@ -60,6 +118,9 @@ export default function AcceptInvitation() {
     return params.get('token') || params.get('code') || '';
   }, []);
 
+  const TERMINAL_STATES = new Set(['valid', 'expired', 'already_accepted', 'invalid_link', 'error', 'accepted', 'unauthenticated']);
+  const MAX_RETRIES = 3;
+
   // Token validation state machine
   useEffect(() => {
     if (!rawCode.trim()) {
@@ -72,16 +133,35 @@ export default function AcceptInvitation() {
     }
 
     let cancelled = false;
+    let retries = 0;
+    let safetyActive = true;
+    const VERIFY_SAFETY_TIMEOUT_MS = 10000;
+    const safetyTimer = setTimeout(() => {
+      if (cancelled || !safetyActive) return;
+      safetyActive = false;
+      cancelled = true;
+      setState('error');
+      setErrMsg('Verification timed out. Please reload and try again.');
+    }, VERIFY_SAFETY_TIMEOUT_MS);
 
-    (async () => {
+    (async function verify() {
       setState('verifying');
       try {
-        const res = await fetchWithTimeout(`/api/v2/guardians/verify/${encodeURIComponent(rawCode.trim())}`);
+        const endpoint = `/api/v2/guardians/verify/${encodeURIComponent(rawCode.trim())}`;
+        const method = 'GET';
+        const reqHeaders = { Authorization: `Bearer ${getToken()}` };
+        logApiRequest({ endpoint, method, headers: reqHeaders });
+        const res = await fetchWithTimeout(endpoint);
         const body = await res.json();
+        logApiCall({ endpoint, method, hasToken: !!getToken(), status: res.status, body: res.ok ? undefined : body });
 
         if (cancelled) return;
 
         if (!res.ok || !body.success) {
+          if (res.status === 401 || res.status === 403) {
+            handleAuthFailure();
+            return;
+          }
           if (res.status === 410 || isExpired(body?.invitation)) {
             setState('expired');
           } else if (res.status === 409) {
@@ -92,22 +172,36 @@ export default function AcceptInvitation() {
             setState('error');
           }
           setErrMsg(body.error || 'Could not verify invitation.');
+          safetyActive = false;
           return;
         }
 
         if (isExpired(body.invitation)) {
           setState('expired');
           setErrMsg('This invitation has expired.');
+          safetyActive = false;
           return;
         }
 
         setInv(body.invitation || body);
         setState('valid');
+        safetyActive = false;
       } catch (err) {
         if (cancelled) return;
+        retries++;
+        if (retries <= MAX_RETRIES) {
+          const delay = Math.min(500 * Math.pow(2, retries - 1), 2000);
+          await new Promise((r) => setTimeout(r, delay));
+          if (cancelled) return;
+          return verify();
+        }
+        safetyActive = false;
         if (err.name === 'AbortError') {
           setState('error');
           setErrMsg('Request timed out. Please check your internet and reload.');
+        } else if (err.name === 'SyntaxError') {
+          setState('error');
+          setErrMsg('Unexpected response from server. Please try again.');
         } else {
           setState('error');
           setErrMsg('Network error. Please check your connection and try again.');
@@ -115,47 +209,89 @@ export default function AcceptInvitation() {
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => { clearTimeout(safetyTimer); cancelled = true; safetyActive = false; };
   }, [rawCode]);
 
   const handleAccept = useCallback(async () => {
     if (busy || state !== 'valid') return;
     setBusy(true);
-    try {
-      const res = await fetchWithTimeout('/api/v2/guardians/accept-invitation', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${getToken()}`,
-        },
-        body: JSON.stringify({ code: rawCode.trim() }),
-      });
-      const body = await res.json();
-      if (!res.ok || !body.success) {
-        if (res.status === 410 || isExpired(body?.invitation)) {
-          setState('expired');
-          setErrMsg(body.error || 'This invitation has expired.');
-        } else if (res.status === 409) {
-          setState('already_accepted');
-          setErrMsg('This invitation was already accepted.');
+
+    let retries = 0;
+    let acceptCancelled = false;
+    const MAX_ACCEPT_RETRIES = 2;
+    const ACCEPT_SAFETY_TIMEOUT_MS = 10000;
+    const acceptSafetyTimer = setTimeout(() => {
+      if (acceptCancelled) return;
+      acceptCancelled = true;
+      setState('error');
+      setErrMsg('Request timed out. Please try again.');
+      setBusy(false);
+    }, ACCEPT_SAFETY_TIMEOUT_MS);
+
+    (async function attemptAccept() {
+      try {
+        const endpoint = '/api/v2/guardians/accept-invitation';
+        const method = 'POST';
+        const reqHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` };
+        logApiRequest({ endpoint, method, headers: reqHeaders });
+        const res = await fetchWithTimeout(endpoint, {
+          method,
+          headers: reqHeaders,
+          body: JSON.stringify({ code: rawCode.trim() }),
+        });
+        const body = await res.json();
+        logApiCall({ endpoint, method, hasToken: !!getToken(), status: res.status, body: res.ok ? undefined : body });
+        if (acceptCancelled) return;
+        if (!res.ok || !body.success) {
+          if (res.status === 401 || res.status === 403) {
+            clearTimeout(acceptSafetyTimer);
+            handleAuthFailure();
+            return;
+          }
+          if (res.status === 410 || isExpired(body?.invitation)) {
+            setState('expired');
+            setErrMsg(body.error || 'This invitation has expired.');
+          } else if (res.status === 409) {
+            setState('already_accepted');
+            setErrMsg('This invitation was already accepted.');
+          } else {
+            const msg = authErrorToast(res.status) || body.error || 'Failed to accept invitation.';
+            setState('error');
+            setErrMsg(msg);
+          }
+          acceptCancelled = true;
+          clearTimeout(acceptSafetyTimer);
+          setBusy(false);
+          return;
+        }
+        acceptCancelled = true;
+        clearTimeout(acceptSafetyTimer);
+        setState('accepted');
+        setBusy(false);
+      } catch (err) {
+        if (acceptCancelled) return;
+        retries++;
+        if (retries <= MAX_ACCEPT_RETRIES) {
+          const delay = Math.min(500 * Math.pow(2, retries - 1), 2000);
+          await new Promise((r) => setTimeout(r, delay));
+          if (acceptCancelled) return;
+          return attemptAccept();
+        }
+        acceptCancelled = true;
+        clearTimeout(acceptSafetyTimer);
+        if (err.name === 'AbortError') {
+          setState('error');
+          setErrMsg('Request timed out. Please try again.');
+        } else if (err.name === 'SyntaxError') {
+          setState('error');
+          setErrMsg('Unexpected response from server. Please try again.');
         } else {
           setState('error');
-          setErrMsg(body.error || 'Failed to accept invitation.');
+          setErrMsg('Network error. Please try again.');
         }
-        return;
+        setBusy(false);
       }
-      setState('accepted');
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        setState('error');
-        setErrMsg('Request timed out. Please try again.');
-      } else {
-        setState('error');
-        setErrMsg('Network error. Please try again.');
-      }
-    } finally {
-      setBusy(false);
-    }
+    })();
   }, [busy, state, rawCode]);
 
   const inviterName = inv?.inviterName || inv?.createdByName || '';
@@ -390,5 +526,19 @@ export default function AcceptInvitation() {
     );
   }
 
-  return null;
+  return (
+    <div style={{ padding: 32, maxWidth: 560, margin: '0 auto' }}>
+      <div style={{ padding: 14, background: '#fff3e0', borderLeft: '4px solid #e65100', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+        <span style={{ fontSize: 20 }}>⚠️</span>
+        <span style={{ fontWeight: 600 }}>Error</span>
+      </div>
+      <p style={{ color: '#888', lineHeight: 1.6 }}>{errMsg || 'An unexpected error occurred.'}</p>
+      <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+        <button onClick={() => window.location.reload()} style={{ padding: '10px 20px', background: '#eee', borderRadius: 8, border: 'none', cursor: 'pointer' }}>
+          Try Again
+        </button>
+        <a href="mailto:support@kindercura.com" style={{ padding: '10px 20px', border: '1px solid #ccc', borderRadius: 8, textDecoration: 'none', color: '#555' }}>Contact Support</a>
+      </div>
+    </div>
+  );
 }
