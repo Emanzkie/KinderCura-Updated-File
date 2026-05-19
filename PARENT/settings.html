@@ -72,6 +72,10 @@
 <img src="/icons/privacy.png" class="settings-icon"> Privacy
 </button>
 
+<button class="settings-tab" onclick="switchTab('family')" style="width:100%; text-align:left; padding:1rem; border:none; background:transparent; border-radius:8px; margin-bottom:0.5rem; cursor:pointer; color:var(--text-light); display:flex; align-items:center; gap:10px;">
+<img src="/icons/parent.png" class="settings-icon"> Family
+</button>
+
 <button class="settings-tab" onclick="switchTab('data')" style="width:100%; text-align:left; padding:1rem; border:none; background:transparent; border-radius:8px; cursor:pointer; color:var(--text-light); display:flex; align-items:center; gap:10px;">
 <img src="/icons/data.png" class="settings-icon"> Data
 </button>
@@ -187,6 +191,86 @@
                     </div>
 
                     <button class="btn btn-primary" onclick="alert('Privacy settings saved')" style="padding: 0.7rem 1.5rem;">Save Settings</button>
+                </div>
+
+                <!-- Family Management -->
+                <div id="family-tab" style="background: white; border-radius: 15px; padding: 2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.08); display: none;">
+                    <h2 style="color: var(--primary); margin-bottom: 1.5rem;">Family Management</h2>
+                    <p style="color: var(--text-light); margin-bottom: 1.5rem;">Manage family members linked to your children's accounts</p>
+
+                    <!-- Linked Guardians Section -->
+                    <div id="familyLinkedSection" style="margin-bottom: 2rem;">
+                        <h3 style="font-weight: 600; margin-bottom: 1rem;">Linked Family Members</h3>
+                        <div id="familyLinkedList">
+                            <p style="color: var(--text-light);">Select a child to view linked family members.</p>
+                        </div>
+                    </div>
+
+                    <!-- Child selector for family management -->
+                    <div style="margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid var(--border);">
+                        <h3 style="font-weight: 600; margin-bottom: 0.8rem;">Select Child</h3>
+                        <select id="familyChildSelect" onchange="loadFamilyMembers()" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px;">
+                            <option value="">-- Select a child --</option>
+                        </select>
+                    </div>
+
+                    <!-- Create Account Section (shown to primary guardians) -->
+                    <div style="margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid var(--border);">
+                        <h3 style="font-weight: 600; margin-bottom: 1rem;">Add Family Member</h3>
+                        <p style="color: var(--text-light); margin-bottom: 1rem; font-size: 0.9rem;">Create an account for a spouse or co-parent directly. They will receive login credentials via email.</p>
+
+                        <div id="createAccountForm">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                                <div>
+                                    <label style="font-size: 0.9rem; font-weight: 600;">First Name</label>
+                                    <input type="text" id="famFirstName" placeholder="First name" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.9rem; font-weight: 600;">Last Name</label>
+                                    <input type="text" id="famLastName" placeholder="Last name" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px;">
+                                </div>
+                            </div>
+                            <div style="margin-bottom: 1rem;">
+                                <label style="font-size: 0.9rem; font-weight: 600;">Email</label>
+                                <input type="email" id="famEmail" placeholder="family@example.com" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px;">
+                            </div>
+                            <div style="margin-bottom: 1rem;">
+                                <label style="font-size: 0.9rem; font-weight: 600;">Password</label>
+                                <input type="password" id="famPassword" placeholder="Min 8 characters" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px;">
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                                <div>
+                                    <label style="font-size: 0.9rem; font-weight: 600;">Relationship</label>
+                                    <select id="famRelationship" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px;">
+                                        <option value="mother">Mother</option>
+                                        <option value="father">Father</option>
+                                        <option value="grandparent">Grandparent</option>
+                                        <option value="legal_guardian">Legal Guardian</option>
+                                        <option value="foster_parent">Foster Parent</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.9rem; font-weight: 600;">Permission Level</label>
+                                    <select id="famPermissionPreset" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px;">
+                                        <option value="full">Full Access</option>
+                                        <option value="standard" selected>Standard Access</option>
+                                        <option value="medical">Medical Only</option>
+                                        <option value="limited">Limited Access</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" onclick="createFamilyAccount()" style="padding: 0.7rem 1.5rem;">Create Account</button>
+                            <span id="createAccountMsg" style="margin-left: 1rem; font-size: 0.9rem;"></span>
+                        </div>
+                    </div>
+
+                    <!-- Go to Guardian Management -->
+                    <div style="background: var(--bg-primary); padding: 1.5rem; border-radius: 8px;">
+                        <h3 style="font-weight: 600; margin-bottom: 0.5rem;">Advanced Guardian Management</h3>
+                        <p style="color: var(--text-light); margin-bottom: 1rem; font-size: 0.9rem;">Manage invitations, permissions, and transfer primary guardianship.</p>
+                        <a href="/parent/guardians" class="btn btn-secondary" style="display: inline-block; padding: 0.6rem 1rem; font-size: 0.9rem; text-decoration: none;">Open Guardian Management</a>
+                    </div>
                 </div>
 
                 <!-- Data Settings -->

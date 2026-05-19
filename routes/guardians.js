@@ -31,4 +31,7 @@ router.post('/children/:childId/transfer-primary', authMiddleware, guardianContr
 // Post-acceptance email trigger
 router.post('/invitations/accept-email', authMiddleware, guardianController.sendAcceptanceEmails);
 
+// Direct account creation for family members (bypasses invitation email flow)
+router.post('/create-account', authMiddleware, guardianController.createSecondaryAccount);
+
 module.exports = router;

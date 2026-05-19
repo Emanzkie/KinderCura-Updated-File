@@ -33,12 +33,8 @@ async function getAccessibleChildren(userId, userRole) {
   if (userRole === 'admin') return await Child.find({}).sort({ createdAt: -1 }).select('+profileIcon').lean();
 
   const links = await GuardianLink.find({ guardianId: userId, status: 'active' }).lean();
-  const allowedChildIds = links
-    .filter(l => (l.permissions || {}).modifyChild !== false)
-    .map(l => l.childId);
-
-  if (!allowedChildIds.length) return [];
-  return await Child.find({ _id: { $in: allowedChildIds } }).sort({ createdAt: -1 }).select('+profileIcon').lean();
+  if (!links.length) return [];
+  return await Child.find({ _id: { $in: links.map(l => l.childId) } }).sort({ createdAt: -1 }).select('+profileIcon').lean();
 }
 
 // Return one child document only if the caller has access to it.
@@ -50,7 +46,7 @@ async function getAccessibleChild(childId, userId, userRole) {
   if (userRole === 'admin') return child;
 
   const link = await GuardianLink.findOne({ childId: child._id, guardianId: userId, status: 'active' }).lean();
-  if (link && (link.permissions || {}).modifyChild !== false) return child;
+  if (link) return child;
 
   return null;
 }

@@ -12,6 +12,7 @@ require('dotenv').config();
 
 const User = require('../models/User');
 const Child = require('../models/Child');
+const GuardianLink = require('../models/GuardianLink');
 const Assessment = require('../models/Assessment');
 const OtpCode = require('../models/OtpCode');
 const Notification = require('../models/Notification');
@@ -269,7 +270,17 @@ function parseNumberOrNull(value) {
 
 async function getParentPreAssessmentState(parentId) {
   const children = await Child.find({ parentId }).sort({ createdAt: -1 }).select('_id').lean();
-  const defaultChildId = children.length ? String(children[0]._id) : null;
+  let defaultChildId = children.length ? String(children[0]._id) : null;
+
+  // For linked guardians (no children by parentId), check GuardianLinks
+  if (!children.length) {
+    const links = await GuardianLink.find({ guardianId: parentId, status: 'active' }).lean();
+    if (links.length) {
+      const linkedChildren = await Child.find({ _id: { $in: links.map(l => l.childId) } }).sort({ createdAt: -1 }).select('_id').lean();
+      children.push(...linkedChildren);
+      defaultChildId = linkedChildren.length ? String(linkedChildren[0]._id) : null;
+    }
+  }
 
   if (!children.length) {
     return { defaultChildId: null, needsPreAssessment: false, preAssessmentChildId: null };
@@ -451,7 +462,7 @@ router.post('/register', handlePrcUpload, async (req, res) => {
     });
 
     // Important: secretary accounts can only be created by the admin — not self-registered.
-    if (!['parent', 'pediatrician', 'admin'].includes(cleanRole)) {
+    if (!['parent', 'legal_guardian', 'pediatrician', 'admin'].includes(cleanRole)) {
       return fail(400, 'Invalid user role. Secretary accounts must be created by the admin.');
     }
     if (!isValidEmail(cleanEmail)) {
@@ -582,8 +593,8 @@ router.post('/register', handlePrcUpload, async (req, res) => {
     }
 
     let child = null;
-    // Child information is optional for parent registration
-    if (cleanRole === 'parent' && childFirstName && childLastName && dateOfBirth) {
+    // Child information is optional for parent/guardian registration
+    if ((cleanRole === 'parent' || cleanRole === 'legal_guardian') && childFirstName && childLastName && dateOfBirth) {
       child = await Child.create({
         parentId: user._id,
         firstName: String(childFirstName).trim(),
@@ -657,7 +668,7 @@ router.post('/login', async (req, res) => {
     let needsPreAssessment = false;
     let preAssessmentChildId = null;
 
-    if (user.role === 'parent') {
+    if (user.role === 'parent' || user.role === 'legal_guardian') {
       const preState = await getParentPreAssessmentState(user._id);
       childId = preState.defaultChildId;
       needsPreAssessment = preState.needsPreAssessment;

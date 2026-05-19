@@ -1,5 +1,6 @@
 // controllers/guardianController.js
 const crypto = require('crypto');
+const bcrypt = require('bcrypt');
 const mongoose = require('mongoose');
 const Child = require('../models/Child');
 const GuardianInvitation = require('../models/GuardianInvitation');
@@ -676,9 +677,143 @@ async function sendAcceptanceEmails(req, res) {
   }
 }
 
+/**
+ * POST /api/v2/guardians/create-account
+ *
+ * Creates a secondary family account (e.g. for spouse) directly without
+ * requiring the invitation email flow. The caller must be the primary
+ * guardian for at least one child being linked.
+ *
+ * Request body:
+ *   firstName, lastName, email, password       (required)
+ *   middleName, relationship, childIds[]        (required: childIds)
+ *   permissionPreset                            (optional, default: 'standard')
+ *
+ * Creates:
+ *   - User account (role: 'parent', active)
+ *   - GuardianLink entries for each childId
+ */
+async function createSecondaryAccount(req, res) {
+  try {
+    const {
+      firstName, lastName, middleName, email, password,
+      relationship, childIds, permissionPreset,
+    } = req.body;
+
+    if (!firstName || !lastName || !email || !password) {
+      return res.status(400).json({ error: 'firstName, lastName, email, and password are required.' });
+    }
+    if (!childIds || !Array.isArray(childIds) || !childIds.length) {
+      return res.status(400).json({ error: 'At least one childId is required.' });
+    }
+    if (String(password).length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    }
+
+    const cleanEmail = String(email).trim().toLowerCase();
+    const cleanFirstName = String(firstName).trim();
+    const cleanLastName = String(lastName).trim();
+
+    // Verify caller is primary guardian for all target children
+    const children = await Child.find({ _id: { $in: childIds } }).lean();
+    if (children.length !== childIds.length) {
+      return res.status(404).json({ error: 'One or more children not found.' });
+    }
+
+    for (const child of children) {
+      const isOwner = String(child.parentId) === String(req.user.userId);
+      if (isOwner) continue;
+      const primaryLink = await GuardianLink.findOne({
+        childId: child._id, guardianId: req.user.userId, isPrimary: true, status: 'active',
+      }).lean();
+      if (!primaryLink) {
+        return res.status(403).json({
+          error: `You are not the primary guardian for ${child.firstName} ${child.lastName}.`,
+        });
+      }
+    }
+
+    // Check for duplicate email
+    const existingUser = await User.findOne({ email: cleanEmail }).select('_id').lean();
+    if (existingUser) {
+      return res.status(409).json({ error: 'A user with this email already exists.' });
+    }
+
+    // Auto-generate a username based on email prefix + random suffix
+    const emailPrefix = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9]/g, '_');
+    const username = `${emailPrefix}_${Date.now().toString(36)}`;
+
+    const passwordHash = await bcrypt.hash(String(password), 10);
+
+    const user = await User.create({
+      firstName: cleanFirstName,
+      middleName: middleName ? String(middleName).trim() : null,
+      lastName: cleanLastName,
+      username,
+      email: cleanEmail,
+      passwordHash,
+      role: 'parent',
+      status: 'active',
+      emailVerified: true,
+      profileIcon: 'avatar1',
+    });
+
+    // Resolve permission set
+    let permSet = null;
+    const presetName = permissionPreset || 'standard';
+    permSet = await PermissionSet.findOne({ name: presetName.charAt(0).toUpperCase() + presetName.slice(1) });
+    if (!permSet) {
+      permSet = await PermissionSet.findOne({ name: 'Standard' });
+      if (!permSet) {
+        permSet = await PermissionSet.create({
+          name: 'Standard', description: 'Default standard guardian permissions', permissions: {},
+        });
+      }
+    }
+
+    // Create GuardianLink for each child
+    await Promise.all(childIds.map(async (childId) => {
+      await GuardianLink.create({
+        childId,
+        guardianId: user._id,
+        isPrimary: false,
+        role: relationship || 'parent',
+        status: 'active',
+        permissions: permSet.permissions || {},
+        permissionSet: permSet._id,
+        createdBy: req.user.userId,
+      });
+    }));
+
+    await createLog({
+      actorId: req.user.userId,
+      action: 'family:account:create',
+      targetType: 'User',
+      targetId: user._id,
+      details: { newUserId: user._id, childIds, relationship: relationship || 'parent' },
+      ip: req.ip,
+    });
+
+    res.status(201).json({
+      success: true,
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+      },
+      message: `Account created for ${cleanFirstName} ${cleanLastName}. They can log in with their email and password.`,
+    });
+  } catch (err) {
+    console.error('createSecondaryAccount error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
 module.exports = {
   generateInvitation, acceptInvitation, verifyInvitation,
   listGuardians, updatePermissions, revokeGuardian, transferPrimary,
   listPendingInvitations, resendInvitation, revokeInvitation,
-  sendAcceptanceEmails,
+  sendAcceptanceEmails, createSecondaryAccount,
 };
