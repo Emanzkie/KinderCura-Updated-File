@@ -7,6 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const { authMiddleware } = require('../middleware/auth');
+const { hasPermission } = require('../middleware/guardianAccess');
 const AssessmentResult = require('../models/AssessmentResult');
 const Recommendation = require('../models/Recommendation');
 const Assessment = require('../models/Assessment');
@@ -243,10 +244,18 @@ router.get('/:assessmentId', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Assessment not found.' });
     }
 
-    // Parents may only read their own child's recommendation set.
+    // Parents may only read their own child's recommendation set
+    // or have shared access via GuardianLink.
     if (req.user.role === 'parent') {
-      const ownerAppointmentsOrAssessment = String(assessment.createdBy) === String(req.user.userId);
-      if (!ownerAppointmentsOrAssessment) {
+      const child = await Child.findById(assessment.childId).lean();
+      if (!child) {
+        return res.status(404).json({ error: 'Child not found.' });
+      }
+      const isOwner = String(child.parentId) === String(req.user.userId);
+      const hasSharedAccess = assessment.childId
+        ? await hasPermission(req.user.userId, assessment.childId, 'viewRecommendations')
+        : false;
+      if (!isOwner && !hasSharedAccess) {
         return res.status(403).json({ error: 'Access denied.' });
       }
     }

@@ -13,6 +13,7 @@ const guardianLinkSchema = new mongoose.Schema(
       viewAssessments: { type: Boolean, default: true },
       submitAssessments: { type: Boolean, default: true },
       viewResults: { type: Boolean, default: true },
+      viewRecommendations: { type: Boolean, default: true },
       uploadDocuments: { type: Boolean, default: false },
       manageAppointments: { type: Boolean, default: true },
       viewMedicalRecords: { type: String, enum: ['none', 'partial', 'full'], default: 'partial' },
