@@ -119,6 +119,97 @@ function movePrcUploadToUserFile(file, userId) {
   return `/uploads/prc-documents/${finalName}`;
 }
 
+/**
+ * Profile photo uploads (parents / children)
+ */
+const profileUploadDir = path.join(__dirname, '..', 'uploads', 'profiles');
+
+const profileStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    if (!fs.existsSync(profileUploadDir)) {
+      fs.mkdirSync(profileUploadDir, { recursive: true });
+    }
+    cb(null, profileUploadDir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `upload_${uniqueSuffix}${ext}`);
+  },
+});
+
+const profileUpload = multer({
+  storage: profileStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const allowedExts = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+    if (file.mimetype.startsWith('image/') && allowedExts.has(ext)) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error('Only JPG, PNG, and WebP image files are allowed for profile uploads.'));
+  },
+});
+
+function handleProfileUpload(req, res, next) {
+  profileUpload.fields([
+    { name: 'parentProfilePhoto', maxCount: 1 },
+    { name: 'childProfilePhoto', maxCount: 1 },
+  ])(req, res, (err) => {
+    if (err) {
+      const message = err instanceof multer.MulterError ? err.message : (err.message || 'Profile upload failed.');
+      console.error('[Profile Upload][multer] Upload failed:', { message, contentType: req.headers['content-type'] });
+      return res.status(400).json({ error: message });
+    }
+
+    if (req.files) {
+      // Log received profile uploads for debugging
+      const pf = (req.files.parentProfilePhoto || [])[0];
+      const cf = (req.files.childProfilePhoto || [])[0];
+      if (pf) console.log('[Profile Upload][multer] Received parentProfilePhoto:', { field: pf.fieldname, originalName: pf.originalname, savedName: pf.filename, mimetype: pf.mimetype, size: pf.size, tempPath: pf.path });
+      if (cf) console.log('[Profile Upload][multer] Received childProfilePhoto:', { field: cf.fieldname, originalName: cf.originalname, savedName: cf.filename, mimetype: cf.mimetype, size: cf.size, tempPath: cf.path });
+    }
+
+    next();
+  });
+}
+
+function deleteUploadedProfileFiles(files) {
+  if (!files) return;
+  const all = [];
+  if (files.parentProfilePhoto) all.push(...files.parentProfilePhoto);
+  if (files.childProfilePhoto) all.push(...files.childProfilePhoto);
+  for (const f of all) {
+    try {
+      if (f && f.path && fs.existsSync(f.path)) fs.unlinkSync(f.path);
+    } catch (err) {
+      console.warn('[register] Failed to remove uploaded profile file:', err && err.message ? err.message : err);
+    }
+  }
+}
+
+function moveProfileUploadToUserFile(file, id, type = 'user') {
+  if (!file) return null;
+  const ext = path.extname(file.originalname || file.filename || '').toLowerCase() || '.jpg';
+  const prefix = type === 'child' ? 'child' : (type === 'parent' ? 'parent' : 'user');
+  const finalName = `${prefix}_${String(id)}_${Date.now()}${ext}`;
+  const finalPath = path.join(profileUploadDir, finalName);
+
+  try {
+    if (path.resolve(file.path) !== path.resolve(finalPath)) {
+      fs.renameSync(file.path, finalPath);
+      file.path = finalPath;
+      file.filename = finalName;
+    }
+  } catch (err) {
+    console.warn('[Profile Upload] Failed to move uploaded profile file:', err && err.message ? err.message : err);
+    return null;
+  }
+
+  return `/uploads/profiles/${finalName}`;
+}
+
 function uploadPathExists(publicPath) {
   if (!publicPath || !String(publicPath).startsWith('/uploads/')) return false;
   const fullPath = path.join(__dirname, '..', String(publicPath).replace(/^\//, ''));
@@ -388,7 +479,7 @@ router.post('/verify-otp', async (req, res) => {
 });
 
 // POST /api/auth/register
-router.post('/register', handlePrcUpload, async (req, res) => {
+router.post('/register', handleProfileUpload, handlePrcUpload, async (req, res) => {
   const fail = (status, error) => {
     console.warn('[PRC Upload][register] Registration validation failed:', {
       status,
@@ -401,6 +492,8 @@ router.post('/register', handlePrcUpload, async (req, res) => {
         size: req.file.size,
       } : null,
     });
+    // Remove any uploaded files (PRC + profile photos) on failure to avoid orphaned uploads
+    deleteUploadedProfileFiles(req.files);
     deleteUploadedPrcFile(req.file);
     return res.status(status).json({ error });
   };
@@ -570,6 +663,21 @@ router.post('/register', handlePrcUpload, async (req, res) => {
       prcSubmittedAt: cleanRole === 'pediatrician' ? new Date() : null,
     });
 
+    // If a parent profile photo was uploaded, move it to a final filename and update the user record
+    try {
+      const parentFile = req.files?.parentProfilePhoto?.[0];
+      if (parentFile) {
+        const parentProfilePath = moveProfileUploadToUserFile(parentFile, user._id, 'parent');
+        if (parentProfilePath) {
+          user.profileIcon = parentProfilePath;
+          await user.save();
+          console.log('[Profile Upload][database-save] Saved parent profileIcon:', { userId: String(user._id), profileIcon: user.profileIcon });
+        }
+      }
+    } catch (err) {
+      console.warn('[Profile Upload] Error while attaching parent profile photo to user:', err && err.message ? err.message : err);
+    }
+
     if (cleanRole === 'pediatrician') {
       console.log('[PRC Upload][database-save] Saved pediatrician PRC fields:', {
         userId: String(user._id),
@@ -607,6 +715,21 @@ router.post('/register', handlePrcUpload, async (req, res) => {
         relationship: relationship || null,
         profileIcon: childProfileIcon || 'child1',
       });
+
+      // If a child profile photo was uploaded, move it and update the child record
+      try {
+        const childFile = req.files?.childProfilePhoto?.[0];
+        if (childFile && child) {
+          const childProfilePath = moveProfileUploadToUserFile(childFile, child._id, 'child');
+          if (childProfilePath) {
+            child.profileIcon = childProfilePath;
+            await child.save();
+            console.log('[Profile Upload][database-save] Saved child profileIcon:', { childId: String(child._id), profileIcon: child.profileIcon });
+          }
+        }
+      } catch (err) {
+        console.warn('[Profile Upload] Error while attaching child profile photo to child record:', err && err.message ? err.message : err);
+      }
     }
 
     const token = signToken(user);
@@ -630,6 +753,7 @@ router.post('/register', handlePrcUpload, async (req, res) => {
         : (child ? 'Account created successfully. Please continue to the child pre-assessment.' : 'Account created successfully.'),
     });
   } catch (err) {
+    deleteUploadedProfileFiles(req.files);
     deleteUploadedPrcFile(req.file);
     console.error('Register error:', err);
     res.status(500).json({ error: 'Server error while registering user.' });
