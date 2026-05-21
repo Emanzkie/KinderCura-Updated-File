@@ -58,7 +58,7 @@ function switchTab(tab) {
                     const headers = { 'Content-Type': 'application/json' };
                     const t = localStorage.getItem('kc_token') || localStorage.getItem('token') || '';
                     if (t) headers['Authorization'] = 'Bearer ' + t;
-                    return fetch('http://localhost:3001/api' + ep, { headers }).then(r => r.json());
+                    return fetch('/api' + ep, { headers }).then(r => r.json());
                 };
                 const data = await api('/children');
                 const children = Array.isArray(data.children) ? data.children : [];
@@ -86,7 +86,7 @@ function switchTab(tab) {
                 const headers = { 'Content-Type': 'application/json' };
                 const t = localStorage.getItem('kc_token') || localStorage.getItem('token') || '';
                 if (t) headers['Authorization'] = 'Bearer ' + t;
-                const res = await fetch('http://localhost:3001/api/v2/guardians/children/' + encodeURIComponent(childId) + '/guardians', { headers });
+                const res = await fetch('/api/v2/guardians/children/' + encodeURIComponent(childId) + '/guardians', { headers });
                 const data = await res.json();
                 if (!data.success || !Array.isArray(data.guardians)) {
                     list.innerHTML = '<p style="color: var(--text-light);">No linked guardians found.</p>';
@@ -140,7 +140,7 @@ function switchTab(tab) {
                 const headers = { 'Content-Type': 'application/json' };
                 const t = localStorage.getItem('kc_token') || localStorage.getItem('token') || '';
                 if (t) headers['Authorization'] = 'Bearer ' + t;
-                const res = await fetch('http://localhost:3001/api/v2/guardians/create-account', {
+                const res = await fetch('/api/v2/guardians/create-account', {
                     method: 'POST',
                     headers,
                     body: JSON.stringify({ firstName, lastName, email, password, relationship, childIds: [childId], permissionPreset }),

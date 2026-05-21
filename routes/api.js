@@ -1,5 +1,7 @@
 // api.js — KinderCura shared helpers
-const API = 'http://localhost:3000/api';
+const API = (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
+    ? 'http://localhost:3000/api'
+    : '/api';
 
 const KC = {
     token:        () => localStorage.getItem('kc_token'),

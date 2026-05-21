@@ -260,7 +260,14 @@ async function startApp() {
     }
 }
 
-startApp();
+// When this file is run directly (node server.js) start the HTTP server.
+// When required by a serverless wrapper (for Vercel / functions), export the
+// Express `app` instead so the wrapper can handle incoming requests.
+if (require.main === module) {
+    startApp();
+} else {
+    module.exports = app;
+}
 
 function makeGracefulShutdown(signal) {
     return async () => {
