@@ -1,80 +1,82 @@
-// MongoDB connection helper for KinderCura Step 1
-// IMPORTANT: the connection string is read from .env using MONGODB_URI
-// Example .env value: MONGODB_URI=mongodb://127.0.0.1:27017/kindercura
+// db.js — MongoDB connection helper optimized for Vercel serverless
+// - Requires `MONGODB_URI` (no localhost fallback)
+// - Uses cached connection promise stored on `global` to avoid duplicate connects
+// - Short retries suitable for serverless (default: 2)
+// - Fast-fail timeouts: serverSelectionTimeoutMS: 5000, socketTimeoutMS: 45000
 const mongoose = require('mongoose');
 require('dotenv').config();
 
-// Prevents duplicate reconnect attempts if connectDB() is called more than once
-let isConnected = false;
-// Guard: only register event listeners once per process lifetime
-let listenersRegistered = false;
+const DEFAULT_RETRIES = 2;
+const DEFAULT_DELAY_MS = 500;
+
+// Persist a small cache on the global object so warm invocations reuse it.
+const globalAny = global;
+if (!globalAny.__mongooseGlobal) {
+    globalAny.__mongooseGlobal = { conn: null, promise: null, listenersRegistered: false };
+}
+const cached = globalAny.__mongooseGlobal;
+
+mongoose.set('strictQuery', true);
 
 /**
- * Connect to MongoDB with retry/backoff and improved logging.
- * Throws the last error if all attempts fail.
+ * Connect to MongoDB with a serverless-friendly cached promise.
+ * Throws a clear error if `MONGODB_URI` is not provided.
  * @param {{retries?: number, delayMs?: number}} options
  */
-async function connectDB({ retries = 5, delayMs = 1000 } = {}) {
-    if (isConnected) return mongoose.connection;
+async function connectDB({ retries = DEFAULT_RETRIES, delayMs = DEFAULT_DELAY_MS } = {}) {
+    const mongoURI = process.env.MONGODB_URI;
+    if (!mongoURI) {
+        throw new Error('MONGODB_URI environment variable is required. Set it in Vercel project settings.');
+    }
 
-    // This is where the app reads the MongoDB connection string.
-    // 1) It first checks process.env.MONGODB_URI from your .env file.
-    // 2) If that is missing, it falls back to the local default below.
-    const mongoURI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/kindercura';
-
-    // Keep Mongoose query behavior predictable.
-    mongoose.set('strictQuery', true);
-
-    // Detect serverless to apply tighter timeouts
-    const isServerless = !!(process.env.VERCEL || process.env.NOW_REGION);
+    if (cached.conn) return cached.conn;
+    if (cached.promise) return cached.promise;
 
     const connectOptions = {
         autoIndex: true,
-        // In serverless, fail fast instead of waiting 30 s (default)
-        serverSelectionTimeoutMS: isServerless ? 4000 : 10000,
-        socketTimeoutMS: isServerless ? 10000 : 30000,
-        connectTimeoutMS: isServerless ? 4000 : 10000,
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 45000,
+        connectTimeoutMS: 5000,
     };
 
-    let attempt = 0;
-    let lastError = null;
+    // Build a single promise that performs a small number of retries.
+    cached.promise = (async () => {
+        let attempt = 0;
+        let lastError = null;
+        while (attempt < retries) {
+            attempt += 1;
+            try {
+                await mongoose.connect(mongoURI, connectOptions);
+                cached.conn = mongoose.connection;
 
-    while (attempt < retries) {
-        attempt += 1;
-        try {
-            await mongoose.connect(mongoURI, connectOptions);
-            isConnected = true;
-            console.log('✅ Connected to MongoDB');
+                if (!cached.listenersRegistered) {
+                    cached.listenersRegistered = true;
+                    mongoose.connection.on('disconnected', () => {
+                        console.warn('⚠️ MongoDB disconnected');
+                        cached.conn = null;
+                    });
+                    mongoose.connection.on('error', (err) => {
+                        console.error('⚠️ MongoDB connection error:', err && err.stack ? err.stack : err);
+                    });
+                }
 
-            // Only register listeners once — avoids memory leaks
-            // on repeated warm-start calls.
-            if (!listenersRegistered) {
-                listenersRegistered = true;
-                mongoose.connection.on('disconnected', () => {
-                    console.warn('⚠️ MongoDB disconnected');
-                    isConnected = false;
-                });
-
-                mongoose.connection.on('error', (err) => {
-                    console.error('⚠️ MongoDB connection error:', err && err.stack ? err.stack : err);
-                });
+                console.log('✅ Connected to MongoDB');
+                return cached.conn;
+            } catch (err) {
+                lastError = err;
+                console.error(`❌ MongoDB connection failed (attempt ${attempt}/${retries}):`, err && err.stack ? err.stack : err);
+                if (attempt >= retries) break;
+                const backoff = delayMs * Math.pow(2, attempt - 1);
+                await new Promise((res) => setTimeout(res, backoff));
             }
-
-            return mongoose.connection;
-        } catch (err) {
-            lastError = err;
-            console.error(`❌ MongoDB connection failed (attempt ${attempt}/${retries}):`, err && err.stack ? err.stack : err);
-            if (attempt >= retries) {
-                console.error('❌ All MongoDB connection attempts failed.');
-                throw lastError;
-            }
-            const backoff = delayMs * Math.pow(2, attempt - 1);
-            console.log(`Retrying MongoDB connection in ${backoff}ms...`);
-            await new Promise((res) => setTimeout(res, backoff));
         }
-    }
 
-    throw lastError;
+        // Allow future calls to try again.
+        cached.promise = null;
+        throw lastError;
+    })();
+
+    return cached.promise;
 }
 
 module.exports = { connectDB, mongoose };

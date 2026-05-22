@@ -60,20 +60,18 @@ async function ensureDB() {
 }
 
 module.exports = async (req, res) => {
-    const dbOk = await ensureDB();
+    // Start DB connect in the background and don't block the request.
+    // This prevents Vercel cold-starts from timing out when MongoDB
+    // is temporarily unreachable. Routes that require the DB should
+    // handle DB errors themselves.
+    ensureDB().then((ok) => {
+        if (!ok) {
+            console.warn(`[api/index] DB not available for ${req.method} ${req.url}`);
+        }
+    }).catch((err) => {
+        console.error('[api/index] Background DB connect error:', err && err.stack ? err.stack : err);
+    });
 
-    if (!dbOk) {
-        // Return immediately with a clear error instead of proceeding
-        // with no database — this prevents silent data-layer hangs.
-        console.error(`[api/index] Serving 503 for ${req.method} ${req.url} — DB unavailable`);
-        res.statusCode = 503;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({
-            error: 'Service temporarily unavailable',
-            detail: 'Database connection could not be established',
-        }));
-        return;
-    }
-
+    // Proceed immediately — do not return 503 here to avoid long Vercel timeouts.
     return handler(req, res);
 };
