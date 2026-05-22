@@ -74,3 +74,6 @@ public/dist/
 *.bak
 *.swp
 *.swo
+
+.vercel
+.env*

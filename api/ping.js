@@ -1,24 +1,45 @@
-// Temporary ping endpoint to verify environment variable visibility on Vercel
-// - Does NOT import mongoose or perform any network I/O
-// - Returns whether `MONGODB_URI` is present in the runtime env
+const { MongoClient } = require('mongodb');
 
-module.exports = (req, res) => {
-  const mongodbPresent = !!process.env.MONGODB_URI;
-  const vercel = !!process.env.VERCEL;
-  const vercelEnv = process.env.VERCEL_ENV || null;
-  const nodeEnv = process.env.NODE_ENV || null;
+module.exports = async (req, res) => {
+  let client;
+  
+  try {
+    // Check MongoDB connection
+    const uri = process.env.MONGODB_URI;
+    let mongodbPresent = false;
+    
+    if (uri) {
+      try {
+        client = new MongoClient(uri, {
+          serverSelectionTimeoutMS: 5000,
+          socketTimeoutMS: 3000,
+        });
+        
+        await client.connect();
+        await client.db().admin().ping();
+        mongodbPresent = true;
+      } catch (dbError) {
+        mongodbPresent = false;
+      }
+    }
 
-  // Helpful log for deployment inspection (does not print secrets)
-  console.log('[api/ping] mongodb_present=%s vercel=%s vercel_env=%s', mongodbPresent, vercel, vercelEnv);
-
-  res.setHeader('Content-Type', 'application/json');
-  res.statusCode = 200;
-  res.end(JSON.stringify({
-    ok: true,
-    timestamp: new Date().toISOString(),
-    mongodb_present: mongodbPresent,
-    vercel,
-    vercel_env: vercelEnv,
-    node_env: nodeEnv,
-  }));
+    res.status(200).json({
+      ok: true,
+      timestamp: new Date().toISOString(),
+      mongodb_present: mongodbPresent,
+      vercel: process.env.VERCEL === '1',
+      vercel_env: process.env.VERCEL_ENV || 'development',
+      node_env: process.env.NODE_ENV || 'development'
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error.message
+    });
+  } finally {
+    if (client) {
+      await client.close();
+    }
+  }
 };
