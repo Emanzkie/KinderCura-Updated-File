@@ -18,6 +18,27 @@ const http = require('http');
 
 const app = express();
 
+// ── Detect Vercel serverless environment ────────────────────────
+const IS_VERCEL = !!(process.env.VERCEL || process.env.NOW_REGION);
+
+// ── Serverless safety-timeout middleware ────────────────────────
+// Ensures every request sends *some* response before Vercel's
+// 10 s (hobby) / 60 s (pro) hard timeout kills the function.
+if (IS_VERCEL) {
+    app.use((req, res, next) => {
+        const SAFETY_MS = 9000; // 9 seconds — well under the 10 s hobby limit
+        const timer = setTimeout(() => {
+            if (!res.headersSent) {
+                console.error(`[TIMEOUT] Request timed out: ${req.method} ${req.originalUrl}`);
+                res.status(504).json({ error: 'Request timed out' });
+            }
+        }, SAFETY_MS);
+        res.on('finish', () => clearTimeout(timer));
+        res.on('close', () => clearTimeout(timer));
+        next();
+    });
+}
+
 // Allow frontend pages to call the backend API during local development
 app.use(cors({
     origin: '*',
@@ -126,7 +147,16 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', server: 'KinderCura Mongo Step 1', time: new Date() });
 });
 
+// SSE is only supported in long-lived server environments.
+// In Vercel serverless, SSE connections will time out, so return a
+// clear error instead of hanging.
 app.get('/api/admin/sse', (req, res) => {
+    if (IS_VERCEL) {
+        return res.status(501).json({
+            error: 'SSE is not supported in serverless environments',
+            hint: 'Use polling or a WebSocket service for real-time updates',
+        });
+    }
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -142,8 +172,37 @@ app.get('/api/admin/sse', (req, res) => {
     });
 });
 
+// ── Fast /favicon.ico handler ──────────────────────────────────
+// Browsers request /favicon.ico automatically on every page load.
+// Without this explicit route the catch-all below would serve
+// landing.html, which wastes resources and can cause timeouts
+// in serverless environments.
+app.get('/favicon.ico', (req, res) => {
+    // Try to serve logo.png as favicon; if it fails, return 204 No Content
+    const faviconPath = path.join(__dirname, 'ICONS', 'logo.png');
+    res.sendFile(faviconPath, (err) => {
+        if (err && !res.headersSent) {
+            res.status(204).end();
+        }
+    });
+});
+
+// ── Catch-all: serve landing page for navigation requests ──────
+// Only serve the landing page for requests that look like page
+// navigation (HTML). Reject other unknown paths with 404 to avoid
+// wasting serverless execution time on stray asset requests.
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'SIGN-UP,LOGIN', 'landing.html'));
+    // If the request explicitly asks for non-HTML content, 404
+    const accept = req.headers.accept || '';
+    if (accept && !accept.includes('text/html') && !accept.includes('*/*')) {
+        return res.status(404).json({ error: 'Not found' });
+    }
+    res.sendFile(path.join(__dirname, 'SIGN-UP,LOGIN', 'landing.html'), (err) => {
+        if (err && !res.headersSent) {
+            console.error('[CATCH-ALL] Failed to serve landing.html:', err.message);
+            res.status(500).json({ error: 'Failed to load page' });
+        }
+    });
 });
 
 const PORT = process.env.PORT || 3001;

@@ -6,6 +6,8 @@ require('dotenv').config();
 
 // Prevents duplicate reconnect attempts if connectDB() is called more than once
 let isConnected = false;
+// Guard: only register event listeners once per process lifetime
+let listenersRegistered = false;
 
 /**
  * Connect to MongoDB with retry/backoff and improved logging.
@@ -23,8 +25,15 @@ async function connectDB({ retries = 5, delayMs = 1000 } = {}) {
     // Keep Mongoose query behavior predictable.
     mongoose.set('strictQuery', true);
 
+    // Detect serverless to apply tighter timeouts
+    const isServerless = !!(process.env.VERCEL || process.env.NOW_REGION);
+
     const connectOptions = {
         autoIndex: true,
+        // In serverless, fail fast instead of waiting 30 s (default)
+        serverSelectionTimeoutMS: isServerless ? 4000 : 10000,
+        socketTimeoutMS: isServerless ? 10000 : 30000,
+        connectTimeoutMS: isServerless ? 4000 : 10000,
     };
 
     let attempt = 0;
@@ -37,14 +46,19 @@ async function connectDB({ retries = 5, delayMs = 1000 } = {}) {
             isConnected = true;
             console.log('✅ Connected to MongoDB');
 
-            mongoose.connection.on('disconnected', () => {
-                console.warn('⚠️ MongoDB disconnected');
-                isConnected = false;
-            });
+            // Only register listeners once — avoids memory leaks
+            // on repeated warm-start calls.
+            if (!listenersRegistered) {
+                listenersRegistered = true;
+                mongoose.connection.on('disconnected', () => {
+                    console.warn('⚠️ MongoDB disconnected');
+                    isConnected = false;
+                });
 
-            mongoose.connection.on('error', (err) => {
-                console.error('⚠️ MongoDB connection error:', err && err.stack ? err.stack : err);
-            });
+                mongoose.connection.on('error', (err) => {
+                    console.error('⚠️ MongoDB connection error:', err && err.stack ? err.stack : err);
+                });
+            }
 
             return mongoose.connection;
         } catch (err) {

@@ -1,11 +1,10 @@
-```
 # Dependencies
 node_modules/
 
 # Environment variables
 .env
 .env.local
-.env.
+.env.*
 
 # IDE files
 .vscode/
@@ -52,102 +51,26 @@ config.local.js
 .mypy_cache/
 .pytest_cache/
 .nyc_output/
-coverage/
-
-# Distribution / packaging
-.Python
-*.so
-.libs/
-*.tar.gz
-*.whl
-
-# Testing
-.pytest_cache/
-.coverage*
 
 # Node.js
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-node_modules/
-jspm_packages/
 
-# Bower
-bower_components/
+# Temporary files
+.tmp/
+.temp/
+.tmp_*
 
-# Grunt
-.grunt
-grunt-cache.json
+# Build outputs
+public/build/
+public/dist/
 
-# JSHint
-.jshintrc
-
-# ESLint
-.eslintcache
-
-# Webpack
-webpack-stats.json
-
-# SASS
-.sass-cache/
-
-# Ruby
-.bundle/
-vendor/bundle/
-.ruby-version
-.rubocop.yml
-
-# Java
-*.class
-*.jar
-*.war
-*.ear
-.apt_generated/
-.target/
-!.settings/org.eclipse.core.resources.prefs
-
-# C/C++
-*.o
-*.a
-*.so
-*.dll
-*.exe
-
-# Go
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-
-# Gradle
-.gradle/
-build/
-
-# Maven
-target/
+# Vercel
+.vercel/
 
 # Backup files
 *~
 *.bak
 *.swp
 *.swo
-
-# Editor temporary files
-.tmp/
-.temp/
-
-# Compiled assets
-public/build/
-public/dist/
-
-# Local development
-.dockerenv
-
-# Build outputs
-dist/
-build/
-
-# Original rules preserved
-*.log
-```
