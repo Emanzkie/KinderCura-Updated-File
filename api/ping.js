@@ -1,10 +1,22 @@
+// api/ping.js
 const { MongoClient } = require('mongodb');
 
 module.exports = async (req, res) => {
+  // Set CORS headers (important for browser access)
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+
   let client;
   
   try {
-    // Check MongoDB connection
     const uri = process.env.MONGODB_URI;
     let mongodbPresent = false;
     
@@ -19,27 +31,41 @@ module.exports = async (req, res) => {
         await client.db().admin().ping();
         mongodbPresent = true;
       } catch (dbError) {
+        // Log error but don't fail the whole request
+        console.error('MongoDB connection error:', dbError.message);
         mongodbPresent = false;
       }
     }
 
-    res.status(200).json({
+    const responseData = {
       ok: true,
       timestamp: new Date().toISOString(),
       mongodb_present: mongodbPresent,
       vercel: process.env.VERCEL === '1',
       vercel_env: process.env.VERCEL_ENV || 'development',
       node_env: process.env.NODE_ENV || 'development'
-    });
+    };
+
+    // ✅ Use native Node.js response methods (NOT Express!)
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(responseData));
     
   } catch (error) {
-    res.status(500).json({
+    console.error('Function error:', error.message);
+    
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
       ok: false,
       error: error.message
-    });
+    }));
+    
   } finally {
     if (client) {
-      await client.close();
+      try {
+        await client.close();
+      } catch (e) {
+        // Ignore close errors
+      }
     }
   }
 };
