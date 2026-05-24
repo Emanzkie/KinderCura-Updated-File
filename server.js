@@ -26,7 +26,7 @@ const IS_VERCEL = !!(process.env.VERCEL || process.env.NOW_REGION);
 // 10 s (hobby) / 60 s (pro) hard timeout kills the function.
 if (IS_VERCEL) {
     app.use((req, res, next) => {
-        const SAFETY_MS = 9000; // 9 seconds — well under the 10 s hobby limit
+        const SAFETY_MS = 9500; // 9.5 seconds — gives cold-start DB connect more room under 10 s hobby limit
         const timer = setTimeout(() => {
             if (!res.headersSent) {
                 console.error(`[TIMEOUT] Request timed out: ${req.method} ${req.originalUrl}`);
@@ -35,6 +35,26 @@ if (IS_VERCEL) {
         }, SAFETY_MS);
         res.on('finish', () => clearTimeout(timer));
         res.on('close', () => clearTimeout(timer));
+        next();
+    });
+}
+
+// ── DB connection middleware for serverless ──────────────────────
+// Ensures MongoDB is connected before processing any /api/* request.
+// In Vercel serverless, connectDB() in api/index.js runs without await
+// so the first request could arrive before the connection is ready.
+if (IS_VERCEL) {
+    app.use('/api', async (req, res, next) => {
+        if (mongoose.connection.readyState !== 1) {
+            try {
+                await connectDB();
+            } catch (err) {
+                console.error('[DB] Connection failed for', req.method, req.originalUrl, err?.stack || err);
+                if (!res.headersSent) {
+                    return res.status(503).json({ error: 'Database is temporarily unavailable. Please try again.' });
+                }
+            }
+        }
         next();
     });
 }
