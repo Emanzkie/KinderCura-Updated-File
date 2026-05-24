@@ -62,6 +62,8 @@ app.use('/assets/css', express.static(path.join(__dirname, 'CSS files')));
 app.use('/assets/images', express.static(path.join(__dirname, 'ICONS')));
 /* Serve JS modules referenced by admin pages */
 app.use('/assets/js', express.static(path.join(__dirname, 'assets/js')));
+/* Serve role-specific JS from /js/ directory (parent, pedia, admin, secretary, auth) */
+app.use('/js', express.static(path.join(__dirname, 'js')));
 
 // Serve root api.js at /api.js (full version with fetchParentChildren, etc.)
 app.get('/api.js', (req, res) => {
