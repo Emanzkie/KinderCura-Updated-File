@@ -772,21 +772,34 @@ router.post('/login', async (req, res) => {
     const cleanUsername = username ? String(username).trim() : '';
     const cleanPassword = String(password);
 
-    const user = await User.findOne({
-      $or: [{ email: cleanEmail }, { username: cleanUsername }],
-    });
+    const orConditions = [];
+    if (cleanEmail) orConditions.push({ email: cleanEmail });
+    if (cleanUsername) orConditions.push({ username: cleanUsername });
+    const user = await User.findOne({ $or: orConditions });
+
+    console.log(`[LOGIN] Attempt: email="${cleanEmail}" username="${cleanUsername}"`);
+
     if (!user) {
+      console.log(`[LOGIN] User NOT FOUND: email="${cleanEmail}" username="${cleanUsername}"`);
       return res.status(401).json({ error: 'Invalid email/username or password.' });
     }
+
+    console.log(`[LOGIN] User FOUND: _id=${user._id} role=${user.role} status=${user.status}`);
+
     if (user.status === 'pending') {
+      console.log(`[LOGIN] Account PENDING: _id=${user._id}`);
       return res.status(403).json({ error: user.role === 'pediatrician' ? 'Your pediatrician account is still pending admin approval.' : 'Your account is not yet active. Please contact the clinic administrator.' });
     }
     if (user.status === 'suspended') {
+      console.log(`[LOGIN] Account SUSPENDED: _id=${user._id}`);
       return res.status(403).json({ error: 'Your account has been suspended.' });
     }
 
     const match = await bcrypt.compare(cleanPassword, user.passwordHash);
+    console.log(`[LOGIN] bcrypt.compare result: ${match}`);
+
     if (!match) {
+      console.log(`[LOGIN] PASSWORD MISMATCH for user ${user._id}`);
       return res.status(401).json({ error: 'Invalid email/username or password.' });
     }
 
@@ -802,6 +815,8 @@ router.post('/login', async (req, res) => {
     }
 
     const token = signToken(user);
+    console.log(`[LOGIN] Token generated for user ${user._id}`);
+    console.log(`[LOGIN] Login SUCCESS: user=${user._id} role=${user.role}`);
     res.json({
       success: true,
       token,
@@ -813,7 +828,7 @@ router.post('/login', async (req, res) => {
       user: publicUser(user),
     });
   } catch (err) {
-    console.error('Login error:', err);
+    console.error('[LOGIN] Error:', err);
     res.status(500).json({ error: 'Server error while logging in.' });
   }
 });
