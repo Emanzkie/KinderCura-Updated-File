@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"codeHash":{"$numberInt":"1"}},"name":"codeHash_1","background":true}],"uuid":"6fbf03c648d345c4b0cae73f8c59ebe0","collectionName":"guardianinvitations","type":"collection"}

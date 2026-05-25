@@ -27,6 +27,9 @@ function hasPermission(permissionKey) {
       // Admin bypass
       if (req.user && req.user.role === 'admin') return next();
 
+      // Pediatrician bypass — real appointment-level auth happens in resolveChatAccess
+      if (req.user && req.user.role === 'pediatrician') return next();
+
       const child = await Child.findById(childId).lean();
       if (!child) return res.status(404).json({ error: 'Child not found.' });
 
