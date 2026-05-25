@@ -171,6 +171,7 @@ function calcAgeDisplay(dob) {
 // If the backend saved an exact relatedPage, use that first.
 function notificationDestination(n) {
     const role = String(KC.user()?.role || '').toLowerCase();
+    const path = window.location.pathname.toLowerCase();
     const title = String(n?.title || '').toLowerCase();
     const type = String(n?.type || '').toLowerCase();
     const msg = String(n?.message || '').toLowerCase();
