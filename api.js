@@ -255,21 +255,27 @@ function applyNavUser(user) {
             : `Welcome, ${user.firstName || 'User'}`;
     }
 
-    const profileSrc = (user.profileIcon && String(user.profileIcon).startsWith('/uploads/'))
-        ? user.profileIcon
-        : '/icons/profile.png';
+    const hasUpload = user.profileIcon && String(user.profileIcon).startsWith('/uploads/');
+    const profileSrc = hasUpload ? user.profileIcon : '/icons/profile.png';
+    const srcSuffix = hasUpload ? `?t=${Date.now()}` : '';
+
+    const navPic = document.getElementById('navProfilePic');
+    if (navPic) {
+        navPic.src = profileSrc + srcSuffix;
+        navPic.style.objectFit = 'cover';
+        console.log('[AVATAR] nav found, applying src:', navPic.src);
+    } else {
+        console.log('[AVATAR] #navProfilePic not found, using .profile-icon fallback');
+    }
 
     document.querySelectorAll('.profile-icon').forEach((img) => {
-        img.src =
-            profileSrc +
-            (
-                String(profileSrc).startsWith('/uploads/')
-                    ? `?t=${Date.now()}`
-                    : ''
-            );
+        if (img.id === 'navProfilePic') return;
+        img.src = profileSrc + srcSuffix;
         img.style.borderRadius = '50%';
         img.style.objectFit = 'cover';
     });
+
+    if (!hasUpload) console.log('[AVATAR] fallback used');
 }
 
 // Refreshes the saved user so the latest profile icon appears immediately

@@ -52,16 +52,28 @@ function logout() {
 function initNav() {
     const user = KC.user();
     if (!user) return;
+    console.log('[PROFILE NAV] init user:', user.firstName, user.profileIcon);
     const w = document.querySelector('.menu-header p');
     if (w) w.textContent = `Welcome, ${user.firstName}`;
-    const navPics = document.querySelectorAll('.profile-icon');
-    if (user.profileIcon && user.profileIcon.startsWith('/uploads/')) {
-        navPics.forEach(img => {
-            img.src = user.profileIcon;
-            img.style.borderRadius = '50%';
-            img.style.objectFit = 'cover';
-        });
+
+    const hasUpload = user.profileIcon && String(user.profileIcon).startsWith('/uploads/');
+    const profileSrc = hasUpload ? user.profileIcon : '/icons/profile.png';
+    const srcSuffix = hasUpload ? `?t=${Date.now()}` : '';
+
+    const navPic = document.getElementById('navProfilePic');
+    if (navPic) {
+        navPic.src = profileSrc + srcSuffix;
+        navPic.style.objectFit = 'cover';
     }
+
+    document.querySelectorAll('.profile-icon').forEach(img => {
+        if (img.id === 'navProfilePic') return;
+        img.src = profileSrc + srcSuffix;
+        img.style.borderRadius = '50%';
+        img.style.objectFit = 'cover';
+    });
+
+    console.log('[PROFILE NAV] avatar src:', profileSrc);
     document.querySelectorAll('.nav-user-name').forEach(el => { el.textContent = user.firstName; });
     loadNotificationCount();
 }
@@ -167,6 +179,7 @@ async function uploadProfilePhoto(input, type, childId) {
         }
 
         await loadProfile();
+        if (typeof initNav === 'function') initNav();
         alert('Photo updated successfully!');
     } catch(e) {
         alert('Upload failed: ' + e.message);
@@ -197,8 +210,24 @@ async function loadProfile() {
         const userData = await apiFetch('/auth/me');
         console.log('[loadProfile] User data from API:', userData);
         if (userData && userData.user) {
-            user = userData.user;
-            localStorage.setItem('kc_user', JSON.stringify(user));
+            const cached = KC.user() || {};
+            const mergedUser = { ...cached, ...userData.user };
+            // Preserve uploaded avatar if server returns default/non-uploaded icon
+            if (
+                cached.profileIcon &&
+                String(cached.profileIcon).startsWith('/uploads/') &&
+                (
+                    !mergedUser.profileIcon ||
+                    !String(mergedUser.profileIcon).startsWith('/uploads/')
+                )
+            ) {
+                mergedUser.profileIcon = cached.profileIcon;
+            }
+            console.log('[PROFILE] cached avatar:', cached.profileIcon);
+            console.log('[PROFILE] server avatar:', userData.user.profileIcon);
+            console.log('[PROFILE] merged avatar:', mergedUser.profileIcon);
+            user = mergedUser;
+            localStorage.setItem('kc_user', JSON.stringify(mergedUser));
         }
     } catch(e) { 
         console.error('[loadProfile] Could not fetch fresh user data:', e.message); 
@@ -206,15 +235,27 @@ async function loadProfile() {
 
     if (user) {
         console.log('[loadProfile] Setting parent fields for user:', user.firstName, user.lastName);
-        if (user.profileIcon && user.profileIcon.startsWith('/uploads/')) {
+        const hasUpload = user.profileIcon && String(user.profileIcon).startsWith('/uploads/');
+        const profileSrc = hasUpload ? user.profileIcon : '/icons/profile.png';
+        const srcSuffix = hasUpload ? `?t=${Date.now()}` : '';
+
+        if (hasUpload) {
             const pic = document.getElementById('parentProfilePic');
             if (pic) pic.src = user.profileIcon;
-            document.querySelectorAll('.profile-icon').forEach(img => {
-                img.src = user.profileIcon;
-                img.style.borderRadius = '50%';
-                img.style.objectFit = 'cover';
-            });
         }
+
+        const navPic = document.getElementById('navProfilePic');
+        if (navPic) {
+            navPic.src = profileSrc + srcSuffix;
+            navPic.style.objectFit = 'cover';
+        }
+
+        document.querySelectorAll('.profile-icon').forEach(img => {
+            if (img.id === 'navProfilePic') return;
+            img.src = profileSrc + srcSuffix;
+            img.style.borderRadius = '50%';
+            img.style.objectFit = 'cover';
+        });
         document.getElementById('parentFields').innerHTML =
             field('Name', [user.firstName, user.middleName, user.lastName].filter(Boolean).join(' ')) +
             field('Email', user.email) +
