@@ -414,6 +414,11 @@ async function registerPedia() {
         formData.append('specialization', specialization);
         formData.append('prcIdCard', docIdFile);
 
+        console.log([...formData.keys()]);
+        console.log("License Number:", licenseNumber);
+        console.log("Expiry:", valueOf('licenseExpiry'));
+        console.log("Selected PRC File:", docIdFile);
+
         console.log('[PRC Upload][signup] PRC ID Card attached:', {
             name: docIdFile.name,
             size: docIdFile.size,

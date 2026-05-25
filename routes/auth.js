@@ -498,6 +498,11 @@ router.post('/verify-otp', async (req, res) => {
 
 // POST /api/auth/register
 router.post('/register', handleProfileUpload, async (req, res) => {
+  console.log('--- REGISTRATION DEBUG ---');
+  console.log('req.body:', req.body);
+  console.log('req.file:', req.file);
+  console.log('--------------------------');
+
   const fail = (status, error) => {
     console.warn('[PRC Upload][register] Registration validation failed:', {
       status,
