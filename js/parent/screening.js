@@ -348,4 +348,7 @@ requireAuth();
             }
         }
 
-        document.addEventListener('DOMContentLoaded', initAssessment);
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof initNav === 'function') initNav();
+            initAssessment();
+        });

@@ -411,17 +411,21 @@ router.post('/send-otp', async (req, res) => {
     }
 
     const otp = generateOTP();
+    console.log('[SIGNUP] OTP generated for:', email);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     await OtpCode.deleteMany({ email, used: false });
     await OtpCode.create({ email, code: otp, expiresAt, used: false });
+    console.log('[SIGNUP] OTP saved to DB for:', email);
 
     if (emailConfigured()) {
-      await transporter.sendMail({
-        from: `"KinderCura" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: 'KinderCura — Email Verification Code',
-        html: `
+      console.log('[SIGNUP] Email send start for:', email);
+      try {
+        await transporter.sendMail({
+          from: `"KinderCura" <${process.env.EMAIL_USER}>`,
+          to: email,
+          subject: 'KinderCura — Email Verification Code',
+          html: `
           <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;">
             <div style="background:#6B8E6F;padding:20px;text-align:center;border-radius:10px 10px 0 0;">
               <h1 style="color:white;margin:0;">KinderCura</h1>
@@ -435,16 +439,18 @@ router.post('/send-otp', async (req, res) => {
               <p style="color:#999;font-size:0.85rem;">If you did not request this, please ignore this email.</p>
             </div>
           </div>`,
-      });
+        });
+        console.log('[SIGNUP] Email send success for:', email);
+      } catch (mailErr) {
+        console.error('[SIGNUP] Email send failed for:', email, mailErr);
+        return res.status(500).json({ error: 'Failed to send OTP email. Check email service configuration.' });
+      }
     } else {
-      console.log(`\n⚠️ EMAIL NOT CONFIGURED — OTP for ${email}: ${otp}\n`);
+      console.error('[SIGNUP] EMAIL NOT CONFIGURED — EMAIL_USER/EMAIL_PASS env vars missing. OTP for', email, ':', otp);
+      return res.status(500).json({ error: 'Email service not configured. Please contact support.' });
     }
 
-    res.json({
-      success: true,
-      message: emailConfigured() ? 'OTP sent to your email.' : `OTP generated (check server console): ${otp}`,
-      devOtp: emailConfigured() ? undefined : otp,
-    });
+    res.json({ success: true, message: 'OTP sent to your email.' });
   } catch (err) {
     console.error('Send OTP error:', err);
     res.status(500).json({ error: 'Failed to send OTP. Please check email configuration.' });

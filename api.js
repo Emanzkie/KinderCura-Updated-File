@@ -260,7 +260,13 @@ function applyNavUser(user) {
         : '/icons/profile.png';
 
     document.querySelectorAll('.profile-icon').forEach((img) => {
-        img.src = profileSrc;
+        img.src =
+            profileSrc +
+            (
+                String(profileSrc).startsWith('/uploads/')
+                    ? `?t=${Date.now()}`
+                    : ''
+            );
         img.style.borderRadius = '50%';
         img.style.objectFit = 'cover';
     });
@@ -274,7 +280,19 @@ async function refreshCurrentUser() {
     try {
         const data = await apiFetch('/auth/me');
         if (data && data.user) {
-            const mergedUser = { ...(KC.user() || {}), ...data.user };
+            const cached = KC.user() || {};
+            const mergedUser = { ...cached, ...data.user };
+            // Preserve uploaded avatar if server returns default/non-uploaded icon
+            if (
+                cached.profileIcon &&
+                String(cached.profileIcon).startsWith('/uploads/') &&
+                (
+                    !mergedUser.profileIcon ||
+                    !String(mergedUser.profileIcon).startsWith('/uploads/')
+                )
+            ) {
+                mergedUser.profileIcon = cached.profileIcon;
+            }
             localStorage.setItem('kc_user', JSON.stringify(mergedUser));
             return mergedUser;
         }
