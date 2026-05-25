@@ -21,6 +21,8 @@ let activeChild = null;
 // (loadDashboard runs every 5s via setInterval and we don't want the dropdown
 // to visibly flicker when the list of children has not actually changed).
 let _switcherSignature = null;
+let _dashboardLoadCounter = 0;
+let _lastRenderedChildId = null;
 
 // HTML escape helper so child names render safely inside generated markup.
 function escapeHtml(value) {
@@ -84,6 +86,10 @@ function renderChildSwitcher() {
 //   3. Render the child switcher (only when >1 child).
 //   4. Load and populate dashboard data for the active child.
 async function loadDashboard() {
+    _dashboardLoadCounter++;
+    const loadId = _dashboardLoadCounter;
+    console.log('[PARENT_DASHBOARD] Load start', { loadId });
+
     // 1. Fetch children list
     allChildren = await fetchParentChildren();
 
@@ -112,29 +118,56 @@ async function loadDashboard() {
         document.getElementById('childMeta').textContent = 'Go to Profile to add a child';
     }
 
-    // Reset placeholders so stale data from a previously-selected child does
-    // not linger on-screen while the new child's assessments are being fetched.
-    document.getElementById('skillList').innerHTML = '<p class="text-center text-muted">No assessment yet</p>';
-    document.getElementById('assessmentBox').innerHTML = '<p class="text-center text-muted" style="padding:1rem;">No assessment yet</p>';
-    document.getElementById('recList').innerHTML = '<p class="text-center text-muted">No recommendations yet</p>';
+    // Clear stale data only when the active child changed — avoids flicker on
+    // the 5-second interval poll when the same child is still selected.
+    const childChanged = String(childId) !== String(_lastRenderedChildId);
+    if (childChanged) {
+        document.getElementById('skillList').innerHTML = '<p class="text-center text-muted">Loading assessment data...</p>';
+        document.getElementById('assessmentBox').innerHTML = '<p class="text-center text-muted" style="padding:1rem;">Loading assessment data...</p>';
+        document.getElementById('recList').innerHTML = '<p class="text-center text-muted">Loading recommendations...</p>';
+    }
 
     if (childId) {
+        console.log('[PARENT_DASHBOARD] Fetch latest assessment', { childId, loadId });
         try {
             const hist = await apiFetch(`/assessments/${childId}/history`);
+            console.log('[PARENT_DASHBOARD] Response received', { childId, loadId });
+
+            // Ignore stale response from a previous loadDashboard call
+            if (loadId !== _dashboardLoadCounter) {
+                console.log('[PARENT_DASHBOARD] Stale response ignored', { loadId, current: _dashboardLoadCounter });
+                return;
+            }
+
             const assessments = (hist.assessments || []).filter(a => a.overallScore !== null);
             if (assessments.length > 0) {
                 const latest = assessments[0];
                 localStorage.setItem('kc_assessmentId', latest.id);
                 renderSkills(latest);
                 renderAssessment(latest);
+                _lastRenderedChildId = String(childId);
+                console.log('[PARENT_DASHBOARD] Valid assessment rendered', { childId, assessmentId: latest.id, loadId });
                 try {
                     const recs = await apiFetch(`/recommendations/${latest.id}`);
                     renderRecs(recs.recommendations || []);
                 } catch {}
             } else {
+                _lastRenderedChildId = String(childId);
+                if (childChanged) {
+                    document.getElementById('skillList').innerHTML = '<p class="text-center text-muted">No assessment yet</p>';
+                    document.getElementById('assessmentBox').innerHTML = '<p class="text-center text-muted" style="padding:1rem;">No assessment yet</p>';
+                }
                 localStorage.removeItem('kc_assessmentId');
+                console.log('[PARENT_DASHBOARD] Empty response handled', { childId, loadId });
             }
-        } catch {}
+        } catch (err) {
+            console.log('[PARENT_DASHBOARD] Fetch error', { childId, loadId, error: err.message });
+            if (loadId === _dashboardLoadCounter && childChanged) {
+                document.getElementById('skillList').innerHTML = '<p class="text-center text-muted">No assessment yet</p>';
+                document.getElementById('assessmentBox').innerHTML = '<p class="text-center text-muted" style="padding:1rem;">No assessment yet</p>';
+                _lastRenderedChildId = String(childId);
+            }
+        }
     }
 
     await loadNotifPreview();
