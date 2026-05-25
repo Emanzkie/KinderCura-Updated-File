@@ -129,17 +129,18 @@ requireAuth();
 
         function getAnswerPayload() {
             return QUESTION_SET
-                .filter(q => answers[q.id])
+                .filter(q => q?.id && answers[q.id])
                 .map(q => ({
                     questionId: q.id,
-                    domain: q.scoreDomain,
-                    questionText: q.text,
+                    domain: q.scoreDomain ?? '',
+                    questionText: q.text ?? '',
                     answer: answers[q.id]
                 }));
         }
 
         function updateAnswerOptionStyles() {
-            const q = QUESTION_SET[currentQuestion];
+            const q = QUESTION_SET?.[currentQuestion];
+            if (!q) return;
             document.querySelectorAll('.answer-option').forEach(option => {
                 option.classList.toggle('is-selected', answers[q.id] === option.dataset.answer);
             });
@@ -168,8 +169,26 @@ requireAuth();
         }
 
         function renderQuestion() {
-            const q = QUESTION_SET[currentQuestion];
+            const q = QUESTION_SET?.[currentQuestion];
             const content = document.getElementById('assessmentContent');
+
+            if (!q) {
+                console.error(
+                    '[SCREENING] Invalid question index:',
+                    currentQuestion,
+                    'total:',
+                    QUESTION_SET.length
+                );
+                if (content) {
+                    content.innerHTML = `
+                        <div class="assessment-error">
+                            <p>Assessment questions could not be loaded. Please try again.</p>
+                        </div>
+                    `;
+                }
+                return;
+            }
+
             const hasPrevious = currentQuestion > 0;
             const isLast = currentQuestion === QUESTION_SET.length - 1;
 
@@ -177,12 +196,12 @@ requireAuth();
                 <section class="assessment-question-card question-card">
                     <div class="assessment-question-header">
                         <p class="assessment-counter">Question ${currentQuestion + 1} of ${QUESTION_SET.length}</p>
-                        <span class="assessment-question-domain category-badge">${q.displayDomain}</span>
+                        <span class="assessment-question-domain category-badge">${q?.displayDomain ?? 'Development'}</span>
                     </div>
 
                     <div class="assessment-question-box">
-                        <p class="assessment-question-text">${q.text}</p>
-                        <p class="assessment-helper-text">${q.difficulty} difficulty • Scored under ${q.scoreDomain}</p>
+                        <p class="assessment-question-text">${q?.text ?? ''}</p>
+                        <p class="assessment-helper-text">${q?.difficulty ?? ''} difficulty • Scored under ${q?.scoreDomain ?? ''}</p>
                     </div>
 
                     <h3 class="assessment-answer-title">How would you answer?</h3>
@@ -193,8 +212,8 @@ requireAuth();
                             { value: 'sometimes', label: 'Sometimes' },
                             { value: 'no', label: 'Not yet' }
                         ].map(option => `
-                            <label class="answer-option option-btn ${answers[q.id] === option.value ? 'is-selected' : ''}" data-answer="${option.value}">
-                                <input type="radio" name="answer" value="${option.value}" ${answers[q.id] === option.value ? 'checked' : ''} onchange="recordAnswer('${option.value}')">
+                            <label class="answer-option option-btn ${q?.id && answers[q.id] === option.value ? 'is-selected' : ''}" data-answer="${option.value}">
+                                <input type="radio" name="answer" value="${option.value}" ${q?.id && answers[q.id] === option.value ? 'checked' : ''} onchange="recordAnswer('${option.value}')">
                                 <span class="answer-option-mark"></span>
                                 <span class="answer-option-text">${option.label}</span>
                             </label>
@@ -210,7 +229,14 @@ requireAuth();
         }
 
         function recordAnswer(answer) {
-            const q = QUESTION_SET[currentQuestion];
+            const q = QUESTION_SET?.[currentQuestion];
+            if (!q) {
+                console.error(
+                    '[SCREENING] Cannot record answer — missing question at index:',
+                    currentQuestion
+                );
+                return;
+            }
             answers[q.id] = answer;
             updateProgress();
             updateAnswerOptionStyles();
@@ -243,13 +269,20 @@ requireAuth();
         }
 
         async function nextQuestion() {
-            const q = QUESTION_SET[currentQuestion];
+            const q = QUESTION_SET?.[currentQuestion];
+            if (!q) {
+                console.error(
+                    '[SCREENING] nextQuestion — invalid question at index:',
+                    currentQuestion
+                );
+                return;
+            }
             if (!answers[q.id]) {
                 alert('Please answer the question before continuing.');
                 return;
             }
 
-            if (currentQuestion === QUESTION_SET.length - 1) {
+            if (currentQuestion >= QUESTION_SET.length - 1) {
                 completeAssessment();
                 return;
             }
@@ -313,13 +346,34 @@ requireAuth();
                 }
 
                 const ageMonths = getAgeInMonths(selectedChild.dateOfBirth);
-                if (ageMonths < 36) {
+                if (isNaN(ageMonths) || ageMonths < 36) {
                     alert('This assessment is available for children aged 3 to 8 only.');
                     window.location.href = '/parent/dashboard.html';
                     return;
                 }
 
                 QUESTION_SET = buildQuestionSet(selectedChild);
+
+                if (!Array.isArray(QUESTION_SET) || !QUESTION_SET.length) {
+                    console.error(
+                        '[SCREENING] No questions matched for child age:',
+                        getAgeInMonths(selectedChild.dateOfBirth)
+                    );
+                    content.innerHTML = `
+                        <div class="assessment-error">
+                            <p>No assessment questions are available for this child's age. Please contact support.</p>
+                            <button
+                                type="button"
+                                class="assessment-action-btn primary"
+                                onclick="window.location.href='/parent/dashboard.html'"
+                                style="max-width:220px;"
+                            >
+                                Back to Dashboard
+                            </button>
+                        </div>
+                    `;
+                    return;
+                }
 
                 const exactAge = formatExactAge(selectedChild.dateOfBirth);
                 const ageRange = getAgeRangeLabel(ageMonths);
