@@ -148,7 +148,7 @@ const profileUpload = multer({
       cb(null, true);
       return;
     }
-    cb(new Error('Only JPG, PNG, and WebP image files are allowed for profile uploads.'));
+    cb(new Error('Only JPG, PNG, and WebP image files are allowed for uploads.'));
   },
 });
 
@@ -156,6 +156,7 @@ function handleProfileUpload(req, res, next) {
   profileUpload.fields([
     { name: 'parentProfilePhoto', maxCount: 1 },
     { name: 'childProfilePhoto', maxCount: 1 },
+    { name: 'prcIdCard', maxCount: 1 },
   ])(req, res, (err) => {
     if (err) {
       const message = err instanceof multer.MulterError ? err.message : (err.message || 'Profile upload failed.');
@@ -167,8 +168,15 @@ function handleProfileUpload(req, res, next) {
       // Log received profile uploads for debugging
       const pf = (req.files.parentProfilePhoto || [])[0];
       const cf = (req.files.childProfilePhoto || [])[0];
+      const prc = (req.files.prcIdCard || [])[0];
+      
       if (pf) console.log('[Profile Upload][multer] Received parentProfilePhoto:', { field: pf.fieldname, originalName: pf.originalname, savedName: pf.filename, mimetype: pf.mimetype, size: pf.size, tempPath: pf.path });
       if (cf) console.log('[Profile Upload][multer] Received childProfilePhoto:', { field: cf.fieldname, originalName: cf.originalname, savedName: cf.filename, mimetype: cf.mimetype, size: cf.size, tempPath: cf.path });
+      
+      if (prc) {
+        console.log('[Profile Upload][multer] Received prcIdCard:', { field: prc.fieldname, originalName: prc.originalname, savedName: prc.filename, mimetype: prc.mimetype, size: prc.size, tempPath: prc.path });
+        req.file = prc;
+      }
     }
 
     next();
@@ -489,7 +497,7 @@ router.post('/verify-otp', async (req, res) => {
 });
 
 // POST /api/auth/register
-router.post('/register', handleProfileUpload, handlePrcUpload, async (req, res) => {
+router.post('/register', handleProfileUpload, async (req, res) => {
   const fail = (status, error) => {
     console.warn('[PRC Upload][register] Registration validation failed:', {
       status,
