@@ -403,7 +403,11 @@ router.post('/send-otp', async (req, res) => {
 
     const existingUser = await User.findOne({ email }).select('_id').lean();
     if (existingUser) {
-      return res.status(409).json({ error: 'Email already in use.' });
+      console.log(`[SIGNUP] Existing user found: ${email}`);
+      return res.status(409).json({
+        error: 'Email already in use.',
+        code: 'EMAIL_EXISTS'
+      });
     }
 
     const otp = generateOTP();

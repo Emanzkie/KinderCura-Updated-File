@@ -197,14 +197,38 @@ async function sendOTP(isResend = false) {
     const restore = setButtonLoading('verifyBtn', 'Sending...');
     try {
         const email = valueOf('pEmail').toLowerCase();
-        await postJson('/api/auth/send-otp', { email });
+        console.log('[SIGNUP] Send OTP clicked');
+        console.log('[SIGNUP] Request payload:', { email });
+
+        const response = await fetch('/api/auth/send-otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+        });
+
+        const result = await response.json().catch(() => ({}));
+        console.log('[SIGNUP] API response:', { status: response.status, body: result });
+
+        if (!response.ok) {
+            if (response.status === 409 && result.code === 'EMAIL_EXISTS') {
+                console.log('[SIGNUP] Existing user found:', email);
+                setMessage('ep4', 'An account with this email already exists. Please sign in.');
+                return;
+            }
+            console.log('[SIGNUP] Frontend blocked:', result.error);
+            setMessage('ep4', result.error || result.message || 'Request failed.');
+            return;
+        }
+
         setMessage('ep4', '');
         setMessage('ep5e', '');
         setMessage('ep5s', isResend ? 'A new verification code was sent.' : 'Verification code sent.');
         const otpEmail = byId('otpEmail');
         if (otpEmail) otpEmail.textContent = email;
+        console.log('[SIGNUP] Verification UI opened');
         show('sp5');
     } catch (err) {
+        console.log('[SIGNUP] Frontend blocked:', err.message);
         setMessage('ep4', err.message);
         setMessage('ep5e', err.message);
     } finally {
@@ -266,14 +290,38 @@ async function sendDoctorOTP(isResend = false) {
     const restore = setButtonLoading('dVerifyBtn', 'Sending...');
     try {
         const email = valueOf('dEmail').toLowerCase();
-        await postJson('/api/auth/send-otp', { email });
+        console.log('[SIGNUP] Send OTP clicked');
+        console.log('[SIGNUP] Request payload:', { email });
+
+        const response = await fetch('/api/auth/send-otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+        });
+
+        const result = await response.json().catch(() => ({}));
+        console.log('[SIGNUP] API response:', { status: response.status, body: result });
+
+        if (!response.ok) {
+            if (response.status === 409 && result.code === 'EMAIL_EXISTS') {
+                console.log('[SIGNUP] Existing user found:', email);
+                setMessage('ed3', 'An account with this email already exists. Please sign in.');
+                return;
+            }
+            console.log('[SIGNUP] Frontend blocked:', result.error);
+            setMessage('ed3', result.error || result.message || 'Request failed.');
+            return;
+        }
+
         setMessage('ed3', '');
         setMessage('ed4e', '');
         setMessage('ed4s', isResend ? 'A new verification code was sent.' : 'Verification code sent.');
         const otpEmail = byId('dOtpEmail');
         if (otpEmail) otpEmail.textContent = email;
+        console.log('[SIGNUP] Verification UI opened');
         show('sd4');
     } catch (err) {
+        console.log('[SIGNUP] Frontend blocked:', err.message);
         setMessage('ed3', err.message);
         setMessage('ed4e', err.message);
     } finally {
