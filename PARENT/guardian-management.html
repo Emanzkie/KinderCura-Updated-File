@@ -484,160 +484,221 @@ function GuardianManagement() {
 
   return (
     <div>
-      {/* ===== Child Selector Bar ===== */}
+      {/* ===== Page Header: title + child selector ===== */}
       <div style={{
         background: 'white',
-        borderRadius: 12,
-        padding: '16px 20px',
-        marginBottom: 20,
-        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+        padding: '2rem',
+        borderRadius: 15,
+        marginBottom: '32px',
+        boxShadow: '0 4px 15px rgba(0,0,0,0.08)',
         display: 'flex',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        gap: 16,
+        gap: '1rem',
         flexWrap: 'wrap',
       }}>
-        <span style={{
-          fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em',
-          color: '#6B7967', flexShrink: 0,
-        }}>Managing guardians for</span>
-
-        {childrenLoading ? (
-          <span style={{ color: '#888', fontSize: 13 }}>⏳ Loading children...</span>
-        ) : children.length > 1 ? (
-          <select
-            value={selectedChild}
-            onChange={(e) => setSelectedChild(e.target.value)}
-            disabled={childrenLoading}
-            style={{
-              padding: '8px 12px', borderRadius: 8, border: '2px solid var(--border)',
-              fontSize: 14, fontWeight: 600, minWidth: 200, flexShrink: 0,
-            }}
-          >
-            {children.map((c) => (
-              <option key={c.id || c._id} value={c.id || c._id}>
-                {c.firstName} {c.lastName}
-              </option>
-            ))}
-          </select>
-        ) : selectedChildInfo ? (
-          /* Selected-child mini card for single child */
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            background: 'var(--bg-primary)', border: '2px solid var(--border)',
-            borderRadius: 10, padding: '8px 14px', flexShrink: 0,
-          }}>
-            {selectedChildInfo.profileIcon && selectedChildInfo.profileIcon !== 'child1' &&
-             !selectedChildInfo.profileIcon.startsWith('http') ? (
-              <img
-                src={window.location.origin + selectedChildInfo.profileIcon}
-                alt=""
-                style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: '50%' }}
-                onError={(e) => { e.target.style.display = 'none'; }}
-              />
-            ) : (
-              <div style={{
-                width: 36, height: 36, borderRadius: '50%', background: '#F4D89F',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
-              }}>👶</div>
-            )}
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 14, color: '#3D4738' }}>
-                {selectedChildInfo.firstName} {selectedChildInfo.lastName}
-              </div>
-              {selectedChildInfo.dateOfBirth && (
-                <div style={{ fontSize: 12, color: '#6B7967' }}>
-                  Age {Math.max(0, Math.round((Date.now() - new Date(selectedChildInfo.dateOfBirth.split('T')[0])) / 31557600000))} yrs
-                </div>
+        <div>
+          <h1 style={{ fontSize: '1.75rem', marginBottom: '.25rem', color: 'var(--text-dark)' }}>
+            Guardian Management
+          </h1>
+          <p style={{ color: 'var(--text-light)', fontSize: '.95rem' }}>
+            Manage guardians linked to selected child.
+          </p>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+          {childrenLoading ? (
+            <span style={{ color: 'var(--text-light)', fontSize: '.9rem' }}>⏳ Loading children...</span>
+          ) : children.length > 1 ? (
+            <select
+              value={selectedChild}
+              onChange={(e) => setSelectedChild(e.target.value)}
+              disabled={childrenLoading}
+              style={{
+                padding: '0.7rem 1rem', borderRadius: 10, border: '2px solid var(--border)',
+                fontSize: '.95rem', fontWeight: 600, minWidth: 220,
+              }}
+            >
+              {children.map((c) => (
+                <option key={c.id || c._id} value={c.id || c._id}>
+                  {c.firstName} {c.lastName}
+                </option>
+              ))}
+            </select>
+          ) : selectedChildInfo ? (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 12,
+              background: 'var(--bg-primary)', border: '2px solid var(--border)',
+              borderRadius: 10, padding: '0.6rem 1rem',
+            }}>
+              {selectedChildInfo.profileIcon && selectedChildInfo.profileIcon !== 'child1' &&
+               !selectedChildInfo.profileIcon.startsWith('http') ? (
+                <img
+                  src={window.location.origin + selectedChildInfo.profileIcon}
+                  alt=""
+                  style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: '50%' }}
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
+              ) : (
+                <div style={{
+                  width: 36, height: 36, borderRadius: '50%', background: '#F4D89F',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
+                }}>👶</div>
               )}
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontWeight: 700, fontSize: '.9rem', color: 'var(--text-dark)' }}>
+                  {selectedChildInfo.firstName} {selectedChildInfo.lastName}
+                </div>
+                {selectedChildInfo.dateOfBirth && (
+                  <div style={{ fontSize: '.78rem', color: 'var(--text-light)' }}>
+                    Age {Math.max(0, Math.round((Date.now() - new Date(selectedChildInfo.dateOfBirth.split('T')[0])) / 31557600000))} yrs
+                  </div>
+                )}
+              </div>
             </div>
+          ) : null}
+          <div style={{
+            fontSize: '.78rem', color: 'var(--text-light)',
+            background: 'var(--accent)', borderRadius: 6, padding: '4px 10px', display: 'inline-block',
+          }}>
+            Guardians shown below are tied to this child
           </div>
-        ) : null}
-
-        <span style={{
-          fontSize: 12, color: '#6B7967', marginLeft: 'auto',
-          background: '#F4D89F', borderRadius: 6, padding: '4px 10px',
-        }}>
-          Guardians shown below are tied to this child
-        </span>
+        </div>
       </div>
 
-      {/* ===== Invite Section ===== */}
-      <div style={{ background: '#fafafa', padding: 16, borderRadius: 10, marginBottom: 24 }}>
-        <h3 style={{ margin: '0 0 4px', color: 'var(--primary)' }}>
+      {/* ===== Send Invitation Card ===== */}
+      <div style={{
+        background: 'white', borderRadius: 15, padding: '32px',
+        boxShadow: '0 4px 15px rgba(0,0,0,0.08)', marginBottom: '32px',
+      }}>
+        <h3 style={{ color: 'var(--primary)', marginBottom: '1.5rem', fontSize: '1.1rem' }}>
           {selectedChildInfo
             ? `Send Invitation for ${selectedChildInfo.firstName} ${selectedChildInfo.lastName}`
-            : 'Invite a Guardian'}
+            : 'Send Invitation'}
         </h3>
         {selectedChildInfo && (
-          <p style={{ margin: '0 0 12px', color: 'var(--text-light)', fontSize: 12 }}>
+          <p style={{ color: 'var(--text-light)', fontSize: '.85rem', marginBottom: '1.25rem', lineHeight: 1.5 }}>
             This invitation will be sent for <strong>{selectedChildInfo.firstName} {selectedChildInfo.lastName}</strong>.
-            Switch the selected child above using the selector on the right.
+            Switch the selected child above using the child selector.
           </p>
         )}
         <form onSubmit={handleInvite}>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600 }}>Email</label>
+          {/* Email + Relationship row */}
+          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+            <div style={{ flex: '2 1 0', minWidth: '260px' }}>
+              <label style={{ display: 'block', fontWeight: 600, marginBottom: '.5rem', fontSize: '.9rem', color: 'var(--text-dark)' }}>
+                Email
+              </label>
               <input type="email" value={invitationEmail} onChange={e => setInvitationEmail(e.target.value)}
-                placeholder="guardian@example.com" required style={{ padding: 8, minWidth: 220 }} />
+                placeholder="guardian@example.com" required
+                style={{
+                  width: '100%', padding: '.85rem', border: '2px solid var(--border)', borderRadius: 8,
+                  fontSize: '.95rem', fontFamily: 'inherit', outline: 'none',
+                }}
+                onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 3px rgba(107,142,111,0.1)'; }}
+                onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }} />
             </div>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600 }}>Relationship</label>
-              <select value={invitationRelationship} onChange={e => setInvitationRelationship(e.target.value)} style={{ padding: 8 }}>
+            <div style={{ flex: '1 1 0', minWidth: '140px' }}>
+              <label style={{ display: 'block', fontWeight: 600, marginBottom: '.5rem', fontSize: '.9rem', color: 'var(--text-dark)' }}>
+                Relationship
+              </label>
+              <select value={invitationRelationship} onChange={e => setInvitationRelationship(e.target.value)}
+                style={{
+                  width: '100%', padding: '.85rem', border: '2px solid var(--border)', borderRadius: 8,
+                  fontSize: '.95rem', fontFamily: 'inherit', background: 'white',
+                }}>
                 {RELATIONSHIP_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
           </div>
-          <div style={{ marginTop: 12 }}>
-            <label style={{ fontSize: 12, fontWeight: 600 }}>Permission Preset</label>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+
+          {/* Permission Presets */}
+          <div style={{ marginTop: '24px' }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: '.75rem', fontSize: '.9rem', color: 'var(--text-dark)' }}>
+              Permission Preset
+            </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
               {PERMISSION_PRESETS.map(p => (
                 <button type="button" key={p.value}
                   onClick={() => { setInvitationPreset(p.value); setShowCustomPerms(p.value === 'custom'); }}
-                  style={{ padding: '6px 12px', border: invitationPreset === p.value ? '2px solid var(--primary)' : '1px solid var(--border)',
-                    background: invitationPreset === p.value ? 'var(--bg-primary)' : 'white', borderRadius: 6, cursor: 'pointer' }}>
-                  {p.icon} {p.label}
+                  style={{
+                    padding: '0.7rem 1.5rem', borderRadius: 8, cursor: 'pointer', fontSize: '.9rem',
+                    fontWeight: 600, whiteSpace: 'nowrap',
+                    border: invitationPreset === p.value
+                      ? '2px solid var(--primary)'
+                      : '2px solid var(--border)',
+                    background: invitationPreset === p.value
+                      ? 'var(--primary)'
+                      : 'white',
+                    color: invitationPreset === p.value ? 'white' : 'var(--text-dark)',
+                    transition: 'all .2s',
+                  }}>
+                  {p.label}
                 </button>
               ))}
             </div>
           </div>
+
+          {/* Custom Permissions */}
           {showCustomPerms && (
-            <div style={{ marginTop: 12 }}>
-              <label style={{ fontSize: 12, fontWeight: 600 }}>Custom Permissions</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8, marginTop: 6 }}>
+            <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+              <label style={{ display: 'block', fontWeight: 600, marginBottom: '.75rem', fontSize: '.9rem', color: 'var(--text-dark)' }}>
+                Custom Permissions
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
                 {PERMISSION_DEFINITIONS.map(p => (
-                  <label key={p.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                  <label key={p.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.88rem', cursor: 'pointer' }}>
                     <input type="checkbox" checked={!!customPermissions[p.key]}
                       onChange={e => setCustomPermissions({ ...customPermissions, [p.key]: e.target.checked })} />
-                    <span>{p.icon}</span><span>{p.label}</span>
+                    <span>{p.label}</span>
                   </label>
                 ))}
               </div>
             </div>
           )}
-          <div style={{ marginTop: 12 }}>
-            <label style={{ fontSize: 12, fontWeight: 600 }}>Personal Message (optional)</label>
+
+          {/* Personal Message */}
+          <div style={{ marginTop: '24px' }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: '.5rem', fontSize: '.9rem', color: 'var(--text-dark)' }}>
+              Personal Message (optional)
+            </label>
             <textarea value={invitationMessage} onChange={e => setInvitationMessage(e.target.value)}
-              placeholder="Add a note for the invitee..." rows={2} style={{ width: '100%', padding: 8, borderRadius: 6, marginTop: 4 }} />
+              placeholder="Add a note for the invitee..."
+              style={{
+                width: '100%', padding: '.85rem', border: '2px solid var(--border)', borderRadius: 8,
+                fontSize: '.95rem', fontFamily: 'inherit', minHeight: 110, resize: 'vertical', outline: 'none',
+              }}
+              onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 3px rgba(107,142,111,0.1)'; }}
+              onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }} />
           </div>
-          <button type="submit" disabled={loading || childrenLoading} className="btn btn-primary" style={{ marginTop: 12 }}>
+
+          {/* CTA */}
+          <button type="submit" disabled={loading || childrenLoading}
+            className="btn btn-primary"
+            style={{ marginTop: '24px', width: 'fit-content', padding: '0.85rem 2rem' }}>
             {childrenLoading ? 'Loading...' : loading ? 'Sending...' : 'Send Invitation'}
           </button>
         </form>
       </div>
 
-      {/* ===== Pending Invitations ===== */}
-      <div style={{ marginBottom: 24 }}>
-        <h3 style={{ margin: '0 0 12px', color: 'var(--primary)' }}>Pending Invitations</h3>
-        {pendingInvitations.length === 0 ? <p style={{ color: 'var(--text-light)' }}>No pending invitations.</p> :
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      {/* ===== Pending Invitations Card ===== */}
+      <div style={{
+        background: 'white', borderRadius: 20, padding: '28px',
+        boxShadow: '0 4px 15px rgba(0,0,0,0.08)', marginBottom: '32px',
+      }}>
+        <h3 style={{ color: 'var(--primary)', marginBottom: '1rem', fontSize: '1.1rem' }}>
+          Pending Invitations
+        </h3>
+        {pendingInvitations.length === 0 ? (
+          <p style={{ color: 'var(--text-light)', margin: 0 }}>No pending invitations.</p>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.9rem' }}>
             <thead>
               <tr style={{ background: 'var(--bg-primary)' }}>
-                <th style={{ padding: 10, textAlign: 'left' }}>Email</th>
-                <th style={{ padding: 10, textAlign: 'left' }}>Relationship</th>
-                <th style={{ padding: 10, textAlign: 'left' }}>Status</th>
-                <th style={{ padding: 10, textAlign: 'left' }}>Expires In</th>
-                <th style={{ padding: 10, textAlign: 'left' }}>Actions</th>
+                <th style={{ padding: '14px 16px', textAlign: 'left', fontWeight: 600, color: 'var(--text-dark)' }}>Email</th>
+                <th style={{ padding: '14px 16px', textAlign: 'left', fontWeight: 600, color: 'var(--text-dark)' }}>Relationship</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 600, color: 'var(--text-dark)' }}>Status</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 600, color: 'var(--text-dark)' }}>Expires In</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 600, color: 'var(--text-dark)' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -646,43 +707,50 @@ function GuardianManagement() {
                 const daysLeft = inv.daysLeft;
                 return (
                   <tr key={inv.id} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={{ padding: 10 }}>{inv.sentTo || '—'}</td>
-                    <td style={{ padding: 10 }}>{RELATIONSHIP_OPTIONS.find(r => r.value === inv.relationship)?.label || inv.relationship}</td>
-                    <td style={{ padding: 10 }}>
-                      <span style={{ padding: '2px 8px', borderRadius: 12, fontSize: 12,
+                    <td style={{ padding: '14px 16px' }}>{inv.sentTo || '—'}</td>
+                    <td style={{ padding: '14px 16px' }}>{RELATIONSHIP_OPTIONS.find(r => r.value === inv.relationship)?.label || inv.relationship}</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                      <span style={{ padding: '4px 12px', borderRadius: 20, fontSize: '.78rem', fontWeight: 600,
                         background: isExp ? '#fde8e8' : '#e8f5e9', color: isExp ? '#c0392b' : '#27ae60' }}>
                         {isExp ? 'Expired' : 'Pending'}
                       </span>
                     </td>
-                    <td style={{ padding: 10 }}>{isExp ? '—' : `${daysLeft}d`}</td>
-                    <td style={{ padding: 10 }}>
-                      <button onClick={() => handleResend(inv.id)} disabled={isExp} className="btn btn-secondary" style={{ marginRight: 6 }}>Resend</button>
-                      <button onClick={() => handleRevokeInvite(inv.id)} className="btn btn-border">Revoke</button>
+                    <td style={{ padding: '14px 16px', textAlign: 'center', color: 'var(--text-light)' }}>{isExp ? '—' : `${daysLeft}d`}</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                      <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                        <button onClick={() => handleResend(inv.id)} disabled={isExp}
+                          className="btn btn-secondary" style={{ padding: '.5rem 1.2rem', fontSize: '.82rem' }}>Resend</button>
+                        <button onClick={() => handleRevokeInvite(inv.id)}
+                          className="btn btn-border" style={{ padding: '.5rem 1.2rem', fontSize: '.82rem' }}>Revoke</button>
+                      </div>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        }
+        )}
       </div>
 
-      {/* ===== Linked Guardians ===== */}
-      <div>
-        <h3 style={{ margin: '0 0 12px', color: 'var(--primary)' }}>
+      {/* ===== Linked Guardians Card ===== */}
+      <div style={{
+        background: 'white', borderRadius: 20, padding: '28px',
+        boxShadow: '0 4px 15px rgba(0,0,0,0.08)', marginBottom: '32px',
+      }}>
+        <h3 style={{ color: 'var(--primary)', marginBottom: '1rem', fontSize: '1.1rem' }}>
           {selectedChildInfo
             ? `Linked Guardians – ${selectedChildInfo.firstName} ${selectedChildInfo.lastName}`
             : 'Linked Guardians'}
         </h3>
         {linkedGuardians.length === 0 ? <p style={{ color: 'var(--text-light)' }}>No linked guardians for this child.</p> :
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.9rem' }}>
             <thead>
               <tr style={{ background: 'var(--bg-primary)' }}>
-                <th style={{ padding: 10, textAlign: 'left' }}>Name</th>
-                <th style={{ padding: 10, textAlign: 'left' }}>Email</th>
-                <th style={{ padding: 10, textAlign: 'left' }}>Status</th>
-                <th style={{ padding: 10, textAlign: 'left' }}>Permissions</th>
-                <th style={{ padding: 10, textAlign: 'left' }}>Actions</th>
+                <th style={{ padding: '14px 16px', textAlign: 'left', fontWeight: 600, color: 'var(--text-dark)' }}>Name</th>
+                <th style={{ padding: '14px 16px', textAlign: 'left', fontWeight: 600, color: 'var(--text-dark)' }}>Email</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 600, color: 'var(--text-dark)' }}>Status</th>
+                <th style={{ padding: '14px 16px', textAlign: 'left', fontWeight: 600, color: 'var(--text-dark)' }}>Permissions</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', fontWeight: 600, color: 'var(--text-dark)' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -690,27 +758,29 @@ function GuardianManagement() {
                 const permKeys = Object.keys(g.permissions || {}).filter(k => g.permissions[k]);
                 return (
                   <tr key={g.id} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={{ padding: 10 }}>{g.name || '—'}</td>
-                    <td style={{ padding: 10 }}>{g.email || '—'}</td>
-                    <td style={{ padding: 10 }}>
-                      <span style={{ padding: '2px 8px', borderRadius: 12, fontSize: 12,
-                        background: g.status === 'active' ? '#e8eaf6' : '#ffebee', color: g.status === 'active' ? '#3f51b5' : '#c62828' }}>
+                    <td style={{ padding: '14px 16px' }}>{g.name || '—'}</td>
+                    <td style={{ padding: '14px 16px' }}>{g.email || '—'}</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                      <span style={{ padding: '4px 12px', borderRadius: 20, fontSize: '.78rem', fontWeight: 600,
+                        background: g.status === 'active' ? '#e8f5e9' : '#fde8e8', color: g.status === 'active' ? '#27ae60' : '#c0392b' }}>
                         {g.status}
                       </span>
                     </td>
-                    <td style={{ padding: 10, fontSize: 13 }}>{permKeys.length} permissions</td>
-                    <td style={{ padding: 10 }}>
-                      <button onClick={() => window.gmOpenPermModal(g)} className="btn btn-secondary" style={{ marginRight: 6 }}>Edit</button>
-                      <button onClick={() => window.gmOpenTransferModal(g)} className="btn btn-border" style={{ marginRight: 6 }}>Transfer</button>
-                      <button onClick={() => {
-                        if (confirm('Revoke this guardian?')) {
-                          const revokeHdrs = token ? { Authorization: `Bearer ${token}` } : {};
-                          fetch(`/api/v2/guardians/children/${selectedChild}/guardians/${g.id}/revoke`, {
-                            method: 'DELETE',
-                            headers: revokeHdrs,
-                          }).then(() => setLinkedGuardians(lg => lg.filter(l => l.id !== g.id)));
-                        }
-                      }} className="btn btn-border">Revoke</button>
+                    <td style={{ padding: '14px 16px' }}>{permKeys.length} permissions</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <button onClick={() => window.gmOpenPermModal(g)} className="btn btn-secondary" style={{ padding: '.5rem 1rem', fontSize: '.82rem' }}>Edit</button>
+                        <button onClick={() => window.gmOpenTransferModal(g)} className="btn btn-border" style={{ padding: '.5rem 1rem', fontSize: '.82rem' }}>Transfer</button>
+                        <button onClick={() => {
+                          if (confirm('Revoke this guardian?')) {
+                            const revokeHdrs = token ? { Authorization: `Bearer ${token}` } : {};
+                            fetch(`/api/v2/guardians/children/${selectedChild}/guardians/${g.id}/revoke`, {
+                              method: 'DELETE',
+                              headers: revokeHdrs,
+                            }).then(() => setLinkedGuardians(lg => lg.filter(l => l.id !== g.id)));
+                          }
+                        }} className="btn btn-border" style={{ padding: '.5rem 1rem', fontSize: '.82rem' }}>Revoke</button>
+                      </div>
                     </td>
                   </tr>
                 );
