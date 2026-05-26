@@ -1,12 +1,22 @@
 /* ==================== GUARDIAN MANAGEMENT STYLES ==================== */
 
-/* --- Page Header --- */
+/* --- Page Background --- */
+body {
+    background: #f8f4f1 !important;
+}
+
+/* --- Navbar height override for this page --- */
+.top-nav {
+    height: 96px;
+}
+
+/* --- Hero Card Header (matches dashboard child-card) --- */
 .gm-header {
     background: white;
-    padding: 2rem;
-    border-radius: 15px;
+    border-radius: 24px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    padding: 48px 40px;
     margin-bottom: 32px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -14,91 +24,103 @@
     flex-wrap: wrap;
 }
 
-.gm-header h1 {
-    font-size: 1.75rem;
-    margin-bottom: 0.25rem;
-    color: var(--text-dark);
+.gm-header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
-.gm-header p {
-    color: var(--text-light);
-    font-size: 0.95rem;
+.gm-header-left h1 {
+    font-size: 52px;
+    font-weight: 700;
+    color: #2f3e2f;
+    margin: 0;
+    line-height: 1.1;
+}
+
+.gm-header-left p {
+    font-size: 18px;
+    color: #6b7967;
+    margin: 0;
 }
 
 .gm-header-right {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 8px;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
 }
 
-.gm-loading-text {
-    color: var(--text-light);
-    font-size: 0.9rem;
-}
-
-.gm-child-select {
-    padding: 0.7rem 1rem;
-    border-radius: 10px;
-    border: 2px solid var(--border);
-    font-size: 0.95rem;
+/* --- Action Buttons (matches dashboard button styles) --- */
+.gm-btn-primary {
+    background: #7fa27f;
+    color: white;
+    border-radius: 14px;
+    padding: 14px 28px;
     font-weight: 600;
-    min-width: 220px;
-    background: white;
-    font-family: inherit;
+    border: none;
+    height: 56px;
+    font-size: 1rem;
     cursor: pointer;
-}
-
-.gm-child-info {
+    text-decoration: none;
     display: inline-flex;
     align-items: center;
-    gap: 12px;
-    background: var(--bg-primary);
-    border: 2px solid var(--border);
-    border-radius: 10px;
-    padding: 0.6rem 1rem;
+    font-family: inherit;
+    transition: all 0.3s ease;
 }
 
-.gm-avatar-img {
-    width: 36px;
-    height: 36px;
-    object-fit: cover;
-    border-radius: 50%;
+.gm-btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(127, 162, 127, 0.3);
 }
 
-.gm-avatar-fallback {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background: #F4D89F;
-    display: flex;
+.gm-btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.gm-btn-secondary {
+    background: white;
+    border: 2px solid #7fa27f;
+    color: #5f7f5f;
+    border-radius: 14px;
+    padding: 14px 28px;
+    height: 56px;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
-    font-size: 16px;
+    font-family: inherit;
+    transition: all 0.3s ease;
 }
 
-.gm-child-info .info-text {
-    text-align: left;
+.gm-btn-secondary:hover {
+    background: var(--bg-primary);
 }
 
-.gm-child-name {
-    font-weight: 700;
-    font-size: 0.9rem;
+.gm-btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* --- Dropdown (styled to match dashboard) --- */
+.gm-child-select {
+    height: 60px;
+    min-width: 300px;
+    padding: 0 20px;
+    border: 2px solid #d8cfc0;
+    border-radius: 14px;
+    background: white;
+    font-size: 18px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    outline: none;
     color: var(--text-dark);
-}
-
-.gm-child-age {
-    font-size: 0.78rem;
-    color: var(--text-light);
-}
-
-.gm-child-badge {
-    font-size: 0.78rem;
-    color: var(--text-light);
-    background: var(--accent);
-    border-radius: 6px;
-    padding: 4px 10px;
-    display: inline-block;
 }
 
 /* --- Cards --- */
@@ -328,17 +350,24 @@
     .gm-header {
         flex-direction: column;
         align-items: flex-start;
+        padding: 32px 24px;
+    }
+    .gm-header-left h1 {
+        font-size: 36px;
     }
     .gm-header-right {
-        align-items: flex-start;
         width: 100%;
+        flex-direction: column;
+        align-items: stretch;
     }
     .gm-child-select {
         width: 100%;
         min-width: unset;
     }
-    .gm-child-info {
+    .gm-btn-primary,
+    .gm-btn-secondary {
         width: 100%;
+        justify-content: center;
     }
     .gm-card {
         padding: 20px;

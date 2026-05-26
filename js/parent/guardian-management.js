@@ -385,20 +385,17 @@ function GuardianManagement() {
 
   return (
     <div>
-      {/* ===== Page Header: title + child selector ===== */}
+      {/* ===== Hero Card Header (matches dashboard child-card) ===== */}
       <div className="gm-header">
-        <div>
+        <div className="gm-header-left">
           <h1>Guardian Management</h1>
           <p>Manage guardians linked to selected child.</p>
         </div>
         <div className="gm-header-right">
-          {childrenLoading ? (
-            <span className="gm-loading-text">⏳ Loading children...</span>
-          ) : children.length > 1 ? (
+          {children.length > 1 && (
             <select
               value={selectedChild}
               onChange={(e) => setSelectedChild(e.target.value)}
-              disabled={childrenLoading}
               className="gm-child-select"
             >
               {children.map((c) => (
@@ -407,34 +404,14 @@ function GuardianManagement() {
                 </option>
               ))}
             </select>
-          ) : selectedChildInfo ? (
-            <div className="gm-child-info">
-              {selectedChildInfo.profileIcon && selectedChildInfo.profileIcon !== 'child1' &&
-               !selectedChildInfo.profileIcon.startsWith('http') ? (
-                <img
-                  src={window.location.origin + selectedChildInfo.profileIcon}
-                  alt=""
-                  className="gm-avatar-img"
-                  onError={(e) => { e.target.style.display = 'none'; }}
-                />
-              ) : (
-                <div className="gm-avatar-fallback">👶</div>
-              )}
-              <div className="info-text">
-                <div className="gm-child-name">
-                  {selectedChildInfo.firstName} {selectedChildInfo.lastName}
-                </div>
-                {selectedChildInfo.dateOfBirth && (
-                  <div className="gm-child-age">
-                    Age {Math.max(0, Math.round((Date.now() - new Date(selectedChildInfo.dateOfBirth.split('T')[0])) / 31557600000))} yrs
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : null}
-          <div className="gm-child-badge">
-            Guardians shown below are tied to this child
-          </div>
+          )}
+          <button className="gm-btn-primary"
+            onClick={() => window.location.href = '/parent/profile.html'}>
+            Edit Profile
+          </button>
+          <button className="gm-btn-secondary" disabled>
+            Manage Guardians
+          </button>
         </div>
       </div>
 
