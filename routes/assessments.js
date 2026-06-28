@@ -64,6 +64,50 @@ function normalizeAnswers(answers) {
   }));
 }
 
+function parseNextAssessmentDate(value) {
+  if (value == null || String(value).trim() === '') return { value: null };
+
+  const raw = String(value).trim();
+  const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  let parsed;
+
+  if (dateOnly) {
+    const year = Number(dateOnly[1]);
+    const month = Number(dateOnly[2]);
+    const day = Number(dateOnly[3]);
+    parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
+
+    if (
+      parsed.getFullYear() !== year ||
+      parsed.getMonth() !== month - 1 ||
+      parsed.getDate() !== day
+    ) {
+      return { error: 'Next assessment date is invalid.' };
+    }
+  } else {
+    parsed = new Date(raw);
+  }
+
+  if (Number.isNaN(parsed.getTime())) {
+    return { error: 'Next assessment date is invalid.' };
+  }
+
+  if (dateOnly) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const candidate = new Date(parsed);
+    candidate.setHours(0, 0, 0, 0);
+
+    if (candidate < today) {
+      return { error: 'Next assessment date cannot be in the past.' };
+    }
+  } else if (parsed < new Date()) {
+    return { error: 'Next assessment date cannot be in the past.' };
+  }
+
+  return { value: parsed };
+}
+
 async function buildHistoryForChild(childId) {
   const assessments = await Assessment.find({ childId }).sort({ startedAt: -1 }).lean();
   const assessmentIds = assessments.map((a) => a._id);
@@ -81,6 +125,8 @@ async function buildHistoryForChild(childId) {
       completedAt: a.completedAt,
       diagnosis: a.diagnosis || null,
       recommendations: a.recommendations || null,
+      nextAssessmentDate: a.nextAssessmentDate || null,
+      nextAssessmentReason: a.nextAssessmentReason || null,
       communicationScore: r?.communicationScore ?? null,
       socialScore: r?.socialScore ?? null,
       cognitiveScore: r?.cognitiveScore ?? null,
@@ -396,6 +442,8 @@ router.get('/pedia-patients', authMiddleware, async (req, res) => {
         assessmentId: latestAssessment ? String(latestAssessment._id) : null,
         diagnosis: latestAssessment?.diagnosis || null,
         recommendations: latestAssessment?.recommendations || null,
+        nextAssessmentDate: latestAssessment?.nextAssessmentDate || null,
+        nextAssessmentReason: latestAssessment?.nextAssessmentReason || null,
       });
     }
 
@@ -505,8 +553,13 @@ router.post('/diagnose/:childId', authMiddleware, async (req, res) => {
       return res.status(403).json({ error: 'Pediatricians only.' });
     }
 
-    const { diagnosis, recommendations } = req.body;
+    const { diagnosis, recommendations, nextAssessmentDate, nextAssessmentReason } = req.body;
     if (!diagnosis) return res.status(400).json({ error: 'Diagnosis is required.' });
+
+    const parsedNextAssessmentDate = parseNextAssessmentDate(nextAssessmentDate);
+    if (parsedNextAssessmentDate.error) {
+      return res.status(400).json({ error: parsedNextAssessmentDate.error });
+    }
 
     // Load the child so we can update the correct assessment and notify the parent.
     const child = await Child.findById(req.params.childId).lean();
@@ -518,6 +571,8 @@ router.post('/diagnose/:childId', authMiddleware, async (req, res) => {
     // Save the diagnosis on the assessment so the Results page can display it later.
     latest.diagnosis = diagnosis;
     latest.recommendations = recommendations || null;
+    latest.nextAssessmentDate = parsedNextAssessmentDate.value;
+    latest.nextAssessmentReason = nextAssessmentReason ? String(nextAssessmentReason).trim() : null;
     latest.reviewedByPediatrician = req.user.userId;
     latest.reviewedAt = new Date();
     await latest.save();
@@ -531,7 +586,11 @@ router.post('/diagnose/:childId', authMiddleware, async (req, res) => {
       diagnosis,
     });
 
-    res.json({ success: true });
+    res.json({
+      success: true,
+      nextAssessmentDate: latest.nextAssessmentDate || null,
+      nextAssessmentReason: latest.nextAssessmentReason || null,
+    });
   } catch (err) {
     console.error('assessments diagnose error:', err);
     res.status(500).json({ error: err.message });
@@ -570,6 +629,8 @@ router.get('/:assessmentId/results', authMiddleware, async (req, res) => {
         // These fields come from the Assessment document, not AssessmentResult.
         diagnosis: assessment?.diagnosis || null,
         recommendations: assessment?.recommendations || null,
+        nextAssessmentDate: assessment?.nextAssessmentDate || null,
+        nextAssessmentReason: assessment?.nextAssessmentReason || null,
         reviewedByPediatrician: assessment?.reviewedByPediatrician ? String(assessment.reviewedByPediatrician) : null,
         reviewedAt: assessment?.reviewedAt || null,
       },
@@ -820,6 +881,8 @@ router.get('/:childId/review-answers', authMiddleware, async (req, res) => {
         completedAt: assessment.completedAt,
         diagnosis: assessment.diagnosis || null,
         recommendations: assessment.recommendations || null,
+        nextAssessmentDate: assessment.nextAssessmentDate || null,
+        nextAssessmentReason: assessment.nextAssessmentReason || null,
       },
       overallScore: result ? result.overallScore : null,
       overallRisk: result

@@ -18,6 +18,22 @@ const appointmentSchema = new mongoose.Schema(
     reason: { type: String, trim: true, default: null },
     notes: { type: String, trim: true, default: null },
     location: { type: String, trim: true, default: null },
+    totalAmount: { type: Number, min: 0, default: 0 },
+    amountPaid: { type: Number, min: 0, default: 0 },
+    balanceDue: { type: Number, min: 0, default: 0 },
+    paymentStatus: {
+      type: String,
+      enum: ['Unpaid', 'Partially Paid', 'Paid', 'Cancelled'],
+      default: 'Unpaid',
+      index: true,
+    },
+    nextInstallmentDate: { type: Date, default: null },
+    paymentOverride: {
+      isOverridden: { type: Boolean, default: false },
+      overriddenBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      reason: { type: String, trim: true, default: null },
+      overriddenAt: { type: Date, default: null },
+    },
     // Helps the 30-minute slot migration keep older appointment times recoverable.
     legacySlotIssue: { type: Boolean, default: false, index: true },
     slotMigration: {

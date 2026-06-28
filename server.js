@@ -151,6 +151,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/assessments', require('./routes/assessments'));
 app.use('/api/recommendations', require('./routes/recommendations'));
 app.use('/api/appointments', require('./routes/appointments'));
+app.use('/api/payments', require('./routes/payments'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/videos', require('./routes/videos'));
 app.use('/api/chat', require('./routes/chat'));

@@ -138,6 +138,43 @@
     align-items: end;
 }
 
+#diagnosisModal {
+    overflow-y: auto;
+}
+
+#diagnosisModal .diagnosis-modal-content {
+    width: min(92vw, 620px);
+    max-height: min(90vh, 760px);
+    max-height: min(90dvh, 760px);
+}
+
+#diagnosisModal .notifications-header {
+    flex: 0 0 auto;
+    background: white;
+}
+
+#diagnosisModal .diagnosis-modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-color: var(--primary-light) transparent;
+    scrollbar-width: thin;
+}
+
+#diagnosisModal .diagnosis-modal-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+#diagnosisModal .diagnosis-modal-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#diagnosisModal .diagnosis-modal-body::-webkit-scrollbar-thumb {
+    background: var(--primary-light);
+    border-radius: 999px;
+}
+
 @media(max-width:768px) {
     .filter-grid {
         grid-template-columns: 1fr;
@@ -145,5 +182,28 @@
     
     .score-grid {
         grid-template-columns: repeat(2, 1fr);
+    }
+
+    #diagnosisModal {
+        padding: 0.75rem;
+    }
+
+    #diagnosisModal .diagnosis-modal-content {
+        width: 100%;
+        max-height: calc(100vh - 1.5rem);
+        max-height: calc(100dvh - 1.5rem);
+    }
+
+    #diagnosisModal .diagnosis-modal-body {
+        padding: 1.25rem !important;
+    }
+
+    #diagnosisModal .diagnosis-modal-actions {
+        flex-direction: column;
+        gap: 0.75rem !important;
+    }
+
+    #diagnosisModal .diagnosis-modal-actions .btn {
+        width: 100%;
     }
 }

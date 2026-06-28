@@ -74,6 +74,20 @@ function fmtDate(dateString) {
     return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
+function fmtScheduledDate(dateString) {
+    if (!dateString) return '';
+    const match = String(dateString).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+        const [, year, month, day] = match;
+        return new Date(Number(year), Number(month) - 1, Number(day)).toLocaleDateString('en-US', {
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric'
+        });
+    }
+    return fmtDate(dateString);
+}
+
 function switchChild(childId) {
     setParentContext(childId, null);
     window.location.href = `/parent/results.html?childId=${encodeURIComponent(childId)}`;
@@ -171,6 +185,11 @@ function openDiagnosisModal() {
         <div class="diagnosis-section">
             <h4>Recommendation for Parent</h4>
             <p>${escapeHtml(latestReview.recommendation || latestReview.recommendations || 'No parent recommendation provided yet.')}</p>
+        </div>
+        <div class="diagnosis-section">
+            <h4>Next Assessment</h4>
+            <p>${latestReview.nextAssessmentDate ? `Your next scheduled assessment is on: ${escapeHtml(fmtScheduledDate(latestReview.nextAssessmentDate))}` : 'No follow-up scheduled yet.'}</p>
+            ${latestReview.nextAssessmentReason ? `<p>${escapeHtml(latestReview.nextAssessmentReason)}</p>` : ''}
         </div>`;
 
     modal.style.display = 'flex';
@@ -204,7 +223,9 @@ async function loadResults() {
             diagnosis: r.diagnosis || '',
             recommendation: r.parentRecommendation || r.pediatricianRecommendation || r.recommendations || '',
             reviewedAt: r.reviewedAt || null,
-            reviewedByPediatrician: r.reviewedByPediatrician || null
+            reviewedByPediatrician: r.reviewedByPediatrician || null,
+            nextAssessmentDate: r.nextAssessmentDate || null,
+            nextAssessmentReason: r.nextAssessmentReason || null
         };
         setParentContext(activeChild.id, r.assessmentId);
 
@@ -232,8 +253,18 @@ async function loadResults() {
                 </div>
                 <button class="diagnosis-btn" onclick="openDiagnosisModal()">View Diagnosis</button>
             </div>` : '';
+        const followUpBanner = `
+            <div class="follow-up-banner ${r.nextAssessmentDate ? '' : 'follow-up-empty'}">
+                <div>
+                    <h3>Next Assessment</h3>
+                    <p>${r.nextAssessmentDate ? `Your next scheduled assessment is on: <strong>${escapeHtml(fmtScheduledDate(r.nextAssessmentDate))}</strong>` : 'No follow-up scheduled yet.'}</p>
+                    ${r.nextAssessmentReason ? `<p class="follow-up-note">${escapeHtml(r.nextAssessmentReason)}</p>` : ''}
+                </div>
+                <button class="follow-up-action" onclick="window.location.href='/parent/appointments.html'">Appointments</button>
+            </div>`;
 
         document.getElementById('resultsContent').innerHTML = `
+            ${followUpBanner}
             ${reviewBanner}
 
             <div class="results-overview-grid" style="background:white;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);display:grid;grid-template-columns:200px 1fr;gap:3rem;align-items:center;">

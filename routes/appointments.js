@@ -16,9 +16,17 @@ const Child = require('../models/Child');
 const Assessment = require('../models/Assessment');
 const AssessmentResult = require('../models/AssessmentResult');
 const SystemSetting = require('../models/SystemSetting');
+const paymentService = require('../services/paymentService');
 const sse = require('../sse');
 
 const router = express.Router();
+
+function clinicStaffOrAdmin(req, res, next) {
+  if (!['pediatrician', 'secretary', 'admin'].includes(req.user?.role)) {
+    return res.status(403).json({ error: 'Pediatricians, secretaries, and admins only.' });
+  }
+  next();
+}
 
 // Optional Gmail sender. If EMAIL_USER / EMAIL_PASS are not set, the app still works.
 const transporter = nodemailer.createTransport({
@@ -1076,6 +1084,12 @@ async function hydrateAppointment(appointmentDoc) {
     notes: appointmentDoc.notes,
     location: appointmentDoc.location,
     status: appointmentDoc.status,
+    paymentStatus: appointmentDoc.paymentStatus || 'Unpaid',
+    totalAmount: appointmentDoc.totalAmount || 0,
+    amountPaid: appointmentDoc.amountPaid || 0,
+    balanceDue: appointmentDoc.balanceDue || 0,
+    nextInstallmentDate: appointmentDoc.nextInstallmentDate || null,
+    requiredDownPayment: paymentService.calculateRequiredDownPayment(appointmentDoc.totalAmount || 0),
     createdAt: appointmentDoc.createdAt,
     childFirstName: child?.firstName || null,
     childLastName: child?.lastName || null,
@@ -1280,31 +1294,63 @@ router.post('/create', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: availability.message });
     }
 
+    const totalAmount = Number(req.body?.payment?.totalAmount ?? pediatrician.consultationFee ?? 0);
+    const paymentPlan = paymentService.buildInitialPaymentPlan({
+      payment: req.body?.payment || null,
+      totalAmount,
+      actorRole: req.user.role,
+      allowAdminOverride: Boolean(req.body?.overridePayment),
+    });
+
     const normalizedRequestedTime = availability.requestedTime || normalizeTimeString(appointmentTime) || appointmentTime;
     const apptDate = normalizeUtcDate(appointmentDate);
-    const appt = await Appointment.create({
-      childId: child._id,
-      parentId: parent._id,
-      pediatricianId: pediatrician._id,
-      appointmentDate: apptDate,
-      appointmentTime: normalizedRequestedTime,
-      reason: reason || 'General checkup',
-      notes: notes || null,
-      location: location || pediatrician.clinicAddress || pediatrician.clinicName || pediatrician.institution || null,
-      status: 'pending',
+    let appt = null;
+    let initialPayment = null;
+
+    await paymentService.withPaymentTransaction(async (session) => {
+      const created = await Appointment.create([{
+        childId: child._id,
+        parentId: parent._id,
+        pediatricianId: pediatrician._id,
+        appointmentDate: apptDate,
+        appointmentTime: normalizedRequestedTime,
+        reason: reason || 'General checkup',
+        notes: notes || null,
+        location: location || pediatrician.clinicAddress || pediatrician.clinicName || pediatrician.institution || null,
+        status: paymentPlan.appointmentStatus,
+        ...paymentPlan.paymentFields,
+      }], { session });
+
+      appt = created[0];
+      initialPayment = await paymentService.createInitialPayment({
+        appointment: appt,
+        plan: paymentPlan,
+        actor: req.user,
+        session,
+      });
     });
 
     const childName = `${child.firstName} ${child.lastName}`;
     const parentName = `${parent.firstName} ${parent.lastName}`;
     const dateStr = fmtDate(appt.appointmentDate);
     const timeStr = fmtTime(appt.appointmentTime);
+    const appointmentLabel = appt.status === 'approved' ? 'Confirmed Appointment' : 'Appointment Request';
 
     await pushNotification(
       pediatrician._id,
-      'New Appointment Request',
-      `${parentName} requested an appointment for ${childName} on ${dateStr} at ${timeStr}.`,
+      `New ${appointmentLabel}`,
+      `${parentName} ${appt.status === 'approved' ? 'booked and paid for' : 'requested'} an appointment for ${childName} on ${dateStr} at ${timeStr}.`,
       'appointment'
     );
+
+    if (appt.status === 'approved') {
+      await pushNotification(
+        parent._id,
+        'Appointment Confirmed',
+        `Your appointment for ${childName} on ${dateStr} at ${timeStr} is confirmed. Balance due: ${appt.balanceDue || 0}.`,
+        'appointment'
+      );
+    }
 
     await sendEmail(
       pediatrician.email,
@@ -1317,15 +1363,30 @@ router.post('/create', authMiddleware, async (req, res) => {
          <p><strong>Date:</strong> ${dateStr}</p>
          <p><strong>Time:</strong> ${timeStr}</p>
          <p><strong>Reason:</strong> ${reason || 'General checkup'}</p>
+         <p><strong>Payment:</strong> ${appt.paymentStatus} - paid ${appt.amountPaid || 0} of ${appt.totalAmount || 0}</p>
          ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
        </div>
        <p>Log in to KinderCura to approve or decline this request.</p>`
     );
 
-    res.status(201).json({ success: true, appointmentId: appt.id });
+    res.status(201).json({
+      success: true,
+      appointmentId: appt.id,
+      status: appt.status,
+      payment: paymentService.serializePayment(initialPayment),
+      paymentSummary: {
+        paymentStatus: appt.paymentStatus,
+        totalAmount: appt.totalAmount || 0,
+        amountPaid: appt.amountPaid || 0,
+        balanceDue: appt.balanceDue || 0,
+        nextInstallmentDate: appt.nextInstallmentDate || null,
+        requiredDownPayment: paymentPlan.requiredDownPayment,
+      },
+    });
   } catch (err) {
     console.error('appointments create error:', err);
-    res.status(500).json({ error: err.message });
+    const status = /payment|amount|fee|installment|minimum|required/i.test(err.message) ? 400 : 500;
+    res.status(status).json({ error: err.message });
   }
 });
 
@@ -1337,8 +1398,14 @@ async function updateAppointmentStatusById({ appointmentId, status, notes = null
   const appt = await Appointment.findOne({ id: Number(appointmentId) });
   if (!appt) throw new Error('Appointment not found.');
 
+  if (status === 'approved') {
+    const paymentCheck = paymentService.canConfirmAppointment(appt);
+    if (!paymentCheck.ok) throw new Error(paymentCheck.message);
+  }
+
   if (notes != null && String(notes).trim()) appt.notes = String(notes).trim();
   appt.status = status;
+  if (['cancelled', 'rejected'].includes(status)) appt.paymentStatus = 'Cancelled';
   await appt.save();
 
   sse.broadcast('analytics:update', { type: 'appointment', action: 'update', status });
@@ -1389,7 +1456,7 @@ async function updateAppointmentStatusById({ appointmentId, status, notes = null
 
 // PUT /api/appointments/:appointmentId/status
 // Important: both pediatrician and their linked secretary can update appointment status.
-router.put('/:appointmentId/status', authMiddleware, secretaryOrPediatrician, async (req, res) => {
+router.put('/:appointmentId/status', authMiddleware, clinicStaffOrAdmin, async (req, res) => {
   try {
     const { status, notes } = req.body;
     const valid = ['approved', 'rejected', 'completed', 'cancelled'];
@@ -1398,11 +1465,11 @@ router.put('/:appointmentId/status', authMiddleware, secretaryOrPediatrician, as
     }
 
     // Resolve which pediatrician ID to check against.
-    const pedId = req.user.role === 'secretary'
-      ? req.user.linkedPediatricianId
-      : req.user.userId;
+    const pedId = req.user.role === 'admin'
+      ? null
+      : (req.user.role === 'secretary' ? req.user.linkedPediatricianId : req.user.userId);
 
-    if (!pedId) {
+    if (req.user.role !== 'admin' && !pedId) {
       return res.status(403).json({ error: 'Assistant/Secretary account is not linked to a pediatrician yet.' });
     }
 
@@ -1419,8 +1486,27 @@ router.put('/:appointmentId/status', authMiddleware, secretaryOrPediatrician, as
       secretaryFullName = `${secUser?.firstName || ''} ${secUser?.lastName || ''}`.trim() || 'Secretary';
     }
 
-    const appt = await Appointment.findOne({ id: Number(req.params.appointmentId), pediatricianId: pedId });
+    const apptQuery = { id: Number(req.params.appointmentId) };
+    if (pedId) apptQuery.pediatricianId = pedId;
+    const appt = await Appointment.findOne(apptQuery);
     if (!appt) return res.status(404).json({ error: 'Appointment not found.' });
+
+    if (status === 'approved') {
+      const paymentCheck = paymentService.canConfirmAppointment(appt);
+      const wantsOverride = Boolean(req.body.overridePayment);
+      if (!paymentCheck.ok) {
+        if (req.user.role !== 'admin' || !wantsOverride) {
+          return res.status(400).json({ error: paymentCheck.message });
+        }
+        appt.paymentOverride = {
+          isOverridden: true,
+          overriddenBy: req.user.userId,
+          reason: String(req.body.overrideReason || 'Admin payment override').trim(),
+          overriddenAt: new Date(),
+        };
+        await appt.save();
+      }
+    }
 
     // Pass secretaryName and pediatricianId so the helper can notify the pedia
     // when a secretary (not the pedia themselves) performs this action.
@@ -1429,12 +1515,13 @@ router.put('/:appointmentId/status', authMiddleware, secretaryOrPediatrician, as
       status,
       notes,
       secretaryName: secretaryFullName,       // null when the pedia acts directly
-      pediatricianId: pedId,                   // used to route the pedia notification
+      pediatricianId: pedId || appt.pediatricianId, // used to route the pedia notification
     });
     res.json({ success: true });
   } catch (err) {
     console.error('appointments status error:', err);
-    res.status(500).json({ error: err.message });
+    const statusCode = /payment|minimum|paid/i.test(err.message) ? 400 : 500;
+    res.status(statusCode).json({ error: err.message });
   }
 });
 

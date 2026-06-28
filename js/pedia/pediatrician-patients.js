@@ -99,6 +99,66 @@ const API = window.location.origin + '/api';
         return map[status] || { label: status || 'Monitoring', color: '#7c3aed', bg: '#ede9fe' };
     }
 
+    function toDateInputValue(value) {
+        if (!value) return '';
+        if (value instanceof Date) {
+            const y = value.getFullYear();
+            const m = String(value.getMonth() + 1).padStart(2, '0');
+            const d = String(value.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        const match = String(value).match(/^(\d{4}-\d{2}-\d{2})/);
+        if (match) return match[1];
+
+        const parsed = new Date(value);
+        if (isNaN(parsed.getTime())) return '';
+        return toDateInputValue(parsed);
+    }
+
+    function formatDisplayDate(value) {
+        const dateValue = toDateInputValue(value);
+        if (!dateValue) return 'No follow-up scheduled yet';
+        const [year, month, day] = dateValue.split('-').map(Number);
+        return new Date(year, month - 1, day).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    }
+
+    function getSuggestedNextAssessmentDate(score) {
+        if (score == null || score === '') return '';
+        const numericScore = Number(score);
+        if (Number.isNaN(numericScore)) return '';
+
+        const date = new Date();
+        date.setHours(0, 0, 0, 0);
+
+        if (numericScore < 40) {
+            date.setDate(date.getDate() + 14);
+        } else if (numericScore <= 60) {
+            date.setMonth(date.getMonth() + 1);
+        } else {
+            date.setMonth(date.getMonth() + 3);
+        }
+
+        return toDateInputValue(date);
+    }
+
+    function isPastDateInput(value) {
+        if (!value) return false;
+        return value < toDateInputValue(new Date());
+    }
+
+    function inlineArg(value) {
+        return escapeHtml(String(value ?? '')
+            .replace(/\\/g, '\\\\')
+            .replace(/'/g, "\\'")
+            .replace(/\r/g, '\\r')
+            .replace(/\n/g, '\\n'));
+    }
+
     // ── Render ────────────────────────────────────────────────────────────────
     let _allPatients = [];
 
@@ -149,9 +209,14 @@ const API = window.location.origin + '/api';
             const latestProgressDate = p.latestProgressAt
                 ? new Date(p.latestProgressAt).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'})
                 : 'recently';
-            const diagEsc    = (p.diagnosis||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-            const recEsc     = (p.recommendations||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-            const childNameEsc = `${p.childFirstName} ${p.childLastName}`.replace(/'/g,"\\'");
+            const nextDateInput = toDateInputValue(p.nextAssessmentDate);
+            const nextDateDisplay = nextDateInput ? formatDisplayDate(nextDateInput) : null;
+            const overallScore = p.overallScore != null ? Math.round(p.overallScore) : '';
+            const diagEsc    = inlineArg(p.diagnosis || '');
+            const recEsc     = inlineArg(p.recommendations || '');
+            const nextDateEsc = inlineArg(nextDateInput);
+            const nextReasonEsc = inlineArg(p.nextAssessmentReason || '');
+            const childNameEsc = inlineArg(`${p.childFirstName} ${p.childLastName}`);
 
             return `
             <div class="patient-card"
@@ -207,6 +272,12 @@ const API = window.location.origin + '/api';
                         <p style="font-size:0.8rem;font-weight:600;color:var(--primary);margin-bottom:0.3rem;">Your Diagnosis:</p>
                         <p style="font-size:0.85rem;color:var(--text-dark);">${p.diagnosis}</p>
                     </div>` : ''}
+                    ${nextDateDisplay ? `
+                    <div style="margin-top:1rem;padding:0.85rem 1rem;background:white;border-radius:8px;border-left:3px solid #0891b2;">
+                        <p style="font-size:0.8rem;font-weight:700;color:#0e7490;margin:0 0 0.3rem;">Next Assessment</p>
+                        <p style="font-size:0.85rem;color:var(--text-dark);margin:0;">${nextDateDisplay}</p>
+                        ${p.nextAssessmentReason ? `<p style="font-size:0.8rem;color:var(--text-light);margin:0.35rem 0 0;line-height:1.45;">${escapeHtml(p.nextAssessmentReason)}</p>` : ''}
+                    </div>` : ''}
                     ${p.progressNotesCount ? `
                     <div style="margin-top:1rem;padding:0.9rem 1rem;background:white;border-radius:8px;border-left:3px solid ${progressMeta.color};">
                         <div style="display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap;">
@@ -231,7 +302,7 @@ const API = window.location.origin + '/api';
                         style="flex:1;min-width:130px;padding:0.7rem;border-color:#0891b2;color:#0891b2;">
                         <img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Review Pre-Assessment
                     </button>
-                    <button class="btn btn-secondary" onclick="openDiagnosis('${p.childId}','${childNameEsc}','${diagEsc}','${recEsc}')"
+                    <button class="btn btn-secondary" onclick="openDiagnosis('${p.childId}','${childNameEsc}','${diagEsc}','${recEsc}','${nextDateEsc}','${nextReasonEsc}','${overallScore}')"
                         style="flex:1;min-width:130px;padding:0.7rem;">
                         ${hasDiag ? '<img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">️ Edit Diagnosis' : '<img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Provide Diagnosis'}
                     </button>
@@ -302,24 +373,54 @@ const API = window.location.origin + '/api';
         window.open(`/parent/results.html?assessmentId=${assessmentId}&childId=${childId}`, '_blank');
     }
 
-    function openDiagnosis(childId, childName, existingDiag, existingRec) {
+    function openDiagnosis(childId, childName, existingDiag, existingRec, existingNextDate, existingNextReason, overallScore) {
         window.currentChildId = childId;
+        window.currentDiagnosisScore = overallScore;
         document.getElementById('diagModalTitle').textContent =
             existingDiag ? `Edit Diagnosis — ${childName}` : `Provide Diagnosis — ${childName}`;
         document.getElementById('diagPatientName').textContent = `Patient: ${childName}`;
         document.getElementById('diagnosis-text').value = existingDiag || '';
         document.getElementById('recommendations-text').value = existingRec || '';
+
+        const dateInput = document.getElementById('next-assessment-date');
+        const reasonInput = document.getElementById('next-assessment-reason');
+        const suggestionText = document.getElementById('next-assessment-suggestion');
+        const savedDate = toDateInputValue(existingNextDate);
+        const suggestedDate = getSuggestedNextAssessmentDate(overallScore);
+
+        if (dateInput) {
+            dateInput.min = toDateInputValue(new Date());
+            dateInput.value = savedDate || suggestedDate || '';
+        }
+        if (reasonInput) reasonInput.value = existingNextReason || '';
+        if (suggestionText) {
+            suggestionText.textContent = suggestedDate
+                ? `Suggested from latest score${overallScore !== '' ? ` (${Math.round(Number(overallScore))}%)` : ''}: ${formatDisplayDate(suggestedDate)}.`
+                : 'No score-based suggestion available yet.';
+        }
+
         document.getElementById('diagnosisModal').style.display = 'flex';
     }
 
     async function submitDiagnosis() {
         const diagnosis = document.getElementById('diagnosis-text').value.trim();
         const recommendations = document.getElementById('recommendations-text').value.trim();
+        const nextAssessmentDate = document.getElementById('next-assessment-date').value;
+        const nextAssessmentReason = document.getElementById('next-assessment-reason').value.trim();
         if (!diagnosis) { alert('Please enter a diagnosis.'); return; }
+        if (isPastDateInput(nextAssessmentDate)) {
+            alert('Next assessment date cannot be in the past.');
+            return;
+        }
         try {
             await apiFetch(`/assessments/diagnose/${window.currentChildId}`, {
                 method: 'POST',
-                body: JSON.stringify({ diagnosis, recommendations })
+                body: JSON.stringify({
+                    diagnosis,
+                    recommendations,
+                    nextAssessmentDate: nextAssessmentDate || null,
+                    nextAssessmentReason: nextAssessmentReason || null
+                })
             });
             alert('✅ Diagnosis submitted! The parent will be notified.');
             closeDiagnosisModal();
@@ -333,6 +434,11 @@ const API = window.location.origin + '/api';
         document.getElementById('diagnosisModal').style.display = 'none';
         document.getElementById('diagnosis-text').value = '';
         document.getElementById('recommendations-text').value = '';
+        document.getElementById('next-assessment-date').value = '';
+        document.getElementById('next-assessment-reason').value = '';
+        document.getElementById('next-assessment-suggestion').textContent = '';
+        window.currentChildId = null;
+        window.currentDiagnosisScore = null;
     }
 
     function exportPatients() {
@@ -375,6 +481,7 @@ const API = window.location.origin + '/api';
                     </div>
                     <p style="font-size:0.85rem;color:var(--primary);margin:0.35rem 0 0;">${score}</p>
                     ${a.diagnosis ? `<p style="font-size:0.82rem;color:var(--text-dark);margin:0.5rem 0 0;line-height:1.45;"><strong>Diagnosis:</strong> ${a.diagnosis}</p>` : ''}
+                    ${a.nextAssessmentDate ? `<p style="font-size:0.82rem;color:var(--text-dark);margin:0.5rem 0 0;line-height:1.45;"><strong>Next assessment:</strong> ${formatDisplayDate(a.nextAssessmentDate)}${a.nextAssessmentReason ? ` - ${escapeHtml(a.nextAssessmentReason)}` : ''}</p>` : ''}
                 </div>`;
         }).join('');
     }
@@ -797,6 +904,7 @@ function toggleProfileMenu() {
                 <h4><img src="/icons/clipboard.png" alt="" style="width:1em;height:1em;object-fit:contain;vertical-align:-0.15em;"> Current Diagnosis</h4>
                 <p class="ra-diag-text">${a.diagnosis}</p>
                 ${a.recommendations ? `<p class="ra-diag-rec"><strong>Recommendations:</strong> ${a.recommendations}</p>` : ''}
+                ${a.nextAssessmentDate ? `<p class="ra-diag-rec"><strong>Next assessment:</strong> ${formatDisplayDate(a.nextAssessmentDate)}${a.nextAssessmentReason ? ` - ${escapeHtml(a.nextAssessmentReason)}` : ''}</p>` : ''}
             </div>`;
         }
 

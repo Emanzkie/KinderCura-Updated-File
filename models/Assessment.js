@@ -25,6 +25,8 @@ const assessmentSchema = new mongoose.Schema(
     // Pediatrician-written note shown on the parent Results page.
     diagnosis: { type: String, default: null },
     recommendations: { type: String, default: null },
+    nextAssessmentDate: { type: Date, default: null },
+    nextAssessmentReason: { type: String, default: null, trim: true },
 
     // These two fields are required by the Results page banner.
     // They must exist in the schema so Mongoose will actually persist them.
