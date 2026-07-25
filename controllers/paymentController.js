@@ -57,6 +57,7 @@ async function hydrateBalanceAppointment(appointment) {
     appointmentTime: appointment.appointmentTime,
     reason: appointment.reason,
     status: appointment.status,
+    paymentType: appointment.paymentType || null,
     paymentStatus: appointment.paymentStatus,
     totalAmount: appointment.totalAmount || 0,
     amountPaid: appointment.amountPaid || 0,

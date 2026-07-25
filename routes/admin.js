@@ -18,9 +18,11 @@ const Child = require('../models/Child');
 const Assessment = require('../models/Assessment');
 const AssessmentResult = require('../models/AssessmentResult');
 const Appointment = require('../models/Appointment');
+const Payment = require('../models/Payment');
 const TrainingDataset = require('../models/TrainingDataset');
 const Notification = require('../models/Notification');
 const SystemSetting = require('../models/SystemSetting');
+const paymentService = require('../services/paymentService');
 const sse = require('../sse');
 
 function fmtDate(d) {
@@ -28,6 +30,37 @@ function fmtDate(d) {
   const x = new Date(d);
   if (Number.isNaN(x.getTime())) return '—';
   return x.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function fullName(doc) {
+  if (!doc) return null;
+  return `${doc.firstName || ''} ${doc.lastName || ''}`.trim() || null;
+}
+
+async function hydratePaymentAppointment(appointment) {
+  const [child, parent, pediatrician] = await Promise.all([
+    appointment.childId ? Child.findById(appointment.childId).lean() : null,
+    appointment.parentId ? User.findById(appointment.parentId).lean() : null,
+    appointment.pediatricianId ? User.findById(appointment.pediatricianId).lean() : null,
+  ]);
+
+  return {
+    id: appointment.id,
+    appointmentId: appointment.id,
+    childName: fullName(child) || 'Unknown Child',
+    parentName: fullName(parent) || 'Unknown Parent',
+    pediatricianName: fullName(pediatrician),
+    appointmentDate: appointment.appointmentDate,
+    appointmentTime: appointment.appointmentTime,
+    status: appointment.status,
+    paymentType: appointment.paymentType || null,
+    paymentStatus: appointment.paymentStatus || 'Unpaid',
+    totalAmount: appointment.totalAmount || 0,
+    amountPaid: appointment.amountPaid || 0,
+    balanceDue: appointment.balanceDue || 0,
+    requiredDownPayment: paymentService.calculateRequiredDownPayment(appointment.totalAmount || 0),
+    createdAt: appointment.createdAt,
+  };
 }
 
 function ensureDatasetDir() {
@@ -165,6 +198,7 @@ router.get('/dashboard', authMiddleware, adminOnly, async (req, res) => {
       latestUsers,
       latestAppointments,
       latestAssessments,
+      paymentAppointments,
       trainingDatasetCount,
       trainedDatasetCount,
     ] = await Promise.all([
@@ -180,11 +214,16 @@ router.get('/dashboard', authMiddleware, adminOnly, async (req, res) => {
       User.find().sort({ createdAt: -1 }).limit(3).lean(),
       Appointment.find().sort({ createdAt: -1 }).limit(3).lean(),
       Assessment.find().sort({ createdAt: -1 }).limit(3).lean(),
+      Appointment.find().sort({ createdAt: -1 }).limit(12).lean(),
       TrainingDataset.countDocuments(),
       TrainingDataset.countDocuments({ status: 'trained' }),
     ]);
 
     const recentTraining = await TrainingDataset.find().sort({ updatedAt: -1 }).limit(2).lean();
+    const recentPaymentAppointments = [];
+    for (const appointment of paymentAppointments) {
+      recentPaymentAppointments.push(await hydratePaymentAppointment(appointment));
+    }
 
     const recentActivity = [
       ...latestUsers.map((u) => ({
@@ -226,6 +265,7 @@ router.get('/dashboard', authMiddleware, adminOnly, async (req, res) => {
       trainingDatasetCount,
       trainedDatasetCount,
       recentActivity,
+      paymentAppointments: recentPaymentAppointments,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -334,6 +374,9 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
       apptStatsResult,
       roleStatsResult,
       datasetStatsResult,
+      financialTotalsResult,
+      paymentTypeBreakdownResult,
+      paymentStatusStatsResult,
       summaryResult,
       activeUsers,
       activeAppointments,
@@ -388,6 +431,35 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
           },
         },
       ]),
+      Appointment.aggregate([
+        { $match: { status: { $nin: ['cancelled', 'rejected'] } } },
+        {
+          $group: {
+            _id: null,
+            totalBilled: { $sum: { $ifNull: ['$totalAmount', 0] } },
+            totalOutstanding: { $sum: { $ifNull: ['$balanceDue', 0] } },
+          },
+        },
+      ]),
+      Payment.aggregate([
+        {
+          $group: {
+            _id: '$paymentType',
+            count: { $sum: 1 },
+            totalCollected: { $sum: { $ifNull: ['$amount', { $ifNull: ['$amountPaid', 0] }] } },
+          },
+        },
+        { $sort: { totalCollected: -1 } },
+      ]),
+      Appointment.aggregate([
+        {
+          $group: {
+            _id: '$paymentStatus',
+            count: { $sum: 1 },
+            totalOutstanding: { $sum: { $ifNull: ['$balanceDue', 0] } },
+          },
+        },
+      ]),
       Promise.all([
         User.countDocuments(),
         Child.countDocuments(),
@@ -438,6 +510,27 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
       count: d.count,
     }));
 
+    const financialTotals = financialTotalsResult[0] || {};
+    const paymentTypeBreakdown = paymentTypeBreakdownResult.map((item) => ({
+      paymentType: item._id || 'unknown',
+      paymentTypeLabel: paymentService.paymentTypeLabel(item._id) || 'Unknown',
+      count: item.count,
+      totalCollected: paymentService.roundCurrency(item.totalCollected || 0),
+    }));
+    const paymentStatusBreakdown = paymentStatusStatsResult.map((item) => ({
+      paymentStatus: item._id || 'Unpaid',
+      count: item.count,
+      totalOutstanding: paymentService.roundCurrency(item.totalOutstanding || 0),
+    }));
+    const totalCollected = paymentTypeBreakdown.reduce((sum, item) => sum + (item.totalCollected || 0), 0);
+    const financialSummary = {
+      totalCollected: paymentService.roundCurrency(totalCollected),
+      totalOutstanding: paymentService.roundCurrency(financialTotals.totalOutstanding || 0),
+      totalBilled: paymentService.roundCurrency(financialTotals.totalBilled || 0),
+      paymentTypeBreakdown,
+      paymentStatusBreakdown,
+    };
+
     const [totalUsers, totalChildren, totalAssessments, completedScreenings, inProgressScreenings, totalAppointments] = summaryResult;
 
     const summaryTotals = {
@@ -458,6 +551,7 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
       appointmentStats,
       roleBreakdown,
       datasetStats,
+      financialSummary,
       summaryTotals,
     });
   } catch (err) {

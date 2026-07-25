@@ -1084,6 +1084,7 @@ async function hydrateAppointment(appointmentDoc) {
     notes: appointmentDoc.notes,
     location: appointmentDoc.location,
     status: appointmentDoc.status,
+    paymentType: appointmentDoc.paymentType || null,
     paymentStatus: appointmentDoc.paymentStatus || 'Unpaid',
     totalAmount: appointmentDoc.totalAmount || 0,
     amountPaid: appointmentDoc.amountPaid || 0,
@@ -1294,7 +1295,7 @@ router.post('/create', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: availability.message });
     }
 
-    const totalAmount = Number(req.body?.payment?.totalAmount ?? pediatrician.consultationFee ?? 0);
+    const totalAmount = Number(pediatrician.consultationFee ?? 0);
     const paymentPlan = paymentService.buildInitialPaymentPlan({
       payment: req.body?.payment || null,
       totalAmount,
@@ -1375,6 +1376,7 @@ router.post('/create', authMiddleware, async (req, res) => {
       status: appt.status,
       payment: paymentService.serializePayment(initialPayment),
       paymentSummary: {
+        paymentType: appt.paymentType || null,
         paymentStatus: appt.paymentStatus,
         totalAmount: appt.totalAmount || 0,
         amountPaid: appt.amountPaid || 0,

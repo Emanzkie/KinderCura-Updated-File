@@ -7,9 +7,185 @@ let allPediatricians = [];
 let suggestionContext = null;
 let latestAvailability = null;
 let appointmentSlotSettings = { enforceThirtyMinuteSlots: true, slotMinutes: 30 };
+let availabilityBlocksBooking = false;
 
 function useThirtyMinuteSlots() {
     return Boolean(appointmentSlotSettings?.enforceThirtyMinuteSlots);
+}
+
+function roundMoney(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.round(n * 100) / 100;
+}
+
+function formatMoney(value) {
+    return `\u20b1${roundMoney(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function getSelectedPediatrician() {
+    const selectedId = document.getElementById('pedSelect')?.value;
+    return allPediatricians.find((p) => p.id === selectedId) || null;
+}
+
+function getConsultationFee(ped = getSelectedPediatrician()) {
+    const fee = Number(ped?.consultationFee);
+    return Number.isFinite(fee) && fee > 0 ? roundMoney(fee) : 0;
+}
+
+function getMinimumPayment(totalAmount) {
+    return roundMoney(totalAmount * 0.3);
+}
+
+function paymentTypeLabel(value) {
+    return {
+        full_payment: 'Full Payment',
+        down_payment: 'Down Payment',
+        partial_installment: 'Partial Payment',
+        balance_payment: 'Balance Payment',
+    }[value] || value || 'Payment';
+}
+
+function getPaymentReference() {
+    return String(document.getElementById('paymentReference')?.value || '').trim();
+}
+
+function getSelectedPaymentMethod() {
+    return document.getElementById('paymentMethod')?.value || 'cash';
+}
+
+function getPaymentValidation() {
+    const ped = getSelectedPediatrician();
+    const paymentType = document.getElementById('paymentType')?.value || 'full_payment';
+    const paymentMethod = getSelectedPaymentMethod();
+    const paymentReference = getPaymentReference();
+    const amountInput = document.getElementById('paymentAmount');
+    const totalAmount = getConsultationFee(ped);
+    const minimumAmount = getMinimumPayment(totalAmount);
+    let amount = roundMoney(Number(amountInput?.value));
+
+    if (!ped) {
+        return { valid: false, message: 'Select a pediatrician to calculate payment.', paymentType, totalAmount, minimumAmount, amount: 0, balanceDue: 0, paymentMethod, paymentReference };
+    }
+
+    if (totalAmount <= 0) {
+        return { valid: false, message: 'This pediatrician has no consultation fee configured.', paymentType, totalAmount, minimumAmount, amount: 0, balanceDue: 0 };
+    }
+
+    if (paymentType === 'full_payment') {
+        amount = totalAmount;
+    } else if (paymentType === 'down_payment') {
+        amount = minimumAmount;
+    } else if (!Number.isFinite(amount) || amount <= 0) {
+        return { valid: false, message: 'Enter a valid partial payment amount.', paymentType, totalAmount, minimumAmount, amount: 0, balanceDue: totalAmount };
+    }
+
+    if (paymentMethod !== 'cash' && !paymentReference) {
+        return { valid: false, message: 'Enter a reference number for the selected payment method.', paymentType, totalAmount, minimumAmount, amount, balanceDue: roundMoney(totalAmount - amount), paymentMethod, paymentReference };
+    }
+
+    if (amount < minimumAmount) {
+        return { valid: false, message: `Minimum payment is ${formatMoney(minimumAmount)}.`, paymentType, totalAmount, minimumAmount, amount, balanceDue: roundMoney(totalAmount - amount), paymentMethod, paymentReference };
+    }
+
+    if (amount > totalAmount) {
+        return { valid: false, message: `Payment cannot exceed ${formatMoney(totalAmount)}.`, paymentType, totalAmount, minimumAmount, amount, balanceDue: 0, paymentMethod, paymentReference };
+    }
+
+    return {
+        valid: true,
+        message: `${paymentTypeLabel(paymentType)} ready.`,
+        paymentType,
+        totalAmount,
+        minimumAmount,
+        amount,
+        balanceDue: roundMoney(totalAmount - amount),
+        paymentMethod,
+        paymentReference,
+    };
+}
+
+function updatePaymentReferenceField() {
+    const method = getSelectedPaymentMethod();
+    const group = document.getElementById('paymentReferenceGroup');
+    const referenceInput = document.getElementById('paymentReference');
+    if (!group || !referenceInput) return;
+
+    if (method && method !== 'cash') {
+        group.style.display = 'block';
+        referenceInput.required = true;
+        referenceInput.parentElement?.querySelector('label')?.classList?.add('required');
+    } else {
+        group.style.display = 'none';
+        referenceInput.required = false;
+        referenceInput.value = '';
+        referenceInput.parentElement?.querySelector('label')?.classList?.remove('required');
+    }
+}
+
+function updatePaymentStep() {
+    const paymentTypeEl = document.getElementById('paymentType');
+    const amountInput = document.getElementById('paymentAmount');
+    const amountLabel = document.getElementById('paymentAmountLabel');
+    const amountHelp = document.getElementById('paymentAmountHelp');
+    const intro = document.getElementById('paymentIntro');
+    const badge = document.getElementById('paymentValidityBadge');
+    const totalEl = document.getElementById('paymentTotalDue');
+    const minimumEl = document.getElementById('paymentMinimumDue');
+    const balanceEl = document.getElementById('paymentBalanceDue');
+    if (!paymentTypeEl || !amountInput) return;
+
+    const ped = getSelectedPediatrician();
+    const totalAmount = getConsultationFee(ped);
+    const minimumAmount = getMinimumPayment(totalAmount);
+    const paymentType = paymentTypeEl.value;
+
+    amountInput.min = minimumAmount ? String(minimumAmount) : '0';
+    amountInput.max = totalAmount ? String(totalAmount) : '';
+    amountInput.step = '0.01';
+
+    if (paymentType === 'full_payment') {
+        amountInput.value = totalAmount ? String(totalAmount) : '';
+        amountInput.readOnly = true;
+        amountLabel.textContent = 'Full Payment Amount';
+        amountHelp.textContent = totalAmount ? 'Full payment is the pediatrician consultation fee.' : 'Choose a pediatrician to calculate the fee.';
+    } else if (paymentType === 'down_payment') {
+        amountInput.value = minimumAmount ? String(minimumAmount) : '';
+        amountInput.readOnly = true;
+        amountLabel.textContent = 'Down Payment Amount';
+        amountHelp.textContent = totalAmount ? 'Down payment is calculated automatically as 30% of the consultation fee.' : 'Choose a pediatrician to calculate the down payment.';
+    } else {
+        amountInput.readOnly = false;
+        amountLabel.textContent = 'Partial Payment Amount';
+        amountInput.placeholder = minimumAmount ? `${formatMoney(minimumAmount)} to ${formatMoney(totalAmount)}` : 'Enter partial amount';
+        amountHelp.textContent = totalAmount ? `Enter any amount from ${formatMoney(minimumAmount)} to ${formatMoney(totalAmount)}.` : 'Choose a pediatrician to calculate the allowed range.';
+        if (!amountInput.value) {
+            amountInput.value = minimumAmount ? String(minimumAmount) : '';
+        }
+        if (amountInput.value && Number(amountInput.value) > totalAmount) amountInput.value = String(totalAmount);
+    }
+
+    const validation = getPaymentValidation();
+    if (intro) intro.textContent = ped ? `Consultation fee for Dr. ${ped.firstName} ${ped.lastName}: ${formatMoney(totalAmount)}.` : 'Select a pediatrician to calculate the consultation fee.';
+    if (totalEl) totalEl.textContent = formatMoney(totalAmount);
+    if (minimumEl) minimumEl.textContent = formatMoney(minimumAmount);
+    if (balanceEl) balanceEl.textContent = formatMoney(validation.valid ? validation.balanceDue : Math.max(totalAmount - (validation.amount || 0), 0));
+    if (amountHelp && !validation.valid && ped && paymentType === 'partial_installment') amountHelp.textContent = validation.message;
+    if (badge) {
+        badge.textContent = validation.valid ? 'Ready' : 'Required';
+        badge.className = `payment-badge ${validation.valid ? 'payment-paid' : 'payment-unpaid'}`;
+    }
+
+    refreshBookButtonState();
+}
+
+function refreshBookButtonState(forceDisabled = false) {
+    const btn = document.getElementById('bookBtn');
+    if (!btn) return;
+    const disabled = forceDisabled || availabilityBlocksBooking || !getPaymentValidation().valid;
+    btn.disabled = disabled;
+    btn.style.opacity = disabled ? '0.7' : '1';
+    btn.style.cursor = disabled ? 'not-allowed' : 'pointer';
 }
 
 function getTimeField() {
@@ -268,6 +444,7 @@ function renderSelectedPediatrician() {
         panel.style.display = 'none';
         panel.innerHTML = '';
         renderAvailabilityStatus(null);
+        updatePaymentStep();
         return;
     }
 
@@ -295,6 +472,7 @@ function renderSelectedPediatrician() {
         ${hasConfiguredAvailability(ped) ? '' : '<div class="mini" style="margin-top:.55rem;color:#c0392b;font-weight:600;">This pediatrician must finish saving availability in Settings before parents can book.</div>'}`;
 
     applyTimeFieldConstraints();
+    updatePaymentStep();
     checkSelectedAvailability();
 }
 
@@ -362,10 +540,8 @@ function renderRecommendedPediatricians() {
 
 // Important: setBookButtonState disables the Book button when the selected slot is unavailable.
 function setBookButtonState(disabled) {
-    const btn = document.getElementById('bookBtn');
-    btn.disabled = disabled;
-    btn.style.opacity = disabled ? '0.7' : '1';
-    btn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+    availabilityBlocksBooking = Boolean(disabled);
+    refreshBookButtonState();
 }
 
 // Override the legacy free-entry availability renderer with a slot-aware version.
@@ -523,6 +699,8 @@ async function bookAppointment() {
     const appointmentTime = getSelectedAppointmentTime();
     const reason = document.getElementById('apptReason').value;
     const notes = document.getElementById('apptNotes').value.trim();
+    const paymentMethod = getSelectedPaymentMethod();
+    const paymentReference = getPaymentReference();
 
     if (!childId) { errEl.textContent = 'Please select a child.'; errEl.style.display = 'block'; return; }
     if (!pediatricianId) { errEl.textContent = 'Please select a pediatrician.'; errEl.style.display = 'block'; return; }
@@ -543,19 +721,52 @@ async function bookAppointment() {
         return;
     }
 
-    btn.textContent = 'Booking…';
+    const paymentCheck = getPaymentValidation();
+    if (!paymentCheck.valid) {
+        errEl.textContent = paymentCheck.message;
+        errEl.style.display = 'block';
+        updatePaymentStep();
+        return;
+    }
+
+    if (paymentMethod !== 'cash' && !paymentReference) {
+        errEl.textContent = 'Enter a reference number for the selected payment method.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    btn.textContent = 'Recording payment...';
     btn.disabled = true;
     try {
-        await apiFetch('/appointments/create', {
+        const data = await apiFetch('/appointments/create', {
             method: 'POST',
-            body: JSON.stringify({ childId, pediatricianId, appointmentDate, appointmentTime, reason, notes })
+            body: JSON.stringify({
+                childId,
+                pediatricianId,
+                appointmentDate,
+                appointmentTime,
+                reason,
+                notes,
+                payment: {
+                    paymentType: paymentCheck.paymentType,
+                    amount: paymentCheck.amount,
+                    totalAmount: paymentCheck.totalAmount,
+                    paymentMethod,
+                    referenceNumber: paymentReference || null,
+                },
+            })
         });
         localStorage.removeItem('kc_prefPediaId');
+        const receipt = data?.payment?.referenceNumber ? ` Receipt: ${data.payment.referenceNumber}.` : '';
+        sucEl.textContent = `${data?.status === 'approved' ? 'Appointment confirmed' : 'Appointment booked'} and ${formatMoney(paymentCheck.amount)} payment recorded.${receipt}`;
         sucEl.style.display = 'block';
         document.getElementById('apptDate').value = '';
         clearSelectedAppointmentTime();
         applyTimeFieldConstraints();
         document.getElementById('apptNotes').value = '';
+        document.getElementById('paymentType').value = 'full_payment';
+        document.getElementById('paymentAmount').value = '';
+        updatePaymentStep();
         renderAvailabilityStatus(null);
         await loadAppointments();
     } catch (e) {
@@ -563,7 +774,7 @@ async function bookAppointment() {
         errEl.style.display = 'block';
     } finally {
         btn.textContent = 'Book Appointment';
-        btn.disabled = false;
+        refreshBookButtonState();
     }
 }
 
@@ -578,6 +789,85 @@ async function loadAppointments() {
     } catch {
         document.getElementById('activeList').innerHTML = '<p style="color:var(--text-light);text-align:center;">Could not load appointments.</p>';
     }
+}
+
+function paymentBadgeClass(status) {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'paid') return 'payment-paid';
+    if (normalized.includes('down')) return 'payment-down';
+    if (normalized.includes('partial')) return 'payment-partial';
+    if (normalized.includes('cancel')) return 'payment-cancelled';
+    return 'payment-unpaid';
+}
+
+function renderPaymentSummary(a) {
+    const total = Number(a.totalAmount || a.consultationFee || 0);
+    if (!total) return '';
+    const paymentStatus = a.paymentStatus || 'Unpaid';
+    const paid = Number(a.amountPaid || 0);
+    const balance = Number(a.balanceDue || Math.max(total - paid, 0));
+    return `
+        <div class="appointment-payment-summary">
+            <span class="payment-badge ${paymentBadgeClass(paymentStatus)}">${escapeHtml(paymentStatus)}</span>
+            ${a.paymentType ? `<span class="mini">${escapeHtml(a.paymentType)} plan</span>` : ''}
+            <span class="mini">Paid ${formatMoney(paid)} of ${formatMoney(total)}</span>
+            <span class="mini">Balance ${formatMoney(balance)}</span>
+            <button type="button" class="payment-link-btn" onclick="viewReceipt(${a.id})">Receipt</button>
+        </div>`;
+}
+
+async function viewReceipt(appointmentId) {
+    const modal = document.getElementById('receiptModal');
+    const body = document.getElementById('receiptBody');
+    if (!modal || !body) return;
+    modal.style.display = 'flex';
+    body.innerHTML = '<p class="mini">Loading receipt...</p>';
+
+    try {
+        const data = await apiFetch(`/payments/appointments/${appointmentId}`);
+        const appointment = data.appointment || {};
+        const payments = Array.isArray(data.payments) ? data.payments : [];
+        body.innerHTML = renderReceiptDetails(appointment, payments);
+    } catch (err) {
+        body.innerHTML = `<p class="error-msg" style="display:block;margin:0;">${escapeHtml(err.message || 'Could not load receipt.')}</p>`;
+    }
+}
+
+function renderReceiptDetails(appointment, payments) {
+    const total = Number(appointment.totalAmount || 0);
+    const paid = Number(appointment.amountPaid || 0);
+    const balance = Number(appointment.balanceDue || 0);
+    const paymentRows = payments.length
+        ? payments.map((payment) => `
+            <div class="receipt-payment-row">
+                <div>
+                    <strong>${escapeHtml(payment.paymentTypeLabel || paymentTypeLabel(payment.paymentType))}</strong>
+                    <p class="mini">${escapeHtml(payment.referenceNumber || payment.receiptNumber || 'No reference')} · ${formatDateTime(payment.transactionDate)}</p>
+                </div>
+                <div style="text-align:right;">
+                    <strong>${formatMoney(payment.amount ?? payment.amountPaid ?? 0)}</strong>
+                    <p class="mini">Balance ${formatMoney(payment.balanceDue || 0)}</p>
+                </div>
+            </div>`).join('')
+        : '<p class="mini">No payment transactions recorded yet.</p>';
+
+    return `
+        <div class="receipt-summary">
+            <div><span>Total Due</span><strong>${formatMoney(total)}</strong></div>
+            <div><span>Amount Paid</span><strong>${formatMoney(paid)}</strong></div>
+            <div><span>Remaining Balance</span><strong>${formatMoney(balance)}</strong></div>
+        </div>
+        <div class="receipt-meta">
+            <p><strong>Appointment:</strong> #${appointment.id || appointment.appointmentId || '-'}</p>
+            <p><strong>Patient:</strong> ${escapeHtml(appointment.childName || 'Unknown Child')}</p>
+            <p><strong>Payment Status:</strong> ${escapeHtml(appointment.paymentStatus || 'Unpaid')}</p>
+        </div>
+        <div class="receipt-payments">${paymentRows}</div>`;
+}
+
+function closeReceiptModal() {
+    const modal = document.getElementById('receiptModal');
+    if (modal) modal.style.display = 'none';
 }
 
 function renderActive(list) {
@@ -637,6 +927,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('childSelect').required = true;
     document.getElementById('pedSelect').required = true;
     document.getElementById('apptDate').addEventListener('change', checkSelectedAvailability);
+    document.getElementById('paymentType')?.addEventListener('change', updatePaymentStep);
+    document.getElementById('paymentAmount')?.addEventListener('input', updatePaymentStep);
+    document.getElementById('paymentMethod')?.addEventListener('change', () => {
+        updatePaymentReferenceField();
+        updatePaymentStep();
+    });
+    document.getElementById('paymentReference')?.addEventListener('input', updatePaymentStep);
+    document.getElementById('pedSelect')?.addEventListener('change', renderSelectedPediatrician);
+    updatePaymentReferenceField();
     await resolveContext();
     await loadAppointments();
 });

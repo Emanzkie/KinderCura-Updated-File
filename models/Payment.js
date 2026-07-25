@@ -9,7 +9,7 @@ const paymentSchema = new mongoose.Schema(
     id: { type: Number, unique: true, index: true },
     appointmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Appointment', required: true, index: true },
     appointmentNumericId: { type: Number, required: true, index: true },
-    amountPaid: { type: Number, required: true, min: 0 },
+    amount: { type: Number, required: true, min: 0, alias: 'amountPaid' },
     totalAmount: { type: Number, required: true, min: 0 },
     paymentType: {
       type: String,
@@ -20,14 +20,14 @@ const paymentSchema = new mongoose.Schema(
     balanceDue: { type: Number, required: true, min: 0 },
     status: {
       type: String,
-      enum: ['Pending', 'Partially Paid', 'Paid', 'Cancelled'],
+      enum: ['Pending', 'Down Payment', 'Partially Paid', 'Paid', 'Cancelled'],
       required: true,
       index: true,
     },
     transactionDate: { type: Date, default: Date.now, index: true },
     paymentMethod: {
       type: String,
-      enum: ['simulated_gateway', 'card', 'gcash', 'bank_transfer', 'cash', 'check'],
+      enum: ['simulated_gateway', 'card', 'gcash', 'maya', 'bank_transfer', 'cash', 'check'],
       required: true,
     },
     nextInstallmentDate: { type: Date, default: null },
