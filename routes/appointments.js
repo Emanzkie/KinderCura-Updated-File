@@ -1116,6 +1116,7 @@ async function hydrateAppointment(appointmentDoc) {
     pedPhoto: pediatrician?.profileIcon || null,
     parentPhoto: parent?.profileIcon || null,
     hasVideo: Boolean(appointmentDoc.hasVideo),
+    pendingPaymentMode: appointmentDoc.pendingPaymentMode || null,
   };
 }
 
@@ -1296,12 +1297,20 @@ router.post('/create', authMiddleware, async (req, res) => {
     }
 
     const totalAmount = Number(pediatrician.consultationFee ?? 0);
-    const paymentPlan = paymentService.buildInitialPaymentPlan({
-      payment: req.body?.payment || null,
-      totalAmount,
-      actorRole: req.user.role,
-      allowAdminOverride: Boolean(req.body?.overridePayment),
-    });
+
+    // Parents always use the deferred payment flow: book now, pay on a separate page.
+    // Secretaries and admins booking on behalf of patients use the legacy upfront-payment path.
+    let paymentPlan;
+    if (req.user.role === 'parent') {
+      paymentPlan = paymentService.buildDeferredPaymentPlan({ totalAmount });
+    } else {
+      paymentPlan = paymentService.buildInitialPaymentPlan({
+        payment: req.body?.payment || null,
+        totalAmount,
+        actorRole: req.user.role,
+        allowAdminOverride: Boolean(req.body?.overridePayment),
+      });
+    }
 
     const normalizedRequestedTime = availability.requestedTime || normalizeTimeString(appointmentTime) || appointmentTime;
     const apptDate = normalizeUtcDate(appointmentDate);
@@ -1319,16 +1328,19 @@ router.post('/create', authMiddleware, async (req, res) => {
         notes: notes || null,
         location: location || pediatrician.clinicAddress || pediatrician.clinicName || pediatrician.institution || null,
         status: paymentPlan.appointmentStatus,
+        pendingPaymentMode: null,
         ...paymentPlan.paymentFields,
       }], { session });
 
       appt = created[0];
-      initialPayment = await paymentService.createInitialPayment({
-        appointment: appt,
-        plan: paymentPlan,
-        actor: req.user,
-        session,
-      });
+      if (paymentPlan.shouldRecord) {
+        initialPayment = await paymentService.createInitialPayment({
+          appointment: appt,
+          plan: paymentPlan,
+          actor: req.user,
+          session,
+        });
+      }
     });
 
     const childName = `${child.firstName} ${child.lastName}`;
@@ -1374,6 +1386,7 @@ router.post('/create', authMiddleware, async (req, res) => {
       success: true,
       appointmentId: appt.id,
       status: appt.status,
+      redirectTo: req.user.role === 'parent' ? `/PARENT/payment.html?appointmentId=${appt.id}` : null,
       payment: paymentService.serializePayment(initialPayment),
       paymentSummary: {
         paymentType: appt.paymentType || null,

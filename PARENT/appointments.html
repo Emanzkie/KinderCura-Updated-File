@@ -104,58 +104,8 @@
                     <label class="form-label">Additional Notes</label>
                     <textarea id="apptNotes" class="form-input" style="resize:vertical;min-height:90px;line-height:1.4;" placeholder="Any specific concerns or questions…"></textarea>
                 </div>
-                <div id="paymentStep" class="payment-panel">
-                    <div class="payment-panel-header">
-                        <div>
-                            <h3>Payment</h3>
-                            <p class="mini" id="paymentIntro">Select a pediatrician to calculate the consultation fee.</p>
-                        </div>
-                        <span class="payment-badge payment-unpaid" id="paymentValidityBadge">Required</span>
-                    </div>
-                    <div class="payment-notice" id="paymentNotice">
-                        A payment of at least 30% of the consultation fee is required to secure this appointment.
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Payment Type</label>
-                        <select id="paymentType" class="form-input">
-                            <option value="full_payment">Full Payment</option>
-                            <option value="down_payment">Down Payment</option>
-                            <option value="partial_installment">Partial Payment</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Payment Method</label>
-                        <select id="paymentMethod" class="form-input">
-                            <option value="cash">Cash</option>
-                            <option value="gcash">GCash</option>
-                            <option value="maya">Maya</option>
-                            <option value="bank_transfer">Bank Transfer</option>
-                        </select>
-                    </div>
-                    <div class="form-group" id="paymentReferenceGroup" style="display:none;">
-                        <label class="form-label">Reference Number</label>
-                        <input type="text" id="paymentReference" class="form-input" placeholder="Enter transaction reference number">
-                        <p id="paymentReferenceHelp" class="mini" style="margin:.45rem 0 0;">Enter the payment reference from your selected method.</p>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" id="paymentAmountLabel">Payment Amount</label>
-                        <input type="number" id="paymentAmount" class="form-input" min="0" step="0.01" inputmode="decimal">
-                        <p id="paymentAmountHelp" class="mini" style="margin:.45rem 0 0;">Choose a pediatrician to calculate the required amount.</p>
-                    </div>
-                    <div class="payment-summary-grid">
-                        <div>
-                            <span>Total Due</span>
-                            <strong id="paymentTotalDue">&#8369;0.00</strong>
-                        </div>
-                        <div>
-                            <span>Minimum Required</span>
-                            <strong id="paymentMinimumDue">&#8369;0.00</strong>
-                        </div>
-                        <div>
-                            <span>Balance After Payment</span>
-                            <strong id="paymentBalanceDue">&#8369;0.00</strong>
-                        </div>
-                    </div>
+                <div class="payment-notice" style="background:#f0f7f0;border-left:4px solid #6B8E6F;border-radius:6px;padding:0.85rem 1rem;margin-bottom:0.5rem;">
+                    After booking, you will be redirected to choose your payment method (pay at clinic or e-wallet).
                 </div>
                 <button class="btn btn-primary" style="width:100%;padding:0.9rem;" id="bookBtn" onclick="bookAppointment()">Book Appointment</button>
             </div>
@@ -175,17 +125,6 @@
     </div>
 </div>
 
-<div class="payment-modal" id="receiptModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="receiptTitle">
-    <div class="payment-modal-content" role="document">
-        <div class="payment-modal-header">
-            <h3 id="receiptTitle">Payment Receipt</h3>
-            <button type="button" class="payment-close" onclick="closeReceiptModal()" aria-label="Close receipt">&times;</button>
-        </div>
-        <div id="receiptBody" class="payment-modal-body">
-            <p class="mini">Loading receipt...</p>
-        </div>
-    </div>
-</div>
 
 <div class="notification-modal notifications-modal" id="notificationsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle">
     <div class="notification-modal-content notifications-content" role="document">

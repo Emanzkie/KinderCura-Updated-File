@@ -419,6 +419,8 @@ router.get('/pedia-patients', authMiddleware, async (req, res) => {
       ]);
       const latestResult = latestAssessment ? await AssessmentResult.findOne({ assessmentId: latestAssessment._id }).lean() : null;
 
+      const paymentConfirmed = appt.paymentStatus === 'Paid' || Boolean(appt.paymentOverride?.isOverridden);
+
       patients.push({
         childId: child ? String(child._id) : null,
         childFirstName: child?.firstName || '',
@@ -433,6 +435,8 @@ router.get('/pedia-patients', authMiddleware, async (req, res) => {
         appointmentStatus: appt.status,
         appointmentDate: appt.appointmentDate,
         reason: appt.reason,
+        paymentStatus: appt.paymentStatus || 'Unpaid',
+        paymentConfirmed,
         communicationScore: latestResult?.communicationScore ?? null,
         socialScore: latestResult?.socialScore ?? null,
         cognitiveScore: latestResult?.cognitiveScore ?? null,

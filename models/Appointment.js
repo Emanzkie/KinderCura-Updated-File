@@ -29,9 +29,14 @@ const appointmentSchema = new mongoose.Schema(
     balanceDue: { type: Number, min: 0, default: 0 },
     paymentStatus: {
       type: String,
-      enum: ['Unpaid', 'Down Payment', 'Partially Paid', 'Paid', 'Cancelled'],
+      enum: ['Unpaid', 'Pending Payment', 'Payment Verification Pending', 'Down Payment', 'Partially Paid', 'Paid', 'Cancelled'],
       default: 'Unpaid',
       index: true,
+    },
+    pendingPaymentMode: {
+      type: String,
+      enum: ['walk_in', 'ewallet', null],
+      default: null,
     },
     nextInstallmentDate: { type: Date, default: null },
     paymentOverride: {

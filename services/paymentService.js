@@ -421,8 +421,27 @@ function serializePayment(payment) {
   };
 }
 
+function buildDeferredPaymentPlan({ totalAmount } = {}) {
+  const total = asAmount(totalAmount);
+  return {
+    shouldRecord: false,
+    canConfirm: false,
+    appointmentStatus: 'pending',
+    paymentFields: {
+      paymentType: null,
+      totalAmount: total,
+      amountPaid: 0,
+      balanceDue: total,
+      paymentStatus: 'Pending Payment',
+      nextInstallmentDate: null,
+    },
+    requiredDownPayment: calculateRequiredDownPayment(total),
+  };
+}
+
 module.exports = {
   DOWN_PAYMENT_RATE,
+  buildDeferredPaymentPlan,
   buildInitialPaymentPlan,
   buildPaymentSummary,
   calculateRequiredDownPayment,

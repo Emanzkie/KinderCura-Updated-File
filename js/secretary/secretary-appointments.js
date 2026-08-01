@@ -106,7 +106,11 @@
                 // Build action buttons based on the appointment's current status
                 let actions = '';
                 if (a.status === 'pending') {
+                    const walkInBtn = a.pendingPaymentMode === 'walk_in'
+                        ? `<button class="btn-approve" onclick="confirmWalkIn(${a.id})" style="background:#27ae60;">&#8369; Confirm Cash Payment</button>`
+                        : '';
                     actions = `
+                        ${walkInBtn}
                         <button class="btn-approve"    onclick="updateStatus(${a.id},'approved')">&#10003; Approve</button>
                         <button class="btn-reschedule" onclick="openReschedule(${a.id})"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reschedule</button>
                         <button class="btn-reject"     onclick="updateStatus(${a.id},'rejected')">&#215; Reject</button>`;
@@ -124,6 +128,7 @@
                                 <p class="mini"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${fmtDate(a.appointmentDate)} at ${fmtTime(a.appointmentTime)}</p>
                                 <p class="mini"><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.reason||'General checkup')}</p>
                                 ${a.notes ? `<p class="mini"><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.notes)}</p>` : ''}
+                                ${a.paymentStatus ? `<p class="mini" style="margin-top:0.3rem;">&#8369; Payment: <strong>${escapeHtml(a.paymentStatus)}</strong>${a.pendingPaymentMode === 'walk_in' ? ' — Walk-in' : a.pendingPaymentMode === 'ewallet' ? ' — E-Wallet' : ''}</p>` : ''}
                             </div>
                             <span class="badge ${a.status}">${a.status.charAt(0).toUpperCase()+a.status.slice(1)}</span>
                         </div>
@@ -146,6 +151,20 @@
                 await loadAppointments(); // refresh the list after the change
             } catch (e) {
                 alert('Could not update status: ' + e.message);
+            }
+        }
+
+        // ── Walk-in payment confirmation ──────────────────────────────────────
+        async function confirmWalkIn(appointmentId) {
+            if (!confirm('Confirm that this parent has paid in cash or via POS at the clinic counter?')) return;
+            try {
+                await apiFetch(`/payments/appointments/${appointmentId}/confirm-walkin`, {
+                    method: 'POST',
+                    body: JSON.stringify({ paymentMethod: 'cash' }),
+                });
+                await loadAppointments();
+            } catch (e) {
+                alert('Could not confirm payment: ' + e.message);
             }
         }
 

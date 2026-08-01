@@ -20,14 +20,14 @@ const paymentSchema = new mongoose.Schema(
     balanceDue: { type: Number, required: true, min: 0 },
     status: {
       type: String,
-      enum: ['Pending', 'Down Payment', 'Partially Paid', 'Paid', 'Cancelled'],
+      enum: ['Pending', 'Verification Pending', 'Down Payment', 'Partially Paid', 'Paid', 'Cancelled'],
       required: true,
       index: true,
     },
     transactionDate: { type: Date, default: Date.now, index: true },
     paymentMethod: {
       type: String,
-      enum: ['simulated_gateway', 'card', 'gcash', 'maya', 'bank_transfer', 'cash', 'check'],
+      enum: ['simulated_gateway', 'card', 'gcash', 'maya', 'bank_transfer', 'cash', 'check', 'ewallet'],
       required: true,
     },
     nextInstallmentDate: { type: Date, default: null },
@@ -35,6 +35,9 @@ const paymentSchema = new mongoose.Schema(
     recordedByRole: { type: String, trim: true, default: null },
     referenceNumber: { type: String, trim: true, default: null },
     notes: { type: String, trim: true, default: null },
+    proofImagePath: { type: String, trim: true, default: null },
+    verifiedAt: { type: Date, default: null },
+    verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true, collection: 'payments' }
 );

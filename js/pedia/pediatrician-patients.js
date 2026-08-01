@@ -294,8 +294,9 @@ const API = window.location.origin + '/api';
 
                 <!-- Actions -->
                 <div style="display:flex;gap:0.8rem;flex-wrap:wrap;">
-                    <button class="btn btn-primary" onclick="viewAssessment('${p.assessmentId||''}','${p.childId}','${childNameEsc}')"
-                        style="flex:1;min-width:130px;padding:0.7rem;">
+                    <button class="btn btn-primary" onclick="viewAssessment('${p.assessmentId||''}','${p.childId}','${childNameEsc}',${p.paymentConfirmed ? 'true' : 'false'})"
+                        style="flex:1;min-width:130px;padding:0.7rem;${!p.paymentConfirmed ? 'opacity:0.6;' : ''}"
+                        title="${!p.paymentConfirmed ? 'Payment must be confirmed before viewing assessment results' : 'View assessment results'}">
                         <img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> View Assessment
                     </button>
                     <button class="btn btn-secondary" onclick="openReviewAnswers('${p.childId}','${childNameEsc}')"
@@ -361,9 +362,13 @@ const API = window.location.origin + '/api';
 
 
     // ── Actions ───────────────────────────────────────────────────────────────
-    function viewAssessment(assessmentId, childId, childName) {
+    function viewAssessment(assessmentId, childId, childName, paymentConfirmed) {
         if (!assessmentId || assessmentId === 'undefined' || assessmentId === 'null') {
             alert('No completed assessment on file for this patient yet.');
+            return;
+        }
+        if (!paymentConfirmed) {
+            alert('Assessment results are only accessible after the patient\'s appointment payment has been confirmed.');
             return;
         }
         // Store assessment context and navigate to results page

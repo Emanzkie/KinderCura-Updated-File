@@ -131,6 +131,16 @@ app.get('/accept-invitation', (req, res) => {
 app.get('/parent/:page', (req, res) => res.sendFile(path.join(__dirname, 'PARENT', req.params.page)));
 app.get('/pedia/:page', (req, res) => res.sendFile(path.join(__dirname, 'PEDIA', req.params.page)));
 
+// Payment page — parent selects walk-in or e-wallet after booking
+app.get('/parent/payment', (req, res) => {
+  res.sendFile(path.join(__dirname, 'PARENT', 'payment.html'));
+});
+
+// Admin payment verification page — review e-wallet proofs
+app.get('/admin/payments', (req, res) => {
+  res.sendFile(path.join(__dirname, 'ADMIN', 'admin-payments.html'));
+});
+
 /* Explicit route for PRC Verification clean URL: /admin/prc-verification maps to ADMIN/admin-prc-verification.html */
 app.get('/admin/prc-verification', (req, res) => {
     res.sendFile(path.join(__dirname, 'ADMIN', 'admin-prc-verification.html'));
