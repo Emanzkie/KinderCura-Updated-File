@@ -138,6 +138,11 @@ const userSchema = new mongoose.Schema(
       manageBookings: { type: Boolean, default: true },
       rescheduleRequests: { type: Boolean, default: true },
       approveSchedules: { type: Boolean, default: true },
+      // managePayments — confirming cash/POS payments at the clinic counter.
+      // Deliberately defaults to false (unlike the scheduling flags above):
+      // this is a financial action and must be an explicit opt-in by the
+      // pediatrician, not something a new secretary account gets automatically.
+      managePayments: { type: Boolean, default: false },
     },
   },
   { timestamps: true }

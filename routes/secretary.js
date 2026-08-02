@@ -76,6 +76,7 @@ function defaultPermissions() {
     manageBookings:      true,   // can approve / reject booking requests
     rescheduleRequests:  true,   // can propose new dates/times
     approveSchedules:    true,   // can mark approved appointments as confirmed
+    managePayments:      false,  // can confirm cash/POS payments — must be explicitly enabled
   };
 }
 
@@ -454,6 +455,7 @@ router.put('/:id/permissions', authMiddleware, async (req, res) => {
       manageBookings,
       rescheduleRequests,
       approveSchedules,
+      managePayments,
     } = req.body;
 
     // Merge incoming permissions with existing ones; only update fields that were sent.
@@ -463,6 +465,7 @@ router.put('/:id/permissions', authMiddleware, async (req, res) => {
       manageBookings:     manageBookings     !== undefined ? Boolean(manageBookings)     : current.manageBookings,
       rescheduleRequests: rescheduleRequests !== undefined ? Boolean(rescheduleRequests) : current.rescheduleRequests,
       approveSchedules:   approveSchedules   !== undefined ? Boolean(approveSchedules)   : current.approveSchedules,
+      managePayments:     managePayments     !== undefined ? Boolean(managePayments)     : current.managePayments,
     };
     await secretary.save();
 

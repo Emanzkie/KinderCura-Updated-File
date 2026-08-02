@@ -36,7 +36,14 @@ async function resolveClinicPediatricianId(req) {
     }
     const secretary = await User.findById(req.user.userId).select('secretaryPermissions').lean();
     const perms = secretary?.secretaryPermissions || {};
-    if (!perms.manageBookings && !perms.approveSchedules) {
+    // managePayments is the single source of truth for payment actions.
+    // Fallback only applies to documents that predate this field and haven't
+    // been backfilled yet (see scripts/migrate-add-managePayments.js) — once
+    // the field is explicitly true/false it is used as-is, never overridden.
+    const canManagePayments = perms.managePayments === undefined
+      ? Boolean(perms.manageBookings || perms.approveSchedules)
+      : Boolean(perms.managePayments);
+    if (!canManagePayments) {
       throw new Error('You do not have permission to manage payments.');
     }
     return req.user.linkedPediatricianId;

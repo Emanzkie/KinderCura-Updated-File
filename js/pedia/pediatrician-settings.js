@@ -389,6 +389,16 @@ requireAuth();
                                     Approve Schedules
                                 </label>
                             </div>
+                            <div style="margin-top:0.6rem;padding-top:0.6rem;border-top:1px dashed var(--border);">
+                                <label style="font-size:0.83rem;display:flex;align-items:center;gap:0.4rem;cursor:pointer;">
+                                    <input type="checkbox" ${s.permissions.managePayments ? 'checked' : ''}
+                                        onchange="updatePermission('${s.id}', 'managePayments', this.checked)">
+                                    Confirm Cash/POS Payments
+                                </label>
+                                <p style="font-size:0.75rem;color:var(--text-light);margin:0.25rem 0 0 1.6rem;">
+                                    Lets this assistant mark a walk-in appointment as paid when a parent hands over cash or taps a POS terminal at your counter. Separate from the scheduling permissions above.
+                                </p>
+                            </div>
                         </div>
                     </div>`).join('');
             } catch (e) {

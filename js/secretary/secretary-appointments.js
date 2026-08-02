@@ -15,6 +15,7 @@
         // Module-level state
         let allAppointments = [];
         let currentFilter   = 'all';
+        let canManagePayments = false;
 
         // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@
             try {
                 const data = await apiFetch('/secretary/me');
                 const sec  = data.secretary;
+                canManagePayments = Boolean(sec.permissions && sec.permissions.managePayments);
                 document.getElementById('profileMenuName').textContent =
                     `${sec.firstName} ${sec.lastName}`;
 
@@ -106,7 +108,7 @@
                 // Build action buttons based on the appointment's current status
                 let actions = '';
                 if (a.status === 'pending') {
-                    const walkInBtn = a.pendingPaymentMode === 'walk_in'
+                    const walkInBtn = (a.pendingPaymentMode === 'walk_in' && canManagePayments)
                         ? `<button class="btn-approve" onclick="confirmWalkIn(${a.id})" style="background:#27ae60;">&#8369; Confirm Cash Payment</button>`
                         : '';
                     actions = `
