@@ -60,9 +60,35 @@
   }
 
   /**
-   * Run on DOMContentLoaded to highlight nav and inject PRC link if needed.
+   * Ensures the "Data Sources" nav link exists on every admin page.
+   * Injected here rather than hardcoded into each page so all admin pages stay
+   * consistent without editing eight files.
+   * Placed after Training, which is the closest related reporting page.
+   */
+  function ensureDataSourcesNavLink() {
+    var nav = document.querySelector('.main-nav');
+    if (!nav) return;
+    if (nav.querySelector('a[href*="data-sources"]')) return;
+
+    var link = document.createElement('a');
+    link.href = '/admin/admin-data-sources.html';
+    link.className = 'nav-link';
+    link.textContent = 'Data Sources';
+
+    var anchor = nav.querySelector('a[href*="training"]') || nav.querySelector('a[href*="analytics"]');
+    if (anchor) {
+      anchor.parentNode.insertBefore(link, anchor.nextSibling);
+    } else {
+      nav.appendChild(link);
+    }
+  }
+
+  /**
+   * Run on DOMContentLoaded. Inject first, then highlight, so an injected link
+   * is still eligible to be marked active on its own page.
    */
   function initAdminNav() {
+    ensureDataSourcesNavLink();
     highlightCurrentNav();
   }
 
@@ -75,7 +101,8 @@
   // Export helpers for external use
   window.adminNav = {
     highlightCurrentNav: highlightCurrentNav,
-    ensurePrcNavLink: ensurePrcNavLink
+    ensurePrcNavLink: ensurePrcNavLink,
+    ensureDataSourcesNavLink: ensureDataSourcesNavLink
   };
 
 })();

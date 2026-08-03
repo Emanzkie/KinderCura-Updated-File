@@ -9,7 +9,11 @@
     "test": "node tests/unit/models.test.js",
     "migrate:appointment-slots": "node scripts/migrate-appointment-slots.js",
     "migrate:appointment-slots:round": "node scripts/migrate-appointment-slots.js --mode=round",
-    "rollback:appointment-slots": "node scripts/rollback-appointment-slots.js"
+    "rollback:appointment-slots": "node scripts/rollback-appointment-slots.js",
+    "seed:core-bank": "node scripts/seed-core-bank-questions.js",
+    "seed:core-bank:dry": "node scripts/seed-core-bank-questions.js --dry-run",
+    "backfill:answer-origin": "node scripts/backfill-answer-origin.js",
+    "backfill:answer-origin:dry": "node scripts/backfill-answer-origin.js --dry-run"
   },
   "dependencies": {
     "@vercel/speed-insights": "^2.0.0",

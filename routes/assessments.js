@@ -15,7 +15,44 @@ const Child = require('../models/Child');
 const User = require('../models/User');
 const PatientProgressNote = require('../models/PatientProgressNote');
 const Notification = require('../models/Notification');
+const CoreBankQuestion = require('../models/CoreBankQuestion');
+const { DATA_ORIGIN } = require('../constants/dataOrigin');
 const sse = require('../sse');
+
+// The core bank is 34 static rows that only change on deploy, so it is cached
+// in memory instead of being re-read for every answer of every submission.
+const CORE_BANK_TTL_MS = 5 * 60 * 1000;
+let coreBankCache = { ids: null, loadedAt: 0 };
+
+async function getCoreBankIds() {
+  const now = Date.now();
+  if (coreBankCache.ids && now - coreBankCache.loadedAt < CORE_BANK_TTL_MS) {
+    return coreBankCache.ids;
+  }
+  const rows = await CoreBankQuestion.find({}).select('questionId').lean();
+  coreBankCache = { ids: new Set(rows.map((r) => r.questionId)), loadedAt: now };
+  return coreBankCache.ids;
+}
+
+// Important: origin is decided HERE, on the server. It is never read from
+// req.body — a client must not be able to label its own answers as core-bank
+// content. See constants/dataOrigin.js.
+//
+// This endpoint serves the parent screening flow, which only ever presents
+// core-bank questions, so origin is always CORE_BANK. sourceQuestionRef is set
+// only when the id actually resolves against the seeded bank; an unresolved id
+// is left blank and warned about rather than given a fabricated reference.
+function originFieldsFor(questionId, bankIds) {
+  const id = String(questionId);
+  const resolved = bankIds.has(id);
+  if (!resolved) {
+    console.warn(`assessments: questionId "${id}" not found in the core bank — sourceQuestionRef left blank.`);
+  }
+  return {
+    origin: DATA_ORIGIN.CORE_BANK,
+    sourceQuestionRef: resolved ? id : '',
+  };
+}
 
 function getAgeInfo(dateOfBirth) {
   const dob = new Date(dateOfBirth);
@@ -268,6 +305,7 @@ router.post('/save-draft', authMiddleware, async (req, res) => {
     await Assessment.findByIdAndUpdate(assessmentId, { currentProgress: progress || 0 });
 
     const answersArray = normalizeAnswers(answers);
+    const bankIds = await getCoreBankIds();
     for (const a of answersArray) {
       if (!a.questionId || !a.answer) continue;
       await AssessmentAnswer.findOneAndUpdate(
@@ -278,6 +316,7 @@ router.post('/save-draft', authMiddleware, async (req, res) => {
           domain: a.domain || 'Unknown',
           questionText: a.questionText || '',
           answer: a.answer,
+          ...originFieldsFor(a.questionId, bankIds),
         },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
@@ -319,6 +358,7 @@ router.post('/submit', authMiddleware, async (req, res) => {
       assessmentId = String(assessment._id);
     }
 
+    const submitBankIds = await getCoreBankIds();
     for (const a of answersArray) {
       if (!a.questionId || !a.answer) continue;
       await AssessmentAnswer.findOneAndUpdate(
@@ -329,6 +369,7 @@ router.post('/submit', authMiddleware, async (req, res) => {
           domain: a.domain || 'Unknown',
           questionText: a.questionText || '',
           answer: a.answer,
+          ...originFieldsFor(a.questionId, submitBankIds),
         },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Sources - KinderCura Admin</title>
+    <link rel="stylesheet" href="/css/dashboard-new-styles.css">
+    <link rel="stylesheet" href="/css/admin-data-sources.css">
+    <link rel="stylesheet" href="/notifications-card-ui.css">
+</head>
+<body>
+    <header class="top-nav">
+        <div class="nav-container">
+            <a href="/admin/admin-dashboard.html" class="logo"><img src="/icons/logo.png" class="logo-img"><span class="logo-text"><span class="logo-kinder">Kinder</span><span class="logo-cura">Cura</span></span></a>
+            <nav class="main-nav">
+                <a href="/admin/admin-dashboard.html" class="nav-link">Dashboard</a>
+                <a href="/admin/admin-users.html" class="nav-link">Users</a>
+                <a href="/admin/admin-prc-verification.html" class="nav-link">PRC Verification</a>
+                <a href="/admin/admin-analytics.html" class="nav-link">Analytics</a>
+                <a href="/admin/admin-training.html" class="nav-link">Training</a>
+                <a href="/admin/admin-reports.html" class="nav-link">Reports</a>
+                <a href="/admin/admin-settings.html" class="nav-link">Settings</a>
+                <a href="/admin/payments" class="nav-link">Payments</a>
+            </nav>
+            <div class="nav-right">
+                <button class="icon-btn notification-btn" onclick="openNotifications()"><img src="/icons/notif_bell.png" class="notification-icon"><span class="notification-badge">0</span></button>
+                <button class="icon-btn profile-btn" onclick="toggleProfileMenu()"><img src="/icons/profile.png" class="profile-icon" style="width:36px;height:36px;border-radius:50%;object-fit:cover;display:block;"></button>
+                <div class="profile-menu" id="profileMenu" style="display:none;">
+                    <div class="menu-header"><p>Welcome, Admin</p></div>
+                    <a href="/admin/admin-settings.html" class="menu-item"><img src="/icons/settings.png" class="menu-icon">Settings</a>
+                    <hr style="margin:0.5rem 0;">
+                    <a href="#" class="menu-item logout"><img src="/icons/logout.png" class="menu-icon">Logout</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="dashboard-container">
+        <div class="page-header">
+            <h1>Question Data Sources</h1>
+            <p>Where each screening question and answer came from — the fixed core question bank versus questions a pediatrician entered.</p>
+            <p style="color:var(--text-light);margin-top:0.4rem;">The distinction is how a question enters the system, not who wrote it. Core bank questions are fixed for every child and clinic and change only by deployment; pediatrician entries are created at runtime and scoped to specific children.</p>
+        </div>
+
+        <div class="overview-grid" style="margin-bottom:2rem;">
+            <div class="overview-card"><h3>Total Questions</h3><p id="sumTotal" style="font-size:2rem;font-weight:700;color:var(--primary);margin-top:0.6rem;">0</p><p id="sumTotalAnswers" style="font-size:0.8rem;color:var(--text-light);margin-top:0.2rem;">0 answers</p></div>
+            <div class="overview-card"><h3>From Core Bank</h3><p id="sumCore" style="font-size:2rem;font-weight:700;color:#2f4858;margin-top:0.6rem;">0</p><p id="sumCoreAnswers" style="font-size:0.8rem;color:var(--text-light);margin-top:0.2rem;">0 answers</p></div>
+            <div class="overview-card"><h3>From Pedia Entry</h3><p id="sumPedia" style="font-size:2rem;font-weight:700;color:#1e5b3a;margin-top:0.6rem;">0</p><p id="sumPediaAnswers" style="font-size:0.8rem;color:var(--text-light);margin-top:0.2rem;">0 answers</p></div>
+            <div class="overview-card is-hidden" id="unclassifiedCard"><h3>Unclassified Answers</h3><p id="sumUnclassified" style="font-size:2rem;font-weight:700;color:#7a5c00;margin-top:0.6rem;">0</p><p id="sumUnclassifiedAnswers" style="font-size:0.8rem;color:var(--text-light);margin-top:0.2rem;">cannot be traced to a question</p></div>
+        </div>
+
+        <div class="origin-notice" id="originNotice"></div>
+
+        <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
+                <h3><img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Questions by Source</h3>
+                <button class="btn btn-secondary" onclick="loadAll()">Refresh</button>
+            </div>
+
+            <div class="origin-tabs" id="originTabs" role="tablist">
+                <button class="origin-tab active" role="tab" data-origin="all" onclick="setFilter('all')">All<span class="tab-count" id="tabCountAll"></span></button>
+                <button class="origin-tab" role="tab" data-origin="core_bank" onclick="setFilter('core_bank')">Core Bank<span class="tab-count" id="tabCountCore"></span></button>
+                <button class="origin-tab" role="tab" data-origin="pedia_entry" onclick="setFilter('pedia_entry')">Pedia Entry<span class="tab-count" id="tabCountPedia"></span></button>
+            </div>
+
+            <div style="overflow-x:auto;">
+                <table class="origin-table">
+                    <thead>
+                        <tr>
+                            <th>Question</th>
+                            <th>Domain</th>
+                            <th>Origin</th>
+                            <th>Created By</th>
+                            <th>Created</th>
+                            <th style="text-align:right;">Times Answered</th>
+                        </tr>
+                    </thead>
+                    <tbody id="originRows">
+                        <tr><td colspan="6" style="padding:2rem;text-align:center;color:var(--text-light);">Loading questions…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="origin-pagination">
+                <span class="page-info" id="pageInfo">—</span>
+                <div style="display:flex;gap:0.5rem;">
+                    <button class="btn btn-secondary" id="prevBtn" onclick="changePage(-1)">Previous</button>
+                    <button class="btn btn-secondary" id="nextBtn" onclick="changePage(1)">Next</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<div class="notification-modal notifications-modal" id="notificationsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle">
+    <div class="notification-modal-content notifications-content" role="document">
+        <div class="notification-modal-header notifications-header">
+            <h3 id="notificationsTitle">Notifications</h3>
+            <button type="button" class="notif-close close-btn" onclick="closeNotifications()" aria-label="Close notifications">&times;</button>
+        </div>
+        <div class="notification-action-bar clear-all-row">
+            <button type="button" class="clear-all-btn" id="clearNotificationsBtn" onclick="clearAllNotifications()">Clear all</button>
+        </div>
+        <div class="notification-list notifications-list" id="notificationsList" role="list">
+            <p class="notifications-empty">Loading...</p>
+        </div>
+    </div>
+</div>
+
+    <script src="/api.js"></script>
+    <script src="/notifications-card-ui.js"></script>
+    <script src="/assets/js/notifications.js"></script>
+    <script src="/assets/js/admin-nav.js"></script>
+    <script src="/js/admin/admin-data-sources.js"></script>
+</body>
+</html>

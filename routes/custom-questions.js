@@ -13,14 +13,15 @@ const router = express.Router();
 
 const { authMiddleware } = require('../middleware/auth');
 const { hasPermission } = require('../middleware/guardianPermission');
-const CustomQuestion = require('../models/CustomQuestion');
-const CustomQuestionAssignment = require('../models/CustomQuestionAssignment');
+const PediaCustomQuestion = require('../models/PediaCustomQuestion');
+const PediaCustomQuestionAssignment = require('../models/PediaCustomQuestionAssignment');
 const QuestionSet = require('../models/QuestionSet');
 const Child = require('../models/Child');
 const GuardianLink = require('../models/GuardianLink');
 const User = require('../models/User');
 const Appointment = require('../models/Appointment');
 const Notification = require('../models/Notification');
+const { DATA_ORIGIN } = require('../constants/dataOrigin');
 
 // --- Safe notification helpers ------------------------------------------------
 // These helpers mirror the safer notification pattern used in appointments/chat.
@@ -172,7 +173,7 @@ router.get('/', authMiddleware, async (req, res) => {
       .lean();
 
     // Get all questions (including those not in a set)
-    const questions = await CustomQuestion.find({ pediatricianId: req.user.userId })
+    const questions = await PediaCustomQuestion.find({ pediatricianId: req.user.userId })
       .sort({ createdAt: -1 })
       .lean();
 
@@ -270,7 +271,7 @@ router.post('/bulk', authMiddleware, async (req, res) => {
       }
 
       try {
-        const doc = await CustomQuestion.create({
+        const doc = await PediaCustomQuestion.create({
           pediatricianId: req.user.userId,
           questionSetId: questionSet._id,
           questionText: String(q.questionText).trim(),
@@ -280,6 +281,9 @@ router.post('/bulk', authMiddleware, async (req, res) => {
           ageMin: q.ageMin != null ? Number(q.ageMin) : 0,
           ageMax: q.ageMax != null ? Number(q.ageMax) : 18,
           isActive: true,
+          // Set on the server, never read from req.body. Reaching this route
+          // means an authenticated pediatrician created the question.
+          origin: DATA_ORIGIN.PEDIA_ENTRY,
         });
         createdQuestions.push(normalizeQuestion(doc.toObject()));
       } catch (err) {
@@ -342,7 +346,7 @@ router.post('/', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Multiple choice questions require at least 2 options.' });
     }
 
-    const doc = await CustomQuestion.create({
+    const doc = await PediaCustomQuestion.create({
       pediatricianId: req.user.userId,
       questionText: String(questionText).trim(),
       questionType,
@@ -351,6 +355,9 @@ router.post('/', authMiddleware, async (req, res) => {
       ageMin: ageMin != null ? Number(ageMin) : 0,
       ageMax: ageMax != null ? Number(ageMax) : 18,
       isActive: true,
+      // Set on the server, never read from req.body. Reaching this route
+      // means an authenticated pediatrician created the question.
+      origin: DATA_ORIGIN.PEDIA_ENTRY,
     });
 
     res.status(201).json({ success: true, question: normalizeQuestion(doc.toObject()) });
@@ -367,7 +374,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       return res.status(403).json({ error: 'Pediatricians only.' });
     }
 
-    const doc = await CustomQuestion.findOne({ id: Number(req.params.id), pediatricianId: req.user.userId });
+    const doc = await PediaCustomQuestion.findOne({ id: Number(req.params.id), pediatricianId: req.user.userId });
     if (!doc) {
       return res.status(404).json({ error: 'Question not found.' });
     }
@@ -415,7 +422,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
       return res.status(403).json({ error: 'Pediatricians only.' });
     }
 
-    const doc = await CustomQuestion.findOne({ id: Number(req.params.id), pediatricianId: req.user.userId });
+    const doc = await PediaCustomQuestion.findOne({ id: Number(req.params.id), pediatricianId: req.user.userId });
     if (!doc) {
       return res.status(404).json({ error: 'Question not found.' });
     }
@@ -428,7 +435,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
       }
     }
 
-    await CustomQuestionAssignment.deleteMany({ questionId: doc._id });
+    await PediaCustomQuestionAssignment.deleteMany({ questionId: doc._id });
     await doc.deleteOne();
 
     res.json({ success: true });
@@ -450,7 +457,7 @@ router.post('/:id/assign', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'childId is required.' });
     }
 
-    const question = await CustomQuestion.findOne({ id: Number(req.params.id), pediatricianId: req.user.userId });
+    const question = await PediaCustomQuestion.findOne({ id: Number(req.params.id), pediatricianId: req.user.userId });
     if (!question) {
       return res.status(404).json({ error: 'Question not found.' });
     }
@@ -465,7 +472,7 @@ router.post('/:id/assign', authMiddleware, async (req, res) => {
       return res.status(403).json({ error: 'You can only assign questions to your own patients.' });
     }
 
-    const existing = await CustomQuestionAssignment.findOne({
+    const existing = await PediaCustomQuestionAssignment.findOne({
       questionId: question._id,
       childId: child._id,
       appointmentId: appointmentId || null,
@@ -475,7 +482,7 @@ router.post('/:id/assign', authMiddleware, async (req, res) => {
       return res.json({ success: true, message: 'Already assigned.' });
     }
 
-    const assignment = await CustomQuestionAssignment.create({
+    const assignment = await PediaCustomQuestionAssignment.create({
       questionId: question._id,
       questionSetId: question.questionSetId || null,
       appointmentId: appointmentId || null,
@@ -519,7 +526,7 @@ router.post('/set/:setId/assign', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Question Set not found.' });
     }
 
-    const questions = await CustomQuestion.find({ questionSetId: questionSet._id, isActive: true }).lean();
+    const questions = await PediaCustomQuestion.find({ questionSetId: questionSet._id, isActive: true }).lean();
     if (questions.length === 0) {
       return res.status(400).json({ error: 'No active questions in this set.' });
     }
@@ -535,7 +542,7 @@ router.post('/set/:setId/assign', authMiddleware, async (req, res) => {
     }
 
     // Check which questions are already assigned to avoid duplicates
-    const existingAssignments = await CustomQuestionAssignment.find({
+    const existingAssignments = await PediaCustomQuestionAssignment.find({
       questionId: { $in: questions.map(q => q._id) },
       childId: child._id,
       appointmentId: appointmentId || null,
@@ -549,7 +556,7 @@ router.post('/set/:setId/assign', authMiddleware, async (req, res) => {
     }
 
     // Create assignments for all questions in the set
-    const assignments = await CustomQuestionAssignment.insertMany(
+    const assignments = await PediaCustomQuestionAssignment.insertMany(
       questionsToAssign.map(q => ({
         questionId: q._id,
         questionSetId: questionSet._id,
@@ -607,7 +614,7 @@ router.get('/assigned/:childId', authMiddleware, hasPermission('view_assessments
       }
     }
 
-    const assignments = await CustomQuestionAssignment.find({ childId: child._id })
+    const assignments = await PediaCustomQuestionAssignment.find({ childId: child._id })
       .populate({
         path: 'questionId',
         populate: { path: 'pediatricianId', select: 'firstName lastName' },
@@ -634,7 +641,7 @@ router.post('/answer/:assignmentId', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Answer required.' });
     }
 
-    const assignment = await CustomQuestionAssignment.findOne({ id: Number(req.params.assignmentId), parentId: req.user.userId })
+    const assignment = await PediaCustomQuestionAssignment.findOne({ id: Number(req.params.assignmentId), parentId: req.user.userId })
       .populate({ path: 'questionId', populate: { path: 'pediatricianId', select: 'firstName lastName _id' } });
 
     if (!assignment) {
@@ -707,7 +714,7 @@ router.post('/set/:setId/answer-batch', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Question Set not found.' });
     }
 
-    const submittedAssignments = await CustomQuestionAssignment.find({
+    const submittedAssignments = await PediaCustomQuestionAssignment.find({
       id: { $in: normalizedAnswers.map(item => item.assignmentId) },
       questionSetId: questionSet._id,
       parentId: req.user.userId
@@ -732,7 +739,7 @@ router.post('/set/:setId/answer-batch', authMiddleware, async (req, res) => {
     const childId = submittedAssignments[0].childId?._id || submittedAssignments[0].childId;
     const appointmentId = submittedAssignments[0].appointmentId ?? null;
 
-    const allAssignmentsInGroup = await CustomQuestionAssignment.find({
+    const allAssignmentsInGroup = await PediaCustomQuestionAssignment.find({
       questionSetId: questionSet._id,
       parentId: req.user.userId,
       childId,
@@ -766,7 +773,7 @@ router.post('/set/:setId/answer-batch', authMiddleware, async (req, res) => {
       })
     );
 
-    const hasUnansweredAssignments = await CustomQuestionAssignment.exists({
+    const hasUnansweredAssignments = await PediaCustomQuestionAssignment.exists({
       questionSetId: questionSet._id,
       $or: [
         { answer: null },

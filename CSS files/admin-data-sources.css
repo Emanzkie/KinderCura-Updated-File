@@ -1,0 +1,173 @@
+/* admin-data-sources.css
+   Page-specific styles for the Data Sources admin page.
+   Everything else comes from dashboard-new-styles.css — this file only adds
+   the origin badges, filter tabs, and the warning notice. */
+
+/* ------------------------------------------------------------------ *
+ * Origin badges
+ *
+ * Important: these must stay legible in a projected defense slide, where
+ * hue is the first thing to wash out. So the two origins differ by THREE
+ * independent signals, not just colour:
+ *   1. fill vs outline  (large luminance difference, survives washout)
+ *   2. a leading glyph  (◆ vs ✚, readable in greyscale)
+ *   3. the label text itself
+ * Colour is the last cue, not the only one. Also covers colour-blindness.
+ * ------------------------------------------------------------------ */
+.origin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.origin-badge .origin-glyph {
+  font-size: 0.85em;
+  line-height: 1;
+}
+
+/* Core bank — SOLID fill, white text. Reads as a dark block when washed out. */
+.origin-badge.origin-core_bank {
+  background: #2f4858;
+  color: #ffffff;
+  border: 2px solid #2f4858;
+}
+
+/* Pedia entry — OUTLINE, dark text on near-white. Reads as a light block. */
+.origin-badge.origin-pedia_entry {
+  background: #ffffff;
+  color: #1e5b3a;
+  border: 2px solid #1e5b3a;
+}
+
+/* Anything unrecognised or unset — dashed, so it never looks deliberate. */
+.origin-badge.origin-unknown {
+  background: #ffffff;
+  color: #7a5c00;
+  border: 2px dashed #7a5c00;
+}
+
+/* ------------------------------------------------------------------ *
+ * Filter tabs
+ * ------------------------------------------------------------------ */
+.origin-tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0 0 1.2rem;
+}
+
+.origin-tab {
+  padding: 0.55rem 1.1rem;
+  border: 2px solid var(--border, #dcdcdc);
+  background: #ffffff;
+  color: var(--text-dark, #333);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.origin-tab:hover {
+  border-color: var(--primary, #6B8E6F);
+}
+
+.origin-tab.active {
+  background: var(--primary, #6B8E6F);
+  border-color: var(--primary, #6B8E6F);
+  color: #ffffff;
+}
+
+.origin-tab .tab-count {
+  opacity: 0.75;
+  font-weight: 700;
+  margin-left: 0.35rem;
+}
+
+/* ------------------------------------------------------------------ *
+ * Warning notice (renders the API's `warnings` array)
+ * ------------------------------------------------------------------ */
+.origin-notice {
+  display: none;
+  background: #fff8e5;
+  border: 1px solid #e6cf8b;
+  border-left: 4px solid #d4a017;
+  color: #6b5200;
+  padding: 0.9rem 1.1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.origin-notice strong {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.9rem;
+}
+
+.origin-notice ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.2rem;
+}
+
+/* The unclassified card is hidden unless the count is non-zero. */
+.overview-card.is-hidden {
+  display: none;
+}
+
+/* ------------------------------------------------------------------ *
+ * Table + pagination
+ * ------------------------------------------------------------------ */
+.origin-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.origin-table th {
+  padding: 1rem;
+  text-align: left;
+  background: var(--bg-primary, #f7f9f7);
+  border-bottom: 2px solid var(--border, #dcdcdc);
+}
+
+.origin-table td {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border, #dcdcdc);
+  vertical-align: top;
+}
+
+.origin-table .q-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  color: var(--text-light, #777);
+}
+
+.origin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 1.2rem;
+}
+
+.origin-pagination .page-info {
+  font-size: 0.85rem;
+  color: var(--text-light, #777);
+}
+
+@media print {
+  /* Force the badge distinction to render in printed/exported slides. */
+  .origin-badge {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

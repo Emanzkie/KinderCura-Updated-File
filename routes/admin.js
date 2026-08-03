@@ -23,6 +23,11 @@ const TrainingDataset = require('../models/TrainingDataset');
 const Notification = require('../models/Notification');
 const SystemSetting = require('../models/SystemSetting');
 const paymentService = require('../services/paymentService');
+const AssessmentAnswer = require('../models/AssessmentAnswer');
+const CoreBankQuestion = require('../models/CoreBankQuestion');
+const PediaCustomQuestion = require('../models/PediaCustomQuestion');
+const PediaCustomQuestionAssignment = require('../models/PediaCustomQuestionAssignment');
+const { DATA_ORIGIN, DATA_ORIGIN_LABELS, DATA_ORIGIN_VALUES } = require('../constants/dataOrigin');
 const sse = require('../sse');
 
 function fmtDate(d) {
@@ -1182,6 +1187,240 @@ router.post('/pediatricians/prc-verify', authMiddleware, adminOnly, async (req, 
     const label = action === 'verified' ? 'approved' : 'rejected';
     res.json({ success: true, message: `Account ${label}` });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/* ------------------------------------------------------------------ *
+ * Data origin reporting
+ *
+ * Shows which screening questions and answers come from the fixed core
+ * bank versus which a pediatrician entered at runtime.
+ * See constants/dataOrigin.js — the distinction is MECHANISM, not authorship.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Group a collection by its `origin` field and return a plain map.
+ *
+ * Important: this groups over whatever values are ACTUALLY present rather than
+ * counting the two we expect. A summary built as core_bank + pedia_entry cannot
+ * see a third value, so a stray or legacy origin would silently vanish from a
+ * total that still looks plausible. Unrecognised values are surfaced instead.
+ */
+async function groupByOrigin(Model) {
+  const rows = await Model.aggregate([{ $group: { _id: '$origin', count: { $sum: 1 } } }]);
+  const map = {};
+  for (const r of rows) {
+    map[r._id == null ? '__unset__' : String(r._id)] = r.count;
+  }
+  return map;
+}
+
+function splitKnownAndOther(map) {
+  const known = {};
+  const other = [];
+  let unset = 0;
+  for (const [key, count] of Object.entries(map)) {
+    if (key === '__unset__') unset = count;
+    else if (DATA_ORIGIN_VALUES.includes(key)) known[key] = count;
+    else other.push({ origin: key, count });
+  }
+  return { known, other, unset };
+}
+
+// GET /api/admin/data-origin/summary
+router.get('/data-origin/summary', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    // Important: the two answer counts come from DIFFERENT collections, and
+    // that is deliberate — do not "fix" this by unifying them.
+    //
+    // Core-bank answers live in assessment_answers, one document per answered
+    // question. Pediatrician answers are stored on the assignment document
+    // itself (answer / answeredAt on pedia_custom_question_assignments) and
+    // never enter assessment_answers at all. Counting pedia answers from
+    // assessment_answers would therefore report 0 forever.
+    const [answerOrigins, coreQuestionOrigins, pediaQuestionOrigins, pediaAnswered, pediaAssignmentsTotal] =
+      await Promise.all([
+        groupByOrigin(AssessmentAnswer),
+        groupByOrigin(CoreBankQuestion),
+        groupByOrigin(PediaCustomQuestion),
+        PediaCustomQuestionAssignment.countDocuments({ answer: { $ne: null } }),
+        PediaCustomQuestionAssignment.countDocuments(),
+      ]);
+
+    const answers = splitKnownAndOther(answerOrigins);
+    const coreQ = splitKnownAndOther(coreQuestionOrigins);
+    const pediaQ = splitKnownAndOther(pediaQuestionOrigins);
+
+    const coreBankQuestions = coreQ.known[DATA_ORIGIN.CORE_BANK] || 0;
+    const pediaEntryQuestions = pediaQ.known[DATA_ORIGIN.PEDIA_ENTRY] || 0;
+    const coreBankAnswers = answers.known[DATA_ORIGIN.CORE_BANK] || 0;
+
+    // Questions carrying no origin, or an origin this build does not know about.
+    const unclassifiedQuestions = coreQ.unset + pediaQ.unset;
+    const otherQuestions = [...coreQ.other, ...pediaQ.other];
+
+    const warnings = [];
+    if (answers.unset > 0) {
+      warnings.push(`${answers.unset} answer(s) have no origin set — see scripts/backfill-answer-origin.js`);
+    }
+    if (answers.other.length) {
+      warnings.push(`Unrecognised answer origin value(s): ${answers.other.map((o) => `${o.origin} (${o.count})`).join(', ')}`);
+    }
+    if (unclassifiedQuestions > 0) {
+      warnings.push(`${unclassifiedQuestions} question(s) have no origin set`);
+    }
+    if (otherQuestions.length) {
+      warnings.push(`Unrecognised question origin value(s): ${otherQuestions.map((o) => `${o.origin} (${o.count})`).join(', ')}`);
+    }
+
+    const otherAnswerTotal = answers.other.reduce((sum, o) => sum + o.count, 0);
+    const otherQuestionTotal = otherQuestions.reduce((sum, o) => sum + o.count, 0);
+
+    res.json({
+      coreBank: {
+        label: DATA_ORIGIN_LABELS[DATA_ORIGIN.CORE_BANK],
+        questions: coreBankQuestions,
+        answers: coreBankAnswers,
+      },
+      pediaEntry: {
+        label: DATA_ORIGIN_LABELS[DATA_ORIGIN.PEDIA_ENTRY],
+        questions: pediaEntryQuestions,
+        answers: pediaAnswered,
+        assignmentsTotal: pediaAssignmentsTotal,
+      },
+      // Explicit buckets so nothing can drop out of the totals unnoticed.
+      unclassified: {
+        label: 'Unclassified',
+        questions: unclassifiedQuestions,
+        answers: answers.unset,
+      },
+      other: {
+        label: 'Unrecognised origin',
+        questions: otherQuestionTotal,
+        answers: otherAnswerTotal,
+        values: [...answers.other.map((o) => ({ ...o, scope: 'answers' })), ...otherQuestions.map((o) => ({ ...o, scope: 'questions' }))],
+      },
+      total: {
+        questions: coreBankQuestions + pediaEntryQuestions + unclassifiedQuestions + otherQuestionTotal,
+        answers: coreBankAnswers + pediaAnswered + answers.unset + otherAnswerTotal,
+      },
+      warnings,
+    });
+  } catch (error) {
+    console.error('data-origin summary error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/admin/data-origin/list?origin=core_bank|pedia_entry|all&page=&limit=
+router.get('/data-origin/list', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const originFilter = String(req.query.origin || 'all');
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+
+    if (originFilter !== 'all' && !DATA_ORIGIN_VALUES.includes(originFilter)) {
+      return res.status(400).json({ error: `origin must be one of: all, ${DATA_ORIGIN_VALUES.join(', ')}` });
+    }
+
+    const wantCore = originFilter === 'all' || originFilter === DATA_ORIGIN.CORE_BANK;
+    const wantPedia = originFilter === 'all' || originFilter === DATA_ORIGIN.PEDIA_ENTRY;
+
+    const rows = [];
+
+    if (wantCore) {
+      const [questions, answerCounts] = await Promise.all([
+        CoreBankQuestion.find({}).lean(),
+        // One grouped pass instead of a count per question.
+        AssessmentAnswer.aggregate([
+          { $match: { sourceQuestionRef: { $nin: [null, ''] }, origin: DATA_ORIGIN.CORE_BANK } },
+          { $group: { _id: '$sourceQuestionRef', count: { $sum: 1 } } },
+        ]),
+      ]);
+      const answersByRef = new Map(answerCounts.map((a) => [a._id, a.count]));
+
+      for (const q of questions) {
+        rows.push({
+          id: String(q._id),
+          questionId: q.questionId,
+          questionText: q.text,
+          domain: q.domain,
+          displayDomain: q.displayDomain || '',
+          origin: DATA_ORIGIN.CORE_BANK,
+          originLabel: DATA_ORIGIN_LABELS[DATA_ORIGIN.CORE_BANK],
+          // Provenance, not mechanism: the core bank was transcribed from a
+          // consultant pediatrician interview, so show that rather than a dash.
+          createdBy: q.sourcedFrom || 'Core Question Bank',
+          isSystemManaged: q.isSystemManaged !== false,
+          createdAt: q.createdAt,
+          timesAnswered: answersByRef.get(q.questionId) || 0,
+        });
+      }
+    }
+
+    if (wantPedia) {
+      const questions = await PediaCustomQuestion.find({}).lean();
+      const pediatricianIds = [...new Set(questions.map((q) => String(q.pediatricianId)).filter(Boolean))];
+
+      const [pediatricians, assignmentCounts] = await Promise.all([
+        User.find({ _id: { $in: pediatricianIds } }).select('firstName lastName').lean(),
+        // Answered assignments only — an assigned-but-unanswered question has
+        // not actually produced an answer.
+        PediaCustomQuestionAssignment.aggregate([
+          { $match: { answer: { $ne: null } } },
+          { $group: { _id: '$questionId', count: { $sum: 1 } } },
+        ]),
+      ]);
+
+      const nameById = new Map(pediatricians.map((u) => [String(u._id), fullName(u) || 'Unknown Pediatrician']));
+      const answersByQuestion = new Map(assignmentCounts.map((a) => [String(a._id), a.count]));
+
+      for (const q of questions) {
+        rows.push({
+          id: String(q._id),
+          questionId: q.id != null ? `#${q.id}` : String(q._id),
+          questionText: q.questionText,
+          domain: q.domain || 'Other',
+          displayDomain: '',
+          origin: DATA_ORIGIN.PEDIA_ENTRY,
+          originLabel: DATA_ORIGIN_LABELS[DATA_ORIGIN.PEDIA_ENTRY],
+          createdBy: nameById.get(String(q.pediatricianId)) || 'Unknown Pediatrician',
+          isSystemManaged: false,
+          createdAt: q.createdAt,
+          timesAnswered: answersByQuestion.get(String(q._id)) || 0,
+        });
+      }
+    }
+
+    // Newest first, with a stable tiebreak so pagination cannot repeat or skip
+    // rows when several share a timestamp.
+    rows.sort((a, b) => {
+      const diff = new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      return diff !== 0 ? diff : String(a.id).localeCompare(String(b.id));
+    });
+
+    // Note: the two sources are merged in memory because the combined row count
+    // is small (34 core-bank + the pediatrician's own questions). If the
+    // pediatrician question count ever grows into the thousands, this needs to
+    // become a proper $unionWith aggregation with database-side paging.
+    const total = rows.length;
+    const start = (page - 1) * limit;
+
+    res.json({
+      rows: rows.slice(start, start + limit),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+        hasNext: start + limit < total,
+        hasPrev: page > 1,
+      },
+      filter: originFilter,
+    });
+  } catch (error) {
+    console.error('data-origin list error:', error);
     res.status(500).json({ error: error.message });
   }
 });
