@@ -77,3 +77,8 @@ public/dist/
 
 .vercel
 .env*
+
+# DB backups written by scripts/backfill-*.js and scripts/migrate-*.js.
+# These contain real patient records (childId + screening scores) and must
+# never be committed. Keep them locally; they are the rollback path.
+backups/

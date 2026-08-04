@@ -52,9 +52,40 @@ const coreBankQuestionSchema = new mongoose.Schema(
       index: true,
     },
 
-    // Real-world provenance, surfaced as "Created By" in the admin table so the
-    // doctor-interview origin is never lost behind the mechanism label.
-    sourcedFrom: { type: String, default: 'Consultant pediatrician interview', trim: true },
+    // ── Provenance ───────────────────────────────────────────────────────────
+    // Important: these fields record EVIDENCE, not intent. A question with no
+    // recorded source must read as unknown. Do NOT give any of them a
+    // non-null default — a default is an unverified claim that looks like a
+    // record, which is exactly the failure this block exists to prevent.
+    //
+    // History: sourcedFrom previously defaulted to 'Consultant pediatrician
+    // interview'. The seed script never wrote it (see toDoc() in
+    // scripts/seed-core-bank-questions.js), so all 34 existing rows carry that
+    // string from the schema default alone — no act of sourcing produced it.
+    // Those legacy values are left in place; treat them as an unverified
+    // attribution, not a citation. See docs/SCORING.md.
+
+    // Free-text attribution, e.g. 'Consultant pediatrician interview'.
+    // null = no source recorded.
+    sourcedFrom: { type: String, default: null, trim: true },
+
+    // A real, checkable citation for an external instrument or dataset —
+    // e.g. 'Frankenburg WK et al., Denver II Technical Manual, 1996'.
+    // This is the field that makes a question dataset-derived. null = not
+    // from any external dataset. The admin Dataset tab counts rows where
+    // this is set; if none are, it correctly shows zero.
+    sourceCitation: { type: String, default: null, trim: true },
+
+    // Version/edition of the cited instrument, e.g. 'Denver II (1992 rev.)'.
+    sourceVersion: { type: String, default: null, trim: true },
+
+    // When the question was imported FROM ITS SOURCE. Deliberately distinct
+    // from createdAt, which only records when the seed script last ran.
+    importedAt: { type: Date, default: null },
+
+    // Groups every question brought in by one import run, so a batch can be
+    // traced or reversed. Stamped by the importer, never by hand.
+    importBatchId: { type: String, default: null, trim: true, index: true },
 
     // True = owned by the codebase; the admin UI must not offer edit/delete.
     isSystemManaged: { type: Boolean, default: true },

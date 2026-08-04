@@ -152,10 +152,85 @@ requireAuth();
         // Badge markup. The two origins differ by fill-vs-outline and by a
         // leading glyph, not by hue alone — a projector washes colour out first.
         function originBadge(origin, label) {
-            const glyphs = { core_bank: '◆', pedia_entry: '✚' };
-            const cls = (origin === 'core_bank' || origin === 'pedia_entry') ? `origin-${origin}` : 'origin-unknown';
+            const glyphs = { core_bank: '◆', pedia_entry: '✚', dataset: '▣' };
+            const known = ['core_bank', 'pedia_entry', 'dataset'];
+            const cls = known.includes(origin) ? `origin-${origin}` : 'origin-unknown';
             const glyph = glyphs[origin] || '?';
             return `<span class="origin-badge ${cls}"><span class="origin-glyph" aria-hidden="true">${glyph}</span>${escapeHtml(label || origin)}</span>`;
+        }
+
+        // Renders a provenance value, or an explicit "not recorded" marker.
+        // A blank cell would read as a rendering bug; this reads as a fact.
+        function provValue(v, formatter) {
+            if (v === null || v === undefined || String(v).trim() === '') {
+                return '<span class="prov-none">not recorded</span>';
+            }
+            return escapeHtml(formatter ? formatter(v) : String(v));
+        }
+
+        function fmtDate(d) {
+            const dt = new Date(d);
+            return Number.isNaN(dt.getTime()) ? String(d) : dt.toLocaleString();
+        }
+
+        // ── Dataset Usage card ──────────────────────────────────────────────
+        // Honesty constraint: a question counts as dataset-derived only when it
+        // carries a checkable sourceCitation. Attribution (sourcedFrom) is NOT
+        // sufficient — every core-bank row carries a legacy schema default that
+        // no act of sourcing produced. When nothing has a citation this renders
+        // an explicit empty state and claims nothing.
+        function renderDatasetUsage(s) {
+            const body = document.getElementById('datasetUsageBody');
+            if (!body) return;
+
+            const ds = s.dataset || {};
+            const usage = s.coreBankUsage || {};
+
+            if (!ds.hasExternalDataset) {
+                body.innerHTML = `
+                    <div class="dataset-empty">
+                        <strong>No external dataset imported.</strong>
+                        <p style="margin:0.45rem 0 0;font-size:0.88rem;line-height:1.55;">
+                            No screening question in this system carries a recorded citation to an
+                            external instrument or dataset. The question bank was transcribed directly
+                            into the codebase and has no importable source artifact, version, or
+                            original item codes.
+                        </p>
+                        <ul>
+                            <li><strong>Items with a checkable source:</strong> 0 of ${escapeHtml(String(usage.questions ?? 0))}</li>
+                            <li><strong>Attribution on record:</strong> free-text only, carried from a
+                                removed schema default — not evidence of sourcing.</li>
+                            <li><strong>What would change this:</strong> importing questions with
+                                <code>sourceCitation</code>, <code>sourceVersion</code>, and
+                                <code>importBatchId</code> populated at import time.</li>
+                        </ul>
+                    </div>
+                    <div class="dataset-stats">
+                        <div class="dataset-stat"><span class="k">Question bank items</span><span class="v">${escapeHtml(String(usage.questions ?? 0))}</span></div>
+                        <div class="dataset-stat"><span class="k">Answered at least once</span><span class="v">${escapeHtml(String(usage.questionsAnswered ?? 0))}</span></div>
+                        <div class="dataset-stat"><span class="k">Answers recorded</span><span class="v">${escapeHtml(String(usage.answers ?? 0))}</span></div>
+                        <div class="dataset-stat"><span class="k">External sources</span><span class="v">0</span></div>
+                    </div>`;
+                return;
+            }
+
+            // Populated state — only reachable once real citations exist.
+            const sources = (ds.sources || []).map((src) => `
+                <li style="margin-bottom:0.35rem;">
+                    <strong>${escapeHtml(src.citation)}</strong>
+                    ${src.version ? ` — version ${escapeHtml(src.version)}` : ' — <span class="prov-none">version not recorded</span>'}
+                    · ${escapeHtml(String(src.items))} item(s)
+                    · last import ${src.lastImportedAt ? escapeHtml(fmtDate(src.lastImportedAt)) : '<span class="prov-none">not recorded</span>'}
+                </li>`).join('');
+
+            body.innerHTML = `
+                <ul style="margin:0;padding-left:1.15rem;font-size:0.88rem;line-height:1.55;">${sources}</ul>
+                <div class="dataset-stats">
+                    <div class="dataset-stat"><span class="k">Items imported</span><span class="v">${escapeHtml(String(ds.questions ?? 0))}</span></div>
+                    <div class="dataset-stat"><span class="k">Answered at least once</span><span class="v">${escapeHtml(String(ds.questionsAnswered ?? 0))}</span></div>
+                    <div class="dataset-stat"><span class="k">Answers attributable</span><span class="v">${escapeHtml(String(ds.answers ?? 0))}</span></div>
+                    <div class="dataset-stat"><span class="k">External sources</span><span class="v">${escapeHtml(String((ds.sources || []).length))}</span></div>
+                </div>`;
         }
 
         async function loadSummary() {
@@ -188,11 +263,20 @@ requireAuth();
                     card.classList.add('is-hidden');
                 }
 
+                // Dataset overview card. Zero is the expected, correct value
+                // until a question carries a real citation.
+                document.getElementById('sumDataset').textContent = s.dataset?.questions ?? 0;
+                document.getElementById('sumDatasetAnswers').textContent = `${s.dataset?.answers ?? 0} answers`;
+
                 document.getElementById('tabCountCore').textContent = ` (${s.coreBank?.questions ?? 0})`;
                 document.getElementById('tabCountPedia').textContent = ` (${s.pediaEntry?.questions ?? 0})`;
+                document.getElementById('tabCountDataset').textContent = ` (${s.dataset?.questions ?? 0})`;
+                // 'all' counts storage origins only. Dataset is a re-filtered
+                // view of core-bank rows, so adding it would double-count.
                 document.getElementById('tabCountAll').textContent =
                     ` (${(s.coreBank?.questions ?? 0) + (s.pediaEntry?.questions ?? 0)})`;
 
+                renderDatasetUsage(s);
                 renderNotice(s);
             } catch (err) {
                 console.error('summary load failed', err);
@@ -216,12 +300,33 @@ requireAuth();
 
             const parts = [];
             if (unclassifiedAnswers > 0) {
+                // Per-origin reconciliation. The headline total spans two
+                // storage locations: core-bank answers live in
+                // assessment_answers, pediatrician answers live on the
+                // assignment document. Showing only the total invites the
+                // reader to assume one collection holds everything.
+                const coreA = s.coreBank?.answers ?? 0;
+                const pediaA = s.pediaEntry?.answers ?? 0;
+                const otherA = s.other?.answers ?? 0;
+                const totalA = s.total?.answers ?? 0;
+                const tableTotal = coreA;
+
                 parts.push(
                     `<li><strong>${unclassifiedAnswers} answer${unclassifiedAnswers === 1 ? '' : 's'} predate origin tracking.</strong> ` +
                     `They were recorded before questions carried a source reference, so they cannot be traced back to a specific question ` +
-                    `and do not appear as rows in the table below. This is why the table's "Times Answered" column totals ` +
-                    `${unclassifiedAnswers} fewer than the ${s.total?.answers ?? 0} answers counted above. They are left unclassified ` +
-                    `rather than guessed at.</li>`
+                    `and do not appear as rows in the table below. They are left unclassified rather than guessed at.</li>`
+                );
+                parts.push(
+                    `<li><strong>How the ${totalA} total reconciles, per origin:</strong>` +
+                    `<ul style="margin:0.3rem 0 0;">` +
+                    `<li><strong>${coreA}</strong> Core Bank — in <code>assessment_answers</code>, traceable to a question. ` +
+                    `These are the only answers counted in the table's "Times Answered" column, which is why it totals <strong>${tableTotal}</strong>.</li>` +
+                    `<li><strong>${pediaA}</strong> Pedia Entry — stored on the assignment document, not in <code>assessment_answers</code>. ` +
+                    `Counted in the total above but never as a table row.</li>` +
+                    `<li><strong>${unclassifiedAnswers}</strong> Unclassified — no origin recorded.</li>` +
+                    (otherA > 0 ? `<li><strong>${otherA}</strong> Unrecognised origin value.</li>` : '') +
+                    `<li><strong>0</strong> Dataset — no question carries an external source citation.</li>` +
+                    `</ul></li>`
                 );
             }
             warnings
@@ -242,23 +347,79 @@ requireAuth();
                 lastPagination = data.pagination || null;
 
                 if (!rows.length) {
-                    rowsEl.innerHTML = '<tr><td colspan="6" style="padding:2rem;text-align:center;color:var(--text-light);">No questions for this filter.</td></tr>';
+                    // The Dataset tab's empty state is a finding, not a filter
+                    // miss — say what it means rather than "no questions".
+                    const msg = data.datasetView
+                        ? '<strong>No questions trace to an external dataset.</strong><br>' +
+                          '<span style="font-size:0.85rem;">No question carries a recorded <code>sourceCitation</code>. ' +
+                          'The question bank was transcribed directly into the codebase and has no external source artifact. ' +
+                          'This is an accurate result, not a missing filter.</span>'
+                        : 'No questions for this filter.';
+                    rowsEl.innerHTML = `<tr><td colspan="6" style="padding:2rem;text-align:center;color:var(--text-light);line-height:1.6;">${msg}</td></tr>`;
                 } else {
-                    rowsEl.innerHTML = rows.map((r) => `
+                    rowsEl.innerHTML = rows.map((r, i) => {
+                        const rid = `prov-${i}`;
+                        // Dataset rows earn the purple badge; everything else
+                        // keeps its storage-origin badge.
+                        const badge = r.isDataset
+                            ? originBadge('dataset', 'Dataset')
+                            : originBadge(r.origin, r.originLabel);
+                        return `
                         <tr>
                             <td style="min-width:260px;">
-                                <div style="font-weight:600;">${escapeHtml(r.questionText)}</div>
+                                <div style="font-weight:600;">
+                                    <button class="prov-toggle" type="button"
+                                            aria-expanded="false" aria-controls="${rid}"
+                                            onclick="toggleProvenance('${rid}', this)"
+                                            title="Show provenance">▸</button>
+                                    ${escapeHtml(r.questionText)}
+                                </div>
                                 <div class="q-id">${escapeHtml(r.questionId)}</div>
                             </td>
                             <td>
                                 ${escapeHtml(r.domain)}
                                 ${r.displayDomain ? `<div style="font-size:0.75rem;color:var(--text-light);margin-top:0.2rem;">${escapeHtml(r.displayDomain)}</div>` : ''}
                             </td>
-                            <td>${originBadge(r.origin, r.originLabel)}</td>
+                            <td>${badge}</td>
                             <td>${escapeHtml(r.createdBy)}</td>
                             <td>${formatDateTime(r.createdAt)}</td>
                             <td style="text-align:right;font-weight:700;">${r.timesAnswered ?? 0}</td>
-                        </tr>`).join('');
+                        </tr>
+                        <tr class="prov-detail" id="${rid}" hidden>
+                            <td colspan="6">
+                                <dl class="prov-grid">
+                                    <div>
+                                        <dt>Source citation</dt>
+                                        <dd>${provValue(r.sourceCitation)}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Source version</dt>
+                                        <dd>${provValue(r.sourceVersion)}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Imported at</dt>
+                                        <dd>${provValue(r.importedAt, fmtDate)}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Import batch</dt>
+                                        <dd>${provValue(r.importBatchId)}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Attribution</dt>
+                                        <dd>${provValue(r.sourcedFrom)}${
+                                            r.sourcedFrom && !r.sourceCitation
+                                                ? '<span class="prov-unverified" title="Free-text attribution with no checkable citation behind it">unverified</span>'
+                                                : ''
+                                        }</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Record created</dt>
+                                        <dd>${provValue(r.createdAt, fmtDate)}<span style="display:block;font-size:0.72rem;color:var(--text-light);margin-top:0.15rem;">when the seed script ran — not when sourced</span></dd>
+                                    </div>
+                                </dl>
+                            </td>
+                        </tr>`;
+                    }).join('');
                 }
 
                 renderPagination();
@@ -294,6 +455,20 @@ requireAuth();
                 tab.classList.toggle('active', tab.dataset.origin === origin);
             });
             loadList();
+        }
+
+        // Expand/collapse the provenance detail row. Kept as a plain global so
+        // the inline onclick in loadList() resolves, matching setFilter/changePage.
+        function toggleProvenance(rowId, btn) {
+            const row = document.getElementById(rowId);
+            if (!row) return;
+            const open = row.hasAttribute('hidden');
+            if (open) row.removeAttribute('hidden');
+            else row.setAttribute('hidden', '');
+            if (btn) {
+                btn.textContent = open ? '▾' : '▸';
+                btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            }
         }
 
         function changePage(delta) {

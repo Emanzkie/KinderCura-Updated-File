@@ -1,0 +1,102 @@
+/* admin-training.css
+   Page-specific styles for the Dataset Upload & Training admin page.
+   Everything else comes from dashboard-new-styles.css.
+
+   Purpose of this file: make the page's honesty visible. The ML module is
+   exploratory and has never produced a model, so the banner and the
+   provenance chips must read as warnings — not as decorated features. */
+
+/* ------------------------------------------------------------------ *
+ * Experimental banner
+ *
+ * Deliberately loud: amber, thick left rule, above the fold. This
+ * corrects a claim ("Models Trained: 3") that a viewer would otherwise
+ * take at face value, so it must not be dismissible or subtle.
+ * ------------------------------------------------------------------ */
+.ml-experimental-banner {
+  background: #fff8e5;
+  border: 1px solid #e6cf8b;
+  border-left: 5px solid #d4a017;
+  color: #5c4600;
+  padding: 1.1rem 1.3rem;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.ml-experimental-banner .ml-banner-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #7a5c00;
+  margin: 0 0 0.55rem;
+}
+
+.ml-experimental-banner p { margin: 0 0 0.5rem; }
+.ml-experimental-banner p:last-child { margin-bottom: 0; }
+
+.ml-experimental-banner code {
+  background: rgba(122, 92, 0, 0.09);
+  padding: 0.08rem 0.32rem;
+  border-radius: 4px;
+  font-size: 0.86em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ------------------------------------------------------------------ *
+ * Provenance chips
+ *
+ * Same convention as the Data Sources page: anything unverified or
+ * absent is DASHED, so it never reads as a deliberate, sourced value.
+ * ------------------------------------------------------------------ */
+.prov-chip {
+  display: inline-block;
+  padding: 0.28rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+/* Self-declared demo/synthetic file. Solid amber — a positive assertion
+   that the contents are fabricated, which is a fact we DO know. */
+.prov-chip-synthetic {
+  background: #7a5c00;
+  color: #ffffff;
+  border: 2px solid #7a5c00;
+}
+
+/* A real recorded source. Reserved — nothing currently qualifies. */
+.prov-chip-sourced {
+  background: #ffffff;
+  color: #1e5b3a;
+  border: 2px solid #1e5b3a;
+}
+
+/* Nothing recorded. Dashed, so absence never looks like a value. */
+.prov-chip-none {
+  background: #ffffff;
+  color: #7a5c00;
+  border: 2px dashed #7a5c00;
+}
+
+/* The "named after X — contains none of its data" note. This is the
+   line that stops a filename from being mistaken for a citation. */
+.prov-imitates {
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: #7a5c00;
+  max-width: 200px;
+}
+
+.prov-imitates strong { color: #5c4600; }
+
+@media print {
+  .ml-experimental-banner,
+  .prov-chip {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

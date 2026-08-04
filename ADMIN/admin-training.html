@@ -6,6 +6,7 @@
     <title>Training Datasets - KinderCura Admin</title>
     <link rel="stylesheet" href="/css/dashboard-new-styles.css">
     <link rel="stylesheet" href="/notifications-card-ui.css">
+    <link rel="stylesheet" href="/css/admin-training.css">
     <style>
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
     </style>
@@ -41,13 +42,35 @@
         <div class="page-header">
             <h1>Dataset Upload & Training</h1>
             <p>Upload CSV or JSON files, review their structure, and mark them as trained for KinderCura model support.</p>
-            <p style="color:var(--text-light);margin-top:0.4rem;">This is the admin module your adviser can use for the "upload datasets to be trained to become model" requirement.</p>
+        </div>
+
+        <!-- Experimental banner. Rendered statically so it is present even if
+             the page's JS fails to load — the claim it corrects is one no
+             viewer should ever see unqualified. -->
+        <div class="ml-experimental-banner" role="note">
+            <p class="ml-banner-title">⚠️ Experimental — not used for live screening results.</p>
+            <p>
+                <strong>No trained model has ever been produced by this system.</strong>
+                The <code>trained_models</code> collection is empty and no model file exists on disk.
+            </p>
+            <p>
+                <strong>All live screening results come from rule-based scoring</strong> —
+                fixed thresholds in <code>constants/scoring.js</code>, applied by
+                <code>routes/assessments.js</code>. The prediction path checks for an active
+                model, finds none, and falls back to those rules on every request.
+            </p>
+            <p>
+                This page is exploratory scaffolding. Metrics shown here describe uploaded
+                fixture files, not children. See <code>docs/SCORING.md</code>.
+            </p>
         </div>
 
         <div class="overview-grid" style="margin-bottom:2rem;">
             <div class="overview-card"><h3>Total Datasets</h3><p id="sumTotal" style="font-size:2rem;font-weight:700;color:var(--primary);margin-top:0.6rem;">0</p></div>
             <div class="overview-card"><h3>Ready for Training</h3><p id="sumUploaded" style="font-size:2rem;font-weight:700;color:#e67e22;margin-top:0.6rem;">0</p></div>
-            <div class="overview-card"><h3>Models Trained</h3><p id="sumTrained" style="font-size:2rem;font-weight:700;color:#27ae60;margin-top:0.6rem;">0</p></div>
+            <!-- Reads trained_models, NOT the dataset status flag. See the
+                 summary block in routes/admin.js for why. -->
+            <div class="overview-card"><h3>Models Trained</h3><p id="sumTrained" style="font-size:2rem;font-weight:700;color:#27ae60;margin-top:0.6rem;">0</p><p id="sumTrainedNote" style="font-size:0.78rem;color:var(--text-light);margin-top:0.2rem;">model artifacts produced</p></div>
             <div class="overview-card"><h3>Total Rows</h3><p id="sumRows" style="font-size:2rem;font-weight:700;color:var(--primary);margin-top:0.6rem;">0</p></div>
         </div>
 
@@ -104,6 +127,7 @@
                             <th style="padding:1rem;text-align:left;">Format</th>
                             <th style="padding:1rem;text-align:left;">Rows</th>
                             <th style="padding:1rem;text-align:left;">Columns</th>
+                            <th style="padding:1rem;text-align:left;">Provenance</th>
                             <th style="padding:1rem;text-align:left;">Status</th>
                             <th style="padding:1rem;text-align:left;">Uploaded</th>
                             <th style="padding:1rem;text-align:center;">Actions</th>

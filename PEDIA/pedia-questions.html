@@ -332,10 +332,14 @@
                     <option value="cognitive">Cognitive</option>
                 </select>
                 <select id="filterThreshold" class="filter-input" style="flex:1;min-width:140px;" onchange="filterPatientsByAssessment()">
+                    <!-- Options are rebuilt from window.KCScoring.filterOptions()
+                         on load; these are the no-JS fallback and must match
+                         constants/scoring.js ACTIVE_BANDS. -->
                     <option value="">All Statuses</option>
-                    <option value="delayed">Delayed (0-25%)</option>
-                    <option value="at-risk">At-Risk (26-50%)</option>
-                    <option value="on-track">On-Track (51%+)</option>
+                    <option value="on-track">On-Track (80-100%)</option>
+                    <option value="developing">Developing (60-79%)</option>
+                    <option value="at-risk">At-Risk (40-59%)</option>
+                    <option value="delayed">Delayed (0-39%)</option>
                 </select>
                 <button class="btn-outline" style="padding:0.5rem 0.75rem;font-size:0.8rem;" onclick="clearAssessmentFilters()">Clear Filters</button>
             </div>
@@ -389,6 +393,8 @@
     </div>
 </div>
 <script src="/notifications-card-ui.js"></script>
+<!-- Must load before pedia-questions.js — provides window.KCScoring. -->
+<script src="/constants/scoring.js"></script>
 <script src="/js/pedia/pedia-questions.js"></script>
 </body>
 

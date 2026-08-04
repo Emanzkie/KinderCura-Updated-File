@@ -84,6 +84,8 @@
 
 <script src="/api.js"></script>
 <script src="/notifications-card-ui.js"></script>
+<!-- Must load before results.js — provides window.KCScoring (band cutoffs). -->
+<script src="/constants/scoring.js"></script>
 <script src="/js/parent/results.js"></script>
 </body>
 </html>

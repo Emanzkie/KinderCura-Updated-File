@@ -46,6 +46,15 @@
   border: 2px solid #1e5b3a;
 }
 
+/* Dataset — SOLID PURPLE. Deliberately distinct from both storage origins
+   because it answers a different question: not "how did this enter the
+   system" but "does this trace to a checkable external source". */
+.origin-badge.origin-dataset {
+  background: #6d3f8e;
+  color: #ffffff;
+  border: 2px solid #6d3f8e;
+}
+
 /* Anything unrecognised or unset — dashed, so it never looks deliberate. */
 .origin-badge.origin-unknown {
   background: #ffffff;
@@ -170,4 +179,118 @@
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * Dataset Usage card
+ * ------------------------------------------------------------------ */
+
+/* Empty state. Dashed border + amber, matching .origin-unknown, so an
+   absent dataset reads as "nothing recorded" rather than as a styled
+   feature. It must never look like a populated card. */
+.dataset-empty {
+  border: 2px dashed #7a5c00;
+  border-radius: 10px;
+  padding: 1rem 1.15rem;
+  background: #fffdf5;
+  color: #5c4600;
+}
+
+.dataset-empty strong { color: #7a5c00; }
+
+.dataset-empty ul {
+  margin: 0.6rem 0 0;
+  padding-left: 1.15rem;
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.dataset-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.9rem;
+}
+
+.dataset-stat {
+  background: var(--bg-primary, #f7f7f9);
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+}
+
+.dataset-stat .k {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-light, #6b6b76);
+  margin-bottom: 0.25rem;
+}
+
+.dataset-stat .v {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #6d3f8e;
+}
+
+/* ------------------------------------------------------------------ *
+ * Expandable provenance rows
+ * ------------------------------------------------------------------ */
+
+.prov-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-light, #6b6b76);
+  line-height: 1;
+}
+
+.prov-toggle:hover { color: #6d3f8e; }
+.prov-toggle:focus-visible { outline: 2px solid #6d3f8e; outline-offset: 2px; }
+
+.prov-detail > td {
+  background: #faf7fc;
+  padding: 0.85rem 1.1rem !important;
+  border-top: 0;
+}
+
+.prov-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.7rem 1.4rem;
+  font-size: 0.84rem;
+}
+
+.prov-grid dt {
+  color: var(--text-light, #6b6b76);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.prov-grid dd {
+  margin: 0.15rem 0 0;
+  color: var(--text, #22222a);
+  word-break: break-word;
+}
+
+/* Unrecorded values. Italic + dashed underline so a blank field is visibly
+   a statement ("not recorded") rather than a rendering failure. */
+.prov-none {
+  color: #7a5c00;
+  font-style: italic;
+  border-bottom: 1px dashed #7a5c00;
+}
+
+/* Attribution carried over from the removed schema default — flagged so it
+   is never mistaken for a verified citation. */
+.prov-unverified {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px dashed #7a5c00;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  color: #7a5c00;
+  font-style: normal;
 }

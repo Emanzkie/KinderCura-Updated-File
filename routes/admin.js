@@ -611,14 +611,70 @@ router.get('/training/datasets', authMiddleware, adminOnly, async (req, res) => 
       modelId: d.modelId ? String(d.modelId) : null,
       uploadedAt: d.createdAt,
       trainedAt: d.trainedAt,
+
+      // ── Provenance ────────────────────────────────────────────────────────
+      // TrainingDataset has no source field, so there is nothing to read: the
+      // only recorded provenance is `notes`, which is null on every existing
+      // row. Rather than leave the column blank, classify from the filename —
+      // but ONLY to mark a file as synthetic, never to claim it is genuine.
+      // A file is flagged synthetic when it self-declares via 'demo' or
+      // '_style'; anything else is reported as unrecorded, not as real.
+      provenance: (() => {
+        const n = `${d.name || ''} ${d.originalName || ''}`.toLowerCase();
+        // NOTE: \b does not work here — '_' is a word character, so \bdemo\b
+        // fails on 'kindercura_demo_training_dataset'. Treat any non-alphanumeric
+        // (including '_') as the boundary instead.
+        const selfDeclaredDemo =
+          /(^|[^a-z0-9])(demo|sample|synthetic|fixture|mock|dummy|test)([^a-z0-9]|$)/.test(n) ||
+          /_style|-style/.test(n);
+        // Real instruments these filenames gesture at. Naming one does not
+        // make a file contain its data — that is exactly the confusion to kill.
+        const imitates = [];
+        if (/ecdi\s*2030|ecdi2030/.test(n)) imitates.push('ECDI2030 (UNICEF)');
+        if (/dscore|d-score|childdevdata/.test(n)) imitates.push('D-score / childdevdata');
+        if (/kindercura/.test(n)) imitates.push('KinderCura screening export');
+        return {
+          recordedSource: d.notes && String(d.notes).trim() ? String(d.notes).trim() : null,
+          isSynthetic: selfDeclaredDemo,
+          imitates,
+          // Rendered verbatim by the UI.
+          label: selfDeclaredDemo
+            ? 'Synthetic demo fixture'
+            : (d.notes && String(d.notes).trim() ? String(d.notes).trim() : 'not recorded'),
+        };
+      })(),
     }));
+
+    // "Models trained" MUST come from the trained_models collection — a model
+    // exists only if a training run produced one. TrainingDataset.status is set
+    // to 'trained' by a path that merely REGISTERS the file (see the
+    // trainingSummary text: "…were registered by the admin page"), so counting
+    // that flag reported 3 models while trained_models held 0 documents.
+    const TrainedModelRef = require('../models/TrainedModel');
+    const [modelsCompleted, modelsActive, modelsTotal] = await Promise.all([
+      TrainedModelRef.countDocuments({ status: 'completed' }),
+      TrainedModelRef.countDocuments({ isActive: true, status: 'completed' }),
+      TrainedModelRef.countDocuments({}),
+    ]);
+
+    const datasetsFlaggedTrained = datasets.filter((d) => d.status === 'trained').length;
 
     const summary = {
       total: datasets.length,
       uploaded: datasets.filter((d) => d.status === 'uploaded').length,
-      trained: datasets.filter((d) => d.status === 'trained').length,
+      // Authoritative: real model artifacts only.
+      trained: modelsCompleted,
       failed: datasets.filter((d) => d.status === 'failed').length,
       totalRows: datasets.reduce((sum, d) => sum + (d.rowCount || 0), 0),
+
+      // Kept separate and explicitly named so the two can never be conflated
+      // again. The UI shows the discrepancy rather than hiding it.
+      modelsCompleted,
+      modelsActive,
+      modelsTotal,
+      datasetsFlaggedTrained,
+      // True when datasets claim training that produced no model artifact.
+      flagMismatch: datasetsFlaggedTrained > 0 && modelsCompleted === 0,
     };
 
     res.json({ success: true, summary, datasets });
@@ -1277,7 +1333,80 @@ router.get('/data-origin/summary', authMiddleware, adminOnly, async (req, res) =
     const otherAnswerTotal = answers.other.reduce((sum, o) => sum + o.count, 0);
     const otherQuestionTotal = otherQuestions.reduce((sum, o) => sum + o.count, 0);
 
+    // ── Dataset provenance ──────────────────────────────────────────────────
+    // A question counts as dataset-derived ONLY if it carries a real, checkable
+    // sourceCitation. sourcedFrom is a free-text attribution and is deliberately
+    // NOT sufficient — all 34 core-bank rows carry a legacy schema default that
+    // no act of sourcing produced (see models/CoreBankQuestion.js). If nothing
+    // has a citation this block reports zero, and that is the correct answer.
+    const datasetQuestionDocs = await CoreBankQuestion.find({
+      sourceCitation: { $nin: [null, ''] },
+    }).select('questionId sourceCitation sourceVersion importedAt importBatchId').lean();
+
+    const datasetQuestionIds = datasetQuestionDocs.map((d) => d.questionId);
+
+    // How many dataset-derived questions have actually been answered at least
+    // once, and how many answers they account for.
+    let datasetAnswered = 0;
+    let datasetAnswers = 0;
+    if (datasetQuestionIds.length) {
+      const [answeredRefs, answerCount] = await Promise.all([
+        AssessmentAnswer.distinct('sourceQuestionRef', {
+          sourceQuestionRef: { $in: datasetQuestionIds },
+        }),
+        AssessmentAnswer.countDocuments({ sourceQuestionRef: { $in: datasetQuestionIds } }),
+      ]);
+      datasetAnswered = answeredRefs.filter(Boolean).length;
+      datasetAnswers = answerCount;
+    }
+
+    // Group by cited source so the UI can name each one with its version.
+    const bySource = new Map();
+    for (const d of datasetQuestionDocs) {
+      const key = `${d.sourceCitation}||${d.sourceVersion || ''}`;
+      const entry = bySource.get(key) || {
+        citation: d.sourceCitation,
+        version: d.sourceVersion || null,
+        items: 0,
+        lastImportedAt: null,
+        batchIds: new Set(),
+      };
+      entry.items += 1;
+      if (d.importedAt && (!entry.lastImportedAt || d.importedAt > entry.lastImportedAt)) {
+        entry.lastImportedAt = d.importedAt;
+      }
+      if (d.importBatchId) entry.batchIds.add(d.importBatchId);
+      bySource.set(key, entry);
+    }
+
+    // Core-bank questions answered at least once — the honest denominator for
+    // "how much of the bank is actually exercised".
+    const coreAnsweredRefs = await AssessmentAnswer.distinct('sourceQuestionRef', {
+      origin: DATA_ORIGIN.CORE_BANK,
+    });
+
     res.json({
+      dataset: {
+        label: 'Dataset',
+        // Zero here means no question carries a checkable external source.
+        questions: datasetQuestionDocs.length,
+        questionsAnswered: datasetAnswered,
+        answers: datasetAnswers,
+        sources: [...bySource.values()].map((e) => ({
+          citation: e.citation,
+          version: e.version,
+          items: e.items,
+          lastImportedAt: e.lastImportedAt,
+          batchCount: e.batchIds.size,
+        })),
+        // Drives the honest empty state in the admin UI.
+        hasExternalDataset: datasetQuestionDocs.length > 0,
+      },
+      coreBankUsage: {
+        questions: coreBankQuestions,
+        questionsAnswered: coreAnsweredRefs.filter(Boolean).length,
+        answers: coreBankAnswers,
+      },
       coreBank: {
         label: DATA_ORIGIN_LABELS[DATA_ORIGIN.CORE_BANK],
         questions: coreBankQuestions,
@@ -1320,11 +1449,23 @@ router.get('/data-origin/list', authMiddleware, adminOnly, async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
 
-    if (originFilter !== 'all' && !DATA_ORIGIN_VALUES.includes(originFilter)) {
-      return res.status(400).json({ error: `origin must be one of: all, ${DATA_ORIGIN_VALUES.join(', ')}` });
+    // 'dataset' is a PROVENANCE view, not a storage origin — it re-filters
+    // core-bank rows by whether they carry a checkable sourceCitation. It is
+    // deliberately not a DATA_ORIGIN value; see constants/dataOrigin.js, which
+    // reserves ml_dataset without admitting it to the enum.
+    const DATASET_VIEW = 'dataset';
+    if (
+      originFilter !== 'all' &&
+      originFilter !== DATASET_VIEW &&
+      !DATA_ORIGIN_VALUES.includes(originFilter)
+    ) {
+      return res.status(400).json({
+        error: `origin must be one of: all, ${DATASET_VIEW}, ${DATA_ORIGIN_VALUES.join(', ')}`,
+      });
     }
 
-    const wantCore = originFilter === 'all' || originFilter === DATA_ORIGIN.CORE_BANK;
+    const wantDatasetOnly = originFilter === DATASET_VIEW;
+    const wantCore = originFilter === 'all' || originFilter === DATA_ORIGIN.CORE_BANK || wantDatasetOnly;
     const wantPedia = originFilter === 'all' || originFilter === DATA_ORIGIN.PEDIA_ENTRY;
 
     const rows = [];
@@ -1349,12 +1490,24 @@ router.get('/data-origin/list', authMiddleware, adminOnly, async (req, res) => {
           displayDomain: q.displayDomain || '',
           origin: DATA_ORIGIN.CORE_BANK,
           originLabel: DATA_ORIGIN_LABELS[DATA_ORIGIN.CORE_BANK],
-          // Provenance, not mechanism: the core bank was transcribed from a
-          // consultant pediatrician interview, so show that rather than a dash.
+          // Mechanism label only. Provenance now lives in the fields below and
+          // must not be inferred from this one.
           createdBy: q.sourcedFrom || 'Core Question Bank',
           isSystemManaged: q.isSystemManaged !== false,
           createdAt: q.createdAt,
           timesAnswered: answersByRef.get(q.questionId) || 0,
+
+          // ── Provenance (null means genuinely unrecorded) ─────────────────
+          // isDataset gates the Dataset tab: a question is dataset-derived
+          // only with a checkable citation, never on attribution alone.
+          isDataset: Boolean(q.sourceCitation && String(q.sourceCitation).trim()),
+          sourceCitation: q.sourceCitation || null,
+          sourceVersion: q.sourceVersion || null,
+          importedAt: q.importedAt || null,
+          importBatchId: q.importBatchId || null,
+          // Surfaced separately so the UI can mark it unverified. All 34
+          // existing rows carry this from a removed schema default.
+          sourcedFrom: q.sourcedFrom || null,
         });
       }
     }
@@ -1393,9 +1546,13 @@ router.get('/data-origin/list', authMiddleware, adminOnly, async (req, res) => {
       }
     }
 
+    // Dataset view: keep only rows with a real citation. With no external
+    // dataset imported this yields an empty list, which is the honest result.
+    const visibleRows = wantDatasetOnly ? rows.filter((r) => r.isDataset) : rows;
+
     // Newest first, with a stable tiebreak so pagination cannot repeat or skip
     // rows when several share a timestamp.
-    rows.sort((a, b) => {
+    visibleRows.sort((a, b) => {
       const diff = new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
       return diff !== 0 ? diff : String(a.id).localeCompare(String(b.id));
     });
@@ -1404,11 +1561,13 @@ router.get('/data-origin/list', authMiddleware, adminOnly, async (req, res) => {
     // is small (34 core-bank + the pediatrician's own questions). If the
     // pediatrician question count ever grows into the thousands, this needs to
     // become a proper $unionWith aggregation with database-side paging.
-    const total = rows.length;
+    const total = visibleRows.length;
     const start = (page - 1) * limit;
 
     res.json({
-      rows: rows.slice(start, start + limit),
+      // Lets the UI render an accurate empty state instead of a bare "no rows".
+      datasetView: wantDatasetOnly,
+      rows: visibleRows.slice(start, start + limit),
       pagination: {
         page,
         limit,

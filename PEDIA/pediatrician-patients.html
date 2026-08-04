@@ -109,6 +109,35 @@
                     <label style="font-weight:600;">Diagnosis</label>
                     <textarea id="diagnosis-text" placeholder="Enter your professional diagnosis..." style="width:100%;height:140px;padding:1rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.95rem;resize:vertical;margin-top:0.4rem;"></textarea>
                 </div>
+                <!-- Structured outcome label. This is the ONLY field that can
+                     serve as ground truth for validating the scoring rules;
+                     the free-text diagnosis above cannot. Optional by design —
+                     an absent label is honest, a guessed one is not. -->
+                <div class="form-group" style="background:#f4f1f8;border:1px solid #d9cfe6;border-radius:12px;padding:1rem;margin-top:0.25rem;">
+                    <label style="font-weight:600;" for="clinical-outcome">Clinical outcome <span style="font-weight:400;color:var(--text-light);">(optional)</span></label>
+                    <p style="font-size:0.78rem;color:var(--text-light);margin:0.25rem 0 0.5rem;line-height:1.5;">
+                        Your structured conclusion, recorded separately from the notes above. This is the
+                        only field that can later be used to check the screening scores against real
+                        clinical judgement. Leave blank if you cannot conclude — do not guess.
+                    </p>
+                    <select id="clinical-outcome" onchange="onOutcomeChange()" style="width:100%;padding:0.85rem 1rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.95rem;background:white;">
+                        <option value="">— not recorded —</option>
+                        <option value="typical_development">Typical development — no concern identified</option>
+                        <option value="monitor">Monitor — subclinical, re-screen later</option>
+                        <option value="referred_for_evaluation">Referred for formal evaluation</option>
+                        <option value="confirmed_delay">Confirmed developmental delay</option>
+                        <option value="inconclusive">Inconclusive — reviewed, no conclusion possible</option>
+                    </select>
+                    <div id="outcome-domains-wrap" style="margin-top:0.75rem;display:none;">
+                        <label style="font-weight:600;font-size:0.85rem;">Domains concerned</label>
+                        <div style="display:flex;flex-wrap:wrap;gap:0.85rem;margin-top:0.4rem;">
+                            <label style="font-size:0.85rem;font-weight:400;"><input type="checkbox" class="outcome-domain" value="Communication"> Communication</label>
+                            <label style="font-size:0.85rem;font-weight:400;"><input type="checkbox" class="outcome-domain" value="Social Skills"> Social Skills</label>
+                            <label style="font-size:0.85rem;font-weight:400;"><input type="checkbox" class="outcome-domain" value="Cognitive"> Cognitive</label>
+                            <label style="font-size:0.85rem;font-weight:400;"><input type="checkbox" class="outcome-domain" value="Motor Skills"> Motor Skills</label>
+                        </div>
+                    </div>
+                </div>
                 <div class="form-group">
                     <label style="font-weight:600;">Recommendations for Parent</label>
                     <textarea id="recommendations-text" placeholder="Enter recommendations for parents/caregivers..." style="width:100%;height:110px;padding:1rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.95rem;resize:vertical;margin-top:0.4rem;"></textarea>
@@ -213,6 +242,8 @@
     </div>
 </div>
 <script src="/notifications-card-ui.js"></script>
+<!-- Must load before pediatrician-patients.js — provides window.KCScoring. -->
+<script src="/constants/scoring.js"></script>
 <script src="/js/pedia/pediatrician-patients.js"></script>
 </body>
 </html>

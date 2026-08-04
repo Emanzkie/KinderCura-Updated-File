@@ -17,6 +17,14 @@ const assessmentResultSchema = new mongoose.Schema(
     cognitiveStatus: { type: String, default: null },
     motorStatus: { type: String, default: null },
     riskFlags: [{ type: String }],
+
+    // Which band set produced the four *Status values above.
+    // 'v2-80/60/40' = scored under constants/scoring.js ACTIVE_BANDS.
+    // null          = pre-audit document, scored under the old 51/26 bands.
+    // Stamped on write by routes/assessments.js and by
+    // scripts/backfill-scoring-bands.js. See constants/scoring.js.
+    scoringBandsVersion: { type: String, default: null, index: true },
+
     generatedAt: { type: Date, default: Date.now },
   },
   { timestamps: false, collection: 'results' }

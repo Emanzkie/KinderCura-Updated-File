@@ -23,7 +23,43 @@ const assessmentSchema = new mongoose.Schema(
     completedAt: { type: Date, default: null },
 
     // Pediatrician-written note shown on the parent Results page.
+    // Free text. NOT a clinical outcome label — see clinicalOutcome below.
     diagnosis: { type: String, default: null },
+
+    // ── Clinical outcome label ───────────────────────────────────────────────
+    // The structured record of what the reviewing pediatrician actually
+    // concluded, kept deliberately separate from the free-text `diagnosis`.
+    //
+    // Why this exists: `diagnosis` is unconstrained prose. Before this field,
+    // the only populated diagnosis in the entire database was the string
+    // "Yes please" — which is why the system had zero usable outcome labels
+    // and no way to validate its own scoring against clinical judgement.
+    //
+    // This is the ONLY field that can ever serve as ground truth. A screening
+    // counts as labelled training data when, and only when, this is non-null.
+    // null = not yet reviewed, or reviewed without a conclusion recorded.
+    // Never infer a label from `diagnosis` text, and never default this.
+    clinicalOutcome: {
+      type: String,
+      enum: [
+        'typical_development',      // no concern identified
+        'monitor',                  // subclinical; re-screen later
+        'referred_for_evaluation',  // sent for formal assessment
+        'confirmed_delay',          // delay confirmed by the clinician
+        'inconclusive',             // reviewed, no conclusion possible
+      ],
+      default: null,
+      index: true,
+    },
+
+    // Which domains the outcome concerns. Empty for typical_development.
+    clinicalOutcomeDomains: [{
+      type: String,
+      enum: ['Communication', 'Social Skills', 'Cognitive', 'Motor Skills'],
+    }],
+
+    clinicalOutcomeBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    clinicalOutcomeAt: { type: Date, default: null },
     recommendations: { type: String, default: null },
     nextAssessmentDate: { type: Date, default: null },
     nextAssessmentReason: { type: String, default: null, trim: true },

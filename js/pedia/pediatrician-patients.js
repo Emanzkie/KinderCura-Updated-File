@@ -260,7 +260,7 @@ const API = window.location.origin + '/api';
                     </p>
                     <div class="score-grid">
                         ${Object.entries(scores).map(([k,v]) => {
-                            const color = v >= 70 ? 'var(--success,#4a7c59)' : v >= 40 ? '#F4D89F' : '#ef4444';
+                            const color = window.KCScoring.colorForScore(v);
                             return `<div class="score-item">
                                 <div class="score-val" style="color:${color};">${v}%</div>
                                 <div class="score-lbl">${k}</div>
@@ -412,7 +412,18 @@ const API = window.location.origin + '/api';
         const recommendations = document.getElementById('recommendations-text').value.trim();
         const nextAssessmentDate = document.getElementById('next-assessment-date').value;
         const nextAssessmentReason = document.getElementById('next-assessment-reason').value.trim();
+        const clinicalOutcome = document.getElementById('clinical-outcome')?.value || '';
+        const clinicalOutcomeDomains = clinicalOutcome && clinicalOutcome !== 'typical_development'
+            ? Array.from(document.querySelectorAll('.outcome-domain:checked')).map(el => el.value)
+            : [];
+
+        // Mirrors the server-side rule in routes/assessments.js so the
+        // pediatrician gets the message inline instead of via a failed request.
         if (!diagnosis) { alert('Please enter a diagnosis.'); return; }
+        if (diagnosis.length < 10) {
+            alert('Please describe the clinical finding — a diagnosis needs at least 10 characters.');
+            return;
+        }
         if (isPastDateInput(nextAssessmentDate)) {
             alert('Next assessment date cannot be in the past.');
             return;
@@ -424,10 +435,14 @@ const API = window.location.origin + '/api';
                     diagnosis,
                     recommendations,
                     nextAssessmentDate: nextAssessmentDate || null,
-                    nextAssessmentReason: nextAssessmentReason || null
+                    nextAssessmentReason: nextAssessmentReason || null,
+                    clinicalOutcome: clinicalOutcome || null,
+                    clinicalOutcomeDomains
                 })
             });
-            alert('✅ Diagnosis submitted! The parent will be notified.');
+            alert(clinicalOutcome
+                ? '✅ Diagnosis submitted with a recorded clinical outcome. The parent will be notified.'
+                : '✅ Diagnosis submitted! The parent will be notified.\n\nNote: no clinical outcome was recorded, so this screening cannot be used to validate the scoring.');
             closeDiagnosisModal();
             loadPatients();
         } catch (err) {
@@ -435,10 +450,26 @@ const API = window.location.origin + '/api';
         }
     }
 
+    // Domain checkboxes are only meaningful for an outcome that concerns a
+    // domain — 'typical_development' by definition concerns none.
+    function onOutcomeChange() {
+        const v = document.getElementById('clinical-outcome')?.value || '';
+        const wrap = document.getElementById('outcome-domains-wrap');
+        if (!wrap) return;
+        const show = v && v !== 'typical_development';
+        wrap.style.display = show ? 'block' : 'none';
+        if (!show) document.querySelectorAll('.outcome-domain:checked').forEach(el => { el.checked = false; });
+    }
+
     function closeDiagnosisModal() {
         document.getElementById('diagnosisModal').style.display = 'none';
         document.getElementById('diagnosis-text').value = '';
         document.getElementById('recommendations-text').value = '';
+        const outcomeEl = document.getElementById('clinical-outcome');
+        if (outcomeEl) outcomeEl.value = '';
+        document.querySelectorAll('.outcome-domain:checked').forEach(el => { el.checked = false; });
+        const wrap = document.getElementById('outcome-domains-wrap');
+        if (wrap) wrap.style.display = 'none';
         document.getElementById('next-assessment-date').value = '';
         document.getElementById('next-assessment-reason').value = '';
         document.getElementById('next-assessment-suggestion').textContent = '';

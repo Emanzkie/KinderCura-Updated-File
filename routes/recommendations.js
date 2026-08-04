@@ -14,6 +14,7 @@ const Assessment = require('../models/Assessment');
 const Appointment = require('../models/Appointment');
 const User = require('../models/User');
 const Child = require('../models/Child');
+const scoring = require('../constants/scoring');
 
 const TrainedModel = require('../models/TrainedModel');
 const modelManager = require('../ml/model_manager');
@@ -82,6 +83,19 @@ async function tryMLPrediction(resultDoc) {
   }
 }
 
+// Maps a score band to the recommendation tier. `level` selects the wording in
+// suggestionMap below; `priority` is what the parent page sorts and badges on.
+//
+// Note the behaviour change vs. the previous 70/40 literals: scores 70-79 were
+// formerly 'low' priority and now fall in `developing` -> 'medium'. That is the
+// intended direction — see constants/scoring.js on erring toward over-referral.
+const RECOMMENDATION_LEVEL_BY_BAND = Object.freeze({
+  [scoring.BAND.ON_TRACK]:   { priority: 'low',    level: 'high' },
+  [scoring.BAND.DEVELOPING]: { priority: 'medium', level: 'medium' },
+  [scoring.BAND.AT_RISK]:    { priority: 'medium', level: 'medium' },
+  [scoring.BAND.DELAYED]:    { priority: 'high',   level: 'low' },
+});
+
 function buildRecommendationSet(resultDoc, mlPrediction) {
   const suggestionMap = {
     communication: {
@@ -118,13 +132,12 @@ function buildRecommendationSet(resultDoc, mlPrediction) {
   const mlConsultation = mlPrediction ? mlPrediction.consultationNeeded : null;
 
   return domains.map((d) => {
-    const priority = d.score >= 70 ? 'low' : d.score >= 40 ? 'medium' : 'high';
-    const level = d.score >= 70 ? 'high' : d.score >= 40 ? 'medium' : 'low';
+    const { priority, level } = RECOMMENDATION_LEVEL_BY_BAND[scoring.bandFor(d.score)];
     const info = suggestionMap[d.key][level];
 
     // Per-domain consultation: use rule-based logic per domain
     // The overall ML prediction augments the top-level consultationNeeded
-    const domainConsultation = d.score < 40;
+    const domainConsultation = scoring.isRiskFlagged(d.score);
 
     return {
       skill: d.key,
@@ -152,9 +165,12 @@ function buildAssessmentContext(resultDoc) {
     { key: 'motor', label: 'Motor Skills', score: Number(resultDoc.motorScore || 0), keywords: ['motor', 'occupational', 'physical', 'movement', 'development'] },
   ];
 
-  const focusAreas = domains.filter((d) => d.score < 70).sort((a, b) => a.score - b.score);
+  // A focus area is any domain not in the top band.
+  const focusAreas = domains
+    .filter((d) => scoring.bandFor(d.score) !== scoring.BAND.ON_TRACK)
+    .sort((a, b) => a.score - b.score);
   const consultationNeeded = focusAreas.length > 0;
-  const urgent = focusAreas.some((d) => d.score < 40);
+  const urgent = focusAreas.some((d) => scoring.isRiskFlagged(d.score));
 
   let summary = 'You may continue monitoring your child while using the generated home activities.';
   if (consultationNeeded) {
@@ -174,7 +190,7 @@ function scorePediatricianForContext(pediatrician, context) {
 
   for (const area of context.focusAreas) {
     if (area.keywords.some((kw) => hay.includes(kw))) {
-      score += area.score < 40 ? 8 : 5;
+      score += scoring.isRiskFlagged(area.score) ? 8 : 5;
       reasons.push(`${area.label} support match`);
     }
   }

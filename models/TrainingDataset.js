@@ -19,9 +19,15 @@ const trainingDatasetSchema = new mongoose.Schema(
       default: 'general',
     },
     notes: { type: String, default: null },
+    // 'registered' = the file was uploaded and its structure recorded. NOTHING
+    // was trained. This value exists because 'trained' was previously set by a
+    // path that only registered the file, which made the admin page report
+    // "Models Trained: 3" while the trained_models collection held 0 documents.
+    // 'trained' is retained in the enum so pre-migration documents still
+    // validate; it must only ever be set when a model artifact was produced.
     status: {
       type: String,
-      enum: ['uploaded', 'training', 'trained', 'failed'],
+      enum: ['uploaded', 'registered', 'training', 'trained', 'failed'],
       default: 'uploaded',
       index: true,
     },

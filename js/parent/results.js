@@ -16,18 +16,30 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
+// Band cutoffs come from constants/scoring.js (loaded as window.KCScoring by
+// the <script> tag above this file in results.html). Do not reintroduce
+// literal cutoffs here — see that file's header for why.
+//
+// Colours previously used var(--primary) / var(--accent-red); they now come
+// from the shared four-colour map so the parent and pediatrician views agree.
 function getStatusLabel(score) {
-    if (score >= 80) return { label:'Excellent', color:'var(--primary)' };
-    if (score >= 60) return { label:'Good', color:'var(--primary)' };
-    if (score >= 40) return { label:'Fair', color:'var(--accent-red)' };
-    return { label:'Needs Attention', color:'var(--accent-red)' };
+    const st = window.KCScoring.parentDomainStatus(score);
+    return { label: st.label, color: st.color };
 }
 
 function getOverallStatus(score) {
-    if (score >= 80) return 'On Track';
-    if (score >= 60) return 'Developing';
-    return 'Needs Support';
+    return window.KCScoring.parentOverallLabel(score);
 }
+
+// Overall summary paragraph, keyed by band. Previously an inline 80/60 ternary.
+// at-risk and delayed share the old "<60" wording so parent-facing text is
+// unchanged at every score.
+const OVERALL_BLURB = {
+    'on-track':   'Your child is developing well overall and progressing as expected for their age.',
+    'developing': 'Your child is making good progress. Some areas may benefit from additional focus.',
+    'at-risk':    'Your child may benefit from additional support. Consider consulting a pediatrician.',
+    'delayed':    'Your child may benefit from additional support. Consider consulting a pediatrician.',
+};
 
 function getRequestedChildId() {
     try { return new URLSearchParams(window.location.search).get('childId') || localStorage.getItem('kc_childId') || localStorage.getItem('kc_viewChildId'); } 
@@ -277,7 +289,7 @@ async function loadResults() {
                 <div>
                     <h2 style="color:var(--primary);margin-bottom:0.5rem;">${getOverallStatus(overall)}</h2>
                     <p style="color:var(--text-light);line-height:1.6;margin-bottom:1.5rem;">
-                        ${overall >= 80 ? 'Your child is developing well overall and progressing as expected for their age.' : overall >= 60 ? 'Your child is making good progress. Some areas may benefit from additional focus.' : 'Your child may benefit from additional support. Consider consulting a pediatrician.'}
+                        ${OVERALL_BLURB[window.KCScoring.bandFor(overall)]}
                         ${riskFlags.length ? ' Note: ' + escapeHtml(riskFlags.join('; ')) + '.' : ''}
                     </p>
                     <div class="results-domain-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;">

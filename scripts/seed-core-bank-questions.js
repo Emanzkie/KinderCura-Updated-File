@@ -265,11 +265,20 @@ async function verifyAgainstSource(bank) {
   console.log(`  minAgeMonths values        : ${actualAges.join(', ')}  ${ok(agesMatch)}`);
   console.log(`    (derived from source; note 84 is present via Q33/Q34)`);
 
+  // Provenance is REPORTED, never asserted. An empty sourcedFrom is a true
+  // statement about a question we cannot trace — failing the run on it would
+  // pressure someone into filling the field with a guess, which is the exact
+  // failure mode we are trying to avoid. Report the counts and move on.
   const noSourced = docs.filter((d) => !String(d.sourcedFrom || '').trim()).map((d) => d.questionId);
+  const noCitation = docs.filter((d) => !String(d.sourceCitation || '').trim()).length;
   const notManaged = docs.filter((d) => d.isSystemManaged !== true).map((d) => d.questionId);
-  if (noSourced.length) failures.push(`sourcedFrom empty: ${noSourced.join(',')}`);
   if (notManaged.length) failures.push(`isSystemManaged not true: ${notManaged.join(',')}`);
-  console.log(`  sourcedFrom set            : ${docs.length - noSourced.length}/${docs.length}  ${ok(!noSourced.length)}`);
+  console.log(`  sourcedFrom set            : ${docs.length - noSourced.length}/${docs.length}  (attribution, unverified)`);
+  console.log(`  sourceCitation set         : ${docs.length - noCitation}/${docs.length}  (checkable external source)`);
+  if (noCitation === docs.length) {
+    console.log('    → no question has a recorded external source; the admin');
+    console.log('      Dataset tab will correctly show 0. This is accurate, not a defect.');
+  }
   console.log(`  isSystemManaged true       : ${docs.length - notManaged.length}/${docs.length}  ${ok(!notManaged.length)}`);
 
   const wrongOrigin = docs.filter((d) => d.origin !== DATA_ORIGIN.CORE_BANK).map((d) => d.questionId);

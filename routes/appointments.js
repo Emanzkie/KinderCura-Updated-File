@@ -16,6 +16,7 @@ const Child = require('../models/Child');
 const Assessment = require('../models/Assessment');
 const AssessmentResult = require('../models/AssessmentResult');
 const SystemSetting = require('../models/SystemSetting');
+const scoring = require('../constants/scoring');
 const paymentService = require('../services/paymentService');
 const sse = require('../sse');
 
@@ -547,11 +548,12 @@ function buildAssessmentContext(resultDoc) {
     { key: 'motor', label: 'Motor Skills', score: Number(resultDoc.motorScore || 0), keywords: ['motor', 'occupational', 'physical', 'development', 'movement'] },
   ];
 
+  // A focus area is any domain not in the top band. See constants/scoring.js.
   const focusAreas = domains
-    .filter((d) => d.score < 70)
+    .filter((d) => scoring.bandFor(d.score) !== scoring.BAND.ON_TRACK)
     .sort((a, b) => a.score - b.score);
 
-  const urgent = focusAreas.some((d) => d.score < 40);
+  const urgent = focusAreas.some((d) => scoring.isRiskFlagged(d.score));
   const consultationNeeded = focusAreas.length > 0;
 
   let summary = 'You can book an appointment with any active pediatrician.';
@@ -573,7 +575,7 @@ function scorePediatricianForContext(pediatrician, context) {
   if (context.consultationNeeded) {
     for (const area of context.focusAreas) {
       if (area.keywords.some((kw) => hay.includes(kw))) {
-        score += area.score < 40 ? 8 : 5;
+        score += scoring.isRiskFlagged(area.score) ? 8 : 5;
         reasons.push(`${area.label} support match`);
       }
     }

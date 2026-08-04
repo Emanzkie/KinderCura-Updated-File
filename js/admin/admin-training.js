@@ -154,8 +154,13 @@ requireAuth();
         function statusChip(status) {
             const map = {
                 uploaded:  { bg: '#fff3cd', color: '#856404', text: 'Uploaded' },
+                // File uploaded and structure recorded — NOT trained. Amber, so
+                // it never reads as a success state.
+                registered: { bg: '#fff8e5', color: '#7a5c00', text: 'Registered — not trained' },
                 training:  { bg: '#e3f0ff', color: '#1a56db', text: '⏳ Training…' },
-                trained:   { bg: '#dff5e3', color: '#1e6f3f', text: '✅ Trained' },
+                // Legacy value on pre-migration rows: set by a path that only
+                // registered the file. See scripts/migrate-dataset-status-registered.js.
+                trained:   { bg: '#fff8e5', color: '#7a5c00', text: 'Marked trained — no model' },
                 completed: { bg: '#dff5e3', color: '#1e6f3f', text: '✅ Trained' },
                 failed:    { bg: '#fde8e8', color: '#c0392b', text: '❌ Failed' },
             };
@@ -173,12 +178,41 @@ requireAuth();
 
                 document.getElementById('sumTotal').textContent = summary.total || 0;
                 document.getElementById('sumUploaded').textContent = summary.uploaded || 0;
-                document.getElementById('sumTrained').textContent = summary.trained || 0;
+                // Authoritative count of real model artifacts. When datasets are
+                // flagged 'trained' but produced no model, say so on the card
+                // instead of letting the flag masquerade as a model count.
+                document.getElementById('sumTrained').textContent = summary.modelsCompleted ?? summary.trained ?? 0;
+                const trainedNote = document.getElementById('sumTrainedNote');
+                if (trainedNote) {
+                    trainedNote.textContent = summary.flagMismatch
+                        ? `0 produced · ${summary.datasetsFlaggedTrained} dataset(s) flagged "trained" with no model`
+                        : 'model artifacts produced';
+                    trainedNote.style.color = summary.flagMismatch ? '#7a5c00' : 'var(--text-light)';
+                }
                 document.getElementById('sumRows').textContent = summary.totalRows || 0;
+
+                // Provenance cell. A file is marked synthetic only when it
+                // self-declares ('demo', '_style'); otherwise the source reads
+                // as unrecorded. Filenames naming a real instrument are shown
+                // as an IMITATION of it, never as the instrument itself —
+                // 'ecdi2030_style_demo' contains no ECDI2030 data.
+                function provenanceCell(d) {
+                    const p = d.provenance || {};
+                    if (p.isSynthetic) {
+                        const imitates = (p.imitates || []).length
+                            ? `<div class="prov-imitates">named after ${(p.imitates || []).map(escapeHtml).join(', ')} — <strong>contains none of its data</strong></div>`
+                            : '';
+                        return `<span class="prov-chip prov-chip-synthetic">Synthetic demo fixture</span>${imitates}`;
+                    }
+                    if (p.recordedSource) {
+                        return `<span class="prov-chip prov-chip-sourced">${escapeHtml(p.recordedSource)}</span>`;
+                    }
+                    return '<span class="prov-chip prov-chip-none">not recorded</span>';
+                }
 
                 const rowsEl = document.getElementById('datasetRows');
                 if (!datasets.length) {
-                    rowsEl.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:var(--text-light);">No datasets uploaded yet.</td></tr>';
+                    rowsEl.innerHTML = '<tr><td colspan="9" style="padding:2rem;text-align:center;color:var(--text-light);">No datasets uploaded yet.</td></tr>';
                     return;
                 }
 
@@ -201,6 +235,7 @@ requireAuth();
                             <td style="padding:1rem;">${d.fileType}</td>
                             <td style="padding:1rem;">${d.rowCount || 0}</td>
                             <td style="padding:1rem;">${d.columnCount || 0}</td>
+                            <td style="padding:1rem;min-width:170px;">${provenanceCell(d)}</td>
                             <td style="padding:1rem;">${statusChip(d.status)}</td>
                             <td style="padding:1rem;">
                                 <div>${fmtDateTime(d.uploadedAt)}</div>
@@ -208,7 +243,8 @@ requireAuth();
                                 ${d.trainedAt ? `<div style="font-size:0.75rem;color:var(--text-light);margin-top:0.35rem;">Trained: ${fmtDateTime(d.trainedAt)}</div>` : ''}
                             </td>
                             <td style="padding:1rem;text-align:center;white-space:nowrap;">
-                                <button class="btn btn-primary" style="padding:0.55rem 0.95rem;margin-bottom:0.5rem;${(d.status === 'trained' || d.status === 'training') ? 'opacity:.65;cursor:not-allowed;' : ''}" ${(d.status === 'trained' || d.status === 'training') ? 'disabled' : ''} onclick="trainDataset('${d.id}')">${d.status === 'training' ? 'Training…' : d.status === 'trained' ? 'Trained ✓' : '🚀 Train Model'}</button><br>
+                                <button class="btn btn-primary" style="padding:0.55rem 0.95rem;margin-bottom:0.5rem;${(d.status === 'trained' || d.status === 'registered' || d.status === 'training') ? 'opacity:.65;cursor:not-allowed;' : ''}" ${(d.status === 'trained' || d.status === 'registered' || d.status === 'training') ? 'disabled' : ''} onclick="trainDataset('${d.id}')">${d.status === 'training' ? 'Training…' : (d.status === 'trained' || d.status === 'registered') ? 'Marked as trained' : '🚀 Train Model'}</button><br>
+                                ${(d.status === 'trained' || d.status === 'registered') && !d.modelId ? '<div class="prov-chip prov-chip-none" style="margin:0.3rem 0;white-space:normal;max-width:190px;">Marked as trained — no model produced</div>' : ''}
                                 ${d.trainingMetrics ? `<div style="font-size:0.72rem;color:#1e6f3f;margin:0.3rem 0;">Acc: ${(d.trainingMetrics.accuracy*100).toFixed(1)}% · F1: ${(d.trainingMetrics.f1*100).toFixed(1)}%</div>` : ''}
                                 ${d.errorMessage ? `<div style="font-size:0.72rem;color:#c0392b;margin:0.3rem 0;max-width:180px;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(d.errorMessage)}">${escapeHtml(d.errorMessage.substring(0,60))}</div>` : ''}
                                 <button class="btn btn-secondary" style="padding:0.55rem 0.95rem;border-color:#e1b6b6;color:#c0392b;" onclick="deleteDataset('${d.id}')">Delete</button>
@@ -216,7 +252,7 @@ requireAuth();
                         </tr>`;
                 }).join('');
             } catch (err) {
-                document.getElementById('datasetRows').innerHTML = `<tr><td colspan="8" style="padding:2rem;text-align:center;color:#c0392b;">${err.message}</td></tr>`;
+                document.getElementById('datasetRows').innerHTML = `<tr><td colspan="9" style="padding:2rem;text-align:center;color:#c0392b;">${err.message}</td></tr>`;
             }
         }
 

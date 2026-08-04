@@ -891,7 +891,7 @@
                 }
 
                 const categoryLabels = { motor: 'Motor Skills', communication: 'Communication', social: 'Social Skills', cognitive: 'Cognitive' };
-                const statusColors = { 'delayed': '#e74c3c', 'at-risk': '#f39c12', 'on-track': '#27ae60' };
+                const statusColors = window.KCScoring.STATUS_COLORS;
 
                 patientList = filteredPatients.map(p => ({
                     childId: p.childId,
@@ -1118,7 +1118,7 @@
                 return;
             }
 
-            const statusColors = { 'delayed': '#e74c3c', 'at-risk': '#f39c12', 'on-track': '#27ae60' };
+            const statusColors = window.KCScoring.STATUS_COLORS;
 
             list.innerHTML = patientList.map(p => {
                 const hasScores = p.scores && Object.values(p.scores).some(s => s != null);
@@ -1454,7 +1454,22 @@
         });
 
         // Initial page load
+        // Rebuild the status filter from constants/scoring.js so the dropdown can
+        // never drift from the bands the server actually filters on. The static
+        // <option> list in the HTML is only the no-JS fallback.
+        function syncThresholdFilterOptions() {
+            const sel = document.getElementById('filterThreshold');
+            if (!sel || !window.KCScoring) return;
+            const current = sel.value;
+            sel.innerHTML = '<option value="">All Statuses</option>'
+                + window.KCScoring.filterOptions()
+                    .map(o => `<option value="${o.value}">${o.label}</option>`)
+                    .join('');
+            sel.value = current;
+        }
+
         document.addEventListener('DOMContentLoaded', async () => {
+            syncThresholdFilterOptions();
             await refreshAll();
             await loadNotificationCount();
             

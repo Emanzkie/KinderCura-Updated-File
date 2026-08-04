@@ -17,6 +17,7 @@ const PatientProgressNote = require('../models/PatientProgressNote');
 const Notification = require('../models/Notification');
 const CoreBankQuestion = require('../models/CoreBankQuestion');
 const { DATA_ORIGIN } = require('../constants/dataOrigin');
+const scoring = require('../constants/scoring');
 const sse = require('../sse');
 
 // The core bank is 34 static rows that only change on deploy, so it is cached
@@ -71,23 +72,37 @@ function scoreAnswer(answer) {
   return 0;
 }
 
-const THRESHOLD_RANGES = {
-  'delayed': { min: 0, max: 25 },
-  'at-risk': { min: 26, max: 50 },
-  'on-track': { min: 51, max: 100 }
-};
+// Band cutoffs, labels, and colours all come from constants/scoring.js.
+// Do not reintroduce literal cutoffs here — see that file's header for why.
+const THRESHOLD_RANGES = scoring.THRESHOLD_RANGES;
 
 function getStatus(score) {
-  if (score >= 51) return 'on-track';
-  if (score >= 26) return 'at-risk';
-  return 'delayed';
+  return scoring.getStatus(score);
 }
 
+// Kept as a distinct name because the patient-filter endpoint reads more
+// clearly with it, but it is the same lookup as getStatus.
 function getScoreThreshold(score) {
-  if (score >= 51) return 'on-track';
-  if (score >= 26) return 'at-risk';
-  return 'delayed';
+  return scoring.getStatus(score);
 }
+
+// The pediatrician review endpoint reports risk in its own vocabulary. These
+// two maps previously carried a SEPARATE set of literal cutoffs (<26 / <51),
+// which was a fifth band set disagreeing with the other four. They are now
+// keyed off the shared bands so the wording differs but the boundaries cannot.
+const RISK_LEVEL_BY_BAND = Object.freeze({
+  [scoring.BAND.ON_TRACK]:   'low',
+  [scoring.BAND.DEVELOPING]: 'low',
+  [scoring.BAND.AT_RISK]:    'moderate',
+  [scoring.BAND.DELAYED]:    'high',
+});
+
+const OVERALL_RISK_BY_BAND = Object.freeze({
+  [scoring.BAND.ON_TRACK]:   'Low Risk',
+  [scoring.BAND.DEVELOPING]: 'Low Risk',
+  [scoring.BAND.AT_RISK]:    'Moderate Risk',
+  [scoring.BAND.DELAYED]:    'High Risk',
+});
 
 function normalizeAnswers(answers) {
   if (!answers) return [];
@@ -396,10 +411,10 @@ router.post('/submit', authMiddleware, async (req, res) => {
     const overallScore       = Math.round((communicationScore + socialScore + cognitiveScore + motorScore) / 4);
 
     const riskFlags = [];
-    if (communicationScore < 40) riskFlags.push('Communication delay detected');
-    if (socialScore < 40) riskFlags.push('Social skills concern detected');
-    if (cognitiveScore < 40) riskFlags.push('Cognitive development concern');
-    if (motorScore < 40) riskFlags.push('Motor skills delay detected');
+    if (scoring.isRiskFlagged(communicationScore)) riskFlags.push('Communication delay detected');
+    if (scoring.isRiskFlagged(socialScore)) riskFlags.push('Social skills concern detected');
+    if (scoring.isRiskFlagged(cognitiveScore)) riskFlags.push('Cognitive development concern');
+    if (scoring.isRiskFlagged(motorScore)) riskFlags.push('Motor skills delay detected');
 
     const result = await AssessmentResult.findOneAndUpdate(
       { assessmentId },
@@ -416,6 +431,10 @@ router.post('/submit', authMiddleware, async (req, res) => {
         cognitiveStatus: getStatus(cognitiveScore),
         motorStatus: getStatus(motorScore),
         riskFlags,
+        // Records which band set produced the four *Status values above, so
+        // documents scored under the old 51/26 bands stay distinguishable.
+        // null on a document means it predates constants/scoring.js.
+        scoringBandsVersion: scoring.SCORING_BANDS_VERSION,
         generatedAt: new Date(),
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -598,8 +617,57 @@ router.post('/diagnose/:childId', authMiddleware, async (req, res) => {
       return res.status(403).json({ error: 'Pediatricians only.' });
     }
 
-    const { diagnosis, recommendations, nextAssessmentDate, nextAssessmentReason } = req.body;
-    if (!diagnosis) return res.status(400).json({ error: 'Diagnosis is required.' });
+    const {
+      diagnosis, recommendations, nextAssessmentDate, nextAssessmentReason,
+      clinicalOutcome, clinicalOutcomeDomains,
+    } = req.body;
+
+    // Previously this was `if (!diagnosis)`, which accepted any truthy string —
+    // that is how "Yes please" became the only diagnosis in the database.
+    // Require real prose, and reject whitespace and trivial affirmations.
+    const diagnosisText = String(diagnosis ?? '').trim();
+    if (!diagnosisText) {
+      return res.status(400).json({ error: 'Diagnosis is required.' });
+    }
+    if (diagnosisText.length < 10) {
+      return res.status(400).json({
+        error: 'Diagnosis must be at least 10 characters — please describe the clinical finding.',
+      });
+    }
+    if (/^(yes|no|ok|okay|none|n\/?a|test|yes please|no please)[.!]*$/i.test(diagnosisText)) {
+      return res.status(400).json({
+        error: 'Diagnosis must describe a clinical finding, not a one-word reply.',
+      });
+    }
+
+    // The structured outcome label. Optional so existing callers keep working,
+    // but validated strictly when supplied — a mislabelled outcome is worse
+    // than an absent one, because only this field can serve as ground truth.
+    const OUTCOMES = Assessment.schema.path('clinicalOutcome').enumValues;
+    const DOMAINS = ['Communication', 'Social Skills', 'Cognitive', 'Motor Skills'];
+
+    let outcome = null;
+    if (clinicalOutcome != null && String(clinicalOutcome).trim() !== '') {
+      outcome = String(clinicalOutcome).trim();
+      if (!OUTCOMES.includes(outcome)) {
+        return res.status(400).json({
+          error: `clinicalOutcome must be one of: ${OUTCOMES.join(', ')}`,
+        });
+      }
+    }
+
+    let outcomeDomains = [];
+    if (Array.isArray(clinicalOutcomeDomains)) {
+      outcomeDomains = clinicalOutcomeDomains.map((d) => String(d).trim()).filter(Boolean);
+      const invalid = outcomeDomains.filter((d) => !DOMAINS.includes(d));
+      if (invalid.length) {
+        return res.status(400).json({
+          error: `Unknown outcome domain(s): ${invalid.join(', ')}. Allowed: ${DOMAINS.join(', ')}`,
+        });
+      }
+    }
+    // A "typical development" conclusion cannot name affected domains.
+    if (outcome === 'typical_development') outcomeDomains = [];
 
     const parsedNextAssessmentDate = parseNextAssessmentDate(nextAssessmentDate);
     if (parsedNextAssessmentDate.error) {
@@ -614,7 +682,15 @@ router.post('/diagnose/:childId', authMiddleware, async (req, res) => {
     if (!latest) return res.status(404).json({ error: 'No assessment found for this child.' });
 
     // Save the diagnosis on the assessment so the Results page can display it later.
-    latest.diagnosis = diagnosis;
+    latest.diagnosis = diagnosisText;
+    // Only stamp the outcome when one was actually supplied — an absent label
+    // must stay null rather than being inferred from the prose above.
+    if (outcome) {
+      latest.clinicalOutcome = outcome;
+      latest.clinicalOutcomeDomains = outcomeDomains;
+      latest.clinicalOutcomeBy = req.user.userId;
+      latest.clinicalOutcomeAt = new Date();
+    }
     latest.recommendations = recommendations || null;
     latest.nextAssessmentDate = parsedNextAssessmentDate.value;
     latest.nextAssessmentReason = nextAssessmentReason ? String(nextAssessmentReason).trim() : null;
@@ -635,6 +711,11 @@ router.post('/diagnose/:childId', authMiddleware, async (req, res) => {
       success: true,
       nextAssessmentDate: latest.nextAssessmentDate || null,
       nextAssessmentReason: latest.nextAssessmentReason || null,
+      clinicalOutcome: latest.clinicalOutcome || null,
+      clinicalOutcomeDomains: latest.clinicalOutcomeDomains || [],
+      // Surfaced so the caller knows whether this review produced a usable
+      // ground-truth label, rather than having to infer it.
+      isLabelled: Boolean(latest.clinicalOutcome),
     });
   } catch (err) {
     console.error('assessments diagnose error:', err);
@@ -901,7 +982,7 @@ router.get('/:childId/review-answers', authMiddleware, async (req, res) => {
         domainSummaries[domain] = {
           score: data.score,
           status: data.status,
-          riskLevel: data.score < 26 ? 'high' : data.score < 51 ? 'moderate' : 'low',
+          riskLevel: RISK_LEVEL_BY_BAND[scoring.bandFor(data.score)],
         };
       }
     }
@@ -930,9 +1011,7 @@ router.get('/:childId/review-answers', authMiddleware, async (req, res) => {
         nextAssessmentReason: assessment.nextAssessmentReason || null,
       },
       overallScore: result ? result.overallScore : null,
-      overallRisk: result
-        ? (result.overallScore < 26 ? 'High Risk' : result.overallScore < 51 ? 'Moderate Risk' : 'Low Risk')
-        : null,
+      overallRisk: result ? OVERALL_RISK_BY_BAND[scoring.bandFor(result.overallScore)] : null,
       riskFlags: result ? (result.riskFlags || []) : [],
       domainSummaries,
       answersByDomain: grouped,
