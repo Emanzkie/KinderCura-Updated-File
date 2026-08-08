@@ -85,6 +85,9 @@
     grid-template-columns: 1fr 1fr;
     gap: 2rem;
     margin-top: 1.5rem;
+    /* Columns size to their own content — an empty column must not stretch
+       to match a populated one. */
+    align-items: start;
 }
 
 .tracker-box {
@@ -153,8 +156,759 @@
     color: white;
 }
 
-@media (max-width: 768px) {
+/* ==================== PARENT ANSWER TRACKER ==================== */
+/* Everything below is scoped to the two tracker columns
+   (#pendingAssignmentsList / #answeredAssignmentsList), so no other section
+   of the page can be affected. */
+
+.tracker-list {
+    display: flex;
+    flex-direction: column;
+    /* One clear gap between consecutive submission cards. */
+    gap: 18px;
+}
+
+/* Added by the renderer only when a column holds more than 3 cards. */
+.tracker-list--scroll {
+    max-height: 70vh;
+    overflow-y: auto;
+    padding-right: 0.4rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+.tracker-list--scroll::-webkit-scrollbar {
+    width: 8px;
+}
+
+.tracker-list--scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.tracker-list--scroll::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 8px;
+}
+
+.tracker-list--scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-light);
+}
+
+/* --- One self-contained card per submission --- */
+.tracker-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    /* The accent belongs to each card, not to the column as a whole. */
+    border-left: 4px solid var(--primary);
+    padding: 18px 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    box-sizing: border-box;
+    transition: 0.2s;
+}
+
+.tracker-card:hover {
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.09);
+}
+
+.tracker-card--pending {
+    border-left-color: var(--accent);
+}
+
+/* --- Identity header: child name + status pill, then parent line --- */
+.tcard-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 12px;
+}
+
+.tcard-identity {
+    min-width: 0;
+}
+
+.tcard-child {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+.tcard-parent {
+    margin: 0.3rem 0 0;
+    font-size: 0.84rem;
+    color: var(--text-dark);
+    overflow-wrap: anywhere;
+}
+
+.tcard-parent-label {
+    font-size: 0.78rem;
+    color: var(--text-light);
+    margin-right: 0.35rem;
+}
+
+.tcard-status {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    font-weight: 600;
+    border-radius: 999px;
+    padding: 0.25rem 0.65rem;
+    white-space: nowrap;
+    /* Same amber / green already used by the tracker column headings. */
+    background: #f1f8f1;
+    border: 1px solid #c8e6c9;
+    color: #155724;
+}
+
+.tcard-status--pending {
+    background: #fff8e6;
+    border-color: #f0e0b8;
+    color: #856404;
+}
+
+/* --- Question set line, on its own row under the divider --- */
+.tcard-setline {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.5rem;
+    margin: 12px 0 14px;
+    font-size: 0.8rem;
+    color: var(--text-light);
+}
+
+.tcard-setline-icon {
+    width: 1.05em;
+    height: 1.05em;
+    object-fit: contain;
+    /* Sits on the text baseline rather than floating above it. */
+    vertical-align: -0.15em;
+    flex-shrink: 0;
+}
+
+.tcard-set-title {
+    font-weight: 600;
+    color: var(--text-light);
+}
+
+.tcard-set-count::before {
+    content: "•";
+    margin-right: 0.5rem;
+    color: var(--border);
+}
+
+/* --- Question blocks: each one separates itself, no dividers needed --- */
+.tcard-questions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.tcard-q {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.tcard-q-text {
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-dark);
+    line-height: 1.45;
+}
+
+.tcard-q-meta {
+    margin: 0.3rem 0 0;
+    font-size: 0.74rem;
+    color: var(--text-light);
+}
+
+.tcard-q-note {
+    margin: 0.5rem 0 0;
+    font-size: 0.75rem;
+    color: var(--text-light);
+    font-style: italic;
+}
+
+.tcard-q-note--pending {
+    color: #856404;
+    font-style: normal;
+}
+
+.tcard-answer {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 0.55rem 0.7rem;
+    margin-top: 0.55rem;
+}
+
+.tcard-answer-label {
+    margin: 0;
+    font-size: 0.72rem;
+    color: var(--text-light);
+}
+
+.tcard-answer-value {
+    margin: 0.2rem 0 0;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    overflow-wrap: anywhere;
+}
+
+/* --- Submitted-at footer --- */
+.tcard-foot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.35rem;
+    border-top: 1px solid var(--border);
+    margin-top: 12px;
+    padding-top: 10px;
+    font-size: 0.74rem;
+    color: var(--text-light);
+    text-align: right;
+}
+
+.tcard-foot-icon {
+    width: 0.95em;
+    height: 0.95em;
+    flex-shrink: 0;
+    stroke: currentColor;
+    fill: none;
+}
+
+/* --- Compact empty state (never stretches the column) --- */
+.tracker-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    max-height: 190px;
+    padding: 1.75rem 1rem;
+    text-align: center;
+    background: var(--bg-primary);
+    border: 1px dashed var(--border);
+    border-radius: 12px;
+}
+
+.tracker-empty-icon {
+    width: 30px;
+    height: 30px;
+    stroke: var(--border);
+    fill: none;
+}
+
+.tracker-empty-title {
+    margin: 0;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-light);
+}
+
+.tracker-empty-hint {
+    margin: 0;
+    font-size: 0.76rem;
+    color: var(--text-light);
+    opacity: 0.85;
+}
+
+/* Loading / error placeholders the renderer still emits. */
+.empty-small {
+    padding: 1.25rem 0.5rem;
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--text-light);
+}
+
+@media (max-width: 900px) {
     .tracker-grid {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .tracker-box {
+        padding: 1.5rem 1.15rem;
+    }
+
+    .tracker-card {
+        padding: 14px 15px;
+    }
+
+    /* Let the status pill drop under the child name instead of squeezing it. */
+    .tcard-head {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .tcard-identity {
+        flex: 1 1 100%;
+    }
+}
+
+/* ==================== YOUR CUSTOM QUESTIONS PANEL ==================== */
+/* Every rule here is scoped to #questionsList (or the panel header controls)
+   so no other section of the page can be affected. */
+
+.qset-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.qset-sort-select {
+    padding: 0.55rem 0.75rem;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    background: white;
+    color: var(--text-dark);
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.qset-sort-select:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+/* --- The list itself: separate cards, real gaps between them --- */
+#questionsList .qset-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.15rem;
+}
+
+/* Applied only when there are more than 4 sets. */
+#questionsList .qset-list--scroll {
+    max-height: 70vh;
+    overflow-y: auto;
+    padding-right: 0.4rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+#questionsList .qset-list--scroll::-webkit-scrollbar {
+    width: 8px;
+}
+
+#questionsList .qset-list--scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#questionsList .qset-list--scroll::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 8px;
+}
+
+#questionsList .qset-list--scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-light);
+}
+
+#questionsList .q-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    box-sizing: border-box;
+    transition: 0.2s;
+}
+
+/* The sage accent belongs to each card, not to the list as a whole. */
+#questionsList .qset-card {
+    border-left: 4px solid var(--primary);
+}
+
+#questionsList .q-card:hover {
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.09);
+}
+
+/* Standalone (legacy) questions keep their own stacking gap. */
+#questionsList .q-card + .q-card {
+    margin-top: 1.15rem;
+}
+
+/* --- Card header: title left, count pill pinned right --- */
+#questionsList .qset-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+#questionsList .qset-title {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--primary);
+    line-height: 1.35;
+}
+
+#questionsList .qset-count-pill {
+    flex-shrink: 0;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #fff;
+    background: var(--primary);
+    border-radius: 999px;
+    padding: 0.25rem 0.6rem;
+    white-space: nowrap;
+}
+
+#questionsList .qset-desc {
+    margin: 0.35rem 0 0;
+    padding-bottom: 0.75rem;
+    font-size: 0.78rem;
+    color: var(--text-light);
+}
+
+/* --- Assigned / Pending / Answered chips --- */
+#questionsList .question-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0 0 0.9rem;
+}
+
+#questionsList .mini-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    border-radius: 999px;
+    padding: 0.22rem 0.6rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    color: var(--text-light);
+    white-space: nowrap;
+}
+
+#questionsList .mini-chip.assigned {
+    color: var(--primary-dark);
+    border-color: var(--primary-light);
+}
+
+/* Same amber / green already used by the tracker column headings. */
+#questionsList .mini-chip.pending {
+    color: #856404;
+    background: #fff8e6;
+    border-color: #f0e0b8;
+}
+
+#questionsList .mini-chip.answered {
+    color: #155724;
+    background: #f1f8f1;
+    border-color: #c8e6c9;
+}
+
+/* --- "Questions in this set:" block --- */
+#questionsList .qset-questions {
+    border-top: 1px dashed var(--border);
+    padding-top: 0.85rem;
+}
+
+#questionsList .qset-questions-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-light);
+    margin: 0 0 10px;
+}
+
+#questionsList .qset-question-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#questionsList .qset-question-row {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+#questionsList .qset-question-row p {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-dark);
+    margin: 0.35rem 0 0;
+}
+
+/* --- Badges inside the panel (neutral chips, existing palette only) --- */
+#questionsList .q-type-badge,
+#questionsList .domain-badge {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 600;
+    border-radius: 6px;
+    padding: 0.15rem 0.45rem;
+    margin-right: 0.3rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-light);
+}
+
+#questionsList .options-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.4rem;
+}
+
+#questionsList .option-chip {
+    font-size: 0.7rem;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.15rem 0.45rem;
+    color: var(--text-light);
+}
+
+/* --- Action row, separated by a divider --- */
+#questionsList .q-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    border-top: 1px solid var(--border);
+    margin-top: 14px;
+    padding-top: 14px;
+}
+
+#questionsList .btn-danger {
+    background: white;
+    color: var(--danger);
+    border: 2px solid var(--danger);
+    border-radius: 8px;
+    padding: 0.3rem 0.7rem;
+    font-family: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.15s;
+}
+
+#questionsList .btn-danger:hover {
+    background: var(--danger);
+    color: white;
+}
+
+@media (max-width: 640px) {
+    #questionsList .q-card {
+        padding: 14px;
+    }
+
+    /* Let the count pill drop under the title instead of squeezing it. */
+    #questionsList .qset-card-head {
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 0.4rem;
+    }
+
+    #questionsList .q-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    #questionsList .q-actions button {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* ==================== MODAL DIALOG ==================== */
+/* The modal markup already lives in pedia-questions.html; these rules are what
+   turn it into a real centered overlay instead of inline page content. */
+
+/* Locks background scroll while a modal is open. */
+body.modal-open {
+    overflow: hidden;
+}
+
+.modal-overlay {
+    display: none;
+    /* JS switches this to flex */
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    /* .top-nav is sticky at z-index 1000 — stay above it. */
+    z-index: 1200;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+    box-sizing: border-box;
+    animation: kcModalFade 0.18s ease-out;
+}
+
+.modal-box {
+    position: relative;
+    background: white;
+    width: 90%;
+    max-width: 560px;
+    max-height: 85vh;
+    overflow-y: auto;
+    border-radius: 16px;
+    padding: 1.9rem;
+    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.18);
+    box-sizing: border-box;
+    animation: kcModalPop 0.18s ease-out;
+}
+
+@keyframes kcModalFade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes kcModalPop {
+    from { opacity: 0; transform: translateY(10px) scale(0.97); }
+    to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .modal-overlay,
+    .modal-box {
+        animation: none;
+    }
+}
+
+.modal-title {
+    color: var(--primary);
+    font-size: 1.15rem;
+    font-weight: 700;
+    /* Right gap keeps the text clear of the × button. */
+    margin: 0 2.2rem 0.3rem 0;
+}
+
+.modal-sub {
+    color: var(--text-light);
+    font-size: 0.85rem;
+    margin: 0 2.2rem 1.2rem 0;
+}
+
+.modal-close {
+    position: absolute;
+    top: 0.9rem;
+    right: 1rem;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-radius: 50%;
+    font-size: 1.6rem;
+    line-height: 1;
+    color: var(--text-light);
+    cursor: pointer;
+    transition: 0.15s;
+}
+
+.modal-close:hover {
+    background: var(--bg-primary);
+    color: var(--primary);
+}
+
+/* Inline error banner inside the question modal (hidden until JS shows it). */
+#modalError {
+    display: none;
+    background: #fdecea;
+    border: 1px solid #f5c2c0;
+    color: #a13f3a;
+    border-radius: 8px;
+    padding: 0.6rem 0.8rem;
+    font-size: 0.85rem;
+}
+
+/* Domain / Min Age / Max Age layout — classes (not inline styles) so the
+   responsive rules below can stack them. */
+.modal-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.modal-age-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    align-items: end;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 0.8rem;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    margin-top: 1.2rem;
+}
+
+/* Multiple-choice option rows (only rendered inside the question modal). */
+.options-input-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.options-input-row input {
+    flex: 1;
+    padding: 0.6rem 0.75rem;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.88rem;
+    box-sizing: border-box;
+}
+
+.options-input-row input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.option-remove-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    width: 36px;
+    color: var(--text-light);
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.option-remove-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+@media (max-width: 640px) {
+    .modal-overlay {
+        padding: 0.75rem;
+    }
+
+    .modal-box {
+        width: 95%;
+        padding: 1.15rem;
+        border-radius: 14px;
+    }
+
+    /* Stack Domain / Min Age / Max Age instead of one cramped line. */
+    .modal-form-row,
+    .modal-age-row {
+        grid-template-columns: 1fr;
+    }
+
+    .modal-actions {
+        justify-content: stretch;
     }
 }

@@ -3,11 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Results - KinderCura</title>
+    <title>Progress Report - KinderCura</title>
     <link rel="stylesheet" href="/css/dashboard-new-styles.css">
-    <link rel="stylesheet" href="/css/results-styles.css">
+    <link rel="stylesheet" href="/css/reports-styles.css">
     <link rel="stylesheet" href="/css/notifications-styles.css">
     <link rel="stylesheet" href="/notifications-card-ui.css">
+    <!-- Same charting library the parent dashboard already loads. -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 <header class="top-nav">
@@ -15,8 +17,8 @@
         <a href="/parent/dashboard.html" class="logo"><img src="/icons/logo.png" class="logo-img"><span class="logo-text"><span class="logo-kinder">Kinder</span><span class="logo-cura">Cura</span></span></a>
         <nav class="main-nav">
             <a href="/parent/dashboard.html" class="nav-link">Dashboard</a>
-            <a href="/parent/results.html" class="nav-link active">Results</a>
-            <a href="/parent/reports.html" class="nav-link">Reports</a>
+            <a href="/parent/results.html" class="nav-link">Results</a>
+            <a href="/parent/reports.html" class="nav-link active">Reports</a>
             <a href="/parent/recommendations.html" class="nav-link">Recommendations</a>
             <a href="/parent/appointments.html" class="nav-link">Appointments</a>
             <a href="/parent/chat.html" class="nav-link">Chat</a>
@@ -37,17 +39,30 @@
 </header>
 
 <div class="dashboard-container">
-    <div style="background:white;padding:2rem;border-radius:15px;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+    <div class="report-header">
         <div>
-            <h1 style="margin-bottom:0.5rem;">Assessment Results &amp; Analysis</h1>
-            <p style="color:var(--text-light);" id="resultsMeta">Loading…</p>
+            <h1>Progress Report</h1>
+            <p class="report-meta" id="reportMeta">Loading…</p>
         </div>
         <div id="childSwitchWrap"></div>
     </div>
 
-    <div id="resultsContent">
-        <div style="text-align:center;padding:3rem;background:white;border-radius:15px;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
-            <p style="color:var(--text-light);">Loading results…</p>
+    <!-- Screening notice. Static in the markup so it is present even if the
+         report request fails. -->
+    <div class="screening-notice">
+        <h3>About this report</h3>
+        <p>
+            KinderCura is a <strong>developmental screening</strong> tool, not a diagnostic one.
+            The scores below are calculated by comparing your answers against fixed,
+            pre-defined cutoffs. They are indicators to discuss with a licensed
+            pediatrician &mdash; they are not a diagnosis, and they cannot replace a
+            professional evaluation.
+        </p>
+    </div>
+
+    <div id="reportContent">
+        <div class="report-state">
+            <p>Loading your child's progress report…</p>
         </div>
     </div>
 </div>
@@ -67,26 +82,10 @@
     </div>
 </div>
 
-<!-- Modal that opens when the parent clicks View Diagnosis. -->
-<div class="diagnosis-modal" id="diagnosisModal">
-    <div class="diagnosis-modal-box">
-        <div class="diagnosis-modal-header">
-            <h3>Pediatrician Review</h3>
-            <button class="diagnosis-close" onclick="closeDiagnosisModal()">×</button>
-        </div>
-        <div class="diagnosis-modal-body" id="diagnosisModalBody">
-            <div class="diagnosis-section">
-                <h4>Loading review…</h4>
-                <p>Please wait.</p>
-            </div>
-        </div>
-    </div>
-</div>
-
 <script src="/api.js"></script>
 <script src="/notifications-card-ui.js"></script>
-<!-- Must load before results.js — provides window.KCScoring (band cutoffs). -->
+<!-- Must load before reports.js — provides window.KCScoring (band cutoffs). -->
 <script src="/constants/scoring.js"></script>
-<script src="/js/parent/results.js"></script>
+<script src="/js/parent/reports.js"></script>
 </body>
 </html>

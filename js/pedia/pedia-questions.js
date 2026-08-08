@@ -353,6 +353,57 @@
             document.getElementById('answeredTotal').textContent = answered;
         }
 
+        // ─── Question Set display helpers ────────────────────────────
+        // Auto-created sets are all titled "Question Set - <date>", so several
+        // sets made on the same day look identical. Only those get replaced.
+        function isAutoSetTitle(title) {
+            return !title || /^question set(\s*[-–—].*)?$/i.test(title.trim());
+        }
+
+        function formatSetTimestamp(value) {
+            if (!value) return null;
+            const d = new Date(value);
+            if (isNaN(d.getTime())) return null;
+            return d.toLocaleString(undefined, {
+                month: 'short', day: 'numeric', year: 'numeric',
+                hour: 'numeric', minute: '2-digit'
+            });
+        }
+
+        // index is the position in the sorted list, used only as a fallback.
+        function setDisplayTitle(set, index) {
+            if (!isAutoSetTitle(set.title)) return set.title;
+            const stamp = formatSetTimestamp(set.createdAt);
+            return stamp ? `Question Set — ${stamp}` : `Question Set #${index + 1}`;
+        }
+
+        function setQuestionCount(set) {
+            if (typeof set.questionCount === 'number') return set.questionCount;
+            return Array.isArray(set.questions) ? set.questions.length : 0;
+        }
+
+        // Client-side ordering of already-fetched sets. Returns a copy so the
+        // source array (looked up by setId elsewhere) is never reordered.
+        function sortQuestionSets(sets) {
+            const mode = document.getElementById('setSortOrder')?.value || 'newest';
+            const time = s => {
+                const t = new Date(s.createdAt).getTime();
+                return isNaN(t) ? 0 : t;
+            };
+            const sorted = sets.slice();
+
+            if (mode === 'oldest') {
+                sorted.sort((a, b) => time(a) - time(b));
+            } else if (mode === 'most') {
+                // Ties fall back to newest-first so the order stays stable.
+                sorted.sort((a, b) => setQuestionCount(b) - setQuestionCount(a) || time(b) - time(a));
+            } else {
+                sorted.sort((a, b) => time(b) - time(a));
+            }
+
+            return sorted;
+        }
+
         // Render question cards on the right side (shows Question Sets as grouped cards + standalone questions)
         function renderQuestions() {
             const container = document.getElementById('questionsList');
@@ -375,57 +426,65 @@
 
             // Render Question Sets as grouped cards
             if (hasSets) {
-                allQuestionSets.forEach(set => {
+                const sortedSets = sortQuestionSets(allQuestionSets);
+                // Only cap the height once the list is long enough to run away.
+                const listClass = sortedSets.length > 4 ? 'qset-list qset-list--scroll' : 'qset-list';
+                let setsHtml = '';
+
+                sortedSets.forEach((set, index) => {
                     const setQuestions = set.questions || [];
                     const totalAssigned = setQuestions.reduce((sum, q) => sum + getQuestionStats(q.id).assigned, 0);
                     const totalPending = setQuestions.reduce((sum, q) => sum + getQuestionStats(q.id).pending, 0);
                     const totalAnswered = setQuestions.reduce((sum, q) => sum + getQuestionStats(q.id).answered, 0);
+                    const count = setQuestionCount(set);
 
-                    html += `
-                <div class="q-card" id="qset_${set.setId}" style="border-left:4px solid var(--primary);">
-                    <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.8rem;">
-                        <div style="flex:1;">
-                            <h4 style="margin:0;font-size:1rem;color:var(--primary);">📋 ${esc(set.title)}</h4>
-                            <p style="margin:.2rem 0 0;font-size:.78rem;color:var(--text-light);">${esc(set.description || 'No description')}</p>
-                        </div>
-                        <span style="font-size:.7rem;color:#fff;background:var(--primary);border-radius:8px;padding:.2rem .5rem;">${set.questionCount} question${set.questionCount !== 1 ? 's' : ''}</span>
+                    setsHtml += `
+                <div class="q-card qset-card" id="qset_${set.setId}">
+                    <div class="qset-card-head">
+                        <h4 class="qset-title">📋 ${esc(setDisplayTitle(set, index))}</h4>
+                        <span class="qset-count-pill">${count} question${count !== 1 ? 's' : ''}</span>
                     </div>
+                    <p class="qset-desc">${esc(set.description || 'No description')}</p>
 
-                    <div class="question-stats" style="margin-bottom:.8rem;">
+                    <div class="question-stats">
                         <span class="mini-chip assigned">Assigned: ${totalAssigned}</span>
                         <span class="mini-chip pending">Pending: ${totalPending}</span>
                         <span class="mini-chip answered">Answered: ${totalAnswered}</span>
                     </div>
 
-                    <div style="border-top:1px dashed var(--border);padding-top:.8rem;">
-                        <p style="font-size:.8rem;font-weight:600;color:var(--text-light);margin:0 0 .5rem;">Questions in this set:</p>
+                    <div class="qset-questions">
+                        <p class="qset-questions-label">Questions in this set:</p>
+                        <div class="qset-question-list">
                         ${setQuestions.map(q => `
-                        <div style="background:white;border:1px solid var(--border);border-radius:8px;padding:.6rem .8rem;margin-bottom:.4rem;">
-                            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.4rem;">
-                                <div style="flex:1;">
-                                    <span class="q-type-badge ${getTypeClass(q.questionType)}">${normalizeQuestionTypeLabel(q.questionType)}</span>
-                                    <span class="domain-badge ${getDomainClass(q.domain)}">${q.domain || 'Other'}</span>
-                                    ${(q.ageMin > 0 || q.ageMax < 18) ? `<span style="font-size:.68rem;color:var(--text-light);margin-left:.3rem;">Age ${q.ageMin}–${q.ageMax}</span>` : ''}
-                                    <p style="font-size:.85rem;font-weight:600;color:var(--text-dark);margin:.3rem 0;">${esc(q.questionText)}</p>
-                                    ${q.questionType === 'multiple_choice' && Array.isArray(q.options) && q.options.length ? `
-                                        <div class="options-list">
-                                            ${q.options.map(o => `<span class="option-chip">${esc(o)}</span>`).join('')}
-                                        </div>
-                                    ` : ''}
+                            <div class="qset-question-row">
+                                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.4rem;">
+                                    <div style="flex:1;">
+                                        <span class="q-type-badge ${getTypeClass(q.questionType)}">${normalizeQuestionTypeLabel(q.questionType)}</span>
+                                        <span class="domain-badge ${getDomainClass(q.domain)}">${q.domain || 'Other'}</span>
+                                        ${(q.ageMin > 0 || q.ageMax < 18) ? `<span style="font-size:.68rem;color:var(--text-light);margin-left:.3rem;">Age ${q.ageMin}–${q.ageMax}</span>` : ''}
+                                        <p>${esc(q.questionText)}</p>
+                                        ${q.questionType === 'multiple_choice' && Array.isArray(q.options) && q.options.length ? `
+                                            <div class="options-list">
+                                                ${q.options.map(o => `<span class="option-chip">${esc(o)}</span>`).join('')}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                    ${!q.isActive ? `<span style="font-size:.7rem;color:#888;background:#eee;border-radius:8px;padding:.2rem .5rem;">Inactive</span>` : ''}
                                 </div>
-                                ${!q.isActive ? `<span style="font-size:.7rem;color:#888;background:#eee;border-radius:8px;padding:.2rem .5rem;">Inactive</span>` : ''}
                             </div>
-                        </div>
                         `).join('')}
+                        </div>
                     </div>
 
-                    <div class="q-actions" style="margin-top:.8rem;">
+                    <div class="q-actions">
                         <button class="btn-outline" onclick="openAssignSetModal('${set.setId}')" style="font-size:.78rem;padding:.3rem .7rem;"><img src="/icons/profile_icon.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Assign Set</button>
                         <button class="btn-outline" onclick="viewSetDetails('${set.setId}')" style="font-size:.78rem;padding:.3rem .7rem;">View Details</button>
                     </div>
                 </div>
                     `;
                 });
+
+                html += `<div class="${listClass}">${setsHtml}</div>`;
             }
 
             // Render standalone questions (legacy support)
@@ -502,49 +561,91 @@
             return { grouped: new Map(grouped), ungrouped };
         }
 
+        // Shared card chrome for the tracker columns. Markup only — every caller
+        // still passes the same assignment data it always did.
+        function trackerCardHeader(sample, answeredView) {
+            return `
+                <div class="tcard-head">
+                    <div class="tcard-identity">
+                        <p class="tcard-child">${esc(sample.childName || 'Child')}</p>
+                        <p class="tcard-parent"><span class="tcard-parent-label">Parent:</span>${esc(sample.parentName || 'Parent')}</p>
+                    </div>
+                    <span class="tracker-badge tcard-status ${answeredView ? 'badge-answered' : 'tcard-status--pending badge-pending'}">
+                        ${answeredView ? '✓ Answered' : '⏳ Pending'}
+                    </span>
+                </div>
+            `;
+        }
+
+        // Small clock glyph for the card footer (inherits the muted text colour).
+        function trackerClockIcon() {
+            return `<svg class="tcard-foot-icon" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15 14"></polyline></svg>`;
+        }
+
+        function trackerFooter(label, timestamp) {
+            return `
+                <div class="tcard-foot">
+                    ${trackerClockIcon()}<span>${label}: ${formatDateTime(timestamp)}</span>
+                </div>
+            `;
+        }
+
+        // Compact empty state so a column with nothing in it stays short.
+        function trackerEmptyState(message, hint) {
+            return `
+            <div class="tracker-empty">
+                <svg class="tracker-empty-icon" viewBox="0 0 24 24" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"></path>
+                    <polyline points="15 3 15 8 20 8"></polyline>
+                    <line x1="9" y1="13" x2="15" y2="13"></line>
+                    <line x1="9" y1="17" x2="13" y2="17"></line>
+                </svg>
+                <p class="tracker-empty-title">${message}</p>
+                <p class="tracker-empty-hint">${hint}</p>
+            </div>
+            `;
+        }
+
         // Render grouped set submission (all answers from one set together)
         function renderGroupedSetSubmission(setAssignments, answeredView) {
             const sample = setAssignments[0];
             const setId = sample.questionSetId ? sample.questionSetId.toString() : 'unknown';
             const setTitle = sample.setTitle || `Question Set (${setAssignments.length})`;
             const allAnswered = setAssignments.every(hasAnswer);
-            
+
             return `
-            <div class="tracker-item" style="border-left:4px solid var(--primary);padding:1rem;">
-                <div class="tracker-badges">
-                    <span class="tracker-badge badge-child" style="background:#f3e8ff;color:#6b21a8;">${sample.childName || 'Child'}</span>
-                    <span class="tracker-badge badge-parent">${sample.parentName || 'Parent'}</span>
-                    <span class="tracker-badge" style="background:${answeredView ? '#d4edda' : '#fff3cd'};color:${answeredView ? '#155724' : '#856404'};">
-                        ${answeredView ? '✓ Answered' : '⏳ Pending'}
-                    </span>
+            <div class="tracker-item tracker-card ${answeredView ? 'tracker-card--answered' : 'tracker-card--pending'}">
+                ${trackerCardHeader(sample, answeredView)}
+
+                <div class="tcard-setline">
+                    <img src="/icons/clipboard.png" alt="" aria-hidden="true" class="tcard-setline-icon">
+                    <span class="tcard-set-title">${esc(setTitle)}</span>
+                    <span class="tcard-set-count">${setAssignments.length} question${setAssignments.length !== 1 ? 's' : ''} in this set</span>
                 </div>
 
-                <p style="margin:.3rem 0 .2rem;font-size:1rem;font-weight:700;color:var(--primary);">📋 ${setTitle}</p>
-                <p style="margin:0 0 .8rem;font-size:.8rem;color:var(--text-light);">${setAssignments.length} question${setAssignments.length !== 1 ? 's' : ''} in this set</p>
-
-                <div style="border-top:1px dashed var(--border);padding-top:.8rem;">
+                <div class="tcard-questions">
                     ${setAssignments.map((item, idx) => `
-                        <div style="margin-bottom:.8rem;padding-bottom:.8rem;${idx < setAssignments.length - 1 ? 'border-bottom:1px solid var(--border);' : ''}">
-                            <p style="margin:0 0 .2rem;font-size:.85rem;font-weight:600;color:var(--text-dark);">Q${idx + 1}. ${esc(item.questionText || 'Question')}</p>
-                            <p style="margin:0 0 .4rem;font-size:.75rem;color:var(--text-light);">${item.domain || 'Other'} • ${normalizeQuestionTypeLabel(item.questionType)}</p>
-                            
+                        <div class="tcard-q">
+                            <p class="tcard-q-text">Q${idx + 1}. ${esc(item.questionText || 'Question')}</p>
+                            <p class="tcard-q-meta">${item.domain || 'Other'} • ${normalizeQuestionTypeLabel(item.questionType)}</p>
+
                             ${answeredView && item.answer ? `
-                                <div style="background:var(--bg-primary);border-radius:8px;padding:.6rem .8rem;margin-top:.4rem;">
-                                    <p style="margin:0 0 .2rem;font-size:.75rem;color:var(--text-light);">Parent's answer</p>
-                                    <p style="margin:0;font-size:.85rem;font-weight:500;color:var(--text-dark);">${esc(item.answer)}</p>
+                                <div class="tcard-answer">
+                                    <p class="tcard-answer-label">Parent's answer</p>
+                                    <p class="tcard-answer-value">${esc(item.answer)}</p>
                                 </div>
                             ` : answeredView ? `
-                                <p style="margin:.4rem 0 0;font-size:.75rem;color:#999;font-style:italic;">No answer provided</p>
+                                <p class="tcard-q-note">No answer provided</p>
                             ` : `
-                                <p style="margin:.4rem 0 0;font-size:.75rem;color:#856404;">⏳ Waiting for parent answer</p>
+                                <p class="tcard-q-note tcard-q-note--pending">⏳ Waiting for parent answer</p>
                             `}
                         </div>
                     `).join('')}
                 </div>
 
-                ${answeredView && setAssignments.some(hasAnswer) ? `
-                    <p style="margin:.8rem 0 0;font-size:.75rem;color:var(--text-light);">Submitted at: ${formatDateTime(setAssignments[setAssignments.length - 1].answeredAt)}</p>
-                ` : ''}
+                ${answeredView && setAssignments.some(hasAnswer)
+                    ? trackerFooter('Submitted at', setAssignments[setAssignments.length - 1].answeredAt)
+                    : ''}
             </div>
             `;
         }
@@ -574,54 +675,67 @@
             const answeredGrouped = groupAssignmentsBySetForTracker(answered);
 
             let pendingHtml = '';
+            let pendingCards = 0;
             // First show grouped set submissions
             pendingGrouped.grouped.forEach(setAssignments => {
                 if (setAssignments.length > 0) {
                     pendingHtml += renderGroupedSetSubmission(setAssignments, false);
+                    pendingCards++;
                 }
             });
             // Then show ungrouped/standalone questions
             pendingHtml += pendingGrouped.ungrouped.map(a => renderTrackerItem(a, false)).join('');
+            pendingCards += pendingGrouped.ungrouped.length;
 
             let answeredHtml = '';
+            let answeredCards = 0;
             // First show grouped set submissions
             answeredGrouped.grouped.forEach(setAssignments => {
                 if (setAssignments.length > 0) {
                     answeredHtml += renderGroupedSetSubmission(setAssignments, true);
+                    answeredCards++;
                 }
             });
             // Then show ungrouped/standalone questions
             answeredHtml += answeredGrouped.ungrouped.map(a => renderTrackerItem(a, true)).join('');
+            answeredCards += answeredGrouped.ungrouped.length;
 
-            document.getElementById('pendingAssignmentsList').innerHTML = pendingHtml || `<div class="empty-small">No pending parent answers.</div>`;
-            document.getElementById('answeredAssignmentsList').innerHTML = answeredHtml || `<div class="empty-small">No answered questions yet.</div>`;
+            // Past 3 cards the column scrolls instead of stretching the page.
+            const listWrap = (html, count) =>
+                `<div class="tracker-list${count > 3 ? ' tracker-list--scroll' : ''}">${html}</div>`;
+
+            document.getElementById('pendingAssignmentsList').innerHTML = pendingHtml
+                ? listWrap(pendingHtml, pendingCards)
+                : trackerEmptyState('No pending parent answers.', 'Assigned questions waiting on a parent will show up here.');
+
+            document.getElementById('answeredAssignmentsList').innerHTML = answeredHtml
+                ? listWrap(answeredHtml, answeredCards)
+                : trackerEmptyState('No answered questions yet.', 'Submitted parent answers will appear here once they come in.');
         }
 
         // Render one tracker card (for individual/standalone questions)
         function renderTrackerItem(item, answeredView) {
             return `
-            <div class="tracker-item">
-                <div class="tracker-badges">
-                    <span class="tracker-badge badge-child">${item.childName || 'Child'}</span>
-                    <span class="tracker-badge badge-parent">${item.parentName || 'Parent'}</span>
-                    <span class="tracker-badge ${answeredView ? 'badge-answered' : 'badge-pending'}">${answeredView ? 'Answered' : 'Pending'}</span>
+            <div class="tracker-item tracker-card ${answeredView ? 'tracker-card--answered' : 'tracker-card--pending'}">
+                ${trackerCardHeader(item, answeredView)}
+
+                <div class="tcard-questions" style="margin-top:12px;">
+                    <div class="tcard-q">
+                        <p class="tcard-q-text">${esc(item.questionText || 'Question')}</p>
+                        <p class="tcard-q-meta">${item.domain || 'Other'} • ${normalizeQuestionTypeLabel(item.questionType)}</p>
+
+                        ${answeredView ? `
+                            <div class="tcard-answer">
+                                <p class="tcard-answer-label">Parent's answer</p>
+                                <p class="tcard-answer-value">${esc(item.answer || 'No answer text')}</p>
+                            </div>
+                        ` : `
+                            <p class="tcard-q-note tcard-q-note--pending">⏳ Waiting for the parent to submit an answer.</p>
+                        `}
+                    </div>
                 </div>
 
-                <p style="margin:.2rem 0 .35rem;font-size:.92rem;font-weight:700;color:var(--text-dark);">${item.questionText || 'Question'}</p>
-
-                <p style="margin:0 0 .35rem;color:var(--text-light);font-size:.82rem;">
-                    ${item.domain || 'Other'} • ${normalizeQuestionTypeLabel(item.questionType)}
-                </p>
-
-                ${answeredView ? `
-                    <div class="tracker-answer">
-                        <p style="margin:0 0 .3rem;font-size:.78rem;color:var(--text-light);">Parent's answer</p>
-                        <p style="margin:0;font-weight:600;color:var(--text-dark);">${item.answer || 'No answer text'}</p>
-                    </div>
-                    <p style="margin:.6rem 0 0;font-size:.78rem;color:var(--text-light);">Answered at: ${formatDateTime(item.answeredAt)}</p>
-                ` : `
-                    <p style="margin:.6rem 0 0;font-size:.8rem;color:#856404;">Waiting for the parent to submit an answer.</p>
-                `}
+                ${answeredView ? trackerFooter('Answered at', item.answeredAt) : ''}
             </div>
         `;
         }
@@ -642,7 +756,7 @@
             updateBatchPreview();
             clearOptions();
             onTypeChange();
-            document.getElementById('questionModal').style.display = 'flex';
+            showQuestionModal();
         }
 
         // Open edit modal and fill current question values
@@ -671,7 +785,15 @@
                 q.options.forEach(o => addOption(o));
             }
 
+            showQuestionModal();
+        }
+
+        // Reveal the modal overlay, lock background scroll, and focus the first field.
+        function showQuestionModal() {
             document.getElementById('questionModal').style.display = 'flex';
+            document.body.classList.add('modal-open');
+            const qText = document.getElementById('qText');
+            if (qText) qText.focus();
         }
 
         function closeModal() {
@@ -680,7 +802,33 @@
             document.getElementById('addToBatchBtn').style.display = 'inline-block';
             document.getElementById('batchPreviewSection').style.display = questionBatch.length > 0 ? 'block' : 'none';
             document.getElementById('questionModal').style.display = 'none';
+            document.body.classList.remove('modal-open');
+
+            // Reset the form back to defaults, but keep whatever is staged in the
+            // batch so a reopened modal still shows the pending questions.
+            if (questionBatch.length === 0) {
+                document.getElementById('qText').value = '';
+                document.getElementById('qType').value = 'yes_no';
+                document.getElementById('qDomain').value = 'Other';
+                document.getElementById('qAgeMin').value = '0';
+                document.getElementById('qAgeMax').value = '18';
+                document.getElementById('modalError').style.display = 'none';
+                clearOptions();
+                onTypeChange();
+            }
         }
+
+        // Close on backdrop click (but not on clicks inside the card).
+        document.getElementById('questionModal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeModal();
+        });
+
+        // Close on Escape while the question modal is open.
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            const modal = document.getElementById('questionModal');
+            if (modal && modal.style.display !== 'none') closeModal();
+        });
 
         // Show / hide option fields depending on question type
         function onTypeChange() {

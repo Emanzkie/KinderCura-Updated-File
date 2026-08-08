@@ -170,7 +170,16 @@
                 <div
                     style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
                     <h3 style="margin:0;color:var(--primary);">Your Custom Questions</h3>
-                    <button class="btn-outline" onclick="refreshAll()">Refresh All</button>
+                    <div class="qset-header-actions">
+                        <!-- Client-side ordering only — does not touch any fetch. -->
+                        <select id="setSortOrder" class="qset-sort-select" onchange="renderQuestions()"
+                            aria-label="Sort question sets">
+                            <option value="newest">Newest first</option>
+                            <option value="oldest">Oldest first</option>
+                            <option value="most">Most questions</option>
+                        </select>
+                        <button class="btn-outline" onclick="refreshAll()">Refresh All</button>
+                    </div>
                 </div>
 
                 <div id="questionsList">
@@ -227,7 +236,8 @@
 
     <!-- Modal for create/edit -->
     <div class="modal-overlay" id="questionModal" style="display:none;">
-        <div class="modal-box" style="max-width:680px;">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+            <button type="button" class="modal-close" onclick="closeModal()" aria-label="Close">&times;</button>
             <p class="modal-title" id="modalTitle">New Question</p>
             <p class="modal-sub" id="modalSub">Create custom assessment questions for your patients</p>
             <div id="modalError" class="error-flash" style="margin-bottom:.8rem;"></div>
@@ -274,7 +284,7 @@
                     Add Option</button>
             </div>
 
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+            <div class="modal-form-row">
                 <div class="form-group">
                     <label class="form-label">Domain</label>
                     <select id="qDomain" class="form-input">
@@ -287,7 +297,7 @@
                 </div>
 
                 <!-- Age range used when assigning question relevance -->
-                <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;align-items:end;">
+                <div class="form-group modal-age-row">
                     <div>
                         <label class="form-label">Min Age</label>
                         <input type="number" id="qAgeMin" class="form-input" value="0" min="0" max="18">
@@ -299,7 +309,7 @@
                 </div>
             </div>
 
-            <div style="display:flex;gap:.8rem;justify-content:flex-end;margin-top:1.2rem;">
+            <div class="modal-actions">
                 <button class="btn-outline" onclick="closeModal()">Cancel</button>
                 <button class="btn-outline" id="addToBatchBtn" onclick="addToBatch()" style="font-size:.85rem;">➕ Add to
                     Batch</button>
@@ -364,7 +374,7 @@
     </div>
 
     <!-- Modal for viewing Question Set details -->
-    <div class="modal-overlay" id="viewSetModal" style="display:none;z-index:1001;">
+    <div class="modal-overlay" id="viewSetModal" style="display:none;z-index:1250;">
         <div class="modal-box" style="max-width:800px;max-height:85vh;overflow-y:auto;">
             <p class="modal-title">Question Set Details</p>
             <div id="viewSetContent"></div>

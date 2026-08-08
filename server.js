@@ -166,6 +166,9 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/videos', require('./routes/videos'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/questions', require('./routes/custom-questions'));
+// Parent-scoped read-only views. Currently the child progress report; this is
+// the namespace for future parent-facing aggregate endpoints.
+app.use('/api/parent', require('./routes/parent-reports'));
 // V2 guardian & audit endpoints (non-breaking and additive)
 app.use('/api/v2/guardians', require('./routes/guardians'));
 app.use('/api/v2/audit-logs', require('./routes/audit-logs'));
