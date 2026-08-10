@@ -508,6 +508,16 @@ router.get('/pedia-patients', authMiddleware, async (req, res) => {
         recommendations: latestAssessment?.recommendations || null,
         nextAssessmentDate: latestAssessment?.nextAssessmentDate || null,
         nextAssessmentReason: latestAssessment?.nextAssessmentReason || null,
+
+        // Additive: the structured outcome label, so reopening the diagnosis
+        // modal can show what was already recorded instead of a blank
+        // dropdown. Kept separate from `diagnosis` above — see
+        // models/Assessment.js on why the free text can never stand in for it.
+        clinicalOutcome: latestAssessment?.clinicalOutcome || null,
+        clinicalOutcomeDomains: Array.isArray(latestAssessment?.clinicalOutcomeDomains)
+          ? latestAssessment.clinicalOutcomeDomains
+          : [],
+        clinicalOutcomeAt: latestAssessment?.clinicalOutcomeAt || null,
       });
     }
 
