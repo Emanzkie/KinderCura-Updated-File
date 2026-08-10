@@ -336,10 +336,20 @@ if (!getToken() || !_u) {
                 data: { labels: ['Pending', 'Approved', 'Completed'], datasets: [{ data: [0,0,0], backgroundColor: ['#F4D89F','#6B8E6F','#8BA98D'] }] },
                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
             });
+            // Both bars are ASSESSMENT counts over the same set of patients.
+            // This chart previously plotted reviewedAssessments against
+            // pendingAppointments — assessments and appointments are different
+            // units, and putting them on one axis invited reading them as
+            // parts of a single whole. They are not.
             pediaReviewChart = new Chart(document.getElementById('pediaReviewChart'), {
                 type: 'bar',
-                data: { labels: ['Reviewed', 'Pending'], datasets: [{ data: [0,0], backgroundColor: ['#8BA98D','#F4D89F'] }] },
-                options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', scales: { x: { beginAtZero: true } } }
+                data: { labels: ['Reviewed', 'Not yet reviewed'], datasets: [{ data: [0,0], backgroundColor: ['#8BA98D','#F4D89F'] }] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    scales: { x: { beginAtZero: true, title: { display: true, text: 'Completed assessments' } } }
+                }
             });
         }
 
@@ -349,7 +359,7 @@ if (!getToken() || !_u) {
                 pediaApptChart.update();
             }
             if (pediaReviewChart) {
-                pediaReviewChart.data.datasets[0].data = [summary.reviewedAssessments || 0, summary.pendingAppointments || 0];
+                pediaReviewChart.data.datasets[0].data = [summary.reviewedAssessments || 0, summary.unreviewedAssessments || 0];
                 pediaReviewChart.update();
             }
         }

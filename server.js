@@ -169,6 +169,13 @@ app.use('/api/questions', require('./routes/custom-questions'));
 // Parent-scoped read-only views. Currently the child progress report; this is
 // the namespace for future parent-facing aggregate endpoints.
 app.use('/api/parent', require('./routes/parent-reports'));
+// Pediatrician-scoped read-only reporting over their own patients' screenings.
+// Descriptive counts over stored scores — see routes/pedia-reports.js header.
+app.use('/api/pedia-reports', require('./routes/pedia-reports'));
+// Admin-scoped read-only reporting across the whole system: user and child
+// demographics, descriptive screening counts, and screening-vs-review
+// concordance — see routes/admin-reports.js header.
+app.use('/api/admin-reports', require('./routes/admin-reports'));
 // V2 guardian & audit endpoints (non-breaking and additive)
 app.use('/api/v2/guardians', require('./routes/guardians'));
 app.use('/api/v2/audit-logs', require('./routes/audit-logs'));

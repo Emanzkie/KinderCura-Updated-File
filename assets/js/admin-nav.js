@@ -84,11 +84,39 @@
   }
 
   /**
+   * Ensures the "Insights" nav link exists on every admin page.
+   * Injected here rather than hardcoded into each page, for the same reason as
+   * Data Sources above: nine admin pages each carry their own copy of the nav.
+   *
+   * Placed immediately after Reports, which is the closest related page. Note
+   * these are two different pages and neither replaces the other — Reports is
+   * the printable summary snapshot, Insights is the filtered analytical view.
+   */
+  function ensureInsightsNavLink() {
+    var nav = document.querySelector('.main-nav');
+    if (!nav) return;
+    if (nav.querySelector('a[href*="admin-insights"]')) return;
+
+    var link = document.createElement('a');
+    link.href = '/admin/admin-insights.html';
+    link.className = 'nav-link';
+    link.textContent = 'Insights';
+
+    var anchor = nav.querySelector('a[href*="admin-reports"]') || nav.querySelector('a[href*="analytics"]');
+    if (anchor) {
+      anchor.parentNode.insertBefore(link, anchor.nextSibling);
+    } else {
+      nav.appendChild(link);
+    }
+  }
+
+  /**
    * Run on DOMContentLoaded. Inject first, then highlight, so an injected link
    * is still eligible to be marked active on its own page.
    */
   function initAdminNav() {
     ensureDataSourcesNavLink();
+    ensureInsightsNavLink();
     highlightCurrentNav();
   }
 
@@ -102,7 +130,8 @@
   window.adminNav = {
     highlightCurrentNav: highlightCurrentNav,
     ensurePrcNavLink: ensurePrcNavLink,
-    ensureDataSourcesNavLink: ensureDataSourcesNavLink
+    ensureDataSourcesNavLink: ensureDataSourcesNavLink,
+    ensureInsightsNavLink: ensureInsightsNavLink
   };
 
 })();

@@ -886,14 +886,17 @@ router.get('/analytics/pediatrician', authMiddleware, async (req, res) => {
 
     const objectId = new mongoose.Types.ObjectId(pediaId);
 
+    // A Child.find().lean() used to sit here, loading the ENTIRE children
+    // collection into memory and assigning it to a variable nothing read. The
+    // pediatrician dashboard re-requests this endpoint every 5 seconds, so it
+    // was a full-collection scan on a 5-second timer for a value that was
+    // never used. Removed.
     const [
       myAppointments,
       myAssessments,
-      myChildrenCount,
     ] = await Promise.all([
       Appointment.find({ pediatricianId: objectId }).lean(),
       Assessment.find({ reviewedByPediatrician: objectId }).lean(),
-      Child.find().lean(),
     ]);
 
     const myApptCount = myAppointments.length;
@@ -901,12 +904,27 @@ router.get('/analytics/pediatrician', authMiddleware, async (req, res) => {
     const approvedAppts = myAppointments.filter(a => a.status === 'approved').length;
     const completedAppts = myAppointments.filter(a => a.status === 'completed').length;
 
+    // Assessments belonging to this pediatrician's patients that nobody has
+    // reviewed yet. Additive field: the Review Progress chart previously
+    // plotted reviewedAssessments against pendingAppointments — two different
+    // units on one axis. These two counts share a denominator (the assessments
+    // of children this pediatrician has an appointment with), so the chart can
+    // show parts of one whole.
+    const myChildIds = [...new Set(myAppointments.map(a => String(a.childId)).filter(Boolean))]
+      .map(id => new mongoose.Types.ObjectId(id));
+    const unreviewedAssessments = await Assessment.countDocuments({
+      childId: { $in: myChildIds },
+      status: 'complete',
+      reviewedByPediatrician: null,
+    });
+
     const summaryTotals = {
       totalAppointments: myApptCount,
       pendingAppointments: pendingAppts,
       approvedAppointments: approvedAppts,
       completedAppointments: completedAppts,
       reviewedAssessments: myAssessments.length,
+      unreviewedAssessments,
     };
 
     res.json({

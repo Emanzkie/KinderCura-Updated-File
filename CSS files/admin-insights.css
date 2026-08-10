@@ -1,0 +1,492 @@
+/* CSS files/admin-insights.css
+   Admin Insights page — demographic and descriptive analytics.
+
+   Layered on top of dashboard-new-styles.css, which supplies the shell
+   (.top-nav, .dashboard-container, .btn, and the CSS custom properties used
+   below). Nothing here restyles the shared nav or button classes.
+
+   Class names deliberately mirror CSS files/pedia-reports-styles.css so the two
+   reporting pages read as one family. This file is a sibling of that one, not a
+   dependency of it — neither page loads the other's stylesheet. */
+
+/* ── Page header ─────────────────────────────────────────────────────────── */
+.insight-header {
+    background: white;
+    padding: 2rem;
+    border-radius: 15px;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.insight-header h1 { margin-bottom: 0.3rem; }
+
+.insight-header .insight-meta {
+    color: var(--text-light);
+    font-size: 0.92rem;
+    margin: 0;
+}
+
+/* ── Caveat banner ───────────────────────────────────────────────────────────
+   Always visible and deliberately NOT dismissible. Every reading of this page
+   depends on these statements being in view, so there is no close button. */
+.insight-caveat {
+    background: #fdf6e3;
+    border: 1px solid #e6d9a8;
+    border-left: 5px solid #d99e0b;
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.insight-caveat h3 {
+    font-size: 0.95rem;
+    margin: 0 0 0.6rem;
+    color: var(--text-dark);
+}
+
+.insight-caveat ul { margin: 0; padding-left: 1.1rem; }
+
+.insight-caveat li {
+    font-size: 0.85rem;
+    color: var(--text-dark);
+    line-height: 1.6;
+    margin-bottom: 0.4rem;
+}
+
+.insight-caveat li:last-child { margin-bottom: 0; }
+
+.insight-caveat code {
+    background: rgba(0, 0, 0, 0.06);
+    padding: 0.05rem 0.3rem;
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+
+/* ── Filter bar ──────────────────────────────────────────────────────────── */
+.insight-filters {
+    background: white;
+    padding: 1.35rem 1.5rem;
+    border-radius: 15px;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+}
+
+.insight-filters-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+}
+
+.filter-field { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.filter-field label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.filter-field input,
+.filter-field select {
+    padding: 0.6rem 0.75rem;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    background: white;
+    color: var(--text-dark);
+    min-width: 9.5rem;
+}
+
+.filter-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+}
+
+.preset-btn {
+    border: 1px solid var(--border);
+    background: var(--bg-primary);
+    color: var(--text-dark);
+    padding: 0.4rem 0.8rem;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-family: inherit;
+    font-weight: 600;
+}
+
+.preset-btn:hover { background: var(--bg-secondary); }
+
+.preset-btn.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+}
+
+.filter-note {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    margin: 0.9rem 0 0;
+    line-height: 1.55;
+}
+
+/* ── Tiles ───────────────────────────────────────────────────────────────── */
+.insight-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.insight-tile {
+    background: white;
+    border-radius: 15px;
+    padding: 1.25rem 1.35rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+}
+
+.tile-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin: 0 0 0.4rem;
+}
+
+.tile-value {
+    font-size: 1.9rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    margin: 0 0 0.3rem;
+    line-height: 1.1;
+}
+
+.tile-sub {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* ── Cards ───────────────────────────────────────────────────────────────── */
+.insight-card {
+    background: white;
+    border-radius: 15px;
+    padding: 1.6rem 1.75rem;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+}
+
+.insight-card h2 {
+    font-size: 1.15rem;
+    margin: 0 0 0.4rem;
+    color: var(--text-dark);
+}
+
+.insight-card h3 {
+    font-size: 0.95rem;
+    margin: 1.5rem 0 0.6rem;
+    color: var(--text-dark);
+}
+
+.card-sub {
+    font-size: 0.86rem;
+    color: var(--text-light);
+    line-height: 1.6;
+    margin: 0 0 1.1rem;
+}
+
+.card-footnote {
+    font-size: 0.79rem;
+    color: var(--text-light);
+    line-height: 1.6;
+    margin: 1.1rem 0 0;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--border);
+}
+
+.section-label {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--primary-dark);
+    background: var(--bg-secondary);
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    margin-bottom: 0.6rem;
+}
+
+/* ── Charts ──────────────────────────────────────────────────────────────── */
+.chart-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.5rem;
+}
+
+.chart-box { position: relative; height: 260px; }
+
+.chart-box canvas { max-height: 260px; }
+
+.chart-caption {
+    font-size: 0.78rem;
+    color: var(--text-light);
+    text-align: center;
+    margin: 0.6rem 0 0;
+    line-height: 1.5;
+}
+
+/* ── Loading / empty / error ─────────────────────────────────────────────── */
+.insight-loading {
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-light);
+    font-size: 0.9rem;
+}
+
+.insight-empty {
+    background: var(--bg-primary);
+    border: 1px dashed var(--border);
+    border-radius: 12px;
+    padding: 1.6rem;
+    text-align: center;
+}
+
+.insight-empty h3 {
+    font-size: 0.95rem;
+    margin: 0 0 0.5rem;
+    color: var(--text-dark);
+}
+
+.insight-empty p {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    margin: 0 auto;
+    max-width: 46rem;
+    line-height: 1.65;
+}
+
+.insight-error {
+    background: #fdf0ef;
+    border: 1px solid #e8c4bf;
+    border-style: solid;
+}
+
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+.insight-table-wrap { overflow-x: auto; }
+
+.insight-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.86rem;
+}
+
+.insight-table th {
+    text-align: left;
+    padding: 0.7rem 0.8rem;
+    border-bottom: 2px solid var(--border);
+    color: var(--text-light);
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+
+.insight-table td {
+    padding: 0.7rem 0.8rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dark);
+    vertical-align: middle;
+}
+
+.insight-table tbody tr:last-child td { border-bottom: none; }
+
+.insight-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.insight-table tfoot td {
+    font-weight: 700;
+    border-top: 2px solid var(--border);
+    border-bottom: none;
+}
+
+/* Cross-tab specifics */
+.crosstab td.cell,
+.crosstab th.cell {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.crosstab td.cell-zero { color: #b9beb6; }
+
+.crosstab td.total,
+.crosstab th.total { font-weight: 700; background: var(--bg-primary); }
+
+.crosstab td.band-head { white-space: nowrap; }
+
+/* The diagonal: where the screening band and the recorded outcome agree. */
+.crosstab td.cell-agree {
+    background: rgba(107, 142, 111, 0.14);
+    font-weight: 700;
+}
+
+/* ── Chips ───────────────────────────────────────────────────────────────── */
+.band-chip {
+    display: inline-block;
+    padding: 0.22rem 0.65rem;
+    border-radius: 999px;
+    color: white;
+    font-size: 0.76rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.assumption-chip {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    background: #fdf6e3;
+    border: 1px solid #e6d9a8;
+    color: #8a6d1a;
+    font-size: 0.74rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.unscored-chip {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-light);
+    font-size: 0.74rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+/* ── Rate readouts ───────────────────────────────────────────────────────── */
+.rate-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin: 1.1rem 0 0;
+}
+
+.rate-item {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem 1.1rem;
+}
+
+.rate-value {
+    font-size: 1.55rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    margin: 0 0 0.25rem;
+    line-height: 1.1;
+}
+
+.rate-label {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* Under-flagging is the error that costs the most, so it is the one styled to
+   be impossible to skim past. */
+.rate-item.rate-critical {
+    background: #fdf0ef;
+    border-color: #e8c4bf;
+}
+
+.rate-item.rate-critical .rate-value { color: #b4544a; }
+
+/* ── Pipeline strip (the concordance empty state) ────────────────────────── */
+.pipeline-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.75rem;
+    margin-top: 1.1rem;
+}
+
+.pipeline-step {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.9rem 1rem;
+    text-align: center;
+}
+
+.pipeline-count {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    margin: 0 0 0.2rem;
+    line-height: 1.1;
+}
+
+.pipeline-label {
+    font-size: 0.76rem;
+    color: var(--text-light);
+    margin: 0;
+    line-height: 1.45;
+}
+
+/* The step where the pipeline currently stops. */
+.pipeline-step.pipeline-blocked {
+    background: #fdf6e3;
+    border-color: #e6d9a8;
+}
+
+.pipeline-step.pipeline-blocked .pipeline-count { color: #8a6d1a; }
+
+/* ── Methods note ────────────────────────────────────────────────────────── */
+.methods-note {
+    background: var(--bg-primary);
+    border-left: 4px solid var(--primary-light);
+    border-radius: 8px;
+    padding: 0.9rem 1.1rem;
+    margin-top: 1.25rem;
+}
+
+.methods-note p {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    line-height: 1.65;
+    margin: 0;
+}
+
+.methods-note strong { color: var(--text-dark); }
+
+/* ── Print ───────────────────────────────────────────────────────────────── */
+@media print {
+    .top-nav,
+    .insight-filters,
+    .insight-header .btn { display: none !important; }
+
+    .insight-card,
+    .insight-tile { box-shadow: none; border: 1px solid var(--border); }
+
+    .insight-card { break-inside: avoid; }
+}
+
+/* ── Narrow screens ──────────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+    .insight-filters-grid { flex-direction: column; align-items: stretch; }
+    .filter-field input,
+    .filter-field select { width: 100%; }
+    .chart-box { height: 240px; }
+}

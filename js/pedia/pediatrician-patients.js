@@ -404,6 +404,28 @@ const API = window.location.origin + '/api';
                 : 'No score-based suggestion available yet.';
         }
 
+        // Prefill the structured outcome from what is already recorded.
+        // Read from _allPatients rather than passed through the onclick, so an
+        // array (clinicalOutcomeDomains) never has to survive string
+        // interpolation into an inline handler.
+        //
+        // Reopening the modal used to show a blank dropdown even for a patient
+        // whose outcome was recorded, which reads as "nothing was saved" and
+        // invites the clinician to re-enter — or, worse, to leave it blank and
+        // overwrite a real label with nothing.
+        const patient = _allPatients.find(p => String(p.childId) === String(childId));
+        const outcomeEl = document.getElementById('clinical-outcome');
+        if (outcomeEl) {
+            outcomeEl.value = patient?.clinicalOutcome || '';
+            onOutcomeChange();
+            const recordedDomains = Array.isArray(patient?.clinicalOutcomeDomains)
+                ? patient.clinicalOutcomeDomains
+                : [];
+            document.querySelectorAll('.outcome-domain').forEach(el => {
+                el.checked = recordedDomains.includes(el.value);
+            });
+        }
+
         document.getElementById('diagnosisModal').style.display = 'flex';
     }
 
@@ -487,10 +509,20 @@ const API = window.location.origin + '/api';
                 calcAge(p.childDateOfBirth),
                 p.appointmentStatus || '—',
                 p.diagnosis ? 'Yes' : 'No',
-                p.scores?.['Communication'] !== undefined ? Object.values(p.scores).reduce((a,b)=>a+b,0)/4+'%' : '—'
+                // The stored overall score, not a re-average of the four domain
+                // scores. Re-averaging here produced a SECOND overall figure
+                // that could disagree with the one the server computed and
+                // saved — the domain scores are already rounded individually,
+                // so their mean is not the stored overallScore.
+                p.overallScore != null ? Math.round(p.overallScore) + '%' : '—'
             ]);
         });
-        const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+        // RFC 4180: every cell quoted, embedded double quotes doubled. Without
+        // the escape, a name or status containing a quote broke the column
+        // alignment of every field after it on that row.
+        const csv = rows
+            .map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+            .join('\r\n');
         const a = document.createElement('a');
         a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
         a.download = 'my-patients.csv';
@@ -516,7 +548,7 @@ const API = window.location.origin + '/api';
                         <span style="font-size:0.75rem;color:var(--text-light);">${a.status || '—'}</span>
                     </div>
                     <p style="font-size:0.85rem;color:var(--primary);margin:0.35rem 0 0;">${score}</p>
-                    ${a.diagnosis ? `<p style="font-size:0.82rem;color:var(--text-dark);margin:0.5rem 0 0;line-height:1.45;"><strong>Diagnosis:</strong> ${a.diagnosis}</p>` : ''}
+                    ${a.diagnosis ? `<p style="font-size:0.82rem;color:var(--text-dark);margin:0.5rem 0 0;line-height:1.45;"><strong>Diagnosis:</strong> ${escapeHtml(a.diagnosis)}</p>` : ''}
                     ${a.nextAssessmentDate ? `<p style="font-size:0.82rem;color:var(--text-dark);margin:0.5rem 0 0;line-height:1.45;"><strong>Next assessment:</strong> ${formatDisplayDate(a.nextAssessmentDate)}${a.nextAssessmentReason ? ` - ${escapeHtml(a.nextAssessmentReason)}` : ''}</p>` : ''}
                 </div>`;
         }).join('');

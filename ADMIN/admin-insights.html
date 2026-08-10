@@ -1,0 +1,173 @@
+<!-- Admin Insights
+Purpose:
+- system-wide demographic and descriptive analytics: user accounts, children,
+  screenings on file, and the agreement between the rule-based screening bands
+  and the outcome a pediatrician recorded at review
+- read-only; this page never writes anything
+- the shell (header/nav/notifications modal) is copied from admin-reports.html
+  so the admin pages stay consistent
+
+Not to be confused with admin-reports.html, which is the printable summary
+snapshot. This page is the filtered analytical view; that one is unchanged.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insights - KinderCura Admin</title>
+    <link rel="stylesheet" href="/css/dashboard-new-styles.css">
+    <link rel="stylesheet" href="/css/admin-insights.css">
+    <link rel="stylesheet" href="/css/notifications-styles.css">
+    <link rel="stylesheet" href="/notifications-card-ui.css">
+    <!-- Same charting library the other reporting pages already load. -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <header class="top-nav">
+        <div class="nav-container">
+            <a href="/admin/admin-dashboard.html" class="logo"><img src="/icons/logo.png" class="logo-img"><span class="logo-text"><span class="logo-kinder">Kinder</span><span class="logo-cura">Cura</span></span></a>
+            <nav class="main-nav">
+                <a href="/admin/admin-dashboard.html" class="nav-link">Dashboard</a>
+                <a href="/admin/admin-users.html" class="nav-link">Users</a>
+                <a href="/admin/admin-prc-verification.html" class="nav-link">PRC Verification</a>
+                <a href="/admin/admin-analytics.html" class="nav-link">Analytics</a>
+                <a href="/admin/admin-training.html" class="nav-link">Training</a>
+                <a href="/admin/admin-reports.html" class="nav-link">Reports</a>
+                <a href="/admin/admin-insights.html" class="nav-link active">Insights</a>
+                <a href="/admin/admin-settings.html" class="nav-link">Settings</a>
+                <a href="/admin/payments" class="nav-link">Payments</a>
+            </nav>
+            <div class="nav-right">
+                <button class="icon-btn notification-btn" onclick="openNotifications()"><img src="/icons/notif_bell.png" class="notification-icon"><span class="notification-badge">0</span></button>
+                <button class="icon-btn profile-btn" onclick="toggleProfileMenu()"><img src="/icons/profile.png" class="profile-icon" style="width:36px;height:36px;border-radius:50%;object-fit:cover;display:block;"></button>
+                <div class="profile-menu" id="profileMenu" style="display:none;">
+                    <div class="menu-header"><p>Welcome, Admin</p></div>
+                    <a href="/admin/admin-settings.html" class="menu-item"><img src="/icons/settings.png" class="menu-icon">Settings</a>
+                    <hr style="margin:0.5rem 0;">
+                    <a href="#" class="menu-item logout"><img src="/icons/logout.png" class="menu-icon">Logout</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="dashboard-container">
+        <div class="insight-header">
+            <div>
+                <h1>Insights</h1>
+                <p class="insight-meta" id="insightMeta">Loading…</p>
+            </div>
+            <button class="btn btn-secondary" onclick="window.print()" style="padding:0.75rem 1.4rem;">Print</button>
+        </div>
+
+        <!-- Always visible, never dismissible. Written into the markup rather
+             than rendered by the page script so it is present even if every
+             request on this page fails. -->
+        <div class="insight-caveat" role="note">
+            <h3>What this page is, and what it is not</h3>
+            <ul>
+                <li>
+                    These figures describe <strong>rule-based screening scores</strong>. Each score is
+                    fixed arithmetic over the answers a parent gave, placed into a band by a fixed
+                    cutoff. Nothing here is predicted, estimated, or learned from data.
+                </li>
+                <li>
+                    The band cutoffs are <strong>pending confirmation from the consultant
+                    pediatrician</strong> and are recorded as unconfirmed in
+                    <code>constants/scoring.js</code>. They should not be described as clinically
+                    validated.
+                </li>
+                <li>
+                    Section 4 reports <strong>agreement between two recorded judgements</strong> — the
+                    screening band and the reviewing pediatrician's conclusion. It is not a validation
+                    against a diagnostic reference standard, and it is not an accuracy figure.
+                </li>
+                <li>
+                    All counts are <strong>aggregate</strong>. No child or parent is identified anywhere
+                    on this page.
+                </li>
+                <li>
+                    There is <strong>no geographic breakdown</strong>. Neither a child record nor a user
+                    account carries a residential location, and nothing is substituted in its place.
+                </li>
+            </ul>
+        </div>
+
+        <!-- Global filters. State lives in the query string; see syncFiltersFromUrl(). -->
+        <div class="insight-filters">
+            <div class="insight-filters-grid">
+                <div class="filter-field">
+                    <label for="filterFrom">From</label>
+                    <input type="date" id="filterFrom">
+                </div>
+                <div class="filter-field">
+                    <label for="filterTo">To</label>
+                    <input type="date" id="filterTo">
+                </div>
+                <div class="filter-field">
+                    <label for="filterGender">Sex</label>
+                    <select id="filterGender"><option value="all">All</option></select>
+                </div>
+                <div class="filter-field">
+                    <label for="filterAgeBand">Age band</label>
+                    <select id="filterAgeBand"><option value="all">All</option></select>
+                </div>
+                <button class="btn btn-primary" onclick="applyFilters()" style="padding:0.7rem 1.4rem;">Apply</button>
+                <button class="btn btn-secondary" onclick="resetFilters()" style="padding:0.7rem 1.4rem;">Reset</button>
+            </div>
+            <div class="filter-presets" id="filterPresets"></div>
+            <p class="filter-note">
+                Filters are held in the page address, so a filtered view can be bookmarked or shared and
+                survives a drill-down. The date range defaults to the last 12 months.
+                <strong>Sex and age band describe children</strong> — they do not apply to Section 1,
+                because a user account carries neither field. Each section states which filters affected it.
+            </p>
+        </div>
+
+        <!-- 1. User demographics -->
+        <div id="usersSection">
+            <div class="insight-card"><div class="insight-loading">Loading user demographics…</div></div>
+        </div>
+
+        <!-- 2. Child demographics -->
+        <div id="childrenSection">
+            <div class="insight-card"><div class="insight-loading">Loading child demographics…</div></div>
+        </div>
+
+        <!-- 3. Descriptive screening reports -->
+        <div id="screeningsSection">
+            <div class="insight-card"><div class="insight-loading">Loading screening reports…</div></div>
+        </div>
+
+        <!-- 4. Screening performance & pediatrician concordance -->
+        <div id="concordanceSection">
+            <div class="insight-card"><div class="insight-loading">Loading concordance…</div></div>
+        </div>
+    </div>
+
+<div class="notification-modal notifications-modal" id="notificationsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle">
+    <div class="notification-modal-content notifications-content" role="document">
+        <div class="notification-modal-header notifications-header">
+            <h3 id="notificationsTitle">Notifications</h3>
+            <button type="button" class="notif-close close-btn" onclick="closeNotifications()" aria-label="Close notifications">&times;</button>
+        </div>
+        <div class="notification-action-bar clear-all-row">
+            <button type="button" class="clear-all-btn" id="clearNotificationsBtn" onclick="clearAllNotifications()">Clear all</button>
+        </div>
+        <div class="notification-list notifications-list" id="notificationsList" role="list">
+            <p class="notifications-empty">Loading...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Load order matters. api.js supplies apiFetch and the shared nav/notification
+     wiring; scoring.js supplies window.KCScoring and MUST precede the page
+     script, which reads band labels and colours from it at render time. -->
+    <script src="/api.js"></script>
+    <script src="/constants/scoring.js"></script>
+    <script src="/notifications-card-ui.js"></script>
+    <script src="/assets/js/notifications.js"></script>
+    <script src="/assets/js/admin-nav.js"></script>
+    <script src="/js/admin/admin-insights.js"></script>
+</body>
+</html>

@@ -1,0 +1,455 @@
+/* CSS files/pedia-reports-styles.css
+   Pediatrician Reports page.
+
+   Layered on top of dashboard-new-styles.css, which supplies the shell
+   (.top-nav, .dashboard-container, .btn, and the CSS custom properties used
+   below). Nothing here restyles the shared nav or button classes — this file
+   only adds what the reports page itself needs. */
+
+/* ── Page header ─────────────────────────────────────────────────────────── */
+.report-header {
+    background: white;
+    padding: 2rem;
+    border-radius: 15px;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.report-header h1 {
+    margin-bottom: 0.3rem;
+}
+
+.report-header .report-meta {
+    color: var(--text-light);
+    font-size: 0.92rem;
+    margin: 0;
+}
+
+/* ── Caveat banner ───────────────────────────────────────────────────────────
+   Always visible and deliberately NOT dismissible. Every reading of this page
+   depends on these three statements being in view, so there is no close
+   button and no collapsed state to build. */
+.report-caveat {
+    background: #fdf6e3;
+    border: 1px solid #e6d9a8;
+    border-left: 5px solid #d99e0b;
+    border-radius: 12px;
+    padding: 1.15rem 1.4rem;
+    margin-bottom: 1.5rem;
+}
+
+.report-caveat h3 {
+    font-size: 0.95rem;
+    color: #8a6100;
+    margin: 0 0 0.5rem;
+}
+
+.report-caveat ul {
+    margin: 0;
+    padding-left: 1.15rem;
+}
+
+.report-caveat li {
+    font-size: 0.86rem;
+    color: #6b5000;
+    line-height: 1.6;
+    margin-bottom: 0.3rem;
+}
+
+.report-caveat li:last-child {
+    margin-bottom: 0;
+}
+
+/* ── Filter bar ──────────────────────────────────────────────────────────── */
+.report-filters {
+    background: white;
+    border-radius: 15px;
+    padding: 1.4rem 1.6rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+}
+
+.report-filters-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+}
+
+.report-filters .filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.report-filters label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.report-filters input[type="date"] {
+    padding: 0.7rem 0.85rem;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    background: white;
+}
+
+.report-filters .filter-note {
+    font-size: 0.78rem;
+    color: var(--text-light);
+    margin: 0.75rem 0 0;
+    line-height: 1.5;
+}
+
+/* ── Summary tiles ───────────────────────────────────────────────────────── */
+.report-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.report-tile {
+    background: white;
+    border-radius: 14px;
+    padding: 1.2rem 1.4rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+}
+
+.report-tile .tile-label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 0.35rem;
+}
+
+.report-tile .tile-value {
+    font-size: 1.9rem;
+    font-weight: 700;
+    color: var(--primary);
+    margin: 0;
+    line-height: 1.1;
+}
+
+.report-tile .tile-sub {
+    font-size: 0.78rem;
+    color: var(--text-light);
+    margin: 0.3rem 0 0;
+    line-height: 1.45;
+}
+
+/* ── Cards ───────────────────────────────────────────────────────────────── */
+.report-card {
+    background: white;
+    border-radius: 15px;
+    padding: 1.6rem 1.8rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+}
+
+.report-card h2 {
+    font-size: 1.15rem;
+    margin: 0 0 0.4rem;
+    color: var(--text-dark);
+}
+
+.report-card .card-sub {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    line-height: 1.6;
+    margin: 0 0 1.2rem;
+}
+
+.report-card .card-footnote {
+    font-size: 0.79rem;
+    color: var(--text-light);
+    line-height: 1.55;
+    margin: 1rem 0 0;
+    padding-top: 0.85rem;
+    border-top: 1px dashed var(--border);
+}
+
+/* ── Charts ──────────────────────────────────────────────────────────────── */
+.chart-row {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr;
+    gap: 1.75rem;
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .chart-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.chart-box {
+    height: 300px;
+    position: relative;
+}
+
+.chart-caption {
+    font-size: 0.78rem;
+    color: var(--text-light);
+    text-align: center;
+    margin: 0.6rem 0 0;
+    line-height: 1.5;
+}
+
+/* ── Risk strip ──────────────────────────────────────────────────────────── */
+.risk-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.9rem;
+    margin-top: 1.5rem;
+    padding-top: 1.35rem;
+    border-top: 1px solid var(--border);
+}
+
+.risk-item {
+    background: var(--bg-primary);
+    border-radius: 10px;
+    padding: 0.85rem 1rem;
+    text-align: center;
+}
+
+.risk-item .risk-count {
+    font-size: 1.45rem;
+    font-weight: 700;
+    margin: 0;
+    line-height: 1.2;
+}
+
+.risk-item .risk-label {
+    font-size: 0.76rem;
+    color: var(--text-light);
+    margin: 0.25rem 0 0;
+}
+
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+.report-table-wrap {
+    overflow-x: auto;
+}
+
+.report-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.86rem;
+}
+
+.report-table th {
+    text-align: left;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-light);
+    padding: 0.7rem 0.8rem;
+    border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+}
+
+.report-table td {
+    padding: 0.85rem 0.8rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dark);
+    vertical-align: middle;
+}
+
+.report-table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.report-table tbody tr.prog-row {
+    cursor: pointer;
+}
+
+.report-table tbody tr.prog-row:hover {
+    background: var(--bg-primary);
+}
+
+.report-table tbody tr.prog-row:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+}
+
+.prog-name {
+    font-weight: 700;
+}
+
+.prog-toggle {
+    display: inline-block;
+    width: 1em;
+    color: var(--text-light);
+    font-size: 0.8rem;
+}
+
+.prog-detail > td {
+    background: var(--bg-primary);
+    padding: 1rem 1.2rem 1.2rem;
+}
+
+.prog-detail h4 {
+    font-size: 0.82rem;
+    color: var(--primary);
+    margin: 0 0 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.prog-detail table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.prog-detail th {
+    background: white;
+    border-bottom: 1px solid var(--border);
+    padding: 0.55rem 0.7rem;
+}
+
+.prog-detail td {
+    padding: 0.55rem 0.7rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.prog-detail tr:last-child td {
+    border-bottom: none;
+}
+
+/* ── Chips and deltas ────────────────────────────────────────────────────── */
+.band-chip {
+    display: inline-block;
+    padding: 0.18rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: white;
+    white-space: nowrap;
+}
+
+.move-chip {
+    display: inline-block;
+    padding: 0.18rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.move-improved  { background: #dcfce7; color: #15803d; }
+.move-unchanged { background: #eef0f2; color: #55606a; }
+.move-declined  { background: #fee2e2; color: #b91c1c; }
+
+.delta {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.delta-up   { color: #15803d; }
+.delta-down { color: #b91c1c; }
+.delta-flat { color: var(--text-light); }
+
+.warn-chip {
+    display: inline-block;
+    margin-left: 0.4rem;
+    padding: 0.12rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    background: #fdf1d6;
+    color: #8a6100;
+    border: 1px solid #e6d9a8;
+    white-space: nowrap;
+}
+
+/* ── Cross-tab ───────────────────────────────────────────────────────────── */
+.crosstab th.rot {
+    white-space: normal;
+    min-width: 92px;
+    vertical-align: bottom;
+}
+
+.crosstab td.cell {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.crosstab td.cell-zero {
+    color: #b6bcc2;
+    font-weight: 400;
+}
+
+.crosstab .band-head {
+    white-space: nowrap;
+}
+
+.crosstab tfoot td,
+.crosstab td.total,
+.crosstab th.total {
+    font-weight: 700;
+    background: var(--bg-primary);
+}
+
+.coverage-line {
+    background: var(--bg-primary);
+    border-radius: 10px;
+    padding: 0.95rem 1.2rem;
+    font-size: 0.88rem;
+    color: var(--text-dark);
+    line-height: 1.6;
+    margin-bottom: 1.2rem;
+}
+
+/* ── Empty and error states ──────────────────────────────────────────────── */
+.report-empty {
+    text-align: center;
+    padding: 2.5rem 1.5rem;
+    background: var(--bg-primary);
+    border-radius: 12px;
+}
+
+.report-empty h3 {
+    font-size: 1rem;
+    color: var(--text-dark);
+    margin: 0 0 0.5rem;
+}
+
+.report-empty p {
+    font-size: 0.87rem;
+    color: var(--text-light);
+    line-height: 1.65;
+    margin: 0 auto;
+    max-width: 46rem;
+}
+
+.report-error {
+    border-left: 4px solid var(--accent-red, #c0392b);
+    text-align: left;
+}
+
+.report-loading {
+    text-align: center;
+    padding: 2.5rem 1.5rem;
+    color: var(--text-light);
+    font-size: 0.9rem;
+}
