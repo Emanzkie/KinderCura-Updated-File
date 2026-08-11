@@ -371,68 +371,51 @@ function renderUsers(data) {
 
     section.innerHTML = `
         <div class="insight-card">
-            <span class="section-label">Section 1</span>
-            <h2>User demographics</h2>
-            <p class="card-sub">
-                Account totals are <strong>current state</strong> and are not affected by the date
-                range — "how many pediatricians exist" is not a question a date window improves. Only
-                the registrations timeline below is filtered by it. The sex and age filters do not
-                apply to this section at all: those fields live on a child record, and a user account
-                has neither.
-            </p>
+            <h2>User Overview</h2>
+            <p class="card-sub">Overview of registered KinderCura users.</p>
 
             <div class="insight-tiles">
                 <div class="insight-tile">
-                    <p class="tile-label">Total users</p>
+                    <p class="tile-label">Total Users</p>
                     <p class="tile-value">${total}</p>
-                    <p class="tile-sub">All accounts of every role.</p>
+                    <p class="tile-sub">All registered accounts.</p>
                 </div>
                 <div class="insight-tile">
-                    <p class="tile-label">Active</p>
+                    <p class="tile-label">Active Users</p>
                     <p class="tile-value">${count(totals.active)}</p>
-                    <p class="tile-sub">
-                        Defined as <code>${escapeHtml(totals.activeField || 'User.status')}</code> =
-                        <code>${escapeHtml(totals.activeValue || 'active')}</code>.
-                    </p>
+                    <p class="tile-sub">Currently active accounts.</p>
                 </div>
                 <div class="insight-tile">
-                    <p class="tile-label">Inactive</p>
+                    <p class="tile-label">Inactive Users</p>
                     <p class="tile-value">${count(totals.inactive)}</p>
-                    <p class="tile-sub">Every account whose status is anything else (pending, suspended).</p>
+                    <p class="tile-sub">Currently inactive accounts.</p>
                 </div>
                 <div class="insight-tile">
-                    <p class="tile-label">Guardians with a child</p>
+                    <p class="tile-label">Guardians with Children</p>
                     <p class="tile-value">${count(guardians.withChildren)}</p>
-                    <p class="tile-sub">${guardianTotal
-                        ? `${count(guardians.withoutChildren)} of ${guardianTotal} guardian ${plural(guardianTotal, 'account')} ${count(guardians.withoutChildren) === 1 ? 'has' : 'have'} no child record.`
-                        : 'No guardian accounts on file.'}</p>
+                    <p class="tile-sub">Guardian accounts with at least one child.</p>
                 </div>
             </div>
 
             <div class="chart-row">
                 <div>
                     <div class="chart-box"><canvas id="usersRoleChart"></canvas></div>
-                    <p class="chart-caption">Accounts by role (current state).</p>
+                    <p class="chart-caption">Accounts by role.</p>
                 </div>
                 <div>
                     <div class="chart-box"><canvas id="usersRegistrationChart"></canvas></div>
-                    <p class="chart-caption">Registrations per month, within the selected date range.</p>
+                    <p class="chart-caption">Registration trend.</p>
                 </div>
             </div>
 
-            <h3>Accounts by role</h3>
+            <h3>Accounts by Role</h3>
+            <p class="card-sub" style="margin-bottom:0.6rem;">Distribution of registered users by role.</p>
             <div class="insight-table-wrap">
                 <table class="insight-table">
                     <thead><tr><th>Role</th><th class="num">Count</th><th class="num">Share</th></tr></thead>
                     <tbody>${roleRows}</tbody>
                 </table>
             </div>
-
-            <p class="card-footnote">
-                "Guardian accounts" covers every non-staff role that can own a child record:
-                ${escapeHtml((guardians.roles || []).map(roleLabel).join(', ') || '—')}. A guardian with
-                no child has registered but not yet added one.
-            </p>
         </div>`;
 
     const roleData = data.byRole || [];
@@ -505,52 +488,45 @@ function renderChildren(data) {
 
     section.innerHTML = `
         <div class="insight-card">
-            <span class="section-label">Section 2</span>
-            <h2>Child demographics</h2>
-            <p class="card-sub">
-                Children currently on file matching the sex and age filters.
-                <strong>Age here is current age</strong> — months from date of birth to today. This is a
-                different quantity from the age band in Sections 3 and 4, which is age
-                <em>at the assessment</em>. A child moves between bands as time passes, so the two will
-                not always agree. There is no geographic breakdown: no location field exists on a child
-                or a user record.
-            </p>
+            <h2>Child Overview</h2>
+            <p class="card-sub">Overview of registered children and their assessment activity.</p>
 
             <div class="insight-tiles">
                 <div class="insight-tile">
-                    <p class="tile-label">Total children</p>
+                    <p class="tile-label">Total Children</p>
                     <p class="tile-value">${total}</p>
-                    <p class="tile-sub">Matching the current sex and age filters.</p>
+                    <p class="tile-sub">Registered children matching current filters.</p>
                 </div>
                 <div class="insight-tile">
-                    <p class="tile-label">Screened in range</p>
+                    <p class="tile-label">Screened in Range</p>
                     <p class="tile-value">${count(coverage.withScreening)}</p>
-                    <p class="tile-sub">Has at least one completed screening inside the date range.</p>
+                    <p class="tile-sub">Children with at least one completed screening.</p>
                 </div>
                 <div class="insight-tile">
-                    <p class="tile-label">Not screened in range</p>
+                    <p class="tile-label">Not Screened in Range</p>
                     <p class="tile-value">${count(coverage.withoutScreening)}</p>
-                    <p class="tile-sub">No completed screening inside the date range — not necessarily none ever.</p>
+                    <p class="tile-sub">Children without a completed screening in this period.</p>
                 </div>
                 <div class="insight-tile">
-                    <p class="tile-label">Sex not recorded</p>
+                    <p class="tile-label">Sex Not Recorded</p>
                     <p class="tile-value">${count(byGender[vocabUnknown()])}</p>
-                    <p class="tile-sub">Children whose sex is absent from the record.</p>
+                    <p class="tile-sub">Children without sex information on file.</p>
                 </div>
             </div>
 
             <div class="chart-row">
                 <div>
                     <div class="chart-box"><canvas id="childrenGenderChart"></canvas></div>
-                    <p class="chart-caption">Sex distribution.</p>
+                    <p class="chart-caption">Sex distribution of registered children.</p>
                 </div>
                 <div>
                     <div class="chart-box"><canvas id="childrenAgeChart"></canvas></div>
-                    <p class="chart-caption">Age distribution — <strong>current age</strong>, not age at assessment.</p>
+                    <p class="chart-caption">Age distribution of registered children.</p>
                 </div>
             </div>
 
-            <h3>Children per guardian</h3>
+            <h3>Children per Guardian</h3>
+            <p class="card-sub" style="margin-bottom:0.6rem;">Number of children associated with each guardian account.</p>
             <div class="insight-table-wrap">
                 <table class="insight-table">
                     <thead><tr><th>Children on the account</th><th class="num">Guardians</th></tr></thead>
@@ -561,12 +537,6 @@ function renderChildren(data) {
                     </tbody>
                 </table>
             </div>
-
-            <p class="card-footnote">
-                Age bands follow the age gates the screening instrument itself uses — the question bank
-                is served by minimum age in months, so a band boundary is a point where a child is asked
-                a different set of questions. They are demographic strata only and never affect a score.
-            </p>
         </div>`;
 
     drawChart('childrenGenderChart', {
@@ -623,10 +593,9 @@ function renderScreenings(data) {
     if (total === 0) {
         section.innerHTML = `
             <div class="insight-card">
-                <span class="section-label">Section 3</span>
-                <h2>Descriptive screening reports</h2>
+                <h2>Screening Overview</h2>
                 ${emptyBlock('No screenings match these filters',
-                    'No assessment falls inside the selected date range for the selected sex and age band. Widen the range, or reset the filters.')}
+                    'No assessment falls inside the selected date range for the selected filters. Widen the range or reset the filters.')}
             </div>`;
         return;
     }
@@ -639,128 +608,111 @@ function renderScreenings(data) {
     // The scored charts can only describe assessments that have a linked result.
     const scoredBlock = withResult === 0
         ? emptyBlock('No scored screenings in this selection',
-            `All ${total} ${plural(total, 'assessment')} in range ${total === 1 ? 'is' : 'are'} missing a linked result document, so no band can be computed for any of them. The counts above still hold; there is simply nothing to band.`)
+            'No assessments in this range have screening results available yet.')
         : `
             <div class="chart-row">
                 <div>
                     <div class="chart-box"><canvas id="screeningsOverallChart"></canvas></div>
-                    <p class="chart-caption">Overall band — computed from the stored overall score (n = ${withResult}).</p>
+                    <p class="chart-caption">Overall screening results (${withResult} assessed).</p>
                 </div>
                 <div>
                     <div class="chart-box"><canvas id="screeningsDomainChart"></canvas></div>
-                    <p class="chart-caption">Per-domain bands, as stored on the result documents (each bar totals ${withResult}).</p>
+                    <p class="chart-caption">Results by developmental area.</p>
                 </div>
             </div>
 
-            <h3>Overall band by age band <span style="font-weight:400;color:var(--text-light);font-size:0.85em;">(age at assessment)</span></h3>
+            <h3>Overall Results by Age Band</h3>
             <div class="insight-table-wrap">
                 ${crossTabTable(data.bandByAgeBand, keys, ageKeys, ageBandLabel, 'Band')}
             </div>
 
-            <h3>Overall band by sex</h3>
+            <h3>Overall Results by Sex</h3>
             <div class="insight-table-wrap">
                 ${crossTabTable(data.bandByGender, keys, genderKeys, genderLabel, 'Band')}
             </div>`;
 
     section.innerHTML = `
         <div class="insight-card">
-            <span class="section-label">Section 3</span>
-            <h2>Descriptive screening reports</h2>
-            <p class="card-sub">
-                Counts of the screenings on file. <strong>Age band here is age at the assessment</strong>,
-                computed against each screening's own date rather than against today.
-            </p>
+            <h2>Screening Overview</h2>
+            <p class="card-sub">Overview of completed and ongoing child assessments.</p>
 
             <div class="insight-tiles">
                 <div class="insight-tile">
                     <p class="tile-label">Assessments</p>
                     <p class="tile-value">${total}</p>
-                    <p class="tile-sub">In range, matching the sex and age filters.</p>
+                    <p class="tile-sub">Assessments in the selected period.</p>
                 </div>
                 <div class="insight-tile">
-                    <p class="tile-label">With a scored result</p>
+                    <p class="tile-label">With Results</p>
                     <p class="tile-value">${withResult}</p>
-                    <p class="tile-sub">Has a linked result document carrying a score.</p>
+                    <p class="tile-sub">Assessments with screening results.</p>
                 </div>
                 <div class="insight-tile">
-                    <p class="tile-label">Without a result</p>
+                    <p class="tile-label">Without Results</p>
                     <p class="tile-value">${withoutResult}</p>
                     <p class="tile-sub">
                         ${withoutResult > 0
-                            ? 'Cannot be banded. This caps every scored chart below.'
+                            ? 'Assessments still awaiting results.'
                             : 'Every assessment in range has a result.'}
                     </p>
                 </div>
                 <div class="insight-tile">
                     <p class="tile-label">Reviewed</p>
                     <p class="tile-value">${count(review.reviewed)}</p>
-                    <p class="tile-sub">
-                        ${count(review.unreviewed)} ${plural(count(review.unreviewed), 'assessment')}
-                        ${count(review.unreviewed) === 1 ? 'has' : 'have'} no review on record.
-                    </p>
+                    <p class="tile-sub">Assessments reviewed by a pediatrician.</p>
                 </div>
             </div>
 
             <div class="chart-row">
                 <div>
                     <div class="chart-box"><canvas id="screeningsOverTimeChart"></canvas></div>
-                    <p class="chart-caption">Assessments per month, by completion date (or start date when never completed).</p>
+                    <p class="chart-caption">Assessments per month.</p>
                 </div>
                 <div>
                     <div class="chart-box"><canvas id="screeningsLinkageChart"></canvas></div>
-                    <p class="chart-caption">Assessments with vs without a linked result document.</p>
+                    <p class="chart-caption">Assessments with results.</p>
                 </div>
             </div>
 
             ${scoredBlock}
 
-            <h3>Review and follow-up</h3>
+            <h3>Review & Follow-up</h3>
             <div class="insight-tiles" style="margin-bottom:0;">
                 <div class="insight-tile">
                     <p class="tile-label">Reviewed</p>
                     <p class="tile-value">${count(review.reviewed)} / ${total}</p>
-                    <p class="tile-sub">Counted from the review timestamp, not from whether an outcome was labelled.</p>
+                    <p class="tile-sub">Assessments reviewed by a pediatrician.</p>
                 </div>
                 <div class="insight-tile">
-                    <p class="tile-label">Median time to review</p>
-                    <p class="tile-value">${review.medianDaysToReview == null ? '—' : `${review.medianDaysToReview}d`}</p>
+                    <p class="tile-label">Median Review Time</p>
+                    <p class="tile-value">${review.medianDaysToReview == null ? '—' : `${review.medianDaysToReview} days`}</p>
                     <p class="tile-sub">
                         ${count(review.medianSampleSize) === 0
-                            ? 'No reviewed screening has both timestamps.'
-                            : `From submission to review, over ${count(review.medianSampleSize)} reviewed ${plural(count(review.medianSampleSize), 'screening')}.`}
+                            ? 'No review data available yet.'
+                            : `Typical time between submission and review.`}
                     </p>
                 </div>
                 <div class="insight-tile">
-                    <p class="tile-label">Next assessment date set</p>
+                    <p class="tile-label">Follow-up Scheduled</p>
                     <p class="tile-value">${data.nextAssessment?.rate?.percent == null ? '—' : `${data.nextAssessment.rate.percent}%`}</p>
-                    <p class="tile-sub">${rateText(data.nextAssessment?.rate, false)} of assessments carry a follow-up date.</p>
+                    <p class="tile-sub">Assessments with a follow-up date.</p>
                 </div>
             </div>
 
-            <h3>Custom pediatrician questions <span class="unscored-chip">Unscored</span></h3>
+            <h3>Custom Questions</h3>
             <p class="card-sub" style="margin-bottom:0.8rem;">
-                Questions a pediatrician wrote and assigned to a specific child. These are counted here
-                for volume only. <strong>They never enter any band computation</strong> — the screening
-                score is built from the fixed core question bank alone, and nothing in this section's
-                distributions above includes them.
+                Track custom questions assigned by pediatricians.
             </p>
             <div class="insight-table-wrap">
                 <table class="insight-table">
-                    <thead><tr><th>Custom questions</th><th class="num">Count</th></tr></thead>
+                    <thead><tr><th>Custom Questions</th><th class="num">Count</th></tr></thead>
                     <tbody>
-                        <tr><td>Assigned in range</td><td class="num">${count(custom.assigned)}</td></tr>
+                        <tr><td>Assigned</td><td class="num">${count(custom.assigned)}</td></tr>
                         <tr><td>Answered</td><td class="num">${count(custom.answered)}</td></tr>
-                        <tr><td>Awaiting an answer</td><td class="num">${Math.max(0, count(custom.assigned) - count(custom.answered))}</td></tr>
+                        <tr><td>Awaiting an Answer</td><td class="num">${Math.max(0, count(custom.assigned) - count(custom.answered))}</td></tr>
                     </tbody>
                 </table>
             </div>
-
-            <p class="card-footnote">
-                The per-domain chart shows the band strings <strong>as stored</strong> on each result
-                document — it is not recomputed here, so it reflects exactly what other pages read. The
-                overall band is not stored anywhere and is computed from the stored overall score using
-                the shared band set.
-            </p>
         </div>`;
 
     drawChart('screeningsOverTimeChart', {
@@ -890,41 +842,20 @@ function crossTabTable(matrix, bandRows, colKeys, colLabelFn, rowHeading) {
 // SECTION 4 — Screening performance & pediatrician concordance
 // ═══════════════════════════════════════════════════════════════════════════
 
-function methodsNote(data) {
-    const mapping = data.mapping || {};
-    const pairs = Object.entries(mapping.outcomeToBand || {});
+function methodsNote() {
     return `
-        <div class="methods-note">
-            <p>
-                <strong>Method.</strong> ${escapeHtml(data.methodsNote || '')}
-            </p>
-            <p style="margin-top:0.6rem;">
-                <strong>Outcome-to-band correspondence</strong>
-                <span class="assumption-chip">Assumption — pending pediatrician confirmation</span><br>
-                ${pairs.map(([outcome, band]) =>
-                    `${escapeHtml(outcomeLabel(outcome))} &rarr; ${escapeHtml(bandLabel(band))}`).join(' &middot; ')}
-                ${(mapping.excludedOutcomes || []).length
-                    ? `<br><em>${escapeHtml((mapping.excludedOutcomes || []).map(outcomeLabel).join(', '))}</em>
-                       ${(mapping.excludedOutcomes || []).length === 1 ? 'is' : 'are'} excluded from every rate and counted
-                       separately: a reviewer recording that no conclusion was possible has not disagreed with anything.`
-                    : ''}
-            </p>
-            <p style="margin-top:0.6rem;">
-                Agreement here is not independent evidence. The reviewing pediatrician sees the
-                screening scores on the same page as the form where the outcome is recorded, so these
-                counts partly reflect the influence of the score on the reviewer.
-            </p>
-        </div>`;
+        <p class="card-sub" style="margin-top:1rem;font-size:0.82rem;">
+            Screening results are intended to support assessment and should be reviewed by a qualified pediatrician.
+        </p>`;
 }
 
 /** The pipeline strip — shown in every state, so the section is always informative. */
 function pipelineStrip(totals) {
     const steps = [
-        { label: 'Assessments in range', value: count(totals.assessments), blocked: false },
-        { label: 'With a computed band', value: count(totals.withBand), blocked: false },
-        { label: 'Reviewed by a pediatrician', value: count(totals.reviewed), blocked: false },
-        { label: 'With an outcome label', value: count(totals.labelled), blocked: count(totals.labelled) === 0 },
-        { label: 'Usable (labelled + banded)', value: count(totals.usable), blocked: count(totals.usable) === 0 },
+        { label: 'Assessments', value: count(totals.assessments), blocked: false },
+        { label: 'With Results', value: count(totals.withBand), blocked: false },
+        { label: 'Reviewed', value: count(totals.reviewed), blocked: false },
+        { label: 'With Outcome', value: count(totals.labelled), blocked: count(totals.labelled) === 0 },
     ];
     return `
         <div class="pipeline-strip">
@@ -945,39 +876,18 @@ function renderConcordance(data) {
     const suppressed = Boolean(data.threshold?.suppressed);
 
     const header = `
-        <span class="section-label">Section 4</span>
-        <h2>Screening bands vs recorded clinical outcome</h2>
-        <p class="card-sub">
-            How the rule-based screening classified each child, set against the structured conclusion
-            the reviewing pediatrician recorded. Ground truth is the recorded clinical outcome and
-            nothing else — the free-text diagnosis is never read, and neither is a progress note.
-        </p>`;
+        <h2>Pediatrician Review & Outcomes</h2>
+        <p class="card-sub">Summary of assessments reviewed by pediatricians.</p>`;
 
-    // ── Empty state: no usable labelled records. No chart shell is rendered.
+    // ── Empty state: no usable labelled records.
     if (comparable === 0) {
-        const labelled = count(totals.labelled);
-        const explanation = labelled === 0
-            ? `No assessment in this selection carries a recorded clinical outcome. Labelling begins when
-               a pediatrician selects a structured conclusion in the diagnosis form; an outcome is never
-               inferred from the written diagnosis. This section fills in automatically as that happens.`
-            : `${labelled} ${plural(labelled, 'assessment')} in this selection ${labelled === 1 ? 'carries' : 'carry'} an
-               outcome label, but ${count(totals.labelledWithoutBand) > 0
-                    ? `${count(totals.labelledWithoutBand)} of them ${count(totals.labelledWithoutBand) === 1 ? 'has' : 'have'} no linked result document, so no band exists to compare against`
-                    : 'none can be compared'}. Only outcomes with a corresponding band enter the matrix.`;
-
         section.innerHTML = `
             <div class="insight-card">
                 ${header}
-                ${emptyBlock(
-                    `${labelled} labelled ${plural(labelled, 'review')} available — concordance cannot yet be reported.`,
-                    explanation)}
                 ${pipelineStrip(totals)}
-                <p class="card-footnote">
-                    The steps above read left to right: an assessment must be both scored and labelled
-                    before it can appear in an agreement matrix. The highlighted step is where the
-                    pipeline currently stops.
-                </p>
-                ${methodsNote(data)}
+                ${emptyBlock('No reviewed outcomes available yet.',
+                    'This section will populate automatically as pediatricians complete reviews and record outcomes.')}
+                ${methodsNote()}
             </div>`;
         return;
     }
@@ -1010,31 +920,27 @@ function renderConcordance(data) {
 
     const ratesBlock = suppressed
         ? emptyBlock(
-            `Only ${comparable} comparable ${plural(comparable, 'record')} — below the minimum of ${minimum}.`,
-            `Rates are withheld until there are at least ${minimum} comparable records. At this sample size a
-             single record moves a percentage by tens of points, so counts are shown instead. The matrix
-             below is still shown, because a contingency table of ${comparable} ${plural(comparable, 'record')} is
-             readable as counts without implying a rate.`)
+            `Not enough data yet.`,
+            `At least ${minimum} reviewed outcomes are needed to show rates. The table below still shows available counts.`)
         : `
             <div class="rate-grid">
                 <div class="rate-item">
                     <p class="rate-value">${rateText(agreement.exact, false)}</p>
-                    <p class="rate-label">Exact agreement — screening band matches the outcome's corresponding band.</p>
+                    <p class="rate-label">Screening result matched the pediatrician's conclusion.</p>
                 </div>
                 <div class="rate-item">
                     <p class="rate-value">${rateText(agreement.adjacent, false)}</p>
-                    <p class="rate-label">Within one band — exact agreement plus neighbouring bands.</p>
+                    <p class="rate-label">Within one band of the pediatrician's conclusion.</p>
                 </div>
                 <div class="rate-item rate-critical">
                     <p class="rate-value">${rateText(agreement.screeningRatedBetter, false)}</p>
                     <p class="rate-label">
-                        <strong>Screening read healthier than the reviewer concluded.</strong>
-                        This is the direction that matters: a concern the screening did not raise.
+                        <strong>Screening showed lower concern than the pediatrician.</strong>
                     </p>
                 </div>
                 <div class="rate-item">
                     <p class="rate-value">${rateText(agreement.screeningRatedWorse, false)}</p>
-                    <p class="rate-label">Screening read more concerning than the reviewer concluded.</p>
+                    <p class="rate-label">Screening showed higher concern than the pediatrician.</p>
                 </div>
             </div>`;
 
@@ -1044,21 +950,15 @@ function renderConcordance(data) {
             ${pipelineStrip(totals)}
             ${ratesBlock}
 
-            <h3>Agreement matrix</h3>
+            <h3>Screening vs. Pediatrician Outcome</h3>
             <p class="card-sub" style="margin-bottom:0.8rem;">
-                Rows are the computed screening band; columns are the outcome recorded at review. Read
-                as counts of assessments. Shaded cells are where the two agree under the stated
-                correspondence.
-                ${count(agreement.excluded) > 0
-                    ? `<br>${count(agreement.excluded)} ${plural(count(agreement.excluded), 'record')} with an excluded outcome
-                       ${count(agreement.excluded) === 1 ? 'is' : 'are'} shown in the table but left out of every rate above.`
-                    : ''}
+                Screening results compared with pediatrician-recorded outcomes. Highlighted cells show where both agree.
             </p>
             <div class="insight-table-wrap">
                 <table class="insight-table crosstab">
                     <thead>
                         <tr>
-                            <th>Screening band</th>
+                            <th>Screening Result</th>
                             ${outcomeKeys.map((o) => `<th class="cell">${escapeHtml(outcomeLabel(o))}</th>`).join('')}
                             <th class="cell total">Total</th>
                         </tr>
@@ -1073,7 +973,7 @@ function renderConcordance(data) {
                     </tfoot>
                 </table>
             </div>
-            ${methodsNote(data)}
+            ${methodsNote()}
         </div>`;
 }
 
@@ -1121,7 +1021,10 @@ async function loadAll() {
     const bits = [`${fmtShortDate(f.from)} – ${fmtShortDate(f.to)}`];
     if (f.gender && f.gender !== 'all') bits.push(`sex: ${genderLabel(f.gender)}`);
     if (f.ageBand && f.ageBand !== 'all') bits.push(`age: ${ageBandLabel(f.ageBand)}`);
-    meta.textContent = `Aggregate counts · ${bits.join(' · ')} · generated ${new Date().toLocaleString()}`;
+    meta.innerHTML = `View system activity, child assessments, and screening results.<br>
+        <span style="font-size:0.85em; opacity:0.8; display:inline-block; margin-top:0.3rem;">
+            Data for: ${bits.join(' · ')} &nbsp;|&nbsp; Updated: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+        </span>`;
 }
 
 // Back/forward through filter states re-renders rather than refetching the page.

@@ -60,40 +60,6 @@ snapshot. This page is the filtered analytical view; that one is unchanged.
             <button class="btn btn-secondary" onclick="window.print()" style="padding:0.75rem 1.4rem;">Print</button>
         </div>
 
-        <!-- Always visible, never dismissible. Written into the markup rather
-             than rendered by the page script so it is present even if every
-             request on this page fails. -->
-        <div class="insight-caveat" role="note">
-            <h3>What this page is, and what it is not</h3>
-            <ul>
-                <li>
-                    These figures describe <strong>rule-based screening scores</strong>. Each score is
-                    fixed arithmetic over the answers a parent gave, placed into a band by a fixed
-                    cutoff. Nothing here is predicted, estimated, or learned from data.
-                </li>
-                <li>
-                    The band cutoffs are <strong>pending confirmation from the consultant
-                    pediatrician</strong> and are recorded as unconfirmed in
-                    <code>constants/scoring.js</code>. They should not be described as clinically
-                    validated.
-                </li>
-                <li>
-                    Section 4 reports <strong>agreement between two recorded judgements</strong> — the
-                    screening band and the reviewing pediatrician's conclusion. It is not a validation
-                    against a diagnostic reference standard, and it is not an accuracy figure.
-                </li>
-                <li>
-                    All counts are <strong>aggregate</strong>. No child or parent is identified anywhere
-                    on this page.
-                </li>
-                <li>
-                    There is <strong>no geographic breakdown</strong>. Neither a child record nor a user
-                    account carries a residential location, and nothing is substituted in its place.
-                </li>
-            </ul>
-        </div>
-
-        <!-- Global filters. State lives in the query string; see syncFiltersFromUrl(). -->
         <div class="insight-filters">
             <div class="insight-filters-grid">
                 <div class="filter-field">
@@ -117,31 +83,24 @@ snapshot. This page is the filtered analytical view; that one is unchanged.
             </div>
             <div class="filter-presets" id="filterPresets"></div>
             <p class="filter-note">
-                Filters are held in the page address, so a filtered view can be bookmarked or shared and
-                survives a drill-down. The date range defaults to the last 12 months.
-                <strong>Sex and age band describe children</strong> — they do not apply to Section 1,
-                because a user account carries neither field. Each section states which filters affected it.
+                Use the filters to view data for a specific period, age group, or sex.
             </p>
         </div>
 
-        <!-- 1. User demographics -->
         <div id="usersSection">
-            <div class="insight-card"><div class="insight-loading">Loading user demographics…</div></div>
+            <div class="insight-card"><div class="insight-loading">Loading user overview…</div></div>
         </div>
 
-        <!-- 2. Child demographics -->
         <div id="childrenSection">
-            <div class="insight-card"><div class="insight-loading">Loading child demographics…</div></div>
+            <div class="insight-card"><div class="insight-loading">Loading child overview…</div></div>
         </div>
 
-        <!-- 3. Descriptive screening reports -->
         <div id="screeningsSection">
-            <div class="insight-card"><div class="insight-loading">Loading screening reports…</div></div>
+            <div class="insight-card"><div class="insight-loading">Loading screening overview…</div></div>
         </div>
 
-        <!-- 4. Screening performance & pediatrician concordance -->
         <div id="concordanceSection">
-            <div class="insight-card"><div class="insight-loading">Loading concordance…</div></div>
+            <div class="insight-card"><div class="insight-loading">Loading review data…</div></div>
         </div>
     </div>
 

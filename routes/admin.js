@@ -610,6 +610,7 @@ router.get('/training/datasets', authMiddleware, adminOnly, async (req, res) => 
       errorMessage: d.errorMessage || null,
       modelId: d.modelId ? String(d.modelId) : null,
       uploadedAt: d.createdAt,
+      updatedAt: d.updatedAt,
       trainedAt: d.trainedAt,
 
       // ── Provenance ────────────────────────────────────────────────────────
@@ -658,9 +659,18 @@ router.get('/training/datasets', authMiddleware, adminOnly, async (req, res) => 
     ]);
 
     const datasetsFlaggedTrained = datasets.filter((d) => d.status === 'trained').length;
+    const latestUpdatedDataset = datasets.reduce((latest, dataset) => {
+      const value = dataset.updatedAt || dataset.trainedAt || dataset.uploadedAt;
+      if (!value) return latest;
+      const time = new Date(value).getTime();
+      if (!Number.isFinite(time)) return latest;
+      return !latest || time > new Date(latest).getTime() ? value : latest;
+    }, null);
 
     const summary = {
       total: datasets.length,
+      ready: datasets.filter((d) => !['training', 'failed'].includes(d.status)).length,
+      processing: datasets.filter((d) => d.status === 'training').length,
       uploaded: datasets.filter((d) => d.status === 'uploaded').length,
       // Authoritative: real model artifacts only.
       trained: modelsCompleted,
@@ -675,6 +685,7 @@ router.get('/training/datasets', authMiddleware, adminOnly, async (req, res) => 
       datasetsFlaggedTrained,
       // True when datasets claim training that produced no model artifact.
       flagMismatch: datasetsFlaggedTrained > 0 && modelsCompleted === 0,
+      lastUpdated: latestUpdatedDataset,
     };
 
     res.json({ success: true, summary, datasets });
