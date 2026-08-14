@@ -72,6 +72,154 @@ function scoreAnswer(answer) {
   return 0;
 }
 
+// ---------------------------------------------------------------------------
+// SINGLE answer-level interpretation.
+//
+// This was previously written inline inside /review-answers only. The parent
+// Results page now needs the same reading of an answer, so it lives here and
+// both endpoints call it — there must not be two interpretations of "sometimes"
+// in the codebase, for the same reason there must not be two sets of band
+// cutoffs (see constants/scoring.js).
+//
+// `insight` keeps the exact clinician wording /review-answers already returned.
+// `parentInsight` is the same three states in parent-facing words; the states
+// and their boundaries are identical, only the vocabulary differs.
+// ---------------------------------------------------------------------------
+function interpretAnswer(answer) {
+  const score = scoreAnswer(answer);
+  if (score === 2) {
+    return { score, insight: 'On Track', parentInsight: 'On Track', insightLevel: 'positive' };
+  }
+  if (score === 1) {
+    return {
+      score,
+      insight: 'Developing — may need monitoring',
+      parentInsight: 'Developing',
+      insightLevel: 'warning',
+    };
+  }
+  return {
+    score,
+    insight: 'Concern — not yet demonstrated',
+    parentInsight: 'Needs Support',
+    insightLevel: 'concern',
+  };
+}
+
+// The four scoring domains and where their stored score/status live on an
+// AssessmentResult. Replaces two separate literal maps.
+const DOMAIN_SCORE_FIELDS = Object.freeze({
+  'Communication':  Object.freeze({ score: 'communicationScore', status: 'communicationStatus' }),
+  'Social Skills':  Object.freeze({ score: 'socialScore',        status: 'socialStatus' }),
+  'Cognitive':      Object.freeze({ score: 'cognitiveScore',     status: 'cognitiveStatus' }),
+  'Motor Skills':   Object.freeze({ score: 'motorScore',         status: 'motorStatus' }),
+});
+
+const PARENT_ANSWER_FALLBACK = 'Assessment item not recorded';
+
+// Every core-bank question is phrased "Does your child <skill>?" (see
+// DOCTOR_QUESTION_BANK in js/parent/screening.js). We reshape that stored text
+// into a short bullet — a mechanical transform of the saved wording, never a
+// generated statement. Anything that does not match the pattern (e.g. a
+// pediatrician's custom question) is shown verbatim instead of being guessed at.
+function describeItem(questionText, kind) {
+  const raw = String(questionText || '').trim().replace(/\s+/g, ' ');
+  if (!raw) return PARENT_ANSWER_FALLBACK;
+
+  const match = raw.match(/^(?:does|can)\s+(?:your|the)\s+child\s+(.+?)\s*\?*$/i);
+  if (!match || !match[1]) return raw;
+
+  const phrase = match[1].charAt(0).toLowerCase() + match[1].slice(1);
+  if (kind === 'strength') return `Can ${phrase}`;
+  if (kind === 'developing') return `Beginning to ${phrase}`;
+  return `Still learning to ${phrase}`;
+}
+
+// Neutral screening language only — these sentences describe what was answered,
+// they never diagnose. Counts come from the stored answers; the percentage is
+// NOT recomputed here (the stored result stays authoritative).
+function buildDomainExplanation({ totalItems, achievedItems, developingItems }) {
+  const items = totalItems === 1 ? 'assessment item' : 'assessment items';
+  const skills = totalItems === 1 ? 'skill' : 'skills';
+
+  if (totalItems === 0) return 'No assessment items were recorded for this area.';
+  if (achievedItems === totalItems) {
+    return totalItems === 1
+      ? 'Your child consistently demonstrated the single assessment item in this area.'
+      : `Your child consistently demonstrated all ${totalItems} ${items} in this area.`;
+  }
+  if (achievedItems > 0) {
+    const rest = developingItems > 0
+      ? ', and is beginning to show some of the remaining items.'
+      : ', with the remaining items still needing practice.';
+    return `Your child consistently demonstrated ${achievedItems} of ${totalItems} ${items} in this area${rest}`;
+  }
+  if (developingItems > 0) {
+    return `Your child is beginning to show some of the ${totalItems} ${skills} assessed in this area, but none were demonstrated consistently yet.`;
+  }
+  return `Your child has not yet consistently demonstrated the ${totalItems} ${skills} assessed in this area.`;
+}
+
+// Builds the per-domain evidence behind each stored percentage.
+// Returns null when there are no stored answers at all, so older results simply
+// fall back to the plain score view instead of showing empty sections.
+function buildDomainDetails(answers, result) {
+  if (!Array.isArray(answers) || answers.length === 0) return null;
+
+  const details = {};
+
+  for (const [domain, fields] of Object.entries(DOMAIN_SCORE_FIELDS)) {
+    const domainAnswers = answers
+      .filter((a) => a.domain === domain)
+      .sort((a, b) => String(a.questionId).localeCompare(String(b.questionId)));
+
+    const items = [];
+    const strengths = [];
+    const developing = [];
+    const needsSupport = [];
+
+    for (const a of domainAnswers) {
+      const read = interpretAnswer(a.answer);
+      const text = a.questionText ? String(a.questionText) : '';
+
+      items.push({
+        // 'Q05'-style core-bank code, not a MongoDB _id.
+        questionId: String(a.questionId || ''),
+        questionText: text || PARENT_ANSWER_FALLBACK,
+        answer: a.answer,
+        insight: read.parentInsight,
+        insightLevel: read.insightLevel,
+      });
+
+      if (read.score === 2) strengths.push(describeItem(text, 'strength'));
+      else if (read.score === 1) developing.push(describeItem(text, 'developing'));
+      else needsSupport.push(describeItem(text, 'support'));
+    }
+
+    const totalItems = items.length;
+    const achievedItems = strengths.length;
+    const developingItems = developing.length;
+    const concernItems = needsSupport.length;
+
+    details[domain] = {
+      // Straight from the stored result — never recalculated here.
+      score: result?.[fields.score] ?? 0,
+      status: result?.[fields.status] ?? scoring.getStatus(result?.[fields.score] ?? 0),
+      totalItems,
+      achievedItems,
+      developingItems,
+      concernItems,
+      explanation: buildDomainExplanation({ totalItems, achievedItems, developingItems }),
+      strengths,
+      developing,
+      needsSupport,
+      items,
+    };
+  }
+
+  return details;
+}
+
 // Band cutoffs, labels, and colours all come from constants/scoring.js.
 // Do not reintroduce literal cutoffs here — see that file's header for why.
 const THRESHOLD_RANGES = scoring.THRESHOLD_RANGES;
@@ -744,6 +892,11 @@ router.get('/:assessmentId/results', authMiddleware, async (req, res) => {
 
     const assessment = await Assessment.findById(req.params.assessmentId).lean();
 
+    // Evidence behind each stored percentage. Read-only: it counts the answers
+    // that were already saved for THIS assessment and never re-scores them.
+    const answers = await AssessmentAnswer.find({ assessmentId: req.params.assessmentId }).lean();
+    const domainDetails = buildDomainDetails(answers, result);
+
     res.json({
       success: true,
       results: {
@@ -769,6 +922,11 @@ router.get('/:assessmentId/results', authMiddleware, async (req, res) => {
         nextAssessmentReason: assessment?.nextAssessmentReason || null,
         reviewedByPediatrician: assessment?.reviewedByPediatrician ? String(assessment.reviewedByPediatrician) : null,
         reviewedAt: assessment?.reviewedAt || null,
+
+        // Additive. null when the assessment has no stored answers (older
+        // records) — callers must treat it as optional. Every field above is
+        // unchanged so existing consumers keep working.
+        domainDetails,
       },
     });
   } catch (err) {
@@ -958,17 +1116,9 @@ router.get('/:childId/review-answers', authMiddleware, async (req, res) => {
       const domain = a.domain || 'Other';
       if (!grouped[domain]) grouped[domain] = [];
 
-      // Determine answer-level AI insight based on scoring logic
-      const score = scoreAnswer(a.answer);
-      let insight = 'On Track';
-      let insightLevel = 'positive';
-      if (score === 1) {
-        insight = 'Developing — may need monitoring';
-        insightLevel = 'warning';
-      } else if (score === 0) {
-        insight = 'Concern — not yet demonstrated';
-        insightLevel = 'concern';
-      }
+      // Answer-level insight comes from the shared interpretation helper so the
+      // parent Results page and this modal can never disagree about an answer.
+      const { insight, insightLevel } = interpretAnswer(a.answer);
 
       grouped[domain].push({
         questionId: a.questionId,
@@ -982,17 +1132,12 @@ router.get('/:childId/review-answers', authMiddleware, async (req, res) => {
     // Build domain-level summaries from the result
     const domainSummaries = {};
     if (result) {
-      const domainMap = {
-        'Communication': { score: result.communicationScore, status: result.communicationStatus },
-        'Social Skills': { score: result.socialScore, status: result.socialStatus },
-        'Cognitive':     { score: result.cognitiveScore, status: result.cognitiveStatus },
-        'Motor Skills':  { score: result.motorScore, status: result.motorStatus },
-      };
-      for (const [domain, data] of Object.entries(domainMap)) {
+      for (const [domain, fields] of Object.entries(DOMAIN_SCORE_FIELDS)) {
+        const score = result[fields.score];
         domainSummaries[domain] = {
-          score: data.score,
-          status: data.status,
-          riskLevel: RISK_LEVEL_BY_BAND[scoring.bandFor(data.score)],
+          score,
+          status: result[fields.status],
+          riskLevel: RISK_LEVEL_BY_BAND[scoring.bandFor(score)],
         };
       }
     }

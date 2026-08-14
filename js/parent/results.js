@@ -41,6 +41,121 @@ const OVERALL_BLURB = {
     'delayed':    'Your child may benefit from additional support. Consider consulting a pediatrician.',
 };
 
+// ---------------------------------------------------------------------------
+// Domain evidence ("Why this score?")
+//
+// Everything below renders `results.domainDetails` from
+// GET /api/assessments/:assessmentId/results. It never computes a score — the
+// percentages and status chips still come from the stored result via KCScoring.
+// domainDetails is absent on older assessments, which is why every renderer
+// degrades to the plain score view instead of assuming it is there.
+// ---------------------------------------------------------------------------
+
+// Bullets shown on the card face. The rest stay in the expandable panel so a
+// domain with 8 answers does not turn the card into a wall of text.
+const MAX_CARD_BULLETS = 4;
+
+function answerLabel(answer) {
+    const key = String(answer ?? '').trim().toLowerCase();
+    if (key === 'yes') return 'Yes';
+    if (key === 'sometimes') return 'Sometimes';
+    if (key === 'no') return 'No';
+    return key ? String(answer) : 'Not answered';
+}
+
+function renderDomainBullets(title, entries, modifier) {
+    const list = Array.isArray(entries) ? entries.filter(Boolean) : [];
+    if (!list.length) return '';
+
+    const shown = list.slice(0, MAX_CARD_BULLETS);
+    const hiddenCount = list.length - shown.length;
+
+    return `
+        <section class="domain-list domain-list-${modifier}">
+            <h4>${escapeHtml(title)}</h4>
+            <ul>${shown.map((text) => `<li>${escapeHtml(text)}</li>`).join('')}</ul>
+            ${hiddenCount > 0 ? `<p class="domain-list-more">+${hiddenCount} more in assessment details</p>` : ''}
+        </section>`;
+}
+
+function renderDomainDetailsPanel(panelId, items) {
+    const list = Array.isArray(items) ? items : [];
+    if (!list.length) return '';
+
+    return `
+        <button type="button" class="domain-details-toggle"
+                aria-expanded="false" aria-controls="${escapeHtml(panelId)}"
+                onclick="toggleDomainDetails(this)">View Assessment Details</button>
+        <div class="domain-details-panel" id="${escapeHtml(panelId)}" hidden>
+            <h4>Assessment Details</h4>
+            <ol class="domain-item-list">
+                ${list.map((item) => `
+                    <li class="domain-item level-${escapeHtml(item.insightLevel || 'positive')}">
+                        <p class="domain-item-question">${escapeHtml(item.questionText || 'Assessment item not recorded')}</p>
+                        <p class="domain-item-meta">
+                            <span>Answer: <strong>${escapeHtml(answerLabel(item.answer))}</strong></span>
+                            <span class="domain-item-result">${escapeHtml(item.insight || '')}</span>
+                        </p>
+                    </li>`).join('')}
+            </ol>
+        </div>`;
+}
+
+// Expand/collapse handler for the per-domain details panel.
+// Exposed on window because the button uses an inline onclick, matching the
+// rest of this page.
+function toggleDomainDetails(button) {
+    const panel = document.getElementById(button.getAttribute('aria-controls'));
+    if (!panel) return;
+
+    const willOpen = button.getAttribute('aria-expanded') !== 'true';
+    button.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    panel.hidden = !willOpen;
+    button.textContent = willOpen ? 'Hide Assessment Details' : 'View Assessment Details';
+}
+window.toggleDomainDetails = toggleDomainDetails;
+
+function renderDomainCard(domain, details, index) {
+    const st = getStatusLabel(domain.score);
+    const panelId = `domainDetails-${index}`;
+    const hasDetails = Boolean(details) && Number(details.totalItems) > 0;
+
+    const countsRow = hasDetails ? `
+        <p class="domain-counts">
+            <span class="domain-count count-yes">${details.achievedItems} Yes</span>
+            <span class="domain-count count-sometimes">${details.developingItems} Sometimes</span>
+            <span class="domain-count count-no">${details.concernItems} No</span>
+        </p>` : '';
+
+    const body = hasDetails ? `
+        <section class="domain-why">
+            <h4>Why this score?</h4>
+            <p>${escapeHtml(details.explanation || '')}</p>
+        </section>
+        ${renderDomainBullets('Strengths', details.strengths, 'strength')}
+        ${renderDomainBullets('Developing', details.developing, 'developing')}
+        ${renderDomainBullets('Needs Support', details.needsSupport, 'support')}
+        ${renderDomainDetailsPanel(panelId, details.items)}`
+        : `<p class="domain-fallback">Detailed assessment information is not available for this result.</p>`;
+
+    return `
+        <article class="domain-card" style="--domain-color:${st.color};">
+            <header class="domain-card-head">
+                <h3 class="domain-card-title">${domain.icon} ${escapeHtml(domain.label)}</h3>
+                <span class="domain-status-chip">${escapeHtml(st.label)}</span>
+            </header>
+            <div class="domain-score-row">
+                <span class="domain-score-value">${domain.score}%</span>
+                ${countsRow}
+            </div>
+            <div class="domain-progress" role="img"
+                 aria-label="${escapeHtml(domain.label)} score ${domain.score} percent">
+                <div class="domain-progress-fill" style="width:${domain.score}%;"></div>
+            </div>
+            ${body}
+        </article>`;
+}
+
 function getRequestedChildId() {
     try { return new URLSearchParams(window.location.search).get('childId') || localStorage.getItem('kc_childId') || localStorage.getItem('kc_viewChildId'); } 
     catch { return localStorage.getItem('kc_childId') || localStorage.getItem('kc_viewChildId'); }
@@ -253,6 +368,11 @@ async function loadResults() {
         ];
         const riskFlags = r.riskFlags || [];
 
+        // Additive field — absent on assessments saved before this existed.
+        // Keyed by the same domain names as the labels above.
+        const domainDetails = (r.domainDetails && typeof r.domainDetails === 'object') ? r.domainDetails : {};
+        const hasAnyDomainDetails = domains.some((d) => Number(domainDetails[d.label]?.totalItems) > 0);
+
         // Smaller banner card instead of the large review block.
         // We show the banner whenever a diagnosis/recommendation exists, even if
         // the frontend is loading a recently saved result before the review flag refreshes.
@@ -281,9 +401,9 @@ async function loadResults() {
 
             <div class="results-overview-grid" style="background:white;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);display:grid;grid-template-columns:200px 1fr;gap:3rem;align-items:center;">
                 <div style="text-align:center;">
-                    <div style="width:150px;height:150px;border-radius:50%;background:linear-gradient(135deg,var(--primary) 0%,var(--primary-light) 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:white;margin:0 auto;">
-                        <span style="font-size:2.5rem;font-weight:700;">${overall}</span>
-                        <span style="font-size:1rem;">%</span>
+                    <div class="overall-score-ring">
+                        <span class="overall-score-caption">Overall Score</span>
+                        <span class="overall-score-value">${overall}%</span>
                     </div>
                 </div>
                 <div>
@@ -300,24 +420,17 @@ async function loadResults() {
                                 <div style="font-size:0.8rem;color:var(--text-light);">${d.label}</div>
                             </div>`).join('')}
                     </div>
+                    ${hasAnyDomainDetails ? `
+                    <p class="scoring-legend">
+                        How each score is worked out: every answer of <strong>Yes</strong> earns full credit,
+                        <strong>Sometimes</strong> earns partial credit, and <strong>No</strong> earns none.
+                        Each card below shows the answers behind its percentage.
+                    </p>` : ''}
                 </div>
             </div>
 
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.5rem;margin-bottom:2rem;">
-                ${domains.map((d) => {
-                    const st = getStatusLabel(d.score);
-                    return `
-                        <div style="background:white;border-radius:15px;padding:1.5rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);border-left:4px solid ${st.color};">
-                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;gap:.8rem;">
-                                <h3>${d.icon} ${d.label}</h3>
-                                <span style="background:${st.color};color:white;padding:0.4rem 0.8rem;border-radius:20px;font-size:0.8rem;font-weight:600;white-space:nowrap;">${st.label}</span>
-                            </div>
-                            <div style="height:8px;background:var(--border);border-radius:10px;margin-bottom:1rem;overflow:hidden;">
-                                <div style="height:100%;width:${d.score}%;background:linear-gradient(90deg,${st.color},var(--primary-light));"></div>
-                            </div>
-                            <p style="color:var(--text-light);font-size:0.9rem;">Score: <strong>${d.score}%</strong> — ${st.label}</p>
-                        </div>`;
-                }).join('')}
+            <div class="domain-cards-grid">
+                ${domains.map((d, i) => renderDomainCard(d, domainDetails[d.label], i)).join('')}
             </div>
 
             <div id="nextStepsBlock" style="background:white;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
