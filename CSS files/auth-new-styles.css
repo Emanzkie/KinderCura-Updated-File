@@ -46,15 +46,7 @@ body {
 /* Sidebar */
 .auth-sidebar {
     flex: 1;
-    /* Green straight into blush passed through a muddy brown midpoint, which
-       is what made the sign-in screen look washed out. Routing the ramp via
-       the lighter green keeps both brand colours and stays clean, with the
-       blush reduced to a corner accent rather than half the panel. */
-    background: linear-gradient(150deg,
-        var(--primary-dark) 0%,
-        var(--primary) 42%,
-        var(--primary-light) 74%,
-        var(--accent-red) 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--accent-red) 100%);
     color: white;
     padding: 3rem 2rem;
     display: flex;
