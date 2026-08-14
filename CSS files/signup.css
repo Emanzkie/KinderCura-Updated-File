@@ -140,7 +140,7 @@
     min-width: 0;
     padding: 0.9rem 1rem;
     border: 1px solid rgba(255, 255, 255, 0.5);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     background: rgba(255, 255, 255, 0.24);
     box-shadow: 0 14px 30px rgba(61, 71, 56, 0.16);
     backdrop-filter: blur(8px);
@@ -176,8 +176,8 @@
     min-height: 240px;
     padding: 1.75rem 1.25rem;
     border: 2px dashed var(--border);
-    border-radius: 16px;
-    background: linear-gradient(180deg, #fffefa 0%, #f7f5f0 100%);
+    border-radius: var(--radius-card);
+    background: linear-gradient(180deg, var(--surface-muted) 0%, #f7f5f0 100%);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -269,7 +269,7 @@
     height: auto;
     aspect-ratio: 4 / 3;
     object-fit: contain;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     background: white;
 }
 
@@ -277,7 +277,7 @@
     min-height: 44px;
     padding: 0.75rem 1.15rem;
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
     color: white;
     font-weight: 700;
@@ -366,7 +366,7 @@
 .signup-page .onboarding-step .form-group select {
     min-height: 50px;
     border-color: var(--border);
-    background: #fffefa;
+    background: var(--surface-muted);
 }
 
 .signup-page .onboarding-step .form-group input:hover,
@@ -484,7 +484,7 @@
 .signup-page .role-step .role-content {
     min-height: 112px;
     padding: 1.2rem;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
 }
 
 .signup-page .role-step .role-content:hover {
@@ -539,8 +539,8 @@
     width: 58px;
     height: 58px;
     margin-right: 0;
-    border-radius: 12px;
-    background: #fffefa;
+    border-radius: var(--radius-panel);
+    background: var(--surface-muted);
     color: var(--text-dark);
     font-size: 1.6rem;
     font-weight: 700;
@@ -714,7 +714,7 @@
 }
 
 .reg-success-card {
-    background: #fffefa;
+    background: var(--surface-muted);
     border-radius: 20px;
     padding: clamp(2rem, 5vw, 3rem);
     max-width: 440px;
@@ -783,7 +783,7 @@
     min-height: 50px;
     font-size: 1rem;
     font-weight: 700;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     background: linear-gradient(135deg, var(--primary, #6B8E6F) 0%, var(--primary-light, #8BA98D) 100%);
     color: white;
     border: none;
@@ -804,7 +804,7 @@
 @media (max-width: 480px) {
     .reg-success-card {
         padding: 1.5rem;
-        border-radius: 16px;
+        border-radius: var(--radius-card);
     }
 
     .reg-success-title {

@@ -263,10 +263,10 @@ function renderAnsweredSet(group) {
     <div class="page-card" style="border-left:4px solid #2d6a4f;">
       <div style="display:flex;justify-content:space-between;align-items:start;gap:1rem;margin-bottom:1rem;">
         <div style="flex:1;">
-          <h4 style="margin:0 0 .25rem;font-size:1rem;color:#2d6a4f;">${esc(group.setTitle || `Question Set (${group.totalCount})`)}</h4>
+          <h4 style="margin:0 0 .25rem;font-size:1rem;color:var(--status-positive-fg);">${esc(group.setTitle || `Question Set (${group.totalCount})`)}</h4>
           <p style="margin:0;font-size:.8rem;color:var(--text-light);">For ${esc(group.childName || 'Child')} | From Dr. ${esc(group.pediatricianName || 'Pediatrician')} | ${group.totalCount} question${group.totalCount !== 1 ? 's' : ''}</p>
         </div>
-        <span style="background:#d4edda;color:#155724;border-radius:8px;padding:.25rem .6rem;font-size:.75rem;font-weight:700;">Answered</span>
+        <span style="background:var(--status-positive-bg);color:var(--status-positive-fg);border-radius:8px;padding:.25rem .6rem;font-size:.75rem;font-weight:700;">Answered</span>
       </div>
 
       <div style="border-top:1px solid var(--border);padding-top:1rem;">
@@ -311,7 +311,7 @@ function renderPending(setGroups, standaloneAssignments) {
             <h4 style="margin:0 0 .25rem;font-size:1rem;color:var(--primary);">📋 ${esc(setTitle)}</h4>
             <p style="margin:0;font-size:.8rem;color:var(--text-light);">From Dr. ${esc(questions[0]?.pediatricianName || 'Pediatrician')} • ${totalCount} question${totalCount !== 1 ? 's' : ''}</p>
           </div>
-          <span style="background:#fff3cd;color:#856404;border-radius:8px;padding:.25rem .6rem;font-size:.75rem;font-weight:700;">Pending</span>
+          <span style="background:var(--status-caution-bg);color:var(--status-caution-fg);border-radius:8px;padding:.25rem .6rem;font-size:.75rem;font-weight:700;">Pending</span>
         </div>
 
         <div style="border-top:1px solid var(--border);padding-top:1rem;">

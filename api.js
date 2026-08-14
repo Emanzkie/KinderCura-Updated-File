@@ -329,10 +329,41 @@ async function refreshCurrentUser() {
 // upload) still refreshes, because the latch is cleared once it settles.
 let navInitPromise = null;
 
+// Marks the navbar item that points at the page you are currently on.
+//
+// Every page hardcodes its own `class="nav-link active"`, and several were
+// simply missing it — the pediatrician Dashboard highlighted nothing at all,
+// so there was no way to tell where you were. The admin pages already solved
+// this with assets/js/admin-nav.js; this does the same for every role from the
+// one shared file, and stays idempotent so running after admin-nav.js is safe.
+//
+// Only ADDS the class, and only on an exact path match, so pages that are not
+// navbar destinations (Profile, Settings, Screening) correctly highlight
+// nothing.
+function highlightActiveNavLink() {
+    const links = document.querySelectorAll('.main-nav .nav-link');
+    if (!links.length) return;
+
+    const here = window.location.pathname.replace(/\/+$/, '').toLowerCase();
+    const hereFile = here.split('/').pop();
+
+    links.forEach((link) => {
+        const href = (link.getAttribute('href') || '').split('?')[0].replace(/\/+$/, '').toLowerCase();
+        if (!href || href.startsWith('http')) return;
+        const linkFile = href.split('/').pop();
+        if (href === here || (linkFile && linkFile === hereFile)) {
+            link.classList.add('active');
+            link.setAttribute('aria-current', 'page');
+        }
+    });
+}
+
 async function initNav() {
     if (navInitPromise) return navInitPromise;
 
     navInitPromise = (async () => {
+        highlightActiveNavLink();
+
         const cachedUser = KC.user();
         if (cachedUser) applyNavUser(cachedUser);
 

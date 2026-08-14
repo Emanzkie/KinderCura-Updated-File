@@ -267,7 +267,7 @@
 
                 if (booked) {
                     html += `
-                    <div style="background:#f0f7f0;border-left:4px solid var(--primary);border-radius:15px;padding:1.3rem 1.4rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.06);">
+                    <div style="background:var(--surface-tint);border-left:4px solid var(--primary);border-radius:15px;padding:1.3rem 1.4rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.06);">
                         <h3 style="margin:0 0 .35rem;color:var(--primary);">Consultation already scheduled</h3>
                         <p style="margin:0;color:var(--text-light);">This child already has a consultation request or appointment. The urgent consultation banner has been hidden to avoid confusion.</p>
                     </div>`;

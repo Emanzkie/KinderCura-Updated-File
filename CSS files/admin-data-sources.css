@@ -34,32 +34,32 @@
 
 /* Core bank — SOLID fill, white text. Reads as a dark block when washed out. */
 .origin-badge.origin-core_bank {
-  background: #2f4858;
+  background: var(--text-dark);
   color: #ffffff;
-  border: 2px solid #2f4858;
+  border: 2px solid var(--text-dark);
 }
 
 /* Pedia entry — OUTLINE, dark text on near-white. Reads as a light block. */
 .origin-badge.origin-pedia_entry {
   background: #ffffff;
-  color: #1e5b3a;
-  border: 2px solid #1e5b3a;
+  color: var(--status-positive-fg);
+  border: 2px solid var(--status-positive-fg);
 }
 
 /* Dataset — SOLID PURPLE. Deliberately distinct from both storage origins
    because it answers a different question: not "how did this enter the
    system" but "does this trace to a checkable external source". */
 .origin-badge.origin-dataset {
-  background: #6d3f8e;
+  background: var(--primary-dark);
   color: #ffffff;
-  border: 2px solid #6d3f8e;
+  border: 2px solid var(--primary-dark);
 }
 
 /* Anything unrecognised or unset — dashed, so it never looks deliberate. */
 .origin-badge.origin-unknown {
   background: #ffffff;
-  color: #7a5c00;
-  border: 2px dashed #7a5c00;
+  color: var(--status-caution-fg);
+  border: 2px dashed var(--status-caution-fg);
 }
 
 /* ------------------------------------------------------------------ *
@@ -74,7 +74,7 @@
 
 .origin-tab {
   padding: 0.55rem 1.1rem;
-  border: 2px solid var(--border, #dcdcdc);
+  border: 2px solid var(--border, var(--border));
   background: #ffffff;
   color: var(--text-dark, #333);
   border-radius: 8px;
@@ -144,12 +144,12 @@
   padding: 1rem;
   text-align: left;
   background: var(--bg-primary, #f7f9f7);
-  border-bottom: 2px solid var(--border, #dcdcdc);
+  border-bottom: 2px solid var(--border, var(--border));
 }
 
 .origin-table td {
   padding: 1rem;
-  border-bottom: 1px solid var(--border, #dcdcdc);
+  border-bottom: 1px solid var(--border, var(--border));
   vertical-align: top;
 }
 
@@ -189,14 +189,14 @@
    absent dataset reads as "nothing recorded" rather than as a styled
    feature. It must never look like a populated card. */
 .dataset-empty {
-  border: 2px dashed #7a5c00;
+  border: 2px dashed var(--status-caution-fg);
   border-radius: 10px;
   padding: 1rem 1.15rem;
   background: #fffdf5;
   color: #5c4600;
 }
 
-.dataset-empty strong { color: #7a5c00; }
+.dataset-empty strong { color: var(--status-caution-fg); }
 
 .dataset-empty ul {
   margin: 0.6rem 0 0;
@@ -221,14 +221,14 @@
 .dataset-stat .k {
   display: block;
   font-size: 0.75rem;
-  color: var(--text-light, #6b6b76);
+  color: var(--text-light, var(--text-light));
   margin-bottom: 0.25rem;
 }
 
 .dataset-stat .v {
   font-size: 1.35rem;
   font-weight: 700;
-  color: #6d3f8e;
+  color: var(--primary-dark);
 }
 
 /* ------------------------------------------------------------------ *
@@ -241,7 +241,7 @@
   cursor: pointer;
   padding: 0 0.35rem;
   font-size: 0.85rem;
-  color: var(--text-light, #6b6b76);
+  color: var(--text-light, var(--text-light));
   line-height: 1;
 }
 
@@ -262,7 +262,7 @@
 }
 
 .prov-grid dt {
-  color: var(--text-light, #6b6b76);
+  color: var(--text-light, var(--text-light));
   font-size: 0.74rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -277,9 +277,9 @@
 /* Unrecorded values. Italic + dashed underline so a blank field is visibly
    a statement ("not recorded") rather than a rendering failure. */
 .prov-none {
-  color: #7a5c00;
+  color: var(--status-caution-fg);
   font-style: italic;
-  border-bottom: 1px dashed #7a5c00;
+  border-bottom: 1px dashed var(--status-caution-fg);
 }
 
 /* Attribution carried over from the removed schema default — flagged so it
@@ -288,9 +288,9 @@
   display: inline-block;
   margin-left: 0.4rem;
   padding: 0.05rem 0.4rem;
-  border: 1px dashed #7a5c00;
-  border-radius: 999px;
+  border: 1px dashed var(--status-caution-fg);
+  border-radius: var(--radius-pill);
   font-size: 0.7rem;
-  color: #7a5c00;
+  color: var(--status-caution-fg);
   font-style: normal;
 }

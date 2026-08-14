@@ -1,0 +1,99 @@
+/* kc-tokens.css
+   ONE source of truth for KinderCura design tokens.
+   Imported by the three stylesheets that start a page:
+     dashboard-new-styles.css  (all 36 in-app pages)
+     auth-new-styles.css       (login, signup, verify-email)
+     landing-styles.css        (landing)
+   Do not redeclare these values anywhere else. */
+
+:root {
+    /* Primary Colors - Warm Muted Green */
+    --primary: #6B8E6F;
+    --primary-light: #8BA98D;
+    --primary-dark: #5A7560;
+    
+    /* Accent Colors */
+    --accent: #F4D89F;
+    --accent-light: #F8E5B5;
+    --accent-red: #E8A5A5;
+    
+    /* Status Colors */
+    --success: #A8C49D;
+    --danger: #D4897A;
+    --warning: #F4D89F;
+    
+    /* Background Colors */
+    --bg-primary: #FAFAF6;
+    --bg-secondary: #F0EFE8;
+    --bg-tertiary: #F0DCD8;
+    
+    /* Text Colors */
+    --text-dark: #3D4738;
+    --text-light: #6B7967;
+    
+    /* Border */
+    --border: #DDD9CC;
+
+    /* ------------------------------------------------------------------
+       KinderCura design tokens.
+       This stylesheet is the FIRST one loaded on all 36 application pages,
+       so anything declared here is available to every other stylesheet.
+       Page stylesheets should reference these tokens rather than repeating
+       raw values — that is what kept the same status badge or card corner
+       looking different from page to page.
+       ------------------------------------------------------------------ */
+
+    /* Surfaces */
+    --surface: #FFFFFF;
+    --surface-muted: #FAFAF6;      /* inset panels inside a white card */
+    --surface-tint: #F3F7F3;       /* very soft green wash for callouts */
+
+    /* Corner radii — one value per component family */
+    --radius-card: 16px;
+    --radius-panel: 12px;
+    --radius-btn: 10px;
+    --radius-input: 10px;
+    --radius-pill: 999px;
+
+    /* Elevation */
+    --shadow-card: 0 4px 15px rgba(61, 71, 56, 0.08);
+    --shadow-raised: 0 8px 24px rgba(61, 71, 56, 0.12);
+    --shadow-nav: 0 2px 8px rgba(61, 71, 56, 0.08);
+
+    /* Spacing rhythm */
+    --space-xs: 0.4rem;
+    --space-sm: 0.75rem;
+    --space-md: 1.25rem;
+    --space-lg: 2rem;
+    --space-xl: 3rem;
+    --card-pad: 2rem;
+
+    /* Type scale — the dominant sizes already in use, made canonical.
+       h1 page title / h2 section / h3 card heading / h4 sub-label. */
+    --fs-page-title: 2rem;
+    --fs-section: 1.5rem;
+    --fs-card-title: 1.1rem;
+    --fs-sub: 1rem;
+    --fs-body: 0.95rem;
+    --fs-small: 0.85rem;
+    --fs-tiny: 0.78rem;
+    --fw-strong: 700;
+    --fw-medium: 600;
+    --leading: 1.6;
+
+    /* Status palette — ONE colour per meaning, system-wide.
+       Used by .kc-badge and by any page that shows state. */
+    --status-positive-bg: #E7F0E4;
+    --status-positive-fg: #4C6B45;
+    --status-caution-bg: #FBF0D8;
+    --status-caution-fg: #8A6A1F;
+    --status-attention-bg: #F8E4E4;
+    --status-attention-fg: #9C4F43;
+    --status-neutral-bg: #EFEEE7;
+    --status-neutral-fg: #6B7967;
+    --status-info-bg: #E8EFF1;
+    --status-info-fg: #4A6470;
+
+    /* Focus ring — one visible, accessible treatment everywhere */
+    --focus-ring: 0 0 0 3px rgba(107, 142, 111, 0.35);
+}

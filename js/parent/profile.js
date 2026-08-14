@@ -101,10 +101,10 @@ async function openNotifications() {
                     list.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:2rem;">No notifications yet.</p>';
                 } else {
                     list.innerHTML = notifs.map(n => `
-                        <div style="padding:1rem;border-bottom:1px solid var(--border);${n.isRead?'':'background:#f0f7f1;'}" onclick="markRead(${n.id},this)">
+                        <div style="padding:1rem;border-bottom:1px solid var(--border);${n.isRead?'':'background:var(--surface-tint);'}" onclick="markRead(${n.id},this)">
                             <p style="font-weight:${n.isRead?'400':'600'};margin:0 0 .3rem;color:var(--text-dark);">${n.title}</p>
                             <p style="font-size:.82rem;color:var(--text-light);margin:0 0 .3rem;">${n.message||''}</p>
-                            <p style="font-size:.75rem;color:#aaa;margin:0;">${new Date(n.createdAt).toLocaleString()}</p>
+                            <p style="font-size:.75rem;color:var(--text-light);margin:0;">${new Date(n.createdAt).toLocaleString()}</p>
                         </div>`).join('');
                     apiFetch('/notifications/read-all', { method: 'PUT' }).then(() => loadNotificationCount());
                 }

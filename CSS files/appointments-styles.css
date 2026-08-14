@@ -114,7 +114,7 @@ body {
 /* Form Section */
 .booking-form-section {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 2rem;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
 }
@@ -300,7 +300,7 @@ body {
 
 .sidebar-card {
     background: white;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1.5rem;
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
@@ -589,7 +589,7 @@ body {
 .clinic-panel {
     background: var(--bg-primary);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1rem 1.1rem;
     margin-bottom: 1rem;
     display: none;
@@ -605,7 +605,7 @@ body {
     background: linear-gradient(135deg, var(--bg-primary) 0%, rgba(107, 142, 111, 0.06) 100%);
     border-left: 4px solid var(--primary);
     padding: 1.1rem 1.2rem;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     margin-bottom: 1rem;
     display: none;
 }
@@ -613,7 +613,7 @@ body {
 .ped-card {
     background: #fff;
     border: 2px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1rem;
     display: flex;
     gap: 1rem;
@@ -633,7 +633,7 @@ body {
     align-items: center;
     gap: 0.35rem;
     padding: 0.32rem 0.7rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 0.76rem;
     font-weight: 700;
 }
@@ -670,7 +670,7 @@ body {
     background: rgba(244, 216, 159, 0.12);
     border: 1px solid var(--accent);
     border-left: 4px solid var(--accent);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1rem 1.1rem;
     margin-bottom: 1rem;
 }
@@ -684,7 +684,7 @@ body {
 
 .slot-chip {
     padding: 0.35rem 0.65rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--bg-secondary);
     color: var(--text-light);
     font-size: 0.78rem;

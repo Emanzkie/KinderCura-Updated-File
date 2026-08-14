@@ -92,7 +92,7 @@
 
 .tracker-box {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 2.5rem;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
     transition: 0.2s;
@@ -198,7 +198,7 @@
 .tracker-card {
     background: white;
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     /* The accent belongs to each card, not to the column as a whole. */
     border-left: 4px solid var(--primary);
     padding: 18px 20px;
@@ -255,7 +255,7 @@
     flex-shrink: 0;
     font-size: 0.72rem;
     font-weight: 600;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     padding: 0.25rem 0.65rem;
     white-space: nowrap;
     /* Same amber / green already used by the tracker column headings. */
@@ -396,7 +396,7 @@
     text-align: center;
     background: var(--bg-primary);
     border: 1px dashed var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
 }
 
 .tracker-empty-icon {
@@ -518,7 +518,7 @@
 #questionsList .q-card {
     background: white;
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 18px 20px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     box-sizing: border-box;
@@ -560,7 +560,7 @@
     font-weight: 600;
     color: #fff;
     background: var(--primary);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     padding: 0.25rem 0.6rem;
     white-space: nowrap;
 }
@@ -586,7 +586,7 @@
     gap: 0.25rem;
     font-size: 0.7rem;
     font-weight: 600;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     padding: 0.22rem 0.6rem;
     background: var(--bg-primary);
     border: 1px solid var(--border);
@@ -757,7 +757,7 @@ body.modal-open {
     max-width: 560px;
     max-height: 85vh;
     overflow-y: auto;
-    border-radius: 16px;
+    border-radius: var(--radius-card);
     padding: 1.9rem;
     box-shadow: 0 18px 45px rgba(0, 0, 0, 0.18);
     box-sizing: border-box;
@@ -899,7 +899,7 @@ body.modal-open {
     .modal-box {
         width: 95%;
         padding: 1.15rem;
-        border-radius: 14px;
+        border-radius: var(--radius-card);
     }
 
     /* Stack Domain / Min Age / Max Age instead of one cramped line. */

@@ -98,7 +98,7 @@ body {
 }
 
 .page-header h1 {
-    font-size: 2.2rem;
+    font-size: var(--fs-page-title);
     margin-bottom: 0.5rem;
     color: var(--text-dark);
 }
@@ -157,7 +157,7 @@ body {
 /* Assessment Overview */
 .assessment-overview {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 2rem;
     margin-bottom: 3rem;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
@@ -177,7 +177,7 @@ body {
 
 .skill-card {
     background: var(--bg-primary);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1.5rem;
     border-left: 5px solid var(--primary);
     transition: all 0.3s ease;
@@ -202,7 +202,7 @@ body {
 
 .status-badge {
     padding: 0.3rem 0.8rem;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     font-size: 0.75rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -264,7 +264,7 @@ body {
 
 .recommendation-group {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 2rem;
     margin-bottom: 2rem;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
@@ -320,7 +320,7 @@ body {
 
 .activity-recommendation {
     background: var(--bg-primary);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1.5rem;
     border: 2px solid var(--border);
     transition: all 0.3s ease;
@@ -373,7 +373,7 @@ body {
 
 .consultation-card {
     background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 2.5rem;
     box-shadow: 0 8px 25px rgba(244, 216, 159, 0.2);
 }
@@ -429,7 +429,7 @@ body {
 /* Tips Section */
 .tips-section {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 2rem;
     margin-bottom: 3rem;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
@@ -449,7 +449,7 @@ body {
 
 .tip-card {
     background: var(--bg-primary);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1.5rem;
     border-left: 4px solid var(--primary);
 }
@@ -484,7 +484,7 @@ body {
 /* Followup Section */
 .followup-section {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 2rem;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
 }
@@ -503,7 +503,7 @@ body {
 
 .followup-card {
     background: var(--bg-primary);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1.5rem;
     text-align: center;
     border: 2px solid var(--border);
@@ -577,14 +577,14 @@ body {
     background: rgba(168, 196, 157, 0.2);
     color: var(--primary-dark);
     padding: 0.5rem 1rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 0.8rem;
     font-weight: 700;
 }
 
 .clinic-card {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 1.2rem;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
     border-left: 4px solid var(--primary);

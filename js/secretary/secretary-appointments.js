@@ -109,7 +109,7 @@
                 let actions = '';
                 if (a.status === 'pending') {
                     const walkInBtn = (a.pendingPaymentMode === 'walk_in' && canManagePayments)
-                        ? `<button class="btn-approve" onclick="confirmWalkIn(${a.id})" style="background:#27ae60;">&#8369; Confirm Cash Payment</button>`
+                        ? `<button class="btn-approve" onclick="confirmWalkIn(${a.id})" style="background:var(--status-positive-fg);">&#8369; Confirm Cash Payment</button>`
                         : '';
                     actions = `
                         ${walkInBtn}

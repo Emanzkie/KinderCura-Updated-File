@@ -12,7 +12,7 @@
 
 .modal-box {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 2rem;
     width: 90%;
     max-width: 520px;
@@ -72,7 +72,7 @@
 }
 
 .notice {
-    background: #fff8e8;
+    background: var(--status-caution-bg);
     border: 1px solid #f4d89f;
     border-radius: 8px;
     padding: 0.8rem 1rem;
@@ -101,7 +101,7 @@
 
 .appt-card {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 1.8rem;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
     margin-bottom: 1.5rem;
@@ -168,7 +168,7 @@
 
 .empty {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 3rem;
     text-align: center;
     color: var(--text-light);

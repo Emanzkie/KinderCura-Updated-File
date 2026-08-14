@@ -335,7 +335,7 @@ function renderSelectedPediatrician() {
             <div class="mini">⏰ Hours: ${escapeHtml(availability.hours)}</div>
         </div>
         <div class="mini" style="margin-top:.45rem;">👥 Maximum patients per day: ${availability.max}</div>
-        ${hasConfiguredAvailability(ped) ? '' : '<div class="mini" style="margin-top:.55rem;color:#c0392b;font-weight:600;">This pediatrician must finish saving availability in Settings before parents can book.</div>'}`;
+        ${hasConfiguredAvailability(ped) ? '' : '<div class="mini" style="margin-top:.55rem;color:var(--status-attention-fg);font-weight:600;">This pediatrician must finish saving availability in Settings before parents can book.</div>'}`;
 
     applyTimeFieldConstraints();
     // updatePaymentStep() used to run here. Payment selection moved to
@@ -719,8 +719,8 @@ function renderActive(list) {
                 </div>
                 <span class="badge ${a.status}">${a.status.charAt(0).toUpperCase() + a.status.slice(1)}</span>
             </div>
-            ${a.status === 'pending' ? '<p style="font-size:0.82rem;color:#f59e0b;margin:0;">⏳ Your request is being reviewed by the clinic staff.</p>' : ''}
-            ${a.status === 'approved' ? `<p style="font-size:0.82rem;color:#27ae60;margin:0;">✅ Confirmed by clinic staff on behalf of Dr. ${escapeHtml(a.pediatricianName || 'Pediatrician')}</p>` : ''}
+            ${a.status === 'pending' ? '<p style="font-size:0.82rem;color:var(--status-caution-fg);margin:0;">⏳ Your request is being reviewed by the clinic staff.</p>' : ''}
+            ${a.status === 'approved' ? `<p style="font-size:0.82rem;color:var(--status-positive-fg);margin:0;">✅ Confirmed by clinic staff on behalf of Dr. ${escapeHtml(a.pediatricianName || 'Pediatrician')}</p>` : ''}
             ${['approved', 'completed'].includes(a.status) ? `<button onclick="window.location.href='/parent/chat.html?appointmentId=${a.id}'" style="margin-top:.7rem;background:var(--primary);color:white;border:none;padding:.45rem 1.1rem;border-radius:20px;font-size:.8rem;cursor:pointer;"><img src="/icons/chat.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Chat with Dr. ${escapeHtml(a.pediatricianName || 'Pediatrician')}</button>` : ''}
         </div>`).join('');
 }

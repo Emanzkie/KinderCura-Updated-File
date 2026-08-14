@@ -411,15 +411,15 @@ function renderProgression(progression) {
             <div class="report-tiles" style="margin-bottom:1.4rem;">
                 <div class="report-tile">
                     <p class="tile-label">Improved overall band</p>
-                    <p class="tile-value" style="color:#15803d;">${count(movement.improved)}</p>
+                    <p class="tile-value" style="color:var(--status-positive-fg);">${count(movement.improved)}</p>
                 </div>
                 <div class="report-tile">
                     <p class="tile-label">Same overall band</p>
-                    <p class="tile-value" style="color:#55606a;">${count(movement.unchanged)}</p>
+                    <p class="tile-value" style="color:var(--text-light);">${count(movement.unchanged)}</p>
                 </div>
                 <div class="report-tile">
                     <p class="tile-label">Declined overall band</p>
-                    <p class="tile-value" style="color:#b91c1c;">${count(movement.declined)}</p>
+                    <p class="tile-value" style="color:var(--status-attention-fg);">${count(movement.declined)}</p>
                 </div>
             </div>
 

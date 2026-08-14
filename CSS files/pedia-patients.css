@@ -2,7 +2,7 @@
 
 .patient-card {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 2rem;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
     transition: box-shadow 0.2s;
@@ -12,42 +12,49 @@
     box-shadow: 0 6px 25px rgba(0,0,0,0.13);
 }
 
+/* Status badges use the shared soft-tint treatment (see .kc-badge in
+   dashboard-new-styles.css) rather than saturated fills with white text.
+   The old solid #F4D89F pill with white text failed contrast badly, and made
+   the same status look different here than on the parent-facing pages. */
 .badge {
-    display: inline-block;
-    padding: 0.3rem 0.9rem;
-    border-radius: 20px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: white;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.28rem 0.7rem;
+    border-radius: var(--radius-pill);
+    font-size: var(--fs-tiny);
+    font-weight: var(--fw-medium);
+    line-height: 1.4;
     white-space: nowrap;
+    background: var(--status-neutral-bg);
+    color: var(--status-neutral-fg);
 }
 
-.badge-pending {
-    background: #F4D89F;
+.badge-pending,
+.badge-no-diag {
+    background: var(--status-caution-bg);
+    color: var(--status-caution-fg);
 }
 
-.badge-approved {
-    background: var(--success);
+.badge-approved,
+.badge-diagnosed {
+    background: var(--status-positive-bg);
+    color: var(--status-positive-fg);
 }
 
 .badge-completed {
-    background: var(--primary);
+    background: var(--status-positive-bg);
+    color: var(--status-positive-fg);
 }
 
 .badge-cancelled {
-    background: var(--border);
+    background: var(--status-neutral-bg);
+    color: var(--status-neutral-fg);
 }
 
 .badge-rejected {
-    background: var(--danger);
-}
-
-.badge-diagnosed {
-    background: var(--success);
-}
-
-.badge-no-diag {
-    background: #F4D89F;
+    background: var(--status-attention-bg);
+    color: var(--status-attention-fg);
 }
 
 .score-grid {
@@ -83,16 +90,22 @@
     flex-shrink: 0;
 }
 
+/* Patient avatars sit inside a KinderCura card, so they use the house palette
+   rather than the imported pink/blue/indigo gradients, which were the only
+   saturated blues and violets anywhere in the product. */
 .avatar-girl {
-    background: linear-gradient(135deg,#f9a8d4,#fbcfe8);
+    background: var(--status-attention-bg);
+    color: var(--status-attention-fg);
 }
 
 .avatar-boy {
-    background: linear-gradient(135deg,#93c5fd,#bfdbfe);
+    background: var(--status-info-bg);
+    color: var(--status-info-fg);
 }
 
 .avatar-other {
-    background: linear-gradient(135deg,#a5b4fc,#c7d2fe);
+    background: var(--status-neutral-bg);
+    color: var(--status-neutral-fg);
 }
 
 .info-grid {
@@ -113,7 +126,7 @@
 
 .empty-state {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 5rem 2rem;
     text-align: center;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
@@ -122,7 +135,7 @@
 .filter-bar {
     background: white;
     padding: 1.5rem;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     margin-bottom: 2rem;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
 }
@@ -172,7 +185,7 @@
 
 #diagnosisModal .diagnosis-modal-body::-webkit-scrollbar-thumb {
     background: var(--primary-light);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
 }
 
 @media(max-width:768px) {

@@ -8,7 +8,7 @@
 
 .profile-card {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 2rem;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
 }
@@ -16,7 +16,7 @@
 .profile-header {
     background: white;
     padding: 2rem;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     margin-bottom: 2rem;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
 }

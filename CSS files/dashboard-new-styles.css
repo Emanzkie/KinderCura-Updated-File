@@ -1,3 +1,4 @@
+@import url('kc-tokens.css');
 * {
     margin: 0;
     padding: 0;
@@ -8,7 +9,7 @@
 .page-header {
     background: white;
     padding: 2rem;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     margin-bottom: 2rem;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
     display: flex;
@@ -44,34 +45,7 @@
     }
 }
 
-:root {
-    /* Primary Colors - Warm Muted Green */
-    --primary: #6B8E6F;
-    --primary-light: #8BA98D;
-    --primary-dark: #5A7560;
-    
-    /* Accent Colors */
-    --accent: #F4D89F;
-    --accent-light: #F8E5B5;
-    --accent-red: #E8A5A5;
-    
-    /* Status Colors */
-    --success: #A8C49D;
-    --danger: #D4897A;
-    --warning: #F4D89F;
-    
-    /* Background Colors */
-    --bg-primary: #FAFAF6;
-    --bg-secondary: #F0EFE8;
-    --bg-tertiary: #F0DCD8;
-    
-    /* Text Colors */
-    --text-dark: #3D4738;
-    --text-light: #6B7967;
-    
-    /* Border */
-    --border: #DDD9CC;
-}
+
 
 html, body {
     height: 100%;
@@ -155,12 +129,17 @@ body {
 
 .nav-link:hover {
     color: var(--primary);
-    border-bottom-color: var(--accent-red);
+    border-bottom-color: var(--primary-light);
 }
 
-.nav-link.active {
-    color: var(--primary);
+/* Active page: colour + underline + a slightly heavier weight, so the current
+   location is identifiable without relying on colour alone. [aria-current] is
+   matched too, since api.js sets it alongside the class. */
+.nav-link.active,
+.nav-link[aria-current="page"] {
+    color: var(--primary-dark);
     border-bottom-color: var(--accent-red);
+    font-weight: var(--fw-medium);
 }
 
 .nav-right {
@@ -349,27 +328,39 @@ body {
 .page-header {
     background: white;
     padding: 2rem;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     margin-bottom: 2rem;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+}
+
+/* The title always claims its own line, so a bare `<h1> + <p>` pair stacks the
+   way the Recommendations page does instead of being pushed apart by the
+   flex row (which is why several dashboards showed their subtitle floating
+   over on the right). Pages that wrap the title and subtitle in their own
+   <div> — e.g. PRC Verification — are untouched by the child selector. */
+.page-header > h1 {
+    flex: 1 0 100%;
 }
 
 .page-header h1 {
     margin-bottom: 0.5rem;
     color: var(--text-dark);
-    font-size: 2rem;
+    font-size: var(--fs-page-title);
+    font-weight: var(--fw-strong);
+    line-height: 1.25;
 }
 
 .page-header p {
     color: var(--text-light);
-    font-size: 0.95rem;
+    font-size: var(--fs-body);
+    line-height: var(--leading);
 }
 
 /* ==================== CHILD PROFILE CARD ==================== */
 
 .child-card {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 2rem;
     margin-bottom: 2rem;
     display: flex;
@@ -399,7 +390,7 @@ body {
 
 .overview-card {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 2rem;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
 }
@@ -496,7 +487,7 @@ body {
 
 .card {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 2rem;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
     margin-bottom: 2rem;
@@ -512,7 +503,7 @@ body {
 
 .actions-card {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 2rem;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
     margin-bottom: 2rem;
@@ -588,7 +579,7 @@ body {
 
 .result-card {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 1.5rem;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
     border-left: 4px solid var(--primary);
@@ -736,7 +727,7 @@ body {
 
 .notifications-content {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     width: min(92vw, 560px);
     max-height: min(82vh, 720px);
     display: flex;
@@ -835,7 +826,7 @@ body {
     align-items: start;
     background: white;
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1rem;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
@@ -1150,7 +1141,7 @@ body {
 .parent-chart-card {
     background: white;
     padding: 1.5rem;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     /* Grid items default to min-width:auto, so the Chart.js canvas inside kept
        these cards at their intrinsic width and pushed the whole dashboard into
@@ -1172,5 +1163,355 @@ body {
 @media(max-width: 768px) {
     .parent-charts {
         grid-template-columns: 1fr;
+    }
+}
+
+/* ============================================================================
+   KINDERCURA SHARED COMPONENTS
+   ----------------------------------------------------------------------------
+   Reusable primitives so a card, badge, button or empty state looks the same in
+   every role. Added here because this file is the first stylesheet on all 36
+   application pages. Page stylesheets still load afterwards and can override
+   where a page genuinely needs something different.
+   ============================================================================ */
+
+/* ---- Accessible focus, everywhere ---------------------------------------- */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+    border-radius: var(--radius-btn);
+}
+
+/* ---- Card ---------------------------------------------------------------- */
+.kc-card {
+    background: var(--surface);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+    padding: var(--card-pad);
+}
+
+.kc-card + .kc-card { margin-top: var(--space-md); }
+
+/* Inset panel used inside a card (summaries, callouts, list rows). */
+.kc-panel {
+    background: var(--surface-muted);
+    border-radius: var(--radius-panel);
+    padding: var(--space-md);
+}
+
+/* ---- Page header --------------------------------------------------------- */
+/* Title on top, muted supporting line underneath, optional actions on the
+   right. Matches the Recommendations page, which is the visual reference. */
+.kc-page-header {
+    background: var(--surface);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+    padding: var(--card-pad);
+    margin-bottom: var(--space-lg);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+}
+
+.kc-page-header__text { min-width: 0; }
+
+.kc-page-header h1,
+.kc-page-header .kc-title {
+    font-size: var(--fs-page-title);
+    font-weight: var(--fw-strong);
+    color: var(--text-dark);
+    line-height: 1.25;
+    margin: 0 0 0.35rem;
+}
+
+.kc-page-header p,
+.kc-page-header .kc-subtitle {
+    font-size: var(--fs-body);
+    color: var(--text-light);
+    line-height: var(--leading);
+    margin: 0;
+}
+
+.kc-page-header__actions {
+    display: flex;
+    gap: var(--space-sm);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* ---- Section heading ----------------------------------------------------- */
+.kc-section-title {
+    font-size: var(--fs-section);
+    font-weight: var(--fw-strong);
+    color: var(--primary);
+    margin: 0 0 var(--space-sm);
+}
+
+/* ---- Buttons ------------------------------------------------------------- */
+.kc-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 42px;
+    padding: 0.65rem 1.2rem;
+    border-radius: var(--radius-btn);
+    border: 1.5px solid transparent;
+    font-family: inherit;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    line-height: 1.2;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color .18s ease, border-color .18s ease, color .18s ease;
+}
+
+.kc-btn--primary { background: var(--primary); color: #fff; }
+.kc-btn--primary:hover { background: var(--primary-dark); }
+
+.kc-btn--secondary {
+    background: var(--surface);
+    color: var(--primary-dark);
+    border-color: var(--primary-light);
+}
+.kc-btn--secondary:hover { background: var(--surface-tint); border-color: var(--primary); }
+
+.kc-btn--danger { background: var(--status-attention-bg); color: var(--status-attention-fg); border-color: #E9C6C2; }
+.kc-btn--danger:hover { background: #F3D6D3; }
+
+.kc-btn--warning { background: var(--status-caution-bg); color: var(--status-caution-fg); border-color: #EBDBB4; }
+.kc-btn--warning:hover { background: #F6E7C6; }
+
+.kc-btn--quiet { background: transparent; color: var(--text-light); border-color: var(--border); }
+.kc-btn--quiet:hover { background: var(--surface-muted); color: var(--text-dark); }
+
+.kc-btn[disabled],
+.kc-btn.is-disabled {
+    opacity: .55;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* ---- Status badges ------------------------------------------------------- */
+/* One visual per meaning. A badge carries a text label as well as colour, so
+   status is never communicated by colour alone. */
+.kc-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.28rem 0.7rem;
+    border-radius: var(--radius-pill);
+    font-size: var(--fs-tiny);
+    font-weight: var(--fw-medium);
+    line-height: 1.4;
+    white-space: nowrap;
+    background: var(--status-neutral-bg);
+    color: var(--status-neutral-fg);
+}
+
+/* Positive: Excellent, On Track, Approved, Confirmed, Completed, Paid, Active */
+.kc-badge--positive { background: var(--status-positive-bg); color: var(--status-positive-fg); }
+/* Caution: Good, Fair, Developing, Pending, Awaiting, Scheduled, Monitoring */
+.kc-badge--caution  { background: var(--status-caution-bg);  color: var(--status-caution-fg); }
+/* Attention: Needs Attention, Needs Support, Rejected, Cancelled, Overdue */
+.kc-badge--attention{ background: var(--status-attention-bg);color: var(--status-attention-fg); }
+/* Neutral: Draft, Not started, N/A, Unlinked */
+.kc-badge--neutral  { background: var(--status-neutral-bg);  color: var(--status-neutral-fg); }
+/* Info: purely descriptive metadata (age group, domain, gender, role) */
+.kc-badge--info     { background: var(--status-info-bg);     color: var(--status-info-fg); }
+
+/* ---- Form controls ------------------------------------------------------- */
+.kc-field { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: var(--space-md); }
+
+.kc-label {
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+    color: var(--text-dark);
+}
+
+.kc-input,
+.kc-select,
+.kc-textarea {
+    width: 100%;
+    min-height: 44px;
+    padding: 0.65rem 0.85rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-input);
+    background: var(--surface);
+    font-family: inherit;
+    font-size: var(--fs-body);
+    color: var(--text-dark);
+    transition: border-color .18s ease, box-shadow .18s ease;
+}
+
+.kc-textarea { min-height: 110px; resize: vertical; line-height: var(--leading); }
+
+.kc-input:focus,
+.kc-select:focus,
+.kc-textarea:focus {
+    outline: none;
+    border-color: var(--primary-light);
+    box-shadow: var(--focus-ring);
+}
+
+.kc-input::placeholder,
+.kc-textarea::placeholder { color: #A2AB9E; }
+
+.kc-hint  { font-size: var(--fs-small); color: var(--text-light); }
+.kc-error { font-size: var(--fs-small); color: var(--status-attention-fg); font-weight: var(--fw-medium); }
+
+.kc-input.is-invalid,
+.kc-select.is-invalid,
+.kc-textarea.is-invalid { border-color: #D9A6A0; }
+
+/* ---- Tables -------------------------------------------------------------- */
+.kc-table-wrap {
+    overflow-x: auto;               /* scroll rather than break the layout */
+    -webkit-overflow-scrolling: touch;
+    border-radius: var(--radius-panel);
+}
+
+.kc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--fs-body);
+}
+
+.kc-table thead th {
+    text-align: left;
+    padding: 0.85rem 1rem;
+    background: var(--surface-muted);
+    color: var(--text-light);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border);
+}
+
+.kc-table tbody td {
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dark);
+    vertical-align: middle;
+}
+
+.kc-table tbody tr:last-child td { border-bottom: none; }
+.kc-table tbody tr:hover { background: var(--surface-muted); }
+
+/* ---- Modals -------------------------------------------------------------- */
+.kc-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(61, 71, 56, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-md);
+    z-index: 9999;
+}
+
+.kc-modal {
+    width: min(640px, 96vw);
+    max-height: 88vh;
+    overflow: auto;
+    background: var(--surface);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-raised);
+}
+
+.kc-modal__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    padding: var(--space-md) var(--card-pad);
+    border-bottom: 1px solid var(--border);
+}
+
+.kc-modal__header h3 {
+    margin: 0;
+    font-size: var(--fs-card-title);
+    font-weight: var(--fw-strong);
+    color: var(--text-dark);
+}
+
+.kc-modal__close {
+    border: none;
+    background: transparent;
+    font-size: 1.6rem;
+    line-height: 1;
+    color: var(--text-light);
+    cursor: pointer;
+    padding: 0 .25rem;
+}
+.kc-modal__close:hover { color: var(--text-dark); }
+
+.kc-modal__body   { padding: var(--card-pad); }
+.kc-modal__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-sm);
+    padding: var(--space-md) var(--card-pad);
+    border-top: 1px solid var(--border);
+}
+
+/* ---- Empty / loading / error states -------------------------------------- */
+.kc-state {
+    text-align: center;
+    padding: var(--space-xl) var(--space-md);
+    color: var(--text-light);
+}
+
+.kc-state__icon   { font-size: 1.75rem; opacity: .55; margin-bottom: .6rem; display: block; }
+.kc-state__title  { font-size: var(--fs-sub); font-weight: var(--fw-medium); color: var(--text-dark); margin: 0 0 .3rem; }
+.kc-state__text   { font-size: var(--fs-body); margin: 0 auto; max-width: 46ch; line-height: var(--leading); }
+.kc-state__action { margin-top: var(--space-md); }
+
+.kc-state--error .kc-state__title { color: var(--status-attention-fg); }
+
+/* Inline banner — replaces browser-default-looking alerts. */
+.kc-alert {
+    display: flex;
+    gap: .7rem;
+    align-items: flex-start;
+    padding: 0.9rem 1.1rem;
+    border-radius: var(--radius-panel);
+    border-left: 4px solid var(--primary);
+    background: var(--surface-tint);
+    color: var(--text-dark);
+    font-size: var(--fs-body);
+    line-height: var(--leading);
+    margin-bottom: var(--space-md);
+}
+.kc-alert--warning  { background: var(--status-caution-bg);  border-left-color: #D8B65E; }
+.kc-alert--error    { background: var(--status-attention-bg);border-left-color: var(--accent-red); }
+.kc-alert--positive { background: var(--status-positive-bg); border-left-color: var(--primary); }
+
+/* ---- Avatar -------------------------------------------------------------- */
+.kc-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    display: block;
+}
+.kc-avatar--lg { width: 96px; height: 96px; }
+
+/* ---- Reduced motion ------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: .001ms !important;
+        transition-duration: .001ms !important;
     }
 }

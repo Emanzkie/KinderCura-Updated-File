@@ -38,7 +38,7 @@
     position: sticky;
     top: 0;
     z-index: 10;
-    background: linear-gradient(180deg, #f0f7f0 0%, #fafaf6 100%);
+    background: linear-gradient(180deg, var(--surface-tint) 0%, #fafaf6 100%);
     padding: 1.25rem 1.75rem;
     border-bottom: 1px solid rgba(107, 142, 111, 0.15);
 }
@@ -101,7 +101,7 @@
 
 .ra-risk-badge {
     padding: 0.3rem 0.85rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 0.78rem;
     font-weight: 700;
     white-space: nowrap;
@@ -163,7 +163,7 @@
     color: var(--danger);
     border: 1px solid var(--accent-red);
     padding: 0.25rem 0.7rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 0.78rem;
     font-weight: 600;
 }
@@ -223,7 +223,7 @@
     font-size: 0.78rem;
     font-weight: 600;
     padding: 0.2rem 0.65rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     text-transform: capitalize;
 }
 

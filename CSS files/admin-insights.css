@@ -13,7 +13,7 @@
 .insight-header {
     background: white;
     padding: 2rem;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     margin-bottom: 1.25rem;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
     display: flex;
@@ -35,10 +35,10 @@
    Always visible and deliberately NOT dismissible. Every reading of this page
    depends on these statements being in view, so there is no close button. */
 .insight-caveat {
-    background: #fdf6e3;
+    background: var(--status-caution-bg);
     border: 1px solid #e6d9a8;
     border-left: 5px solid #d99e0b;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1.25rem 1.5rem;
     margin-bottom: 1.25rem;
 }
@@ -71,7 +71,7 @@
 .insight-filters {
     background: white;
     padding: 1.35rem 1.5rem;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     margin-bottom: 1.25rem;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
 }
@@ -117,7 +117,7 @@
     background: var(--bg-primary);
     color: var(--text-dark);
     padding: 0.4rem 0.8rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     cursor: pointer;
     font-size: 0.8rem;
     font-family: inherit;
@@ -149,7 +149,7 @@
 
 .insight-tile {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 1.25rem 1.35rem;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
 }
@@ -181,7 +181,7 @@
 /* ── Cards ───────────────────────────────────────────────────────────────── */
 .insight-card {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 1.6rem 1.75rem;
     margin-bottom: 1.25rem;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
@@ -224,7 +224,7 @@
     color: var(--primary-dark);
     background: var(--bg-secondary);
     padding: 0.25rem 0.6rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     margin-bottom: 0.6rem;
 }
 
@@ -258,7 +258,7 @@
 .insight-empty {
     background: var(--bg-primary);
     border: 1px dashed var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1.6rem;
     text-align: center;
 }
@@ -344,7 +344,7 @@
 .band-chip {
     display: inline-block;
     padding: 0.22rem 0.65rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     color: white;
     font-size: 0.76rem;
     font-weight: 700;
@@ -354,10 +354,10 @@
 .assumption-chip {
     display: inline-block;
     padding: 0.2rem 0.6rem;
-    border-radius: 999px;
-    background: #fdf6e3;
+    border-radius: var(--radius-pill);
+    background: var(--status-caution-bg);
     border: 1px solid #e6d9a8;
-    color: #8a6d1a;
+    color: var(--status-caution-fg);
     font-size: 0.74rem;
     font-weight: 700;
     white-space: nowrap;
@@ -366,7 +366,7 @@
 .unscored-chip {
     display: inline-block;
     padding: 0.2rem 0.6rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     color: var(--text-light);
@@ -386,7 +386,7 @@
 .rate-item {
     background: var(--bg-primary);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1rem 1.1rem;
 }
 
@@ -425,7 +425,7 @@
 .pipeline-step {
     background: var(--bg-primary);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 0.9rem 1rem;
     text-align: center;
 }
@@ -447,11 +447,11 @@
 
 /* The step where the pipeline currently stops. */
 .pipeline-step.pipeline-blocked {
-    background: #fdf6e3;
+    background: var(--status-caution-bg);
     border-color: #e6d9a8;
 }
 
-.pipeline-step.pipeline-blocked .pipeline-count { color: #8a6d1a; }
+.pipeline-step.pipeline-blocked .pipeline-count { color: var(--status-caution-fg); }
 
 /* ── Methods note ────────────────────────────────────────────────────────── */
 .methods-note {

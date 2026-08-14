@@ -3,14 +3,14 @@
 .page-card {
     background: white;
     padding: 2rem;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
     margin-bottom: 1.5rem;
 }
 
 .question-card {
     background: white;
-    border-radius: 14px;
+    border-radius: var(--radius-card);
     padding: 1.2rem 1.3rem;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
     margin-bottom: 1rem;
@@ -27,7 +27,7 @@
 .badge {
     display: inline-block;
     padding: 0.22rem 0.6rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 0.75rem;
     font-weight: 700;
 }
@@ -110,7 +110,7 @@
 .empty-state {
     background: white;
     padding: 2.5rem;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
     text-align: center;
     color: var(--text-light);

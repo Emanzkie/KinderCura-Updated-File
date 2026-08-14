@@ -8,7 +8,7 @@
 .report-header {
     background: white;
     padding: 2rem;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     margin-bottom: 1.25rem;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
     display: flex;
@@ -38,17 +38,17 @@
    Always visible. This is the note that keeps the page honest about what it
    is: a screening record, not a diagnosis. */
 .screening-notice {
-    background: #f3fafb;
-    border: 1px solid #cdebf0;
-    border-left: 4px solid #0891b2;
-    border-radius: 14px;
+    background: var(--status-info-bg);
+    border: 1px solid var(--status-info-bg);
+    border-left: 4px solid var(--status-info-fg);
+    border-radius: var(--radius-card);
     padding: 1rem 1.25rem;
     margin-bottom: 1.25rem;
 }
 
 .screening-notice h3 {
     margin: 0 0 0.3rem;
-    color: #0e7490;
+    color: var(--status-info-fg);
     font-size: 1.05rem;
 }
 
@@ -61,7 +61,7 @@
 /* ── Generic card ──────────────────────────────────────────────────────── */
 .report-card {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 2rem;
     margin-bottom: 1.5rem;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
@@ -91,7 +91,7 @@
 .trend-empty {
     background: var(--bg-primary);
     border: 1px dashed var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 2.5rem 1.5rem;
     text-align: center;
 }
@@ -118,7 +118,7 @@
 
 .domain-card {
     background: var(--bg-primary);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1.2rem;
     border-left: 4px solid var(--border);
 }
@@ -178,7 +178,7 @@
 
 .timeline-item {
     background: var(--bg-primary);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1.2rem 1.4rem;
     border-left: 4px solid var(--primary);
 }
@@ -239,10 +239,10 @@
 
 /* ── Follow-up banner ──────────────────────────────────────────────────── */
 .followup-banner {
-    background: #f3fafb;
-    border: 1px solid #cdebf0;
-    border-left: 4px solid #0891b2;
-    border-radius: 14px;
+    background: var(--status-info-bg);
+    border: 1px solid var(--status-info-bg);
+    border-left: 4px solid var(--status-info-fg);
+    border-radius: var(--radius-card);
     padding: 1.2rem 1.4rem;
     margin-bottom: 1.5rem;
     display: flex;
@@ -260,12 +260,12 @@
 
 .followup-banner h3 {
     margin: 0 0 0.3rem;
-    color: #0e7490;
+    color: var(--status-info-fg);
     font-size: 1.1rem;
 }
 
 .followup-banner.followup-none h3 {
-    color: #9a6b14;
+    color: var(--status-caution-fg);
 }
 
 .followup-banner p {
@@ -275,18 +275,18 @@
 }
 
 .followup-action {
-    border: 2px solid #0891b2;
+    border: 2px solid var(--status-info-fg);
     background: white;
-    color: #0e7490;
+    color: var(--status-info-fg);
     padding: 0.8rem 1.05rem;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     font-weight: 700;
     cursor: pointer;
     min-width: 150px;
 }
 
 .followup-action:hover {
-    background: #ecfeff;
+    background: var(--status-info-bg);
 }
 
 /* ── Pediatrician follow-up questions ──────────────────────────────────── */
@@ -295,7 +295,7 @@
    are not scored. Nothing here should look like a bank item. */
 .custom-q-item {
     background: var(--bg-primary);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1.1rem 1.3rem;
     margin-bottom: 0.9rem;
     border-left: 4px solid var(--accent);
@@ -325,7 +325,7 @@
 .origin-tag {
     display: inline-block;
     background: rgba(244, 216, 159, 0.35);
-    color: #8a6a1f;
+    color: var(--status-caution-fg);
     border-radius: 6px;
     padding: 0.12rem 0.45rem;
     font-size: 0.72rem;
@@ -338,7 +338,7 @@
 /* ── Loading / empty / error states ────────────────────────────────────── */
 .report-state {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 3rem 2rem;
     text-align: center;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);

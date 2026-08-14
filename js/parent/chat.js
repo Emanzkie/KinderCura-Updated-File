@@ -79,7 +79,7 @@ async function loadThreads() {
     if (urlAppt && !activeApptId) openThread(parseInt(urlAppt, 10));
     else if (!activeApptId && threads.length) openThread(threads[0].appointmentId);
   } catch (e) {
-    document.getElementById('threadsList').innerHTML = `<div style="padding:1rem;color:#c0392b;font-size:.82rem;">${e.message}</div>`;
+    document.getElementById('threadsList').innerHTML = `<div style="padding:1rem;color:var(--status-attention-fg);font-size:.82rem;">${e.message}</div>`;
   }
 }
 

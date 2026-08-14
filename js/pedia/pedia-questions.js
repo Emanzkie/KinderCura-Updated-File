@@ -132,7 +132,7 @@
             questionsInBatch.textContent = `${questionBatch.length} question${questionBatch.length !== 1 ? 's' : ''}`;
 
             previewList.innerHTML = questionBatch.map((q, i) => `
-            <div style="background:#f8f9fa;border:1px solid var(--border);border-radius:6px;padding:.6rem .8rem;display:flex;justify-content:space-between;align-items:center;">
+            <div style="background:var(--surface-muted);border:1px solid var(--border);border-radius:6px;padding:.6rem .8rem;display:flex;justify-content:space-between;align-items:center;">
             <div style="flex:1;">
                 <p style="font-size:.8rem;font-weight:600;margin:0;color:var(--text-dark);">${i + 1}. ${q.questionText.substring(0, 60)}${q.questionText.length > 60 ? '…' : ''}</p>
                 <p style="font-size:.7rem;color:var(--text-light);margin:.2rem 0 0;">Type: ${q.questionType.replace('_', ' ')} | Domain: ${q.domain}</p>
@@ -337,8 +337,8 @@
                 renderAssignmentTracker();
                 renderQuestions();
             } catch (err) {
-                document.getElementById('pendingAssignmentsList').innerHTML = `<div class="empty-small" style="color:#c0392b;">${err.message}</div>`;
-                document.getElementById('answeredAssignmentsList').innerHTML = `<div class="empty-small" style="color:#c0392b;">${err.message}</div>`;
+                document.getElementById('pendingAssignmentsList').innerHTML = `<div class="empty-small" style="color:var(--status-attention-fg);">${err.message}</div>`;
+                document.getElementById('answeredAssignmentsList').innerHTML = `<div class="empty-small" style="color:var(--status-attention-fg);">${err.message}</div>`;
             }
         }
 
@@ -469,7 +469,7 @@
                                             </div>
                                         ` : ''}
                                     </div>
-                                    ${!q.isActive ? `<span style="font-size:.7rem;color:#888;background:#eee;border-radius:8px;padding:.2rem .5rem;">Inactive</span>` : ''}
+                                    ${!q.isActive ? `<span style="font-size:.7rem;color:var(--text-light);background:var(--bg-secondary);border-radius:8px;padding:.2rem .5rem;">Inactive</span>` : ''}
                                 </div>
                             </div>
                         `).join('')}
@@ -519,7 +519,7 @@
                             </div>
                         </div>
 
-                        ${!q.isActive ? `<span style="font-size:.7rem;color:#888;background:#eee;border-radius:8px;padding:.2rem .5rem;">Inactive</span>` : ''}
+                        ${!q.isActive ? `<span style="font-size:.7rem;color:var(--text-light);background:var(--bg-secondary);border-radius:8px;padding:.2rem .5rem;">Inactive</span>` : ''}
                     </div>
 
                     <div class="q-actions">
@@ -1063,7 +1063,7 @@
                 if (typeof renderAssignList === 'function') renderAssignList();
             } catch (err) {
                 console.error('Filter error:', err);
-                list.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:1rem;">Error filtering patients.</p>';
+                list.innerHTML = '<p style="color:var(--status-attention-fg);text-align:center;padding:1rem;">Error filtering patients.</p>';
             }
         }
 
@@ -1128,9 +1128,9 @@
                         </div>
                         <div style="text-align:right;">
                             <span style="display:inline-block;padding:.3rem .8rem;border-radius:999px;font-size:.8rem;font-weight:600;${
-                                isDraft ? 'background:#dbeafe;color:#1e40af;' : 
-                                set.status === 'answered' ? 'background:#d4edda;color:#155724;' :
-                                'background:#fed7aa;color:#92400e;'
+                                isDraft ? 'background:var(--status-info-bg);color:var(--status-info-fg);' : 
+                                set.status === 'answered' ? 'background:var(--status-positive-bg);color:var(--status-positive-fg);' :
+                                'background:var(--status-caution-bg);color:#92400e;'
                             }">${
                                 isDraft ? '📝 Draft' : 
                                 set.status === 'answered' ? '✓ Answered' :
@@ -1146,7 +1146,7 @@
                         </div>
                         <div style="background:var(--bg-primary);border-radius:8px;padding:1rem;">
                             <p style="font-size:.78rem;color:var(--text-light);margin:0 0 .3rem;">Answered</p>
-                            <p style="font-size:1.6rem;font-weight:700;color:#155724;margin:0;">${answeredAssignments.length}</p>
+                            <p style="font-size:1.6rem;font-weight:700;color:var(--status-positive-fg);margin:0;">${answeredAssignments.length}</p>
                         </div>
                         <div style="background:var(--bg-primary);border-radius:8px;padding:1rem;">
                             <p style="font-size:.78rem;color:var(--text-light);margin:0 0 .3rem;">Created</p>
@@ -1173,7 +1173,7 @@
                                             <p style="margin:.4rem 0;font-weight:600;color:var(--text-dark);">${i + 1}. ${esc(q.questionText)}</p>
                                             ${q.questionType === 'multiple_choice' && Array.isArray(q.options) && q.options.length ? `
                                                 <div style="margin-top:.5rem;">
-                                                    ${q.options.map(o => `<span style="display:inline-block;background:#f0f0f0;padding:.25rem .5rem;border-radius:4px;font-size:.8rem;margin-right:.3rem;margin-bottom:.2rem;">${esc(o)}</span>`).join('')}
+                                                    ${q.options.map(o => `<span style="display:inline-block;background:var(--surface-muted);padding:.25rem .5rem;border-radius:4px;font-size:.8rem;margin-right:.3rem;margin-bottom:.2rem;">${esc(o)}</span>`).join('')}
                                                 </div>
                                             ` : ''}
                                         </div>
@@ -1192,10 +1192,10 @@
 
                 ${answeredAssignments.length > 0 ? `
                     <div style="border-top:1px solid var(--border);padding-top:1.5rem;margin-top:1.5rem;">
-                        <h3 style="margin:0 0 1rem;font-size:.95rem;font-weight:600;color:#155724;">📋 Parent's Answers</h3>
+                        <h3 style="margin:0 0 1rem;font-size:.95rem;font-weight:600;color:var(--status-positive-fg);">📋 Parent's Answers</h3>
                         <div style="display:flex;flex-direction:column;gap:.8rem;">
                             ${answeredAssignments.map(a => `
-                                <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:1rem;">
+                                <div style="background:var(--status-positive-bg);border:1px solid #86efac;border-radius:8px;padding:1rem;">
                                     <p style="margin:0 0 .5rem;font-size:.85rem;color:var(--text-light);">Question: ${esc(a.questionText || 'Question')}</p>
                                     <div style="background:white;border:1px solid #d4edda;border-radius:6px;padding:.75rem;">
                                         <p style="margin:0 0 .3rem;font-size:.78rem;color:var(--text-light);">Parent's Answer</p>
@@ -1281,7 +1281,7 @@
                 ` : '';
 
                 return `
-            <div class="patient-row" style="${isSelected ? 'background:#e8f5e9;border-left:3px solid #27ae60;' : ''}">
+            <div class="patient-row" style="${isSelected ? 'background:var(--status-positive-bg);border-left:3px solid #27ae60;' : ''}">
                 <label style="display:flex;align-items:flex-start;gap:0.75rem;cursor:pointer;flex:1;">
                     <input type="checkbox" class="patient-checkbox" value="${p.childId}" ${isSelected ? 'checked' : ''} onchange="togglePatientSelection('${p.childId}')" style="margin-top:0.3rem;">
                     <div>
@@ -1537,14 +1537,14 @@
             if (!modal || !listEl) return;
 
             modal.style.display = 'flex';
-            listEl.innerHTML = '<p style="text-align:center;color:#888;padding:1rem;">Loading...</p>';
+            listEl.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1rem;">Loading...</p>';
 
             try {
                 const data = await apiFetch('/notifications');
                 const notifications = Array.isArray(data.notifications) ? data.notifications : [];
 
                 if (!notifications.length) {
-                    listEl.innerHTML = '<p style="text-align:center;color:#888;padding:1.5rem;">No notifications yet.</p>';
+                    listEl.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1.5rem;">No notifications yet.</p>';
                     return;
                 }
 
@@ -1552,12 +1552,12 @@
                 const tools = `
             <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:white;position:sticky;top:0;z-index:1;">
                 ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:white;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
-                <button onclick="clearAllNotifications()" style="border:1px solid #e6b0b0;background:white;color:#c0392b;padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
+                <button onclick="clearAllNotifications()" style="border:1px solid #e6b0b0;background:white;color:var(--status-attention-fg);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
             </div>`;
 
                 const items = notifications.map((n) => {
                     const dest = notificationDestination(n);
-                    const unreadStyle = n.isRead ? '' : 'background:#f0f7f0;border-left:3px solid var(--primary);';
+                    const unreadStyle = n.isRead ? '' : 'background:var(--surface-tint);border-left:3px solid var(--primary);';
                     const relId = n.relatedId ? `, '${n.relatedId}'` : '';
                     const click = dest
                         ? `goToNotificationTarget(${n.id}, '${dest}'${relId})`
@@ -1567,17 +1567,17 @@
                 <div class="notification-item" style="display:flex;gap:.75rem;align-items:flex-start;justify-content:space-between;padding:1rem;border-bottom:1px solid var(--border);${unreadStyle}">
                     <div onclick="${click}" style="flex:1;cursor:pointer;min-width:0;">
                         <p style="font-weight:${n.isRead ? '400' : '700'};font-size:.9rem;margin:0 0 .2rem;color:var(--text-dark);">${escapeHtml(n.title || '')}</p>
-                        <p style="font-size:.82rem;color:#555;margin:0 0 .25rem;line-height:1.45;">${escapeHtml(n.message || '')}</p>
-                        <p style="font-size:.75rem;color:#aaa;margin:0;">${formatDateTime(n.createdAt)}</p>
+                        <p style="font-size:.82rem;color:var(--text-dark);margin:0 0 .25rem;line-height:1.45;">${escapeHtml(n.message || '')}</p>
+                        <p style="font-size:.75rem;color:var(--text-light);margin:0;">${formatDateTime(n.createdAt)}</p>
                         ${dest ? '<p style="font-size:.72rem;color:var(--primary);margin:.35rem 0 0;">Open related page →</p>' : ''}
                     </div>
-                    <button onclick="event.stopPropagation();deleteNotification(${n.id})" title="Remove notification" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:1rem;line-height:1;padding:.15rem .25rem;">&#215;</button>
+                    <button onclick="event.stopPropagation();deleteNotification(${n.id})" title="Remove notification" style="border:none;background:none;color:var(--status-attention-fg);cursor:pointer;font-size:1rem;line-height:1;padding:.15rem .25rem;">&#215;</button>
                 </div>`;
                 }).join('');
 
                 listEl.innerHTML = tools + items;
             } catch {
-                listEl.innerHTML = '<p style="text-align:center;color:#888;padding:1rem;">Could not load notifications.</p>';
+                listEl.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1rem;">Could not load notifications.</p>';
             }
         }
 

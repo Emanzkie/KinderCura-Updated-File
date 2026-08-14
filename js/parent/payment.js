@@ -79,7 +79,7 @@ async function loadAppointmentSummary() {
                 <p>Patient: ${escapeHtml(appt.childName || '—')}</p>
                 <p>Pediatrician: Dr. ${escapeHtml(appt.pediatricianName || '—')}</p>
                 <p>Date: ${fmtDate(appt.appointmentDate)} at ${fmtTime(appt.appointmentTime)}</p>
-                <p class="fee">${formatMoney(appt.totalAmount)} <span style="font-size:0.8rem;font-weight:400;color:#27ae60;">— Paid</span></p>`;
+                <p class="fee">${formatMoney(appt.totalAmount)} <span style="font-size:0.8rem;font-weight:400;color:var(--status-positive-fg);">— Paid</span></p>`;
             showPanel(null);
             document.getElementById('optionCards').style.display = 'none';
             showError('This appointment has already been paid. Your appointment is approved.');

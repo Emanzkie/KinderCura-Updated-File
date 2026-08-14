@@ -24,8 +24,21 @@ function escapeHtml(value) {
 // from the shared four-colour map so the parent and pediatrician views agree.
 function getStatusLabel(score) {
     const st = window.KCScoring.parentDomainStatus(score);
-    return { label: st.label, color: st.color };
+    // `band` is passed through so the status chip can use the shared soft-tint
+    // badge treatment. The band itself, its label and its colour still come
+    // entirely from KCScoring — nothing about scoring changes here.
+    return { label: st.label, color: st.color, band: st.band };
 }
+
+// Maps a KCScoring band onto the system-wide status tone used by .kc-badge,
+// so "Fair" looks the same here as it does on the pediatrician and secretary
+// screens instead of being a saturated solid chip unique to this page.
+const BAND_TONE = {
+    'on-track': 'positive',
+    'developing': 'positive',
+    'at-risk': 'caution',
+    'delayed': 'attention',
+};
 
 function getOverallStatus(score) {
     return window.KCScoring.parentOverallLabel(score);
@@ -142,7 +155,7 @@ function renderDomainCard(domain, details, index) {
         <article class="domain-card" style="--domain-color:${st.color};">
             <header class="domain-card-head">
                 <h3 class="domain-card-title">${domain.icon} ${escapeHtml(domain.label)}</h3>
-                <span class="domain-status-chip">${escapeHtml(st.label)}</span>
+                <span class="domain-status-chip tone-${escapeHtml(BAND_TONE[st.band] || 'neutral')}">${escapeHtml(st.label)}</span>
             </header>
             <div class="domain-score-row">
                 <span class="domain-score-value">${domain.score}%</span>

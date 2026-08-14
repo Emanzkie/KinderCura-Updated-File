@@ -11,7 +11,7 @@
     <style>
         .payment-page-wrap { max-width: 640px; margin: 0 auto; }
         .appt-summary-card {
-            background: #f0f7f0;
+            background:var(--surface-tint);
             border-left: 4px solid var(--primary, #6B8E6F);
             border-radius: 10px;
             padding: 1.2rem 1.4rem;
@@ -38,13 +38,13 @@
         .panel { display: none; }
         .panel.active { display: block; }
         .success-banner {
-            background: #e8f5e9;
+            background:var(--status-positive-bg);
             border: 1px solid #a5d6a7;
             border-radius: 10px;
             padding: 1.2rem 1.4rem;
             margin-bottom: 1rem;
         }
-        .success-banner h3 { color: #2e7d32; margin: 0 0 0.4rem; }
+        .success-banner h3 { color:var(--status-positive-fg); margin: 0 0 0.4rem; }
         .success-banner p { margin: 0.2rem 0; color: #388e3c; font-size: 0.9rem; }
         .status-badge {
             display: inline-block;
@@ -52,11 +52,11 @@
             border-radius: 20px;
             font-size: 0.8rem;
             font-weight: 600;
-            background: #fff3cd;
-            color: #856404;
+            background:var(--status-caution-bg);
+            color:var(--status-caution-fg);
             margin-top: 0.5rem;
         }
-        .status-badge.verified { background: #d4edda; color: #155724; }
+        .status-badge.verified { background:var(--status-positive-bg); color:var(--status-positive-fg); }
         .form-group { margin-bottom: 1rem; }
         .form-group label { display: block; font-size: 0.88rem; font-weight: 600; margin-bottom: 0.35rem; color: var(--text-dark, #333); }
         .form-input { width: 100%; padding: 0.65rem 0.9rem; border: 1.5px solid #ddd; border-radius: 8px; font-size: 0.93rem; box-sizing: border-box; }
@@ -170,7 +170,7 @@
                 </div>
                 <div id="ewalletError" class="error-msg" style="display:none;margin-bottom:1rem;"></div>
                 <button class="btn btn-primary" style="width:100%;" id="submitProofBtn" onclick="submitEwalletProof()">Submit Payment Proof</button>
-                <button class="btn" style="width:100%;margin-top:0.5rem;background:#f5f5f5;color:#555;" onclick="backToOptions()">&#8592; Back</button>
+                <button class="btn" style="width:100%;margin-top:0.5rem;background:var(--surface-muted);color:var(--text-dark);" onclick="backToOptions()">&#8592; Back</button>
             </div>
 
             <!-- E-wallet submitted confirmation panel -->

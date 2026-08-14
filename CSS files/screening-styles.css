@@ -229,7 +229,7 @@ body {
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
     color: white;
     padding: 2rem;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     margin-bottom: 2.5rem;
     display: grid;
     grid-template-columns: 1fr auto;
@@ -294,7 +294,7 @@ body {
 .question-block {
     background: white;
     padding: 1.5rem;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     border-left: 4px solid var(--primary);
     transition: all 0.3s ease;
@@ -324,7 +324,7 @@ body {
     font-weight: 600;
     padding: 0.3rem 0.6rem;
     background: var(--bg-secondary);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     color: var(--text-light);
     text-transform: capitalize;
 }
@@ -550,13 +550,13 @@ body {
 
 .assessment-mini-card {
     border: 1px solid rgba(221,217,204,0.8);
-    border-radius: 16px;
+    border-radius: var(--radius-card);
     background: white;
     padding: 1rem;
 }
 
 .assessment-overall-card {
-    background: #F8FBF8;
+    background: var(--surface-tint);
     border-color: rgba(107,142,111,0.24);
 }
 
@@ -593,7 +593,7 @@ body {
 
 .progress-block {
     border: 1px solid rgba(221,217,204,0.7);
-    border-radius: 14px;
+    border-radius: var(--radius-card);
     background: white;
     padding: 0.9rem;
 }
@@ -616,7 +616,7 @@ body {
     width: 100%;
     height: 9px;
     overflow: hidden;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--bg-secondary);
 }
 
@@ -635,7 +635,7 @@ body {
 
 .assessment-age-card {
     margin-top: auto;
-    background: #FBFCF8;
+    background: var(--surface-muted);
 }
 
 .assessment-age-range {
@@ -685,8 +685,8 @@ body {
     align-items: center;
     justify-content: center;
     min-height: 32px;
-    border-radius: 999px;
-    background: #EDF3EE;
+    border-radius: var(--radius-pill);
+    background: var(--surface-tint);
     color: var(--primary-dark, #5A7560);
     padding: 0.35rem 0.85rem;
     font-size: 0.8rem;
@@ -695,8 +695,8 @@ body {
 }
 
 .assessment-question-box {
-    border-radius: 18px;
-    background: #FBFCF8;
+    border-radius: var(--radius-card);
+    background: var(--surface-muted);
     border: 1px solid rgba(221,217,204,0.72);
     padding: 1.5rem;
     margin-bottom: 1.35rem;
@@ -730,7 +730,7 @@ body {
     display: inline-flex;
     align-items: center;
     min-height: 30px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--bg-primary);
     color: var(--text-light);
     padding: 0.35rem 0.75rem;
@@ -739,18 +739,18 @@ body {
 }
 
 .assessment-tag.easy {
-    background: #EDF3EE;
+    background: var(--surface-tint);
     color: var(--primary-dark, #5A7560);
 }
 
 .assessment-tag.moderate {
-    background: #FFF8E7;
+    background: var(--status-caution-bg);
     color: #806025;
 }
 
 .assessment-tag.advanced {
     background: #FBE7E7;
-    color: #A75D5D;
+    color: var(--status-attention-fg);
 }
 
 .assessment-answer-title {
@@ -773,7 +773,7 @@ body {
     gap: 0.8rem;
     min-height: 58px;
     border: 2px solid var(--border);
-    border-radius: 14px;
+    border-radius: var(--radius-card);
     background: white;
     color: var(--text-dark);
     padding: 0.9rem 1rem;
@@ -783,13 +783,13 @@ body {
 
 .answer-option:hover {
     border-color: rgba(107,142,111,0.55);
-    background: #F8FBF8;
+    background: var(--surface-tint);
     transform: translateY(-1px);
 }
 
 .answer-option.is-selected {
     border-color: var(--primary);
-    background: #EDF3EE;
+    background: var(--surface-tint);
     box-shadow: 0 8px 20px rgba(107,142,111,0.14);
 }
 
@@ -850,7 +850,7 @@ body {
     justify-content: center;
     min-height: 46px;
     border: 2px solid transparent;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 0.75rem 1.5rem;
     font: inherit;
     font-size: 0.95rem;
@@ -881,7 +881,7 @@ body {
 
 .assessment-action-btn.secondary:hover {
     border-color: var(--primary);
-    background: #F8FBF8;
+    background: var(--surface-tint);
     transform: translateY(-1px);
 }
 
@@ -924,7 +924,7 @@ body {
     .assessment-question-card,
     .assessment-loading,
     .assessment-error {
-        border-radius: 16px;
+        border-radius: var(--radius-card);
         padding: 1.2rem;
     }
 

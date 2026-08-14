@@ -279,7 +279,7 @@ nav a:hover::after {
 .stat-card {
     background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
     padding: 2rem;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     border-left: 5px solid var(--accent-red);
     text-align: center;
 }
@@ -365,7 +365,7 @@ nav a:hover::after {
 
 .activity-card {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     overflow: hidden;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
     transition: all 0.3s ease;
@@ -417,7 +417,7 @@ nav a:hover::after {
     background: var(--bg-secondary);
     color: var(--primary);
     padding: 0.4rem 0.8rem;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     font-size: 0.85rem;
     font-weight: 600;
 }

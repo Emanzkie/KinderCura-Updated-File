@@ -10,7 +10,7 @@
 .report-header {
     background: white;
     padding: 2rem;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     margin-bottom: 1.25rem;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
     display: flex;
@@ -38,7 +38,7 @@
     background: rgba(244, 216, 159, 0.2);
     border: 1px solid var(--accent);
     border-left: 5px solid var(--accent);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1.15rem 1.4rem;
     margin-bottom: 1.5rem;
 }
@@ -68,7 +68,7 @@
 /* ── Filter bar ──────────────────────────────────────────────────────────── */
 .report-filters {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 1.4rem 1.6rem;
     margin-bottom: 1.5rem;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
@@ -121,7 +121,7 @@
 
 .report-tile {
     background: white;
-    border-radius: 14px;
+    border-radius: var(--radius-card);
     padding: 1.2rem 1.4rem;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
 }
@@ -153,7 +153,7 @@
 /* ── Cards ───────────────────────────────────────────────────────────────── */
 .report-card {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 1.6rem 1.8rem;
     margin-bottom: 1.5rem;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
@@ -338,7 +338,7 @@
 .band-chip {
     display: inline-block;
     padding: 0.18rem 0.6rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 0.72rem;
     font-weight: 700;
     color: white;
@@ -348,7 +348,7 @@
 .move-chip {
     display: inline-block;
     padding: 0.18rem 0.65rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 0.72rem;
     font-weight: 700;
     white-space: nowrap;
@@ -372,7 +372,7 @@
     display: inline-block;
     margin-left: 0.4rem;
     padding: 0.12rem 0.5rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 0.68rem;
     font-weight: 700;
     background: rgba(244, 216, 159, 0.3);
@@ -425,7 +425,7 @@
     text-align: center;
     padding: 2.5rem 1.5rem;
     background: var(--bg-primary);
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
 }
 
 .report-empty h3 {

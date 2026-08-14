@@ -51,7 +51,7 @@
 /* ── Table View ─────────────────────────────────────────────────── */
 .prc-table-wrapper {
   background: white;
-  border-radius: 15px;
+  border-radius: var(--radius-card);
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
   overflow-x: auto;
   margin-bottom: 1.5rem;
@@ -136,7 +136,7 @@
 
 .prc-card {
   background: white;
-  border-radius: 15px;
+  border-radius: var(--radius-card);
   padding: 1.8rem;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
   border-left: 4px solid var(--primary);
@@ -215,7 +215,7 @@
 /* ── Verification Modal (Two-Column) ────────────────────────────── */
 .prc-verification-modal {
   background: white;
-  border-radius: 18px;
+  border-radius: var(--radius-card);
   max-width: 1100px;
   width: 95%;
   max-height: 90vh;
@@ -261,7 +261,7 @@
 
 .prc-modal-section {
   background: white;
-  border-radius: 12px;
+  border-radius: var(--radius-panel);
   padding: 1.25rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   border: 1px solid var(--border);
@@ -333,7 +333,7 @@
 
 .prc-document-card {
   background: white;
-  border-radius: 12px;
+  border-radius: var(--radius-panel);
   padding: 1rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   border: 1px solid var(--border);
@@ -386,7 +386,7 @@
   gap: 0.75rem;
   padding: 1.5rem;
   background: rgba(255, 255, 255, 0.9);
-  border-radius: 12px;
+  border-radius: var(--radius-panel);
   font-weight: 600;
   color: var(--primary);
 }
@@ -572,7 +572,7 @@
 .prc-toast {
   pointer-events: auto;
   padding: 1rem 1.5rem;
-  border-radius: 12px;
+  border-radius: var(--radius-panel);
   font-weight: 600;
   font-size: 0.9rem;
   color: white;
@@ -645,7 +645,7 @@
 
 .prc-modal-content {
   background: white;
-  border-radius: 15px;
+  border-radius: var(--radius-card);
   max-width: 90vw;
   max-height: 90vh;
   overflow: auto;
@@ -693,7 +693,7 @@
 /* ── Bootstrap Modal Overrides (KinderCura Theme) ──────────────── */
 #prcVerificationModal .modal-content {
   border: none;
-  border-radius: 18px;
+  border-radius: var(--radius-card);
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.3);
   overflow: hidden;
 }
@@ -755,7 +755,7 @@
 
 #prcVerificationModal .prc-document-card {
   background: var(--bg-primary);
-  border-radius: 12px;
+  border-radius: var(--radius-panel);
   padding: 1.25rem;
   border: 1px solid var(--border);
 }
@@ -890,7 +890,7 @@
 
   .prc-verification-modal {
     max-height: 95vh;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
   }
 }
 

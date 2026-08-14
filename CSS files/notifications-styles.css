@@ -143,7 +143,7 @@ body {
 /* Notification Item */
 .notification-item {
     background: white;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 1.5rem;
     display: grid;
     grid-template-columns: 60px 1fr 40px;
@@ -344,7 +344,7 @@ body {
 /* Settings Section */
 .settings-section {
     background: white;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 2rem;
     text-align: center;
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);

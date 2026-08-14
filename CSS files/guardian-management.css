@@ -53,9 +53,9 @@ body {
 
 /* --- Action Buttons (matches dashboard button styles) --- */
 .gm-btn-primary {
-    background: #7fa27f;
+    background: var(--primary-light);
     color: white;
-    border-radius: 14px;
+    border-radius: var(--radius-card);
     padding: 14px 28px;
     font-weight: 600;
     border: none;
@@ -83,9 +83,9 @@ body {
 
 .gm-btn-secondary {
     background: white;
-    border: 2px solid #7fa27f;
+    border: 2px solid var(--primary-light);
     color: #5f7f5f;
-    border-radius: 14px;
+    border-radius: var(--radius-card);
     padding: 14px 28px;
     height: 56px;
     font-weight: 600;
@@ -113,7 +113,7 @@ body {
     min-width: 300px;
     padding: 0 20px;
     border: 2px solid #d8cfc0;
-    border-radius: 14px;
+    border-radius: var(--radius-card);
     background: white;
     font-size: 18px;
     font-weight: 500;

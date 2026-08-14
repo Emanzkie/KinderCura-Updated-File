@@ -1,3 +1,4 @@
+@import url('kc-tokens.css');
 * {
     margin: 0;
     padding: 0;
@@ -45,7 +46,15 @@ body {
 /* Sidebar */
 .auth-sidebar {
     flex: 1;
-    background: linear-gradient(135deg, var(--primary) 0%, var(--accent-red) 100%);
+    /* Green straight into blush passed through a muddy brown midpoint, which
+       is what made the sign-in screen look washed out. Routing the ramp via
+       the lighter green keeps both brand colours and stays clean, with the
+       blush reduced to a corner accent rather than half the panel. */
+    background: linear-gradient(150deg,
+        var(--primary-dark) 0%,
+        var(--primary) 42%,
+        var(--primary-light) 74%,
+        var(--accent-red) 100%);
     color: white;
     padding: 3rem 2rem;
     display: flex;
@@ -104,12 +113,19 @@ body {
     margin: 0;
 }
 
+/* The wordmark sits on the green sidebar, where the brand green "Cura" was
+   almost invisible against its own background. On this panel only, the mark is
+   drawn in white with the blush kept as the accent half, so it stays legible
+   while still reading as the KinderCura logo. Everywhere else on the product
+   the two-colour mark on white is unchanged. */
 .sidebar-logo .logo-kinder {
-    color: #E8A5A5;
+    color: var(--accent-red);
+    font-weight: 700;
 }
 
 .sidebar-logo .logo-cura {
-    color: #6B8E6F;
+    color: #FFFFFF;
+    font-weight: 700;
 }
 
 .sidebar-tagline {
@@ -219,7 +235,7 @@ body {
 /* Form Sections */
 .form-section {
     background: white;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     padding: 2rem;
     margin-bottom: 1.5rem;
     border: 1px solid rgba(221, 217, 204, 0.75);

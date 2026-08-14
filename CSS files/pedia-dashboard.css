@@ -9,7 +9,7 @@
 
 .stat-card {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 1.5rem;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
 }
@@ -50,7 +50,7 @@
 
 .panel {
     background: white;
-    border-radius: 15px;
+    border-radius: var(--radius-card);
     padding: 2rem;
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
 }

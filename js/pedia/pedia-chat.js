@@ -74,7 +74,7 @@ async function loadThreads(){
         if(urlAppt&&!activeApptId) openThread(parseInt(urlAppt));
         else if(!activeApptId&&threads.length) openThread(threads[0].appointmentId);
     }catch(e){
-        document.getElementById('threadsList').innerHTML=`<div style="padding:1rem;color:#c0392b;font-size:.82rem;">${e.message}</div>`;
+        document.getElementById('threadsList').innerHTML=`<div style="padding:1rem;color:var(--status-attention-fg);font-size:.82rem;">${e.message}</div>`;
     }
 }
 
@@ -385,14 +385,14 @@ async function openNotifications() {
     if (!modal || !listEl) return;
 
     modal.style.display = 'flex';
-    listEl.innerHTML = '<p style="text-align:center;color:#888;padding:1rem;">Loading...</p>';
+    listEl.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1rem;">Loading...</p>';
 
     try {
         const data = await apiFetch('/notifications');
         const notifications = Array.isArray(data.notifications) ? data.notifications : [];
 
         if (!notifications.length) {
-            listEl.innerHTML = '<p style="text-align:center;color:#888;padding:1.5rem;">No notifications yet.</p>';
+            listEl.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1.5rem;">No notifications yet.</p>';
             return;
         }
 
@@ -400,12 +400,12 @@ async function openNotifications() {
         const tools = `
             <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:white;position:sticky;top:0;z-index:1;">
                 ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:white;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
-                <button onclick="clearAllNotifications()" style="border:1px solid #e6b0b0;background:white;color:#c0392b;padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
+                <button onclick="clearAllNotifications()" style="border:1px solid #e6b0b0;background:white;color:var(--status-attention-fg);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
             </div>`;
 
         const items = notifications.map((n) => {
             const dest = notificationDestination(n);
-            const unreadStyle = n.isRead ? '' : 'background:#f0f7f0;border-left:3px solid var(--primary);';
+            const unreadStyle = n.isRead ? '' : 'background:var(--surface-tint);border-left:3px solid var(--primary);';
             const click = dest
                 ? `goToNotificationTarget(${n.id}, '${dest}')`
                 : `markNotificationRead(${n.id})`;
@@ -414,17 +414,17 @@ async function openNotifications() {
                 <div class="notification-item" style="display:flex;gap:.75rem;align-items:flex-start;justify-content:space-between;padding:1rem;border-bottom:1px solid var(--border);${unreadStyle}">
                     <div onclick="${click}" style="flex:1;cursor:pointer;min-width:0;">
                         <p style="font-weight:${n.isRead ? '400' : '700'};font-size:.9rem;margin:0 0 .2rem;color:var(--text-dark);">${escapeHtml(n.title || '')}</p>
-                        <p style="font-size:.82rem;color:#555;margin:0 0 .25rem;line-height:1.45;">${escapeHtml(n.message || '')}</p>
-                        <p style="font-size:.75rem;color:#aaa;margin:0;">${formatDateTime(n.createdAt)}</p>
+                        <p style="font-size:.82rem;color:var(--text-dark);margin:0 0 .25rem;line-height:1.45;">${escapeHtml(n.message || '')}</p>
+                        <p style="font-size:.75rem;color:var(--text-light);margin:0;">${formatDateTime(n.createdAt)}</p>
                         ${dest ? '<p style="font-size:.72rem;color:var(--primary);margin:.35rem 0 0;">Open related page →</p>' : ''}
                     </div>
-                    <button onclick="event.stopPropagation();deleteNotification(${n.id})" title="Remove notification" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:1rem;line-height:1;padding:.15rem .25rem;">&#215;</button>
+                    <button onclick="event.stopPropagation();deleteNotification(${n.id})" title="Remove notification" style="border:none;background:none;color:var(--status-attention-fg);cursor:pointer;font-size:1rem;line-height:1;padding:.15rem .25rem;">&#215;</button>
                 </div>`;
         }).join('');
 
         listEl.innerHTML = tools + items;
     } catch {
-        listEl.innerHTML = '<p style="text-align:center;color:#888;padding:1rem;">Could not load notifications.</p>';
+        listEl.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1rem;">Could not load notifications.</p>';
     }
 }
 

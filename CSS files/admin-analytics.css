@@ -35,7 +35,7 @@
 .insight-card {
     background: white;
     padding: 1.2rem;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     text-align: center;
 }
@@ -86,7 +86,7 @@
     align-items: center;
     padding: 1.5rem 2rem;
     background: white;
-    border-radius: 12px;
+    border-radius: var(--radius-panel);
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     margin-bottom: 1.5rem;
 }
