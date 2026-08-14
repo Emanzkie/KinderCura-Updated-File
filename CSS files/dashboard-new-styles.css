@@ -792,7 +792,7 @@ body {
 .clear-all-btn {
     border: 1px solid #e6b0b0;
     background: white;
-    color: #c0392b;
+    color: var(--danger);
     padding: 0.45rem 0.85rem;
     border-radius: 8px;
     cursor: pointer;
@@ -802,9 +802,9 @@ body {
 }
 
 .clear-all-btn:hover:not(:disabled) {
-    background: #fff4f2;
+    background: rgba(232, 165, 165, 0.1);
     border-color: #d4897a;
-    color: #a93226;
+    color: var(--danger);
 }
 
 .clear-all-btn:disabled {
@@ -937,7 +937,7 @@ body {
     border: none;
     border-radius: 50%;
     background: transparent;
-    color: #c0392b;
+    color: var(--danger);
     cursor: pointer;
     font-size: 1rem;
     font-weight: 800;
@@ -946,8 +946,8 @@ body {
 }
 
 .notification-delete-btn:hover {
-    background: #fff0ed;
-    color: #922b21;
+    background: rgba(232, 165, 165, 0.08);
+    color: var(--danger);
 }
 
 /* ==================== SETTINGS TABS ==================== */

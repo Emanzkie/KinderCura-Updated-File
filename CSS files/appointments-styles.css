@@ -7,6 +7,7 @@
 :root {
     --primary: #6B8E6F;
     --primary-light: #8BA98D;
+    --primary-dark: #5A7560;
     --accent: #F4D89F;
     --accent-light: #F8E5B5;
     --accent-red: #E8A5A5;
@@ -514,11 +515,11 @@ body {
 }
 
 .appt-card.pending {
-    border-left-color: #f59e0b;
+    border-left-color: var(--accent);
 }
 
 .appt-card.approved {
-    border-left-color: #27ae60;
+    border-left-color: var(--success);
 }
 
 .appt-card.completed {
@@ -527,7 +528,7 @@ body {
 
 .appt-card.cancelled,
 .appt-card.rejected {
-    border-left-color: #e74c3c;
+    border-left-color: var(--danger);
     opacity: 0.9;
 }
 
@@ -541,11 +542,11 @@ body {
 }
 
 .badge.pending {
-    background: #d97706;
+    background: var(--accent);
 }
 
 .badge.approved {
-    background: #27ae60;
+    background: var(--success);
 }
 
 .badge.completed {
@@ -554,12 +555,12 @@ body {
 
 .badge.cancelled,
 .badge.rejected {
-    background: #e74c3c;
+    background: var(--danger);
 }
 
 .success-msg {
-    background: #d4edda;
-    color: #155724;
+    background: rgba(168, 196, 157, 0.2);
+    color: var(--primary-dark);
     padding: 0.8rem 1rem;
     border-radius: 8px;
     margin-bottom: 1rem;
@@ -568,8 +569,8 @@ body {
 }
 
 .error-msg {
-    background: #fde8e8;
-    color: #c0392b;
+    background: rgba(232, 165, 165, 0.15);
+    color: var(--danger);
     padding: 0.8rem 1rem;
     border-radius: 8px;
     margin-bottom: 1rem;
@@ -586,8 +587,8 @@ body {
 }
 
 .clinic-panel {
-    background: #f8fbf8;
-    border: 1px solid #dce9dc;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 1rem 1.1rem;
     margin-bottom: 1rem;
@@ -601,7 +602,7 @@ body {
 }
 
 .suggestion-banner {
-    background: linear-gradient(135deg, #f5f8f5 0%, #eef6ef 100%);
+    background: linear-gradient(135deg, var(--bg-primary) 0%, rgba(107, 142, 111, 0.06) 100%);
     border-left: 4px solid var(--primary);
     padding: 1.1rem 1.2rem;
     border-radius: 12px;
@@ -623,7 +624,7 @@ body {
 
 .ped-card.suggested {
     border-color: var(--primary);
-    background: #f8fbf8;
+    background: var(--bg-primary);
     box-shadow: 0 3px 10px rgba(0,0,0,0.04);
 }
 
@@ -638,18 +639,18 @@ body {
 }
 
 .pill.green {
-    background: #e8f5e9;
-    color: #2e7d32;
+    background: rgba(168, 196, 157, 0.2);
+    color: var(--primary-dark);
 }
 
 .pill.gold {
-    background: #fff4dc;
-    color: #a66d00;
+    background: rgba(244, 216, 159, 0.3);
+    color: var(--text-dark);
 }
 
 .pill.red {
-    background: #fde8e8;
-    color: #c0392b;
+    background: rgba(232, 165, 165, 0.15);
+    color: var(--danger);
 }
 
 .mini {
@@ -666,9 +667,9 @@ body {
 
 .availability-panel {
     display: none;
-    background: #fffdf7;
-    border: 1px solid #f0e0b3;
-    border-left: 4px solid #d9a441;
+    background: rgba(244, 216, 159, 0.12);
+    border: 1px solid var(--accent);
+    border-left: 4px solid var(--accent);
     border-radius: 12px;
     padding: 1rem 1.1rem;
     margin-bottom: 1rem;
@@ -684,25 +685,25 @@ body {
 .slot-chip {
     padding: 0.35rem 0.65rem;
     border-radius: 999px;
-    background: #f2f2ef;
-    color: #666;
+    background: var(--bg-secondary);
+    color: var(--text-light);
     font-size: 0.78rem;
     font-weight: 600;
 }
 
 .slot-chip.taken {
-    background: #fde8e8;
-    color: #c0392b;
+    background: rgba(232, 165, 165, 0.15);
+    color: var(--danger);
 }
 
 .slot-chip.free {
-    background: #e8f5e9;
-    color: #2e7d32;
+    background: rgba(168, 196, 157, 0.2);
+    color: var(--primary-dark);
 }
 
 .slot-chip.break {
-    background: #fff5dd;
-    color: #9a6c00;
+    background: rgba(244, 216, 159, 0.25);
+    color: var(--text-dark);
 }
 
 @media (max-width: 980px) {

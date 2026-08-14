@@ -53,18 +53,18 @@
 }
 
 .insight-card .value.green {
-    color: #27ae60;
+    color: var(--primary);
 }
 
 .insight-card .value.orange {
-    color: #f39c12;
+    color: var(--warning);
 }
 
 .auto-indicator {
     display: inline-block;
     width: 8px;
     height: 8px;
-    background: #27ae60;
+    background: var(--primary);
     border-radius: 50%;
     margin-right: 6px;
     animation: pulse 2s infinite;
@@ -120,7 +120,7 @@
 .analytics-header .status-dot {
     width: 8px;
     height: 8px;
-    background: #27ae60;
+    background: var(--primary);
     border-radius: 50%;
     animation: pulse 2s infinite;
 }
@@ -128,7 +128,7 @@
 .analytics-header .status-text {
     font-size: 0.75rem;
     font-weight: 600;
-    color: #27ae60;
+    color: var(--primary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }

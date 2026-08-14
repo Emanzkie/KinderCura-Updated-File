@@ -33,28 +33,28 @@
 }
 
 .badge-domain {
-    background: #dff3e7;
-    color: #2d6a4f;
+    background: rgba(168, 196, 157, 0.2);
+    color: var(--primary-dark);
 }
 
 .badge-type {
-    background: #e8f0fe;
-    color: #3056d3;
+    background: rgba(107, 142, 111, 0.1);
+    color: var(--primary);
 }
 
 .badge-state {
-    background: #fff3cd;
-    color: #856404;
+    background: rgba(244, 216, 159, 0.3);
+    color: var(--text-dark);
 }
 
 .badge-done {
-    background: #d4edda;
-    color: #155724;
+    background: rgba(168, 196, 157, 0.25);
+    color: var(--primary-dark);
 }
 
 .badge-child {
-    background: #f3e8ff;
-    color: #6b21a8;
+    background: rgba(107, 142, 111, 0.08);
+    color: var(--primary-light);
 }
 
 .answer-box {
@@ -81,7 +81,7 @@
 .choice-btn:hover,
 .choice-btn.selected {
     border-color: var(--primary);
-    background: #f8fbf8;
+    background: var(--bg-primary);
 }
 
 .text-answer {

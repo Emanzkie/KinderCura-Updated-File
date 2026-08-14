@@ -108,21 +108,21 @@
 }
 
 .ra-risk-high {
-    background: #fee2e2;
-    color: #b91c1c;
-    border: 1px solid #fca5a5;
+    background: rgba(232, 165, 165, 0.2);
+    color: var(--danger);
+    border: 1px solid var(--accent-red);
 }
 
 .ra-risk-moderate {
-    background: #fef3c7;
-    color: #92400e;
-    border: 1px solid #fcd34d;
+    background: rgba(244, 216, 159, 0.3);
+    color: var(--text-dark);
+    border: 1px solid var(--accent);
 }
 
 .ra-risk-low {
-    background: #dcfce7;
-    color: #166534;
-    border: 1px solid #86efac;
+    background: rgba(168, 196, 157, 0.25);
+    color: var(--primary-dark);
+    border: 1px solid var(--success);
 }
 
 .ra-risk-unknown {
@@ -141,14 +141,14 @@
 .ra-risk-flags {
     margin: 0;
     padding: 1rem 1.75rem;
-    background: #fff5f5;
-    border-bottom: 1px solid #fecaca;
+    background: rgba(232, 165, 165, 0.08);
+    border-bottom: 1px solid var(--accent-red);
 }
 
 .ra-flags-title {
     font-size: 0.85rem;
     font-weight: 700;
-    color: #b91c1c;
+    color: var(--danger);
     margin: 0 0 0.5rem;
 }
 
@@ -159,9 +159,9 @@
 }
 
 .ra-flag-chip {
-    background: #fee2e2;
-    color: #991b1b;
-    border: 1px solid #fca5a5;
+    background: rgba(232, 165, 165, 0.2);
+    color: var(--danger);
+    border: 1px solid var(--accent-red);
     padding: 0.25rem 0.7rem;
     border-radius: 999px;
     font-size: 0.78rem;
@@ -229,21 +229,21 @@
 
 /* Domain risk level color coding */
 .ra-domain-high .ra-domain-score {
-    color: #b91c1c;
+    color: var(--danger);
 }
 
 .ra-domain-high .ra-domain-status {
     background: #fee2e2;
-    color: #b91c1c;
+    color: var(--danger);
 }
 
 .ra-domain-moderate .ra-domain-score {
-    color: #d97706;
+    color: var(--accent);
 }
 
 .ra-domain-moderate .ra-domain-status {
-    background: #fef3c7;
-    color: #92400e;
+    background: rgba(244, 216, 159, 0.3);
+    color: var(--text-dark);
 }
 
 .ra-domain-low .ra-domain-score {
@@ -251,8 +251,8 @@
 }
 
 .ra-domain-low .ra-domain-status {
-    background: #dcfce7;
-    color: #166534;
+    background: rgba(168, 196, 157, 0.25);
+    color: var(--primary-dark);
 }
 
 /* ── Answer cards ── */
@@ -276,17 +276,17 @@
 
 /* Highlight border-left by insight level */
 .ra-answer-positive {
-    border-left: 4px solid #86efac;
+    border-left: 4px solid var(--success);
 }
 
 .ra-answer-warning {
-    border-left: 4px solid #fcd34d;
-    background: #fffef5;
+    border-left: 4px solid var(--accent);
+    background: rgba(244, 216, 159, 0.08);
 }
 
 .ra-answer-concern {
-    border-left: 4px solid #fca5a5;
-    background: #fffafa;
+    border-left: 4px solid var(--accent-red);
+    background: rgba(232, 165, 165, 0.05);
 }
 
 .ra-q-row {
@@ -328,13 +328,13 @@
 }
 
 .ra-parent-block {
-    background: #f0f4ff;
-    border: 1px solid #c7d2fe;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
 }
 
 .ra-ai-block {
-    background: #f0fdf4;
-    border: 1px solid #bbf7d0;
+    background: rgba(107, 142, 111, 0.08);
+    border: 1px solid rgba(107, 142, 111, 0.2);
 }
 
 .ra-comp-label {
@@ -347,11 +347,11 @@
 }
 
 .ra-parent-block .ra-comp-label {
-    color: #4338ca;
+    color: var(--text-light);
 }
 
 .ra-ai-block .ra-comp-label {
-    color: #15803d;
+    color: var(--primary);
 }
 
 .ra-comp-value {
@@ -375,26 +375,26 @@
 }
 
 .ra-dot-positive {
-    background: #22c55e;
-    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+    background: var(--success);
+    box-shadow: 0 0 0 2px rgba(168, 196, 157, 0.3);
 }
 
 .ra-dot-warning {
-    background: #f59e0b;
-    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+    background: var(--accent);
+    box-shadow: 0 0 0 2px rgba(244, 216, 159, 0.4);
 }
 
 .ra-dot-concern {
-    background: #ef4444;
-    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+    background: var(--danger);
+    box-shadow: 0 0 0 2px rgba(212, 137, 122, 0.3);
 }
 
 /* ── Existing diagnosis (read-only) ── */
 .ra-existing-diag {
     margin: 0;
     padding: 1.25rem 1.75rem;
-    background: #f0fdf4;
-    border-top: 1px solid #bbf7d0;
+    background: rgba(107, 142, 111, 0.06);
+    border-top: 1px solid rgba(107, 142, 111, 0.2);
 }
 
 .ra-existing-diag h4 {

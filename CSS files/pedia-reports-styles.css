@@ -35,9 +35,9 @@
    depends on these three statements being in view, so there is no close
    button and no collapsed state to build. */
 .report-caveat {
-    background: #fdf6e3;
-    border: 1px solid #e6d9a8;
-    border-left: 5px solid #d99e0b;
+    background: rgba(244, 216, 159, 0.2);
+    border: 1px solid var(--accent);
+    border-left: 5px solid var(--accent);
     border-radius: 12px;
     padding: 1.15rem 1.4rem;
     margin-bottom: 1.5rem;
@@ -45,7 +45,7 @@
 
 .report-caveat h3 {
     font-size: 0.95rem;
-    color: #8a6100;
+    color: var(--text-dark);
     margin: 0 0 0.5rem;
 }
 
@@ -56,7 +56,7 @@
 
 .report-caveat li {
     font-size: 0.86rem;
-    color: #6b5000;
+    color: var(--text-light);
     line-height: 1.6;
     margin-bottom: 0.3rem;
 }
@@ -354,9 +354,9 @@
     white-space: nowrap;
 }
 
-.move-improved  { background: #dcfce7; color: #15803d; }
+.move-improved  { background: rgba(168, 196, 157, 0.25); color: var(--primary-dark); }
 .move-unchanged { background: #eef0f2; color: #55606a; }
-.move-declined  { background: #fee2e2; color: #b91c1c; }
+.move-declined  { background: rgba(232, 165, 165, 0.2); color: var(--danger); }
 
 .delta {
     font-weight: 700;
@@ -364,8 +364,8 @@
     white-space: nowrap;
 }
 
-.delta-up   { color: #15803d; }
-.delta-down { color: #b91c1c; }
+.delta-up   { color: var(--primary-dark); }
+.delta-down { color: var(--danger); }
 .delta-flat { color: var(--text-light); }
 
 .warn-chip {
@@ -375,9 +375,9 @@
     border-radius: 999px;
     font-size: 0.68rem;
     font-weight: 700;
-    background: #fdf1d6;
-    color: #8a6100;
-    border: 1px solid #e6d9a8;
+    background: rgba(244, 216, 159, 0.3);
+    color: var(--text-dark);
+    border: 1px solid var(--accent);
     white-space: nowrap;
 }
 
@@ -443,7 +443,7 @@
 }
 
 .report-error {
-    border-left: 4px solid var(--accent-red, #c0392b);
+    border-left: 4px solid var(--accent-red);
     text-align: left;
 }
 

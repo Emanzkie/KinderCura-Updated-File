@@ -130,8 +130,8 @@
 
 .err-msg {
     display: none;
-    background: #fde8e8;
-    color: #c0392b;
+    background: rgba(232, 165, 165, 0.15);
+    color: var(--danger);
     padding: 0.7rem;
     border-radius: 6px;
     margin-bottom: 1rem;

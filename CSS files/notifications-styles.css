@@ -7,6 +7,7 @@
 :root {
     --primary: #6B8E6F;
     --primary-light: #8BA98D;
+    --primary-dark: #5A7560;
     --accent: #F4D89F;
     --accent-light: #F8E5B5;
     --accent-red: #E8A5A5;
@@ -163,31 +164,31 @@ body {
 }
 
 .notification-item.activity-notification {
-    border-left-color: #6B8E6F;
+    border-left-color: var(--primary);
 }
 
 .notification-item.progress-notification {
-    border-left-color: #A8C49D;
+    border-left-color: var(--success);
 }
 
 .notification-item.appointment-notification {
-    border-left-color: #E8A5A5;
+    border-left-color: var(--accent-red);
 }
 
 .notification-item.assessment-notification {
-    border-left-color: #6B8E6F;
+    border-left-color: var(--primary);
 }
 
 .notification-item.achievement-notification {
-    border-left-color: #F4D89F;
+    border-left-color: var(--accent);
 }
 
 .notification-item.recommendation-notification {
-    border-left-color: #6B8E6F;
+    border-left-color: var(--primary);
 }
 
 .notification-item.system-notification {
-    border-left-color: #8BA98D;
+    border-left-color: var(--primary-light);
 }
 
 /* Notification list icon - scoped so it does not resize navbar bells. */

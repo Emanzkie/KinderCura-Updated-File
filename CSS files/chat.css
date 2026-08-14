@@ -97,7 +97,7 @@
 }
 
 .thread-badge {
-    background: #e74c3c;
+    background: var(--danger);
     color: white;
     border-radius: 50%;
     min-width: 18px;

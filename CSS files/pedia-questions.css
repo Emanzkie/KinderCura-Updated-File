@@ -259,15 +259,15 @@
     padding: 0.25rem 0.65rem;
     white-space: nowrap;
     /* Same amber / green already used by the tracker column headings. */
-    background: #f1f8f1;
-    border: 1px solid #c8e6c9;
-    color: #155724;
+    background: rgba(168, 196, 157, 0.15);
+    border: 1px solid var(--success);
+    color: var(--primary-dark);
 }
 
 .tcard-status--pending {
-    background: #fff8e6;
-    border-color: #f0e0b8;
-    color: #856404;
+    background: rgba(244, 216, 159, 0.25);
+    border-color: var(--accent);
+    color: var(--text-dark);
 }
 
 /* --- Question set line, on its own row under the divider --- */
@@ -337,7 +337,7 @@
 }
 
 .tcard-q-note--pending {
-    color: #856404;
+    color: var(--text-dark);
     font-style: normal;
 }
 
@@ -601,15 +601,15 @@
 
 /* Same amber / green already used by the tracker column headings. */
 #questionsList .mini-chip.pending {
-    color: #856404;
-    background: #fff8e6;
-    border-color: #f0e0b8;
+    color: var(--text-dark);
+    background: rgba(244, 216, 159, 0.25);
+    border-color: var(--accent);
 }
 
 #questionsList .mini-chip.answered {
-    color: #155724;
-    background: #f1f8f1;
-    border-color: #c8e6c9;
+    color: var(--primary-dark);
+    background: rgba(168, 196, 157, 0.15);
+    border-color: var(--success);
 }
 
 /* --- "Questions in this set:" block --- */
@@ -822,9 +822,9 @@ body.modal-open {
 /* Inline error banner inside the question modal (hidden until JS shows it). */
 #modalError {
     display: none;
-    background: #fdecea;
-    border: 1px solid #f5c2c0;
-    color: #a13f3a;
+    background: rgba(232, 165, 165, 0.15);
+    border: 1px solid var(--accent-red);
+    color: var(--danger);
     border-radius: 8px;
     padding: 0.6rem 0.8rem;
     font-size: 0.85rem;

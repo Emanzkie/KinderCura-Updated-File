@@ -18,21 +18,21 @@
 }
 
 .prc-badge--pending {
-  background: #FFF3CD;
-  color: #856404;
-  border: 1px solid #FFE69C;
+  background: rgba(244, 216, 159, 0.3);
+  color: var(--text-dark);
+  border: 1px solid var(--accent);
 }
 
 .prc-badge--approved {
-  background: #D1E7DD;
-  color: #0F5132;
-  border: 1px solid #BADBCC;
+  background: rgba(168, 196, 157, 0.25);
+  color: var(--primary-dark);
+  border: 1px solid var(--success);
 }
 
 .prc-badge--rejected {
-  background: #F8D7DA;
-  color: #842029;
-  border: 1px solid #F5C2C7;
+  background: rgba(232, 165, 165, 0.2);
+  color: var(--danger);
+  border: 1px solid var(--accent-red);
 }
 
 .prc-badge--unsubmitted {
@@ -425,15 +425,15 @@
 
 .prc-btn--reject {
   background: white;
-  color: #c0392b;
-  border: 2px solid #e6b0b0;
+  color: var(--danger);
+  border: 2px solid var(--accent-red);
   flex: 1;
   justify-content: center;
 }
 
 .prc-btn--reject:hover:not(:disabled) {
-  background: #fdf0f0;
-  border-color: #c0392b;
+  background: rgba(232, 165, 165, 0.1);
+  border-color: var(--danger);
 }
 
 .prc-btn--confirm-reject {
@@ -820,8 +820,8 @@
 
 #prcVerificationModal .prc-btn--reject {
   background: white;
-  color: #c0392b;
-  border: 2px solid #e6b0b0;
+  color: var(--danger);
+  border: 2px solid var(--accent-red);
   padding: 0.65rem 1.5rem;
   border-radius: 8px;
   font-weight: 600;
@@ -831,8 +831,8 @@
 }
 
 #prcVerificationModal .prc-btn--reject:hover {
-  background: #fdf0f0;
-  border-color: #c0392b;
+  background: rgba(232, 165, 165, 0.1);
+  border-color: var(--danger);
   transform: translateY(-2px);
 }
 

@@ -21,8 +21,8 @@
 }
 
 .error-msg {
-    background: #fde8e8;
-    color: #c0392b;
+    background: rgba(232, 165, 165, 0.15);
+    color: var(--danger);
     padding: 0.8rem 1rem;
     border-radius: 8px;
     margin-bottom: 1rem;
@@ -31,8 +31,8 @@
 }
 
 .success-msg {
-    background: #d4edda;
-    color: #155724;
+    background: rgba(168, 196, 157, 0.2);
+    color: var(--primary-dark);
     padding: 0.8rem 1rem;
     border-radius: 8px;
     margin-bottom: 1rem;
@@ -358,7 +358,7 @@
 }
 
 .signup-page .required-label {
-    color: #b84f4f;
+    color: var(--danger);
     font-weight: 700;
 }
 
@@ -435,7 +435,7 @@
     border: 1px solid #f0c7c7;
     border-left: 4px solid #d36f6f;
     background: #fff1f1;
-    color: #8c2f2f;
+    color: var(--danger);
     line-height: 1.45;
 }
 

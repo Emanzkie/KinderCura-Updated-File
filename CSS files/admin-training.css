@@ -68,24 +68,24 @@
 }
 
 .status-ready {
-  background: #e8f4ea;
-  color: #1e6f3f;
+  background: rgba(168, 196, 157, 0.2);
+  color: var(--primary-dark);
 }
 
 .status-processing {
   animation: pulse 1.5s infinite;
-  background: #e6f0ff;
-  color: #1a56db;
+  background: rgba(107, 142, 111, 0.1);
+  color: var(--primary);
 }
 
 .status-processed {
-  background: #dff5e3;
-  color: #1e6f3f;
+  background: rgba(168, 196, 157, 0.25);
+  color: var(--primary-dark);
 }
 
 .status-review {
-  background: #fde8e8;
-  color: #c0392b;
+  background: rgba(232, 165, 165, 0.15);
+  color: var(--danger);
 }
 
 .dataset-actions {
@@ -108,8 +108,8 @@
 }
 
 .delete-action {
-  border-color: #e1b6b6;
-  color: #c0392b;
+  border-color: var(--accent-red);
+  color: var(--danger);
 }
 
 .empty-cell {
@@ -119,7 +119,7 @@
 }
 
 .error-cell {
-  color: #c0392b;
+  color: var(--danger);
 }
 
 @media (max-width: 760px) {

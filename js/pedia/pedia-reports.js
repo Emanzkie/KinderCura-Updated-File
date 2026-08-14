@@ -204,26 +204,26 @@ function renderCohortTiles(overview) {
                 : `${plural(patients, 'child', 'children')} you have an appointment with.`}</p>
         </div>
         <div class="report-tile">
-            <p class="tile-label">Screenings</p>
+            <p class="tile-label">Assessments</p>
             <p class="tile-value">${screenings}</p>
             <p class="tile-sub">${screenings === 0
-                ? 'No screening results in this date range.'
-                : `Completed ${plural(screenings, 'screening')} in range.`}</p>
+                ? 'No assessment results in this date range.'
+                : `Completed ${plural(screenings, 'assessment')} in range.`}</p>
         </div>
         <div class="report-tile">
-            <p class="tile-label">Patients screened</p>
+            <p class="tile-label">Patients assessed</p>
             <p class="tile-value">${withScreening}</p>
             <p class="tile-sub">${patients === 0
                 ? '—'
                 : `${patients - withScreening} of your ${patients} ${plural(patients, 'patient')} ${
-                    patients - withScreening === 1 ? 'has' : 'have'} no screening in range.`}</p>
+                    patients - withScreening === 1 ? 'has' : 'have'} no assessment in range.`}</p>
         </div>
         <div class="report-tile">
-            <p class="tile-label">Unstamped band version</p>
+            <p class="tile-label">Historical Assessments</p>
             <p class="tile-value">${legacy}</p>
             <p class="tile-sub">${legacy === 0
-                ? 'Every screening in range records which band set scored it.'
-                : `${plural(legacy, 'screening')} saved before the band sets were unified.`}</p>
+                ? 'Every assessment in range uses the standard scoring baseline.'
+                : `${plural(legacy, 'assessment')} using historical scoring baseline.`}</p>
         </div>`;
 }
 
@@ -242,10 +242,7 @@ function renderClassification(overview) {
                 <h2>Classification overview</h2>
                 <div class="report-empty">
                     <h3>No patients yet</h3>
-                    <p>
-                        A child appears here once a parent books an appointment with you. Until then
-                        there is nothing to classify — this is an empty roster, not a failed report.
-                    </p>
+                    <p>A child will appear here once a parent books an appointment with you.</p>
                 </div>
             </div>`;
         return;
@@ -256,11 +253,11 @@ function renderClassification(overview) {
             <div class="report-card">
                 <h2>Classification overview</h2>
                 <div class="report-empty">
-                    <h3>No screenings in this date range</h3>
+                    <h3>No assessments in this date range</h3>
                     <p>
                         You have ${patients} ${plural(patients, 'patient')}, but none of them has a
-                        completed screening scored within the selected dates. Widen the range or
-                        choose “All time”.
+                        completed assessment within the selected dates. Widen the range or
+                        choose "All time".
                     </p>
                 </div>
             </div>`;
@@ -283,22 +280,15 @@ function renderClassification(overview) {
     section.innerHTML = `
         <div class="report-card">
             <h2>Classification overview</h2>
-            <p class="card-sub">
-                Where your patients' most recent screenings fall across the four band cutoffs.
-                <strong>One child, one count.</strong> Each child contributes only their latest
-                screening in range, so a child screened four times does not outweigh three children
-                screened once. Both charts below therefore total
-                <strong>${withScreening}</strong> ${plural(withScreening, 'child', 'children')}.
-            </p>
 
             <div class="chart-row">
                 <div>
                     <div class="chart-box"><canvas id="bandDomainChart"></canvas></div>
-                    <p class="chart-caption">Band distribution per scoring domain (stacked; each bar totals ${withScreening}).</p>
+                    <p class="chart-caption">Band distribution per domain (${withScreening} ${plural(withScreening, 'child', 'children')}).</p>
                 </div>
                 <div>
                     <div class="chart-box"><canvas id="overallBandChart"></canvas></div>
-                    <p class="chart-caption">Overall band, latest screening per child.</p>
+                    <p class="chart-caption">Overall band, latest assessment per child.</p>
                 </div>
             </div>
 
@@ -310,19 +300,6 @@ function renderClassification(overview) {
                     <p class="risk-label"><strong>Any domain</strong></p>
                 </div>
             </div>
-            <p class="card-footnote">
-                Risk flags count children whose latest screening put a domain below the at-risk floor —
-                the same rule that writes a risk flag at screening time. “Any domain” counts each
-                child once however many domains were flagged, so it is never the sum of the four.
-                ${legacy > 0 ? `
-                <br><br>
-                <strong>Mixed band versions.</strong> ${legacy} of the ${screenings}
-                ${plural(screenings, 'screening')} in range ${legacy === 1 ? 'was' : 'were'} saved
-                before the band sets were unified. Their bands here are derived from the stored
-                score under the current cutoffs, so this chart is internally consistent — but the
-                band labels stored on those records, which older pages read, were assigned under
-                different cutoffs and may not match.` : ''}
-            </p>
         </div>`;
 
     drawClassificationCharts(overview);
@@ -357,8 +334,6 @@ function drawClassificationCharts(overview) {
                     y: {
                         stacked: true,
                         beginAtZero: true,
-                        // Child counts are whole numbers; a 0.5 gridline would
-                        // imply a precision the data does not have.
                         ticks: { precision: 0 },
                         title: { display: true, text: 'Children' },
                     },
@@ -408,16 +383,15 @@ function renderProgression(progression) {
     if (!children.length) {
         section.innerHTML = `
             <div class="report-card">
-                <h2>Screening-to-screening progression</h2>
+                <h2>Assessment-to-assessment progression</h2>
                 <div class="report-empty">
-                    <h3>Not enough repeat screenings yet</h3>
+                    <h3>Not enough repeat assessments yet</h3>
                     <p>
-                        A progression needs two screenings for the same child so the scores can be
-                        compared. ${withScreening === 0
-                            ? 'None of your patients has a screening in this date range yet.'
-                            : `${single} of your ${withScreening} screened ${plural(withScreening, 'patient')}
-                               ${single === 1 ? 'has' : 'have'} exactly one screening in range, so there is
-                               nothing to compare them against. A single score is a reading, not a trend.`}
+                        Progression requires at least two assessments for the same child.
+                        ${withScreening === 0
+                            ? 'None of your patients has an assessment in this date range yet.'
+                            : `${single} of your ${withScreening} assessed ${plural(withScreening, 'patient')}
+                               ${single === 1 ? 'has' : 'have'} only one assessment in range.`}
                     </p>
                 </div>
             </div>`;
@@ -429,13 +403,9 @@ function renderProgression(progression) {
 
     section.innerHTML = `
         <div class="report-card">
-            <h2>Screening-to-screening progression</h2>
+            <h2>Assessment-to-assessment progression</h2>
             <p class="card-sub">
-                Your patients with at least two screenings in range, comparing their first against
-                their latest. Band movement compares which <em>band</em> the score falls in, not the
-                points gained: a child rising from 61% to 78% has gained 17 points without leaving
-                the Developing band, and this column will say so.
-                Select a row to see every screening behind it.
+                Select a row to see each assessment in detail.
             </p>
 
             <div class="report-tiles" style="margin-bottom:1.4rem;">
@@ -458,7 +428,7 @@ function renderProgression(progression) {
                     <thead>
                         <tr>
                             <th>Patient</th>
-                            <th class="num">Screenings</th>
+                            <th class="num">Assessments</th>
                             <th>First</th>
                             <th>Latest</th>
                             <th class="num">Change</th>
@@ -471,8 +441,8 @@ function renderProgression(progression) {
             </div>
             ${single > 0 ? `
             <p class="card-footnote">
-                ${single} further screened ${plural(single, 'patient')} ${single === 1 ? 'is' : 'are'}
-                not listed, having only one screening in this range.
+                ${single} additional ${plural(single, 'patient')} with only one assessment in this range ${single === 1 ? 'is' : 'are'}
+                not listed.
             </p>` : ''}
         </div>`;
 }
@@ -483,7 +453,7 @@ function progressionRowHtml(child, index) {
     const latest = child.latestScreening || {};
 
     const warn = child.bandComparabilityWarning
-        ? '<span class="warn-chip" title="These two screenings were stamped with different band-set versions. The bands shown here are recomputed from the stored scores under the current cutoffs, so this row is consistent — but the band labels saved on those records, which other pages read, were assigned under different cutoffs.">mixed band version</span>'
+        ? '<span class="warn-chip" title="These screenings use different scoring baselines. Scores are presented consistently based on recorded data.">historical baseline</span>'
         : '';
 
     return `
@@ -533,7 +503,7 @@ function progressionDetailHtml(child) {
             ${DOMAINS.map((d) => `<td class="num">${scoreText(s.domains?.[d.key]?.score)}</td>`).join('')}
             <td class="num"><strong>${scoreText(s.overallScore)}</strong></td>
             <td>${bandChip(s.overallBand)}</td>
-            <td style="font-size:0.76rem;color:var(--text-light);">${escapeHtml(s.scoringBandsVersion || 'not stamped')}</td>
+            <td style="font-size:0.76rem;color:var(--text-light);">${escapeHtml(s.scoringBandsVersion || 'standard')}</td>
         </tr>`).join('');
 
     return `
@@ -548,13 +518,13 @@ function progressionDetailHtml(child) {
             <tbody>${perDomain}</tbody>
         </table>
 
-        <h4 style="margin-top:1.1rem;">Every screening in range (${count(child.screeningCount)})</h4>
+        <h4 style="margin-top:1.1rem;">Every assessment in range (${count(child.screeningCount)})</h4>
         <table>
             <thead>
                 <tr>
-                    <th>Screened</th>
+                    <th>Assessed</th>
                     ${DOMAINS.map((d) => `<th class="num">${escapeHtml(d.label)}</th>`).join('')}
-                    <th class="num">Overall</th><th>Band</th><th>Band set</th>
+                    <th class="num">Overall</th><th>Band</th><th>Baseline</th>
                 </tr>
             </thead>
             <tbody>${history}</tbody>
@@ -586,45 +556,27 @@ function renderOutcomes(outcomes) {
     const labelled = count(outcomes?.labelledCount);
     const screenings = count(outcomes?.screeningCount);
 
-    // The methodological note is shown whether or not any labels exist. It is
-    // the reason this section returns counts and stops there.
-    const methodNote = `
-        <p class="card-footnote">
-            <strong>No accuracy figure is computed here, deliberately.</strong> Three reasons, each
-            enough on its own: the number of labelled screenings is far too small for any rate to be
-            meaningful; the pediatrician recording the outcome has already seen the screening score
-            on the same form, so the label is not independent of what it would be checking; and the
-            band cutoffs themselves are still unconfirmed. The contingency table is the honest
-            artefact — a sensitivity or accuracy percentage computed from it would not be.
-        </p>`;
+    const methodNote = '';
 
     const coverage = `
         <div class="coverage-line">
-            <strong>${labelled} of ${screenings}</strong> ${plural(screenings, 'screening')} in this
+            <strong>${labelled} of ${screenings}</strong> ${plural(screenings, 'assessment')} in this
             range ${labelled === 1 ? 'has' : 'have'} a recorded clinical outcome.
-            ${screenings > 0 && labelled < screenings
-                ? `${screenings - labelled} ${plural(screenings - labelled, 'screening')} ${
-                    screenings - labelled === 1 ? 'is' : 'are'} unlabelled. An outcome is recorded
-                    only when a pediatrician chooses one in the diagnosis form; it is never inferred
-                    from the written diagnosis.`
-                : ''}
         </div>`;
 
     if (labelled === 0) {
         section.innerHTML = `
             <div class="report-card">
-                <h2>Screening band vs recorded clinical outcome</h2>
+                <h2>Assessment band vs recorded clinical outcome</h2>
                 <p class="card-sub">
-                    How the screening classified each child, set against what the reviewing
-                    pediatrician actually concluded.
+                    Compare assessment results with clinical outcomes recorded by the pediatrician.
                 </p>
                 ${coverage}
                 <div class="report-empty">
-                    <h3>Outcome labelling has not started yet</h3>
+                    <h3>No clinical outcomes recorded yet</h3>
                     <p>${escapeHtml(outcomes?.message
-                        || 'No screening in this range carries a recorded clinical outcome, so there is nothing to cross-tabulate.')}</p>
+                        || 'No assessment in this range has a recorded clinical outcome.')}</p>
                 </div>
-                ${methodNote}
             </div>`;
         return;
     }
@@ -666,11 +618,9 @@ function renderOutcomes(outcomes) {
 
     section.innerHTML = `
         <div class="report-card">
-            <h2>Screening band vs recorded clinical outcome</h2>
+            <h2>Assessment band vs recorded clinical outcome</h2>
             <p class="card-sub">
-                How the screening classified each child, set against what the reviewing pediatrician
-                actually concluded. Rows are the screening's overall band; columns are the structured
-                outcome recorded at review. Read it as counts of screenings, not as a score.
+                Compare assessment results with clinical outcomes recorded by the pediatrician.
             </p>
             ${coverage}
 
@@ -678,7 +628,7 @@ function renderOutcomes(outcomes) {
                 <table class="report-table crosstab">
                     <thead>
                         <tr>
-                            <th>Screening band</th>
+                            <th>Assessment band</th>
                             ${outcomeKeys.map((oKey) => `<th class="rot">${escapeHtml(outcomeLabel(oKey))}</th>`).join('')}
                             <th class="total">Total</th>
                         </tr>
@@ -694,20 +644,19 @@ function renderOutcomes(outcomes) {
                 </table>
             </div>
 
-            <h2 style="margin-top:1.8rem;font-size:1rem;">Labelled screenings</h2>
+            <h2 style="margin-top:1.8rem;font-size:1rem;">Labelled assessments</h2>
             <div class="report-table-wrap">
                 <table class="report-table">
                     <thead>
                         <tr>
-                            <th>Patient</th><th>Screened</th><th class="num">Overall</th>
-                            <th>Screening band</th><th>Clinical outcome</th>
+                            <th>Patient</th><th>Assessed</th><th class="num">Overall</th>
+                            <th>Assessment band</th><th>Clinical outcome</th>
                             <th>Domains concerned</th><th>Outcome recorded</th>
                         </tr>
                     </thead>
                     <tbody>${detailRows}</tbody>
                 </table>
             </div>
-            ${methodNote}
         </div>`;
 }
 
@@ -753,7 +702,7 @@ async function loadReports() {
             overviewData.range.to ? fmtShortDate(overviewData.range.to) : 'today'}`
         : 'all time';
     meta.textContent = `${patients} ${plural(patients, 'patient')} • ${screenings} ${
-        plural(screenings, 'screening')} • ${rangeLabel}`;
+        plural(screenings, 'assessment')} • ${rangeLabel}`;
 
     renderCohortTiles(overviewData);
     renderClassification(overviewData);

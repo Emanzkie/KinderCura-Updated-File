@@ -278,8 +278,8 @@
 }
 
 .insight-error {
-    background: #fdf0ef;
-    border: 1px solid #e8c4bf;
+    background: rgba(232, 165, 165, 0.1);
+    border: 1px solid var(--accent-red);
     border-style: solid;
 }
 
@@ -409,10 +409,10 @@
    be impossible to skim past. */
 .rate-item.rate-critical {
     background: #fdf0ef;
-    border-color: #e8c4bf;
+    border-color: var(--accent-red);
 }
 
-.rate-item.rate-critical .rate-value { color: #b4544a; }
+.rate-item.rate-critical .rate-value { color: var(--danger); }
 
 /* ── Pipeline strip (the concordance empty state) ────────────────────────── */
 .pipeline-strip {

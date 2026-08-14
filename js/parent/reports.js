@@ -150,15 +150,15 @@ function renderTrend(assessments, trendAvailable) {
             <div class="report-card">
                 <h2>Score over time</h2>
                 <div class="trend-empty">
-                    <h3>Not enough screenings yet to show a trend</h3>
+                    <h3>Not enough assessments yet to show a trend</h3>
                     <p>
-                        A trend needs at least two completed screenings so the scores can be
+                        A trend needs at least two completed assessments so the scores can be
                         compared. ${scored.length === 1
-                            ? 'There is one completed screening so far, shown below.'
-                            : 'There are no completed screenings for this child yet.'}
+                            ? 'There is one completed assessment so far, shown below.'
+                            : 'There are no completed assessments for this child yet.'}
                     </p>
                     <button class="btn btn-primary" onclick="goToScreening()">
-                        ${scored.length === 1 ? 'Start another screening' : 'Start a screening'}
+                        ${scored.length === 1 ? 'Start another assessment' : 'Start an assessment'}
                     </button>
                 </div>
             </div>`;
@@ -168,9 +168,8 @@ function renderTrend(assessments, trendAvailable) {
         <div class="report-card">
             <h2>Score over time</h2>
             <p class="card-sub">
-                Overall screening score at each completed screening, oldest to newest.
-                Scores can move for many reasons, including your child's age on the day
-                and how they were feeling &mdash; a single change is not a conclusion.
+                Overall assessment score at each completed assessment, oldest to newest.
+                Assessment results can change over time. A single result does not give a complete picture of your child's development.
             </p>
             <div class="trend-chart-wrap"><canvas id="trendChart"></canvas></div>
         </div>`;
@@ -235,9 +234,9 @@ function renderLatestDomains(latest) {
     if (!latest.scoresAvailable) {
         return `
             <div class="report-card">
-                <h2>Most recent screening</h2>
+                <h2>Most recent assessment</h2>
                 <p class="card-sub">
-                    The scores for the screening on
+                    The scores for the assessment on
                     ${escapeHtml(fmtDate(latest.completedAt) || 'an earlier date')}
                     are unavailable, so they are not shown here. Please mention this to
                     your pediatrician or contact support.
@@ -254,7 +253,7 @@ function renderLatestDomains(latest) {
             return `
                 <div class="domain-card">
                     <div class="domain-card-head"><h3>${escapeHtml(d.label)}</h3></div>
-                    <p class="domain-score">Score unavailable for this screening.</p>
+                    <p class="domain-score">Score unavailable for this assessment.</p>
                 </div>`;
         }
         const score = Math.round(d.score);
@@ -272,10 +271,10 @@ function renderLatestDomains(latest) {
 
     return `
         <div class="report-card">
-            <h2>Most recent screening${dateStr ? ` &mdash; ${escapeHtml(dateStr)}` : ''}</h2>
+            <h2>Most recent assessment${dateStr ? ` &mdash; ${escapeHtml(dateStr)}` : ''}</h2>
             <p class="card-sub">
                 Overall score <strong>${overall}%</strong> (${escapeHtml(overallLabel)}).
-                Each area below is scored separately against fixed cutoffs for that area.
+                Each area shows how your child performed in that part of the assessment.
             </p>
             <div class="domain-grid">${cards}</div>
         </div>`;
@@ -294,10 +293,10 @@ function renderDiscussPrompt(latest) {
         <div class="report-card">
             <h2>Worth talking through</h2>
             <p class="card-sub">
-                This screening highlighted some areas that would be worth discussing with
-                your pediatrician. Screening results point to what to look at more
+                This assessment highlighted some areas that would be worth discussing with
+                your pediatrician. Assessment results point to what to look at more
                 closely &mdash; they do not tell you what is causing it, and many children
-                who screen this way turn out to be developing typically. A pediatrician
+                who assess this way turn out to be developing typically. A pediatrician
                 can look at the full picture with you.
             </p>
             <button class="btn btn-primary" onclick="goToAppointments()">Book an appointment</button>
@@ -322,7 +321,7 @@ function renderTimeline(assessments) {
                         </div>
                         <div class="timeline-overall" style="color:var(--text-light);">&mdash;</div>
                     </div>
-                    <p class="timeline-note">Scores for this screening are unavailable.</p>
+                    <p class="timeline-note">Scores for this assessment are unavailable.</p>
                 </div>`;
         }
 
@@ -357,8 +356,8 @@ function renderTimeline(assessments) {
 
     return `
         <div class="report-card">
-            <h2>Screening history</h2>
-            <p class="card-sub">Every completed screening for this child, most recent first.</p>
+            <h2>Assessment history</h2>
+            <p class="card-sub">Every completed assessment for this child, most recent first.</p>
             <div class="timeline-list">${rows}</div>
         </div>`;
 }
@@ -374,7 +373,7 @@ function renderCustomQuestions(cq) {
             <p class="custom-q-text">${escapeHtml(q.questionText)}</p>
             <p class="custom-q-answer">Your answer: <strong>${escapeHtml(q.answer)}</strong></p>
             <p class="custom-q-source">
-                <span class="origin-tag">Pediatrician question</span>
+                <span class="origin-tag">Pediatrician Question</span>
                 Asked by ${escapeHtml(q.pediatricianName)}${
                     q.answeredAt ? ` &middot; answered ${escapeHtml(fmtDate(q.answeredAt) || '')}` : ''}
             </p>
@@ -384,9 +383,7 @@ function renderCustomQuestions(cq) {
         <div class="report-card">
             <h2>Pediatrician follow-up questions</h2>
             <p class="card-sub">
-                These questions were written by your pediatrician for your child
-                specifically. They are separate from the standard screening questions and
-                are not part of the scores above.
+                These are additional questions from your pediatrician about your child. They are shown separately from the main assessment results.
                 ${cq.pendingCount ? `You have ${cq.pendingCount} unanswered question${cq.pendingCount === 1 ? '' : 's'}.` : ''}
             </p>
             ${items}
@@ -401,8 +398,8 @@ function renderDataNote(unrenderable) {
     const missingDates = unrenderable.filter((u) => u.reason === 'no_completed_date').length;
 
     const parts = [];
-    if (missingScores) parts.push(`${missingScores} screening${missingScores === 1 ? '' : 's'} with no saved scores`);
-    if (missingDates) parts.push(`${missingDates} screening${missingDates === 1 ? '' : 's'} with no completion date`);
+    if (missingScores) parts.push(`${missingScores} assessment${missingScores === 1 ? '' : 's'} with no saved scores`);
+    if (missingDates) parts.push(`${missingDates} assessment${missingDates === 1 ? '' : 's'} with no completion date`);
 
     return `
         <div class="data-note">
@@ -416,12 +413,12 @@ function renderDataNote(unrenderable) {
 function renderEmptyState() {
     return `
         <div class="report-state">
-            <h2>No completed screenings yet</h2>
+            <h2>No completed assessments yet</h2>
             <p>
-                Once you complete a screening for this child, the results will appear here.
-                A progress trend needs at least two completed screenings before it can be shown.
+                Once you complete an assessment for this child, the results will appear here.
+                A progress trend needs at least two completed assessments before it can be shown.
             </p>
-            <button class="btn btn-primary" onclick="goToScreening()">Start a screening</button>
+            <button class="btn btn-primary" onclick="goToScreening()">Start an assessment</button>
         </div>`;
 }
 
@@ -438,7 +435,7 @@ async function loadReport() {
             content.innerHTML = `
                 <div class="report-state">
                     <h2>No child registered yet</h2>
-                    <p>Add your child from the dashboard to start tracking screening results.</p>
+                    <p>Add your child from the dashboard to start tracking assessment results.</p>
                     <button class="btn btn-primary" onclick="window.location.href='/parent/dashboard.html'">Go to dashboard</button>
                 </div>`;
             return;
@@ -453,7 +450,7 @@ async function loadReport() {
 
         const assessments = reportData.assessments || [];
         meta.textContent = `${activeChild.firstName} ${activeChild.lastName} • ${
-            assessments.length} completed screening${assessments.length === 1 ? '' : 's'}`;
+            assessments.length} completed assessment${assessments.length === 1 ? '' : 's'}`;
 
         if (!assessments.length) {
             content.innerHTML = renderEmptyState();

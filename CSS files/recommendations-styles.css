@@ -7,6 +7,7 @@
 :root {
     --primary: #6B8E6F;
     --primary-light: #8BA98D;
+    --primary-dark: #5A7560;
     --accent: #F4D89F;
     --accent-light: #F8E5B5;
     --accent-red: #E8A5A5;
@@ -573,8 +574,8 @@ body {
 }
 
 .review-pill {
-    background: #e8f5e9;
-    color: #2e7d32;
+    background: rgba(168, 196, 157, 0.2);
+    color: var(--primary-dark);
     padding: 0.5rem 1rem;
     border-radius: 999px;
     font-size: 0.8rem;

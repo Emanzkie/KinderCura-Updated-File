@@ -294,14 +294,14 @@ body {
 
 .gm-status.pending,
 .gm-status.active {
-    background: #e8f5e9;
-    color: #27ae60;
+    background: rgba(168, 196, 157, 0.2);
+    color: var(--primary-dark);
 }
 
 .gm-status.expired,
 .gm-status.inactive {
-    background: #fde8e8;
-    color: #c0392b;
+    background: rgba(232, 165, 165, 0.15);
+    color: var(--danger);
 }
 
 /* --- Action Groups --- */

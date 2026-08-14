@@ -66,7 +66,7 @@
 }
 
 .thread-item.active {
-    background: #f0f5f0;
+    background: var(--bg-primary);
     border-left: 3px solid var(--primary);
 }
 
@@ -107,7 +107,7 @@
 }
 
 .thread-badge {
-    background: #e74c3c;
+    background: var(--danger);
     color: white;
     border-radius: 50%;
     min-width: 18px;
@@ -422,7 +422,7 @@
 
 .upload-prog {
     height: 4px;
-    background: #e0e0e0;
+    background: var(--border);
     border-radius: 4px;
     margin-bottom: 0.45rem;
     display: none;

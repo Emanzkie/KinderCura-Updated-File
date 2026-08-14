@@ -38,21 +38,17 @@
     <div class="dashboard-container">
         <div class="page-header">
             <h1>Question Data Sources</h1>
-            <p>Where each screening question and answer came from — the fixed core question bank versus questions a pediatrician entered.</p>
-            <p style="color:var(--text-light);margin-top:0.4rem;">The distinction is how a question enters the system, not who wrote it. Core bank questions are fixed for every child and clinic and change only by deployment; pediatrician entries are created at runtime and scoped to specific children.</p>
+            <p>View screening questions categorized by standard baseline questions, pediatrician-added custom questions, and imported question sets.</p>
         </div>
 
         <div class="overview-grid" style="margin-bottom:2rem;">
             <div class="overview-card"><h3>Total Questions</h3><p id="sumTotal" style="font-size:2rem;font-weight:700;color:var(--primary);margin-top:0.6rem;">0</p><p id="sumTotalAnswers" style="font-size:0.8rem;color:var(--text-light);margin-top:0.2rem;">0 answers</p></div>
-            <div class="overview-card"><h3>From Core Bank</h3><p id="sumCore" style="font-size:2rem;font-weight:700;color:#2f4858;margin-top:0.6rem;">0</p><p id="sumCoreAnswers" style="font-size:0.8rem;color:var(--text-light);margin-top:0.2rem;">0 answers</p></div>
-            <div class="overview-card"><h3>From Pedia Entry</h3><p id="sumPedia" style="font-size:2rem;font-weight:700;color:#1e5b3a;margin-top:0.6rem;">0</p><p id="sumPediaAnswers" style="font-size:0.8rem;color:var(--text-light);margin-top:0.2rem;">0 answers</p></div>
-            <div class="overview-card"><h3>From Dataset</h3><p id="sumDataset" style="font-size:2rem;font-weight:700;color:#6d3f8e;margin-top:0.6rem;">0</p><p id="sumDatasetAnswers" style="font-size:0.8rem;color:var(--text-light);margin-top:0.2rem;">0 answers</p></div>
-            <div class="overview-card is-hidden" id="unclassifiedCard"><h3>Unclassified Answers</h3><p id="sumUnclassified" style="font-size:2rem;font-weight:700;color:#7a5c00;margin-top:0.6rem;">0</p><p id="sumUnclassifiedAnswers" style="font-size:0.8rem;color:var(--text-light);margin-top:0.2rem;">cannot be traced to a question</p></div>
+            <div class="overview-card"><h3>Standard Questions</h3><p id="sumCore" style="font-size:2rem;font-weight:700;color:#2f4858;margin-top:0.6rem;">0</p><p id="sumCoreAnswers" style="font-size:0.8rem;color:var(--text-light);margin-top:0.2rem;">0 answers</p></div>
+            <div class="overview-card"><h3>Pediatrician Questions</h3><p id="sumPedia" style="font-size:2rem;font-weight:700;color:#1e5b3a;margin-top:0.6rem;">0</p><p id="sumPediaAnswers" style="font-size:0.8rem;color:var(--text-light);margin-top:0.2rem;">0 answers</p></div>
+            <div class="overview-card"><h3>Imported Questions</h3><p id="sumDataset" style="font-size:2rem;font-weight:700;color:#6d3f8e;margin-top:0.6rem;">0</p><p id="sumDatasetAnswers" style="font-size:0.8rem;color:var(--text-light);margin-top:0.2rem;">0 answers</p></div>
+            <div class="overview-card is-hidden" id="unclassifiedCard"><h3>Historical Answers</h3><p id="sumUnclassified" style="font-size:2rem;font-weight:700;color:#7a5c00;margin-top:0.6rem;">0</p><p id="sumUnclassifiedAnswers" style="font-size:0.8rem;color:var(--text-light);margin-top:0.2rem;">unspecified origin</p></div>
         </div>
 
-        <!-- Dataset Usage. Rendered entirely from the API; when no question
-             carries a checkable sourceCitation this shows an explicit empty
-             state rather than implying a provenance that does not exist. -->
         <div class="card dataset-usage" id="datasetUsageCard" style="margin-bottom:2rem;">
             <h3 style="margin-bottom:0.85rem;">
                 <img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">
@@ -73,11 +69,9 @@
 
             <div class="origin-tabs" id="originTabs" role="tablist">
                 <button class="origin-tab active" role="tab" data-origin="all" onclick="setFilter('all')">All<span class="tab-count" id="tabCountAll"></span></button>
-                <button class="origin-tab" role="tab" data-origin="core_bank" onclick="setFilter('core_bank')">Core Bank<span class="tab-count" id="tabCountCore"></span></button>
-                <button class="origin-tab" role="tab" data-origin="pedia_entry" onclick="setFilter('pedia_entry')">Pedia Entry<span class="tab-count" id="tabCountPedia"></span></button>
-                <!-- Provenance view, not a storage origin: core-bank rows that
-                     carry a checkable sourceCitation. Shows 0 when none do. -->
-                <button class="origin-tab" role="tab" data-origin="dataset" onclick="setFilter('dataset')">Dataset<span class="tab-count" id="tabCountDataset"></span></button>
+                <button class="origin-tab" role="tab" data-origin="core_bank" onclick="setFilter('core_bank')">Standard Questions<span class="tab-count" id="tabCountCore"></span></button>
+                <button class="origin-tab" role="tab" data-origin="pedia_entry" onclick="setFilter('pedia_entry')">Pediatrician Questions<span class="tab-count" id="tabCountPedia"></span></button>
+                <button class="origin-tab" role="tab" data-origin="dataset" onclick="setFilter('dataset')">Imported Questions<span class="tab-count" id="tabCountDataset"></span></button>
             </div>
 
             <div style="overflow-x:auto;">
@@ -86,7 +80,7 @@
                         <tr>
                             <th>Question</th>
                             <th>Domain</th>
-                            <th>Origin</th>
+                            <th>Source Type</th>
                             <th>Created By</th>
                             <th>Created</th>
                             <th style="text-align:right;">Times Answered</th>

@@ -1,12 +1,4 @@
-<!-- Pediatrician Reports
-Purpose:
-- descriptive reporting over the stored screening scores of this pediatrician's
-  own patients: band distribution, screening-to-screening progression, and the
-  cross-tab of screening band against recorded clinical outcome
-- read-only; this page never writes anything
-- the shell (header/nav/notifications modal) is copied from
-  pediatrician-patients.html so the seven pedia pages stay consistent
--->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -60,55 +52,26 @@ Purpose:
                 <h1>Reports</h1>
                 <p class="report-meta" id="reportMeta">Loading…</p>
             </div>
-            <button class="btn btn-secondary" id="exportBtn" onclick="exportScreeningsCsv()" style="padding:0.75rem 1.4rem;">Export screenings (CSV)</button>
+            <button class="btn btn-secondary" id="exportBtn" onclick="exportScreeningsCsv()" style="padding:0.75rem 1.4rem;">Export assessments (CSV)</button>
         </div>
 
-        <!-- Always visible, never dismissible. Written into the markup rather
-             than rendered by the page script so it is present even if every
-             request on this page fails. -->
-        <div class="report-caveat" role="note">
-            <h3>What this report is, and what it is not</h3>
-            <ul>
-                <li>
-                    These figures describe <strong>rule-based screening scores</strong>. Each score is
-                    fixed arithmetic over the answers a parent gave, placed into a band by a fixed
-                    cutoff. Nothing here is predicted, estimated, or learned from data.
-                </li>
-                <li>
-                    The band cutoffs are <strong>pending confirmation from the consultant
-                    pediatrician</strong> and are recorded as unconfirmed in
-                    <code>constants/scoring.js</code>. They should not be described as clinically
-                    validated.
-                </li>
-                <li>
-                    Scores are <strong>not age-adjusted</strong>. A child's age decides which questions
-                    they are asked, never how the resulting score is judged.
-                </li>
-                <li>
-                    This is a <strong>screening</strong> report, not a diagnostic instrument. It counts
-                    what is on file so it can be discussed — it does not conclude anything about a
-                    child.
-                </li>
-            </ul>
-        </div>
 
         <!-- 1. Date range + cohort counts -->
         <div class="report-filters">
             <div class="report-filters-grid">
                 <div class="filter-field">
-                    <label for="rangeFrom">Screened from</label>
+                    <label for="rangeFrom">Assessed from</label>
                     <input type="date" id="rangeFrom">
                 </div>
                 <div class="filter-field">
-                    <label for="rangeTo">Screened to</label>
+                    <label for="rangeTo">Assessed to</label>
                     <input type="date" id="rangeTo">
                 </div>
                 <button class="btn btn-primary" onclick="applyRange()" style="padding:0.75rem 1.4rem;">Apply</button>
                 <button class="btn btn-secondary" onclick="clearRange()" style="padding:0.75rem 1.4rem;">All time</button>
             </div>
             <p class="filter-note">
-                Filters on the date each screening was scored. Leave both blank for all time.
-                Patients are always limited to children you have an appointment with.
+                Filters by the date each assessment was completed. Leave both blank for all time.
             </p>
         </div>
 
@@ -145,9 +108,7 @@ Purpose:
         </div>
     </div>
 </div>
-<!-- Load order matters. api.js supplies apiFetch/initNav/notification wiring;
-     scoring.js supplies window.KCScoring and MUST precede the page script,
-     which reads bands, labels, and colours from it at render time. -->
+
 <script src="/api.js"></script>
 <script src="/constants/scoring.js"></script>
 <script src="/notifications-card-ui.js"></script>

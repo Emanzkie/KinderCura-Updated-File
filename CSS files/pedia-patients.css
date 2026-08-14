@@ -27,23 +27,23 @@
 }
 
 .badge-approved {
-    background: var(--success, #4a7c59);
+    background: var(--success);
 }
 
 .badge-completed {
-    background: #3b82f6;
+    background: var(--primary);
 }
 
 .badge-cancelled {
-    background: #9ca3af;
+    background: var(--border);
 }
 
 .badge-rejected {
-    background: #ef4444;
+    background: var(--danger);
 }
 
 .badge-diagnosed {
-    background: var(--success, #4a7c59);
+    background: var(--success);
 }
 
 .badge-no-diag {

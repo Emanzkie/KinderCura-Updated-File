@@ -51,8 +51,8 @@
 }
 
 .success-msg {
-    background: #d4edda;
-    color: #155724;
+    background: rgba(168, 196, 157, 0.2);
+    color: var(--primary-dark);
     padding: 0.7rem 1rem;
     border-radius: 8px;
     margin-bottom: 1rem;
@@ -61,8 +61,8 @@
 }
 
 .error-msg {
-    background: #fde8e8;
-    color: #c0392b;
+    background: rgba(232, 165, 165, 0.15);
+    color: var(--danger);
     padding: 0.7rem 1rem;
     border-radius: 8px;
     margin-bottom: 1rem;
