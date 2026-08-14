@@ -5,12 +5,20 @@
 // - keeps parent child/assessment context in sync across dashboard, results, and recommendations
 // - refreshes the saved user from /auth/me so the latest profile picture appears after signup/profile updates
 
-const API = (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
+// NOTE: API and KC are attached to window rather than declared with `const`.
+// Several page scripts (the pediatrician pages, PARENT/profile.js) declare
+// their own top-level `const API` / `const KC`. Two `const` declarations of the
+// same name across two classic scripts is a SyntaxError that kills the whole
+// page, which is why those pages could not include this file at all — and so
+// never got the shared navbar/avatar/notification initialisation.
+// Assigning to window keeps this file collision-free: a page that declares its
+// own API/KC simply shadows these, exactly as it does today.
+window.API = (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
     ? 'http://localhost:3001/api'
     : '/api';
 
 // Shared local-storage helper used across parent, pediatrician, and admin pages
-const KC = {
+window.KC = {
     token:        () => localStorage.getItem('kc_token'),
     user:         () => { try { return JSON.parse(localStorage.getItem('kc_user')); } catch { return null; } },
     childId:      () => localStorage.getItem('kc_childId'),
@@ -20,9 +28,16 @@ const KC = {
         localStorage.setItem('kc_user', JSON.stringify(user));
         if (childId) localStorage.setItem('kc_childId', childId);
     },
+    // Every kc_* key the app writes must be listed here. kc_viewChildName in
+    // particular used to survive logout, so the next user to sign in on a
+    // shared computer could see the previous patient's name on the Results
+    // page before their own data loaded.
     clear: () => {
-        ['kc_token', 'kc_user', 'kc_childId', 'kc_assessmentId', 'kc_viewChildId']
-            .forEach((k) => localStorage.removeItem(k));
+        [
+            'kc_token', 'kc_user', 'kc_childId', 'kc_assessmentId',
+            'kc_viewChildId', 'kc_viewChildName', 'kc_prefPediaId',
+            'kc_preAssessmentRequired',
+        ].forEach((k) => localStorage.removeItem(k));
     }
 };
 
@@ -263,19 +278,17 @@ function applyNavUser(user) {
     if (navPic) {
         navPic.src = profileSrc + srcSuffix;
         navPic.style.objectFit = 'cover';
-        console.log('[AVATAR] nav found, applying src:', navPic.src);
-    } else {
-        console.log('[AVATAR] #navProfilePic not found, using .profile-icon fallback');
     }
 
+    // Admin and secretary pages have no #navProfilePic — they mark the avatar
+    // with .profile-icon only, so both selectors are always applied.
     document.querySelectorAll('.profile-icon').forEach((img) => {
         if (img.id === 'navProfilePic') return;
+        if (img.tagName !== 'IMG') return;
         img.src = profileSrc + srcSuffix;
         img.style.borderRadius = '50%';
         img.style.objectFit = 'cover';
     });
-
-    if (!hasUpload) console.log('[AVATAR] fallback used');
 }
 
 // Refreshes the saved user so the latest profile icon appears immediately
@@ -309,14 +322,31 @@ async function refreshCurrentUser() {
     return KC.user();
 }
 
+// Ten pages call initNav() themselves AND get the DOMContentLoaded call at the
+// bottom of this file, so every one of them used to hit /auth/me twice and
+// repaint the avatar four times. The in-flight promise is shared so concurrent
+// callers collapse into a single round trip; a later call (e.g. after a photo
+// upload) still refreshes, because the latch is cleared once it settles.
+let navInitPromise = null;
+
 async function initNav() {
-    const cachedUser = KC.user();
-    if (cachedUser) applyNavUser(cachedUser);
+    if (navInitPromise) return navInitPromise;
 
-    const freshUser = await refreshCurrentUser();
-    if (freshUser) applyNavUser(freshUser);
+    navInitPromise = (async () => {
+        const cachedUser = KC.user();
+        if (cachedUser) applyNavUser(cachedUser);
 
-    loadNotificationCount();
+        const freshUser = await refreshCurrentUser();
+        if (freshUser) applyNavUser(freshUser);
+
+        await loadNotificationCount();
+    })();
+
+    try {
+        return await navInitPromise;
+    } finally {
+        navInitPromise = null;
+    }
 }
 
 // Keep the bell badge updated everywhere

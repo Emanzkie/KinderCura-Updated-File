@@ -90,6 +90,26 @@
   </div>
 </div>
 
+<!-- Notifications modal. The navbar bell and its unread badge were already on
+     this page, but the modal they open was missing from the markup, so
+     openNotifications() bailed out and clicking the bell did nothing even
+     while the badge showed unread items. Same structure as the other parent
+     pages; the stylesheets for it are already linked in <head>. -->
+<div class="notification-modal notifications-modal" id="notificationsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle">
+    <div class="notification-modal-content notifications-content" role="document">
+        <div class="notification-modal-header notifications-header">
+            <h3 id="notificationsTitle">Notifications</h3>
+            <button type="button" class="notif-close close-btn" onclick="closeNotifications()" aria-label="Close notifications">&times;</button>
+        </div>
+        <div class="notification-action-bar clear-all-row">
+            <button type="button" class="clear-all-btn" id="clearNotificationsBtn" onclick="clearAllNotifications()">Clear all</button>
+        </div>
+        <div class="notification-list notifications-list" id="notificationsList" role="list">
+            <p class="notifications-empty">Loading...</p>
+        </div>
+    </div>
+</div>
+
 <script src="/api.js"></script>
 <script src="/notifications-card-ui.js"></script>
 

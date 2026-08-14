@@ -84,6 +84,41 @@ function previewPhoto(inputId, previewId, placeholderId) {
     }
 }
 
+// POSTs a multipart registration so the photos the user picked are actually sent.
+//
+// The form has always had parentPhotoInput and childPhotoInput, and
+// previewPhoto() rendered a local FileReader data-URL so the user saw their
+// picture on screen — but verifyAndRegister() then sent a JSON body with no
+// image fields, so both files were silently discarded and every account was
+// created with the default avatar.
+//
+// routes/auth.js already accepts `parentProfilePhoto` and `childProfilePhoto`
+// on /api/auth/register (see handleProfileUpload) and writes them to
+// user.profileIcon / child.profileIcon. This just supplies what that code was
+// always waiting for — no new endpoint and no change to the saved fields.
+async function postRegistrationWithPhotos(payload) {
+    const body = new FormData();
+
+    // Empty optional values are omitted rather than appended: FormData
+    // stringifies null to the literal text "null".
+    Object.entries(payload).forEach(([key, value]) => {
+        if (value === null || value === undefined || value === '') return;
+        body.append(key, String(value));
+    });
+
+    const parentPhoto = byId('parentPhotoInput')?.files?.[0];
+    const childPhoto = byId('childPhotoInput')?.files?.[0];
+    if (parentPhoto) body.append('parentProfilePhoto', parentPhoto);
+    if (childPhoto) body.append('childProfilePhoto', childPhoto);
+
+    const response = await fetch('/api/auth/register', { method: 'POST', body });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error(result.error || result.message || `Request failed with status ${response.status}`);
+    }
+    return result;
+}
+
 function toggleCustomSpecialization() {
     const spec = byId('specialization');
     const customGroup = byId('customSpecializationGroup');
@@ -265,7 +300,9 @@ async function verifyAndRegister() {
             relationship: valueOf('relationship') || null,
         };
 
-        const result = await postJson('/api/auth/register', payload);
+        // Multipart, so the selected parent/child photos travel with the
+        // registration instead of being dropped on navigation.
+        const result = await postRegistrationWithPhotos(payload);
         if (result.token) {
             localStorage.setItem('kc_token', result.token);
             localStorage.setItem('kc_user', JSON.stringify(result.user));

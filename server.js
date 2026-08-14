@@ -235,6 +235,16 @@ app.get('/favicon.ico', (req, res) => {
 // navigation (HTML). Reject other unknown paths with 404 to avoid
 // wasting serverless execution time on stray asset requests.
 app.get('*', (req, res) => {
+    // An unmatched /api/* path is always a bug, never a page navigation.
+    // Previously it fell through to landing.html with HTTP 200, because
+    // browser fetch() sends "Accept: */*" and passed the check below. The
+    // frontend's apiFetch then saw res.ok === true, failed to parse the HTML
+    // as JSON, and silently returned {} — so a wrong endpoint rendered an
+    // empty widget with no error anywhere. Answer honestly instead.
+    if (req.path === '/api' || req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: `Not found: ${req.method} ${req.path}` });
+    }
+
     // If the request explicitly asks for non-HTML content, 404
     const accept = req.headers.accept || '';
     if (accept && !accept.includes('text/html') && !accept.includes('*/*')) {

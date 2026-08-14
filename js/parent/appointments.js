@@ -311,7 +311,6 @@ function renderSelectedPediatrician() {
         panel.style.display = 'none';
         panel.innerHTML = '';
         renderAvailabilityStatus(null);
-        updatePaymentStep();
         return;
     }
 
@@ -339,7 +338,13 @@ function renderSelectedPediatrician() {
         ${hasConfiguredAvailability(ped) ? '' : '<div class="mini" style="margin-top:.55rem;color:#c0392b;font-weight:600;">This pediatrician must finish saving availability in Settings before parents can book.</div>'}`;
 
     applyTimeFieldConstraints();
-    updatePaymentStep();
+    // updatePaymentStep() used to run here. Payment selection moved to
+    // /parent/payment.html when booking was decoupled from payment, and that
+    // change deleted the function but left these two calls behind. Every call
+    // threw ReferenceError, which aborted renderSelectedPediatrician ->
+    // loadPediatricians -> resolveContext, so loadAppointments() at the end of
+    // DOMContentLoaded never ran and the parent's existing appointments never
+    // appeared on the page.
     checkSelectedAvailability();
 }
 

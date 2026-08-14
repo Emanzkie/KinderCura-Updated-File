@@ -52,7 +52,6 @@ function logout() {
 function initNav() {
     const user = KC.user();
     if (!user) return;
-    console.log('[PROFILE NAV] init user:', user.firstName, user.profileIcon);
     const w = document.querySelector('.menu-header p');
     if (w) w.textContent = `Welcome, ${user.firstName}`;
 
@@ -73,7 +72,6 @@ function initNav() {
         img.style.objectFit = 'cover';
     });
 
-    console.log('[PROFILE NAV] avatar src:', profileSrc);
     document.querySelectorAll('.nav-user-name').forEach(el => { el.textContent = user.firstName; });
     loadNotificationCount();
 }
@@ -223,9 +221,6 @@ async function loadProfile() {
             ) {
                 mergedUser.profileIcon = cached.profileIcon;
             }
-            console.log('[PROFILE] cached avatar:', cached.profileIcon);
-            console.log('[PROFILE] server avatar:', userData.user.profileIcon);
-            console.log('[PROFILE] merged avatar:', mergedUser.profileIcon);
             user = mergedUser;
             localStorage.setItem('kc_user', JSON.stringify(mergedUser));
         }

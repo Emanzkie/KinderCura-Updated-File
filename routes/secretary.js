@@ -18,11 +18,14 @@
 //   PUT  /api/secretary/:id/permissions   — pediatrician: update secretary permissions
 //   PUT  /api/secretary/:id/deactivate    — pediatrician: deactivate a secretary
 //   GET  /api/secretary/list              — admin only: see all secretaries (audit)
+//   GET  /api/secretary/pediatricians     — admin only: pediatrician options for linking
+//   PUT  /api/secretary/:id/link          — admin only: re-assign or unlink a secretary
 // ─────────────────────────────────────────────────────────────────────────────
 
-const express = require('express');
-const bcrypt  = require('bcrypt');
-const router  = express.Router();
+const express  = require('express');
+const bcrypt   = require('bcrypt');
+const mongoose = require('mongoose');
+const router   = express.Router();
 
 const { authMiddleware, adminOnly } = require('../middleware/auth');
 const User = require('../models/User');
@@ -557,6 +560,75 @@ router.get('/list', authMiddleware, adminOnly, async (req, res) => {
     });
   } catch (err) {
     console.error('secretary /list error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/secretary/pediatricians  (admin only) ──────────────────────────
+// Populates the "link to pediatrician" dropdowns on the admin Users page.
+// js/admin/admin-users.js has always called this endpoint; it simply did not
+// exist, so the dropdowns rendered with "Unlink" as their only option. The
+// missing 404 was invisible because server.js's catch-all answered 200 + HTML.
+// Shape matches what admin-users.js already reads: { id, name, clinic }.
+router.get('/pediatricians', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const pediatricians = await User.find({ role: 'pediatrician' })
+      .select('firstName lastName clinicName institution')
+      .sort({ lastName: 1, firstName: 1 })
+      .lean();
+
+    res.json({
+      success: true,
+      pediatricians: pediatricians.map((p) => ({
+        id: String(p._id),
+        name: `Dr. ${p.firstName} ${p.lastName}`.trim(),
+        clinic: p.clinicName || p.institution || 'No clinic on file',
+      })),
+    });
+  } catch (err) {
+    console.error('secretary /pediatricians error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── PUT /api/secretary/:id/link  (admin only) ───────────────────────────────
+// Re-assigns a secretary to a pediatrician, or unlinks them when the body
+// carries a null/empty linkedPediatricianId. Counterpart to the "Update Link"
+// button in js/admin/admin-users.js, which previously always 404'd.
+router.put('/:id/link', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const secretary = await User.findById(req.params.id);
+    if (!secretary || secretary.role !== 'secretary') {
+      return res.status(404).json({ error: 'Secretary not found.' });
+    }
+
+    const raw = req.body?.linkedPediatricianId;
+    const wanted = raw == null || String(raw).trim() === '' ? null : String(raw).trim();
+
+    if (wanted) {
+      if (!mongoose.Types.ObjectId.isValid(wanted)) {
+        return res.status(400).json({ error: 'linkedPediatricianId is not a valid id.' });
+      }
+      // Only ever link to a real pediatrician — a dangling link would break
+      // every "on behalf of Dr. X" view the secretary pages render.
+      const pediatrician = await User.findById(wanted).select('role firstName lastName').lean();
+      if (!pediatrician || pediatrician.role !== 'pediatrician') {
+        return res.status(400).json({ error: 'That user is not a pediatrician.' });
+      }
+      secretary.linkedPediatricianId = pediatrician._id;
+      await secretary.save();
+      return res.json({
+        success: true,
+        message: `Linked to Dr. ${pediatrician.firstName} ${pediatrician.lastName}.`,
+        linkedPediatricianId: String(pediatrician._id),
+      });
+    }
+
+    secretary.linkedPediatricianId = null;
+    await secretary.save();
+    res.json({ success: true, message: 'Secretary unlinked.', linkedPediatricianId: null });
+  } catch (err) {
+    console.error('secretary /:id/link error:', err);
     res.status(500).json({ error: err.message });
   }
 });

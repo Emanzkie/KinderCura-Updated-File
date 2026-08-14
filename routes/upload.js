@@ -67,9 +67,12 @@ router.post('/profile', authMiddleware, (req, res) => {
                 return res.status(404).json({ error: 'User not found.' });
             }
 
-            deleteOldUpload(user.profileIcon);
+            // Persist first, then delete the old file, so a failed write can
+            // never leave the user with no photo at all.
+            const previousIcon = user.profileIcon;
             user.profileIcon = picPath;
             await user.save();
+            deleteOldUpload(previousIcon);
 
             res.json({ success: true, path: picPath });
         } catch (e) {
@@ -87,7 +90,10 @@ router.post('/child/:childId', authMiddleware, (req, res) => {
 
         try {
             const picPath = `/uploads/profiles/${req.file.filename}`;
-            const child = await Child.findById(req.params.childId).lean();
+            // NOT .lean(): a lean() result is a plain object with no .save(),
+            // so saving threw TypeError and the new path was never persisted
+            // (while deleteOldUpload had already removed the previous photo).
+            const child = await Child.findById(req.params.childId);
             if (!child) {
                 return res.status(404).json({ error: 'Child not found.' });
             }
@@ -97,9 +103,12 @@ router.post('/child/:childId', authMiddleware, (req, res) => {
                 return res.status(403).json({ error: 'Access denied.' });
             }
 
-            deleteOldUpload(child.profileIcon);
+            // Persist first, then delete the old file — if the write fails the
+            // child keeps the photo it already had.
+            const previousIcon = child.profileIcon;
             child.profileIcon = picPath;
             await child.save();
+            deleteOldUpload(previousIcon);
 
             res.json({ success: true, path: picPath, childId: String(child._id) });
         } catch (e) {

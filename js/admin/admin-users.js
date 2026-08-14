@@ -276,12 +276,27 @@
             }
         }
 
+        // Options for the per-secretary re-assign dropdowns rendered by
+        // loadSecretaries(). Declared (not implicit-global) and defaulted to []
+        // so a failed fetch degrades to "Unlink only" instead of throwing
+        // "pediaOptions is not defined" while rendering the list.
+        let pediaOptions = [];
+
         async function loadSecretaryFormDependencies() {
             try {
                 const data = await apiFetch('/secretary/pediatricians');
                 pediaOptions = data.pediatricians || [];
+
+                // The admin-side "create secretary" form was removed when
+                // secretary creation moved to the pediatrician's Settings page,
+                // but this population step stayed behind and threw
+                // "Cannot set properties of null" on every page load. The
+                // element is optional now.
                 const sel = document.getElementById('secPediaSelect');
-                sel.innerHTML = `<option value="">-- Do not link yet --</option>` + pediaOptions.map(p => `<option value="${p.id}">${p.name} (${p.clinic})</option>`).join('');
+                if (sel) {
+                    sel.innerHTML = `<option value="">-- Do not link yet --</option>`
+                        + pediaOptions.map(p => `<option value="${p.id}">${p.name} (${p.clinic})</option>`).join('');
+                }
             } catch(e) {
                 console.error("Failed to load pedia dropdown", e);
             }

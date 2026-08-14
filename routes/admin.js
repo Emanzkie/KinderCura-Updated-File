@@ -889,10 +889,18 @@ router.put('/settings/appointments', authMiddleware, adminOnly, async (req, res)
 });
 
 // GET /api/admin/analytics/pediatrician
-// Filtered analytics for a specific pediatrician
+// Filtered analytics for a specific pediatrician.
+// A pediatrician always reads their OWN figures (the id is taken from the
+// token, never the query). Reading someone else's via ?pediatricianId is an
+// admin action — previously any signed-in user could do it, which let a parent
+// pull another clinician's appointment counts.
 router.get('/analytics/pediatrician', authMiddleware, async (req, res) => {
   try {
-    const pediaId = req.user.role === 'pediatrician' ? req.user.userId : req.query.pediatricianId;
+    const isSelf = req.user.role === 'pediatrician';
+    if (!isSelf && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admins only.' });
+    }
+    const pediaId = isSelf ? req.user.userId : req.query.pediatricianId;
     if (!pediaId) return res.status(400).json({ error: 'Pediatrician ID required' });
 
     const objectId = new mongoose.Types.ObjectId(pediaId);
@@ -948,10 +956,16 @@ router.get('/analytics/pediatrician', authMiddleware, async (req, res) => {
 });
 
 // GET /api/admin/analytics/parent
-// Filtered analytics for a specific parent (their children and appointments)
+// Filtered analytics for a specific parent (their children and appointments).
+// Same rule as /analytics/pediatrician: a parent always reads their own row,
+// and reading another parent's via ?parentId is admin-only.
 router.get('/analytics/parent', authMiddleware, async (req, res) => {
   try {
-    const parentId = req.user.role === 'parent' ? req.user.userId : req.query.parentId;
+    const isSelf = req.user.role === 'parent';
+    if (!isSelf && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admins only.' });
+    }
+    const parentId = isSelf ? req.user.userId : req.query.parentId;
     if (!parentId) return res.status(400).json({ error: 'Parent ID required' });
 
     const objectId = new mongoose.Types.ObjectId(parentId);

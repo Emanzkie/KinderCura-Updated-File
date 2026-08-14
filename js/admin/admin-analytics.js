@@ -276,9 +276,14 @@ requireAuth();
                     : 0;
                 document.getElementById('completionRate').textContent = completionRate + '%';
 
-                // Pending appointments
-                const completedCount = apptStats.find(a => a.status === 'completed')?.count || 0;
-                const pendingAppt = (summary.totalAppointments || 0) - completedCount;
+                // Pending appointments.
+                // This used to be (totalAppointments - completed), which counted
+                // approved and rejected bookings as "pending" — the tile read 9
+                // when the database held 8 approved, 1 rejected and 0 pending.
+                // apptStats is already grouped by status, so read it directly.
+                const pendingAppt = apptStats
+                    .filter(a => String(a.status).toLowerCase() === 'pending')
+                    .reduce((sum, a) => sum + (a.count || 0), 0);
                 document.getElementById('pendingRate').textContent = pendingAppt;
 
                 document.getElementById('lastUpdated').textContent = 'Updated: ' + new Date().toLocaleTimeString();

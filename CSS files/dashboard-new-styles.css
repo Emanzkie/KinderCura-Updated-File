@@ -1152,6 +1152,10 @@ body {
     padding: 1.5rem;
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    /* Grid items default to min-width:auto, so the Chart.js canvas inside kept
+       these cards at their intrinsic width and pushed the whole dashboard into
+       horizontal scrolling on phones (408px card in a 372px viewport). */
+    min-width: 0;
 }
 
 .parent-chart-card h3 {
@@ -1162,6 +1166,7 @@ body {
 
 .parent-chart-card canvas {
     height: 180px !important;
+    max-width: 100%;
 }
 
 @media(max-width: 768px) {

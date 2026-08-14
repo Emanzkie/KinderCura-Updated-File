@@ -861,9 +861,9 @@ router.get('/me', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
     if (!user) return res.status(404).json({ error: 'User not found.' });
-    const userData = publicUser(user);
-    console.log('[/api/auth/me] Returning user:', { id: userData.id, firstName: userData.firstName, role: userData.role, profileIcon: userData.profileIcon });
-    res.json({ success: true, user: userData });
+    // /auth/me is called on every page load by every signed-in user, so the
+    // per-request identity log was the noisiest line in the server output.
+    res.json({ success: true, user: publicUser(user) });
   } catch (err) {
     console.error('[/api/auth/me] Error:', err);
     res.status(500).json({ error: err.message });
