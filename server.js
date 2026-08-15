@@ -68,6 +68,14 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Uploaded files are only on the local filesystem during development. On
+// Vercel the deployment is read-only, so anything uploaded after deploy lives
+// in Vercel Blob. Each express.static mount below keeps serving the copies
+// bundled with the deployment; these fallbacks catch the misses and stream
+// them out of the blob store. Registered before the static mounts so ordering
+// stays obvious — each handler calls next() when it is not the blob case.
+const fileStorage = require('./services/fileStorage');
+
 // Enable EJS view rendering for minimal UI test pages
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
@@ -78,6 +86,8 @@ app.use('/public', express.static(path.join(__dirname, 'public')));
 app.use('/css', express.static(path.join(__dirname, 'CSS files')));
 app.use('/icons', express.static(path.join(__dirname, 'ICONS')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', fileStorage.staticFallback('uploads'));
+app.use('/public/uploads', fileStorage.staticFallback('public/uploads'));
 app.use('/assets/css', express.static(path.join(__dirname, 'CSS files')));
 app.use('/assets/images', express.static(path.join(__dirname, 'ICONS')));
 /* Serve JS modules referenced by admin pages */
@@ -90,7 +100,21 @@ app.get('/api.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'api.js'));
 });
 
-app.use(express.static(__dirname, { index: false }));
+// Serving the project root is what makes root-level browser assets such as
+// /notifications-card-ui.css, /constants/scoring.js and "/CSS files/..." load.
+// Left unguarded it also hands out the backend source — /server.js, /db.js and
+// /routes/auth.js were all downloadable in production. These two patterns skip
+// the root static handler for anything that only the server should read, so
+// such a request falls through to the catch-all like any other unknown path.
+// Everything the browser genuinely uses is either mounted above or allowed here.
+const SERVER_ONLY_DIRS = /^\/(routes|models|controllers|middleware|services|ml|scripts|tests|node_modules|api|views|private|backups|mongodump-kindercura|database|docs)(\/|$)/i;
+const SERVER_ONLY_FILES = /^\/(server|db|sse|seed-admin|test-email|preload-dns|api)\.js$|^\/package(-lock)?\.json$|^\/vercel\.json$/i;
+
+const rootStatic = express.static(__dirname, { index: false });
+app.use((req, res, next) => {
+    if (SERVER_ONLY_DIRS.test(req.path) || SERVER_ONLY_FILES.test(req.path)) return next();
+    rootStatic(req, res, next);
+});
 app.use(express.static(path.join(__dirname, 'SIGN-UP,LOGIN')));
 
 // Minimal EJS test routes for guardian UI (rendered pages)
@@ -127,14 +151,16 @@ app.get('/accept-invitation', (req, res) => {
   res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
 });
 
-// Friendly page routes for parent / pedia / admin pages
-app.get('/parent/:page', (req, res) => res.sendFile(path.join(__dirname, 'PARENT', req.params.page)));
-app.get('/pedia/:page', (req, res) => res.sendFile(path.join(__dirname, 'PEDIA', req.params.page)));
-
-// Payment page — parent selects walk-in or e-wallet after booking
+// Payment page — parent selects walk-in or e-wallet after booking.
+// Must stay above /parent/:page: the generic handler would match "payment",
+// try to send PARENT/payment (no extension), and 404 the clean URL.
 app.get('/parent/payment', (req, res) => {
   res.sendFile(path.join(__dirname, 'PARENT', 'payment.html'));
 });
+
+// Friendly page routes for parent / pedia / admin pages
+app.get('/parent/:page', (req, res) => res.sendFile(path.join(__dirname, 'PARENT', req.params.page)));
+app.get('/pedia/:page', (req, res) => res.sendFile(path.join(__dirname, 'PEDIA', req.params.page)));
 
 // Admin payment verification page — review e-wallet proofs
 app.get('/admin/payments', (req, res) => {

@@ -18,6 +18,7 @@ const OtpCode = require('../models/OtpCode');
 const Notification = require('../models/Notification');
 const { authMiddleware } = require('../middleware/auth');
 const sse = require('../sse');
+const fileStorage = require('../services/fileStorage');
 
 const router = express.Router();
 
@@ -29,21 +30,24 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const prcUploadDir = path.join(__dirname, '..', 'uploads', 'prc-documents');
+// Project-relative upload folders. fileStorage maps them to disk locally and
+// to Vercel Blob in production — see services/fileStorage.js.
+const PRC_DIR = 'uploads/prc-documents';
+const PROFILE_DIR = 'uploads/profiles';
 
-const prcStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    if (!fs.existsSync(prcUploadDir)) {
-      fs.mkdirSync(prcUploadDir, { recursive: true });
-    }
-    cb(null, prcUploadDir);
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `prc_${uniqueSuffix}${ext}`);
-  },
-});
+// PRC ID cards are identity documents, so they are stored privately and can
+// only be read back through an authenticated route. Profile photos are shown
+// in <img> tags and stay public.
+const PRC_ACCESS = { access: 'private' };
+const PROFILE_ACCESS = { access: 'public' };
+
+const prcTempFilename = (_req, file, cb) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+  cb(null, `prc_${uniqueSuffix}${ext}`);
+};
+
+const prcStorage = fileStorage.makeStorage(PRC_DIR, prcTempFilename);
 
 const prcUpload = multer({
   storage: prcStorage,
@@ -102,41 +106,29 @@ function deleteUploadedPrcFile(file) {
   }
 }
 
-function movePrcUploadToUserFile(file, userId) {
+// The final name needs the user's id, which only exists once the account row
+// is being created, so the upload is committed here rather than in multer.
+async function movePrcUploadToUserFile(file, userId) {
   if (!file) return null;
 
   const ext = path.extname(file.originalname || file.filename || '').toLowerCase();
   const safeExt = ext || path.extname(file.filename || '').toLowerCase() || '.jpg';
   const finalName = `prc_${userId}_${Date.now()}${safeExt}`;
-  const finalPath = path.join(prcUploadDir, finalName);
 
-  if (path.resolve(file.path) !== path.resolve(finalPath)) {
-    fs.renameSync(file.path, finalPath);
-    file.path = finalPath;
-    file.filename = finalName;
-  }
-
-  return `/uploads/prc-documents/${finalName}`;
+  const stored = await fileStorage.storeFile(PRC_DIR, finalName, file, PRC_ACCESS);
+  return `/${stored}`;
 }
 
 /**
  * Profile photo uploads (parents / children)
  */
-const profileUploadDir = path.join(__dirname, '..', 'uploads', 'profiles');
+const profileTempFilename = (_req, file, cb) => {
+  const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+  const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+  cb(null, `upload_${uniqueSuffix}${ext}`);
+};
 
-const profileStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    if (!fs.existsSync(profileUploadDir)) {
-      fs.mkdirSync(profileUploadDir, { recursive: true });
-    }
-    cb(null, profileUploadDir);
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `upload_${uniqueSuffix}${ext}`);
-  },
-});
+const profileStorage = fileStorage.makeStorage(PROFILE_DIR, profileTempFilename);
 
 const profileUpload = multer({
   storage: profileStorage,
@@ -197,31 +189,31 @@ function deleteUploadedProfileFiles(files) {
   }
 }
 
-function moveProfileUploadToUserFile(file, id, type = 'user') {
+// Like movePrcUploadToUserFile: the final name needs the parent's or child's
+// id, so the bytes are committed here instead of inside multer.
+async function moveProfileUploadToUserFile(file, id, type = 'user') {
   if (!file) return null;
   const ext = path.extname(file.originalname || file.filename || '').toLowerCase() || '.jpg';
   const prefix = type === 'child' ? 'child' : (type === 'parent' ? 'parent' : 'user');
   const finalName = `${prefix}_${String(id)}_${Date.now()}${ext}`;
-  const finalPath = path.join(profileUploadDir, finalName);
 
   try {
-    if (path.resolve(file.path) !== path.resolve(finalPath)) {
-      fs.renameSync(file.path, finalPath);
-      file.path = finalPath;
-      file.filename = finalName;
-    }
+    const stored = await fileStorage.storeFile(PROFILE_DIR, finalName, file, PROFILE_ACCESS);
+    return `/${stored}`;
   } catch (err) {
     console.warn('[Profile Upload] Failed to move uploaded profile file:', err && err.message ? err.message : err);
     return null;
   }
-
-  return `/uploads/profiles/${finalName}`;
 }
 
-function uploadPathExists(publicPath) {
+// Logging aid only — never gates the response.
+async function uploadPathExists(publicPath) {
   if (!publicPath || !String(publicPath).startsWith('/uploads/')) return false;
-  const fullPath = path.join(__dirname, '..', String(publicPath).replace(/^\//, ''));
-  return fs.existsSync(fullPath);
+  const clean = String(publicPath).replace(/^\//, '');
+  const dir = path.posix.dirname(clean);
+  const name = path.posix.basename(clean);
+  const access = dir.includes('prc') ? PRC_ACCESS : PROFILE_ACCESS;
+  return fileStorage.existsStored(dir, name, access);
 }
 
 function emailConfigured() {
@@ -637,14 +629,14 @@ router.post('/register', handleProfileUpload, async (req, res) => {
 
     const userObjectId = new mongoose.Types.ObjectId();
     const prcDocumentPath = cleanRole === 'pediatrician' && req.file
-      ? movePrcUploadToUserFile(req.file, userObjectId)
+      ? await movePrcUploadToUserFile(req.file, userObjectId)
       : null;
 
     if (cleanRole === 'pediatrician') {
       console.log('[PRC Upload][database-save] Prepared PRC document path for user create:', {
         userId: String(userObjectId),
         prcDocumentPath,
-        fileExistsBeforeSave: uploadPathExists(prcDocumentPath),
+        fileExistsBeforeSave: await uploadPathExists(prcDocumentPath),
       });
     }
 
@@ -690,7 +682,7 @@ router.post('/register', handleProfileUpload, async (req, res) => {
     try {
       const parentFile = req.files?.parentProfilePhoto?.[0];
       if (parentFile) {
-        const parentProfilePath = moveProfileUploadToUserFile(parentFile, user._id, 'parent');
+        const parentProfilePath = await moveProfileUploadToUserFile(parentFile, user._id, 'parent');
         if (parentProfilePath) {
           user.profileIcon = parentProfilePath;
           await user.save();
@@ -709,7 +701,7 @@ router.post('/register', handleProfileUpload, async (req, res) => {
         prcIdDocumentPath: user.prcIdDocumentPath,
         idDocumentUploadedAt: user.idDocumentUploadedAt,
         prcSubmittedAt: user.prcSubmittedAt,
-        fileExistsAfterSave: uploadPathExists(user.prcIdDocumentPath),
+        fileExistsAfterSave: await uploadPathExists(user.prcIdDocumentPath),
       });
     }
 
@@ -743,7 +735,7 @@ router.post('/register', handleProfileUpload, async (req, res) => {
       try {
         const childFile = req.files?.childProfilePhoto?.[0];
         if (childFile && child) {
-          const childProfilePath = moveProfileUploadToUserFile(childFile, child._id, 'child');
+          const childProfilePath = await moveProfileUploadToUserFile(childFile, child._id, 'child');
           if (childProfilePath) {
             child.profileIcon = childProfilePath;
             await child.save();

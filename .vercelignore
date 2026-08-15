@@ -1,0 +1,29 @@
+# Files that must never reach the Vercel deployment.
+# Secrets first — Vercel env vars are the only supported source in production.
+.env
+.env.*
+*.env
+
+# Local-only tooling and machine state
+node_modules
+.git
+.tmp_*
+.tmp_visual_check
+.agents
+.codex
+.opencode
+.vscode
+.idea
+
+# Local database dumps and script backups (contain real patient records)
+mongodump-kindercura
+backups
+database
+
+# Not needed at runtime
+tests
+docs
+"READ THESE GUIDES JUSKOLORD"
+client
+scripts
+*.log

@@ -12,22 +12,29 @@ const Child = require('../models/Child');
 const GuardianLink = require('../models/GuardianLink');
 const { authMiddleware } = require('../middleware/auth');
 const { hasPermission } = require('../middleware/guardianAccess');
+const fileStorage = require('../services/fileStorage');
 
 const router = express.Router();
 
-// Multer storage config for profile pictures
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const dir = path.join(__dirname, '..', 'uploads', 'profiles');
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        cb(null, dir);
-    },
-    filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname).toLowerCase();
-        const name = `${req.uploadType || 'user'}_${Date.now()}${ext}`;
-        cb(null, name);
-    },
-});
+// Project-relative upload folders. fileStorage maps them to disk locally and
+// to Vercel Blob in production — see services/fileStorage.js.
+const PROFILE_DIR = 'uploads/profiles';
+const PRC_DIR = 'uploads/prc';
+
+// Profile photos are shown directly in <img> tags, so they stay public.
+// PRC ID cards are identity documents and are stored privately.
+const PROFILE_ACCESS = { access: 'public' };
+const PRC_ACCESS = { access: 'private' };
+
+const profileFilename = (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${req.uploadType || 'user'}_${Date.now()}${ext}`);
+};
+
+const prcFilename = (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `prc_${req.user.userId}_${Date.now()}${ext}`);
+};
 
 // Allow only common image types
 const fileFilter = (req, file, cb) => {
@@ -38,26 +45,37 @@ const fileFilter = (req, file, cb) => {
 };
 
 const upload = multer({
-    storage,
+    storage: fileStorage.makeStorage(PROFILE_DIR, profileFilename),
     fileFilter,
     limits: { fileSize: 5 * 1024 * 1024 },
 });
+const finalizeProfile = fileStorage.finalizeUploads(PROFILE_DIR, profileFilename, PROFILE_ACCESS);
 
-// Delete the old uploaded image so replaced profile photos do not pile up
+const prcUpload = multer({
+    storage: fileStorage.makeStorage(PRC_DIR, prcFilename),
+    fileFilter,
+    limits: { fileSize: 5 * 1024 * 1024 },
+});
+const finalizePrc = fileStorage.finalizeUploads(PRC_DIR, prcFilename, PRC_ACCESS);
+
+// Delete the old uploaded image so replaced profile photos do not pile up.
+// Accepts both stored shapes: '/uploads/profiles/x.jpg' and 'uploads/prc/x.jpg'.
 function deleteOldUpload(uploadPath) {
-    if (!uploadPath || !uploadPath.startsWith('/uploads/')) return;
-    const cleanPath = uploadPath.replace(/^\//, '');
-    const fullPath = path.join(__dirname, '..', cleanPath.replace(/^uploads\//, 'uploads/'));
-    if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
-    }
+    if (!uploadPath) return;
+    const clean = String(uploadPath).replace(/\\/g, '/').replace(/^\//, '');
+    if (!clean.startsWith('uploads/')) return;
+    const dir = path.posix.dirname(clean);
+    const name = path.posix.basename(clean);
+    const access = dir.includes('prc') ? PRC_ACCESS : PROFILE_ACCESS;
+    fileStorage.deleteStored(dir, name, access);
 }
 
 // Upload the logged-in user's own profile picture
 router.post('/profile', authMiddleware, (req, res) => {
     req.uploadType = `${req.user.role || 'user'}_${req.user.userId}`;
-    upload.single('photo')(req, res, async (err) => {
-        if (err) return res.status(400).json({ error: err.message });
+    upload.single('photo')(req, res, (err) => finalizeProfile(req, res, async (finalizeErr) => {
+        const uploadErr = err || finalizeErr;
+        if (uploadErr) return res.status(400).json({ error: uploadErr.message });
         if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
 
         try {
@@ -78,14 +96,15 @@ router.post('/profile', authMiddleware, (req, res) => {
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
-    });
+    }));
 });
 
 // Upload one child's profile picture
 router.post('/child/:childId', authMiddleware, (req, res) => {
     req.uploadType = `child_${req.params.childId}`;
-    upload.single('photo')(req, res, async (err) => {
-        if (err) return res.status(400).json({ error: err.message });
+    upload.single('photo')(req, res, (err) => finalizeProfile(req, res, async (finalizeErr) => {
+        const uploadErr = err || finalizeErr;
+        if (uploadErr) return res.status(400).json({ error: uploadErr.message });
         if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
 
         try {
@@ -114,46 +133,52 @@ router.post('/child/:childId', authMiddleware, (req, res) => {
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
-    });
+    }));
 });
 
 // Upload pediatrician's ID document for verification
-router.post('/pediatric-id', authMiddleware, upload.single('photo'), async (req, res) => {
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
+// req.uploadType is set before multer runs so the file is written under its
+// final name straight away. It used to be saved as `user_<ts>` and renamed
+// afterwards, which cannot work on a read-only production filesystem.
+router.post(
+    '/pediatric-id',
+    authMiddleware,
+    (req, _res, next) => { req.uploadType = `pediatric_id_${req.user.userId}`; next(); },
+    upload.single('photo'),
+    finalizeProfile,
+    async (req, res) => {
+        if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
 
-    try {
-        const user = await User.findById(req.user.userId);
-        if (!user || user.role !== 'pediatrician') {
-            return res.status(403).json({ error: 'Only pediatricians can upload ID documents.' });
+        try {
+            const user = await User.findById(req.user.userId);
+            if (!user || user.role !== 'pediatrician') {
+                return res.status(403).json({ error: 'Only pediatricians can upload ID documents.' });
+            }
+
+            // Delete old ID if exists
+            if (user.idDocumentPath) {
+                deleteOldUpload(user.idDocumentPath);
+            }
+
+            // Normalize path to forward slashes for web compatibility
+            const normalizedPath = `/${PROFILE_DIR}/${req.file.filename}`.replace(/\\/g, '/');
+
+            user.idDocumentPath = normalizedPath;
+            user.prcIdDocumentPath = normalizedPath;
+            user.idDocumentUploadedAt = new Date();
+            await user.save();
+
+            res.json({ success: true, path: normalizedPath });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
         }
-
-        // Delete old ID if exists
-        if (user.idDocumentPath) {
-            deleteOldUpload(user.idDocumentPath);
-        }
-
-        const idPath = `/uploads/profiles/pediatric_id_${req.user.userId}_${Date.now()}${path.extname(req.file.originalname).toLowerCase()}`;
-        const fullPath = path.join(__dirname, '..', 'uploads', 'profiles', path.basename(idPath));
-
-        // Move/rename the file to include userId
-        fs.renameSync(req.file.path, fullPath);
-
-        // Normalize path to forward slashes for web compatibility
-        const normalizedPath = idPath.replace(/\\/g, '/');
-
-        user.idDocumentPath = normalizedPath;
-        user.prcIdDocumentPath = normalizedPath;
-        user.idDocumentUploadedAt = new Date();
-        await user.save();
-
-        res.json({ success: true, path: normalizedPath });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
     }
-});
+);
 
 // Upload pediatrician's PRC ID image for license verification
-router.post('/prc-id', authMiddleware, upload.single('prcId'), async (req, res) => {
+// prcUpload writes straight into uploads/prc under the final traceable name,
+// so there is no post-upload rename to perform.
+router.post('/prc-id', authMiddleware, prcUpload.single('prcId'), finalizePrc, async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ success: false, message: 'No file uploaded' });
@@ -162,27 +187,16 @@ router.post('/prc-id', authMiddleware, upload.single('prcId'), async (req, res) 
         const user = await User.findById(req.user.userId);
         if (!user || user.role !== 'pediatrician') {
             // Clean up the uploaded file since validation failed
-            fs.unlinkSync(req.file.path);
+            fileStorage.deleteStored(PRC_DIR, req.file.filename, PRC_ACCESS);
             return res.status(403).json({ success: false, message: 'Only pediatricians can upload PRC documents.' });
         }
 
-        // Ensure prc upload directory exists
-        const prcDir = path.join(__dirname, '..', 'uploads', 'prc');
-        if (!fs.existsSync(prcDir)) fs.mkdirSync(prcDir, { recursive: true });
-
-        // Rename file with traceable name and move to prc directory
-        const ext = path.extname(req.file.originalname).toLowerCase();
-        const fileName = `prc_${req.user.userId}_${Date.now()}${ext}`;
-        const destPath = path.join(prcDir, fileName);
-        fs.renameSync(req.file.path, destPath);
-
         // Normalize path to forward slashes for web compatibility (critical on Windows)
-        const filePath = `uploads/prc/${fileName}`.replace(/\\/g, '/');
+        const filePath = `${PRC_DIR}/${req.file.filename}`.replace(/\\/g, '/');
 
         // Remove old PRC document file if replacing
         if (user.prcIdDocumentPath) {
-            const oldPath = path.join(__dirname, '..', user.prcIdDocumentPath);
-            if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+            deleteOldUpload(user.prcIdDocumentPath);
         }
 
         // Update user record

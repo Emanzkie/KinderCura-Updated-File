@@ -33,25 +33,27 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { authMiddleware, adminOnly } = require('../middleware/auth');
+const fileStorage = require('../services/fileStorage');
 
 const router = express.Router();
 
-// ── Multer config — PRC documents go to a PRIVATE directory ──────
+// ── Multer config — PRC documents go to PRIVATE storage ──────────
+// PRC_DIR is project-relative: fileStorage resolves it to disk locally and to
+// a private Vercel Blob prefix in production. PRC_UPLOAD_DIR stays as the
+// on-disk path because the legacy document-resolution fallbacks below still
+// scan the copies bundled with the deployment.
+const PRC_DIR = 'uploads/prc-documents';
+const PRC_ACCESS = { access: 'private' };
 const PRC_UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'prc-documents');
 
-const prcStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    if (!fs.existsSync(PRC_UPLOAD_DIR)) {
-      fs.mkdirSync(PRC_UPLOAD_DIR, { recursive: true });
-    }
-    cb(null, PRC_UPLOAD_DIR);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    // Unique, traceable filename: prc_<userId>_<timestamp>.<ext>
-    cb(null, `prc_${req.user.userId}_${Date.now()}${ext}`);
-  },
-});
+const prcFilename = (req, file, cb) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  // Unique, traceable filename: prc_<userId>_<timestamp>.<ext>
+  cb(null, `prc_${req.user.userId}_${Date.now()}${ext}`);
+};
+
+const prcStorage = fileStorage.makeStorage(PRC_DIR, prcFilename);
+const finalizePrc = fileStorage.finalizeUploads(PRC_DIR, prcFilename, PRC_ACCESS);
 
 const prcFileFilter = (_req, file, cb) => {
   const allowed = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
@@ -66,13 +68,10 @@ const prcUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
 });
 
-// ── Helper: delete an old PRC upload from disk ───────────────────
+// ── Helper: delete an old PRC upload ─────────────────────────────
 function deletePrcFile(filePath) {
   if (!filePath) return;
-  const fullPath = path.join(PRC_UPLOAD_DIR, path.basename(filePath));
-  if (fs.existsSync(fullPath)) {
-    try { fs.unlinkSync(fullPath); } catch { /* best effort */ }
-  }
+  fileStorage.deleteStored(PRC_DIR, path.basename(filePath), PRC_ACCESS);
 }
 
 function normalizeDocumentPath(value) {
@@ -169,7 +168,8 @@ async function pushNotification(userId, title, message, type = 'admin', relatedP
 // Pediatrician submits PRC License Number + PRC ID image
 // ──────────────────────────────────────────────────────────────────
 router.post('/upload', authMiddleware, (req, res) => {
-  prcUpload.single('prcDocument')(req, res, async (err) => {
+  prcUpload.single('prcDocument')(req, res, (multerErr) => finalizePrc(req, res, async (storeErr) => {
+    const err = multerErr || storeErr;
     if (err) {
       console.error('[PRC Upload][standalone] Upload failed:', {
         userId: req.user?.userId,
@@ -254,7 +254,7 @@ router.post('/upload', authMiddleware, (req, res) => {
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
-  });
+  }));
 });
 
 // ──────────────────────────────────────────────────────────────────
@@ -388,8 +388,25 @@ router.get('/document/:userId', async (req, res) => {
       return res.status(404).json({ error: 'No PRC document on file.' });
     }
 
-    // Check PRC-documents, prc, and profiles directories
     const normalizedDocPath = normalizeDocumentPath(docFilename);
+
+    // Documents uploaded since the move to Blob live in the private store.
+    // Anything older is still on disk inside the deployment, so fall through
+    // to the directory search below when the blob lookup comes up empty.
+    if (fileStorage.USE_BLOB) {
+      res.setHeader('Content-Disposition', 'inline');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      const blobName = path.basename(String(normalizedDocPath || docFilename));
+      if (await fileStorage.serveStored(res, PRC_DIR, blobName, PRC_ACCESS)) {
+        console.log('[PRC Document] Served PRC document from blob store:', {
+          userId: req.params.userId, blobName,
+        });
+        return;
+      }
+    }
+
+    // Check PRC-documents, prc, and profiles directories
     const directUploadPath = normalizedDocPath && normalizedDocPath.startsWith('/uploads/')
       ? path.join(__dirname, '..', normalizedDocPath.slice(1))
       : null;

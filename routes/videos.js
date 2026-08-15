@@ -10,6 +10,7 @@ const mongoose = require('mongoose');
 
 const { authMiddleware } = require('../middleware/auth');
 const { hasPermission } = require('../middleware/guardianAccess');
+const fileStorage = require('../services/fileStorage');
 
 // Main MongoDB models already used by your system
 const Appointment = require('../models/Appointment');
@@ -83,27 +84,31 @@ function ensureDir(dirPath) {
     }
 }
 
+/* Project-relative folder for a video subdir, e.g. 'public/uploads/videos/chat'.
+   fileStorage maps it to disk locally and to Vercel Blob in production. */
+function videoDir(subdir) {
+    return `public/uploads/${String(subdir).replace(/\\/g, '/')}`;
+}
+
+/* Filename maker — unchanged naming, extracted so blob uploads reuse it */
+function makeFilename(label) {
+    return (req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+
+        // Very important:
+        // Use a safe label for the filename so slashes do not break the path.
+        const safeLabel = String(label).replace(/[\\/]+/g, '_');
+
+        // Use logged-in user id in file name
+        const userPart = String(req.user?.userId || 'user');
+
+        cb(null, `${safeLabel}_${userPart}_${Date.now()}${ext}`);
+    };
+}
+
 /* Storage maker for multer */
 function makeStorage(subdir, label) {
-    return multer.diskStorage({
-        destination: (req, file, cb) => {
-            const uploadDir = path.join(__dirname, '..', 'public', 'uploads', subdir);
-            ensureDir(uploadDir);
-            cb(null, uploadDir);
-        },
-        filename: (req, file, cb) => {
-            const ext = path.extname(file.originalname).toLowerCase();
-
-            // Very important:
-            // Use a safe label for the filename so slashes do not break the path.
-            const safeLabel = String(label).replace(/[\\/]+/g, '_');
-
-            // Use logged-in user id in file name
-            const userPart = String(req.user?.userId || 'user');
-
-            cb(null, `${safeLabel}_${userPart}_${Date.now()}${ext}`);
-        }
-    });
+    return fileStorage.makeStorage(videoDir(subdir), makeFilename(label));
 }
 
 const VIDEO_TYPES = ['.mp4', '.webm', '.mov', '.avi', '.mkv'];
@@ -120,17 +125,27 @@ function videoFilter(req, file, cb) {
 }
 
 /* Separate upload handlers */
+const APPT_VIDEO_SUBDIR = 'videos/appointments';
+const CHAT_VIDEO_SUBDIR = 'videos/chat';
+const VIDEO_ACCESS = { access: 'public' };
+
 const uploadAppt = multer({
-    storage: makeStorage(path.join('videos', 'appointments'), 'appointment_video'),
+    storage: makeStorage(APPT_VIDEO_SUBDIR, 'appointment_video'),
     fileFilter: videoFilter,
     limits: { fileSize: MAX_VIDEO }
 });
+const finalizeAppt = fileStorage.finalizeUploads(
+    videoDir(APPT_VIDEO_SUBDIR), makeFilename('appointment_video'), VIDEO_ACCESS
+);
 
 const uploadChat = multer({
-    storage: makeStorage(path.join('videos', 'chat'), 'chat_video'),
+    storage: makeStorage(CHAT_VIDEO_SUBDIR, 'chat_video'),
     fileFilter: videoFilter,
     limits: { fileSize: MAX_VIDEO }
 });
+const finalizeChat = fileStorage.finalizeUploads(
+    videoDir(CHAT_VIDEO_SUBDIR), makeFilename('chat_video'), VIDEO_ACCESS
+);
 
 /* Converts /uploads/... into actual disk path inside public folder */
 function toDiskPath(publicPath) {
@@ -145,7 +160,8 @@ router.post('/appointment/:appointmentId', authMiddleware, (req, res) => {
         return res.status(403).json({ error: 'Parents only.' });
     }
 
-    uploadAppt.single('video')(req, res, async (err) => {
+    uploadAppt.single('video')(req, res, (multerErr) => finalizeAppt(req, res, async (storeErr) => {
+        const err = multerErr || storeErr;
         if (err) {
             return res.status(400).json({ error: err.message });
         }
@@ -223,7 +239,7 @@ router.post('/appointment/:appointmentId', authMiddleware, (req, res) => {
             console.error('Appointment video upload error:', error);
             return res.status(500).json({ error: error.message });
         }
-    });
+    }));
 });
 
 /* -------------------- GET /api/videos/appointment/:appointmentId -------------------- */
@@ -282,7 +298,8 @@ router.get('/appointment/:appointmentId', authMiddleware, async (req, res) => {
 /* -------------------- POST /api/videos/chat -------------------- */
 /* Upload chat video first, then chat route sends the message using returned path */
 router.post('/chat', authMiddleware, (req, res) => {
-    uploadChat.single('video')(req, res, async (err) => {
+    uploadChat.single('video')(req, res, (multerErr) => finalizeChat(req, res, async (storeErr) => {
+        const err = multerErr || storeErr;
         if (err) {
             return res.status(400).json({ error: err.message });
         }
@@ -305,7 +322,7 @@ router.post('/chat', authMiddleware, (req, res) => {
             console.error('Chat video upload error:', error);
             return res.status(500).json({ error: error.message });
         }
-    });
+    }));
 });
 
 /* -------------------- DELETE /api/videos/:videoId -------------------- */
@@ -338,10 +355,15 @@ router.delete('/:videoId', authMiddleware, async (req, res) => {
           }
         }
 
-        const fullPath = toDiskPath(videoDoc.filePath);
-
-        if (fs.existsSync(fullPath)) {
-            fs.unlinkSync(fullPath);
+        // filePath is stored as '/uploads/videos/<kind>/<name>', which lives
+        // under public/ — the same layout fileStorage uses as its blob prefix.
+        const stored = String(videoDoc.filePath || '').replace(/^\/+/, '');
+        if (stored) {
+            fileStorage.deleteStored(
+                `public/${path.posix.dirname(stored)}`,
+                path.posix.basename(stored),
+                VIDEO_ACCESS
+            );
         }
 
         await AppointmentVideo.deleteOne({ _id: videoDoc._id });

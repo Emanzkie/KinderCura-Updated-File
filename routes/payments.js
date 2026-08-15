@@ -1,25 +1,23 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const { authMiddleware } = require('../middleware/auth');
 const paymentController = require('../controllers/paymentController');
+const fileStorage = require('../services/fileStorage');
 
 const router = express.Router();
 
-// E-wallet proof images are stored in a private directory (not publicly served).
-const PROOF_DIR = path.join(__dirname, '..', 'private', 'payment-proofs');
+// E-wallet proof images are stored privately and never served as static files.
+// PROOF_DIR is the project-relative folder; fileStorage decides whether that
+// resolves to disk (local) or a private Vercel Blob path (production).
+const PROOF_DIR = 'private/payment-proofs';
 
-const ewalletStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    if (!fs.existsSync(PROOF_DIR)) fs.mkdirSync(PROOF_DIR, { recursive: true });
-    cb(null, PROOF_DIR);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `proof_appt${req.params.appointmentId}_${Date.now()}${ext}`);
-  },
-});
+const proofFilename = (req, file, cb) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  cb(null, `proof_appt${req.params.appointmentId}_${Date.now()}${ext}`);
+};
+
+const ewalletStorage = fileStorage.makeStorage(PROOF_DIR, proofFilename);
 
 const ewalletFileFilter = (_req, file, cb) => {
   const allowed = ['.jpg', '.jpeg', '.png', '.webp'];
@@ -43,7 +41,13 @@ router.post('/appointments/:appointmentId/manual', authMiddleware, paymentContro
 
 // New payment flow routes
 router.post('/appointments/:appointmentId/select-mode', authMiddleware, paymentController.selectPaymentMode);
-router.post('/appointments/:appointmentId/ewallet-proof', authMiddleware, ewalletUpload.single('proofImage'), paymentController.uploadEwalletProof);
+router.post(
+  '/appointments/:appointmentId/ewallet-proof',
+  authMiddleware,
+  ewalletUpload.single('proofImage'),
+  fileStorage.finalizeUploads(PROOF_DIR, proofFilename, { access: 'private' }),
+  paymentController.uploadEwalletProof
+);
 router.post('/appointments/:appointmentId/confirm-walkin', authMiddleware, paymentController.confirmWalkIn);
 router.post('/appointments/:appointmentId/verify-ewallet', authMiddleware, paymentController.verifyEwallet);
 router.get('/pending-ewallet', authMiddleware, paymentController.getPendingEwallets);

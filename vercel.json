@@ -2,19 +2,34 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/**/*.js",
-      "use": "@vercel/node"
+      "src": "api/index.js",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "SIGN-UP,LOGIN/**",
+          "PARENT/**",
+          "PEDIA/**",
+          "ADMIN/**",
+          "SECRETARY/**",
+          "CSS files/**",
+          "ICONS/**",
+          "js/**",
+          "assets/**",
+          "public/**",
+          "views/**",
+          "uploads/**",
+          "api.js",
+          "notifications-card-ui.js",
+          "notifications-card-ui.css",
+          "questions-database.json"
+        ]
+      }
     }
   ],
   "routes": [
-    { "handle": "filesystem" },
-    {
-      "src": "/api/(.*)",
-      "dest": "api/index.js"
-    },
     {
       "src": "/(.*)",
-      "dest": "/api"
+      "dest": "api/index.js"
     }
   ]
 }

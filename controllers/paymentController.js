@@ -9,7 +9,19 @@ const Notification = require('../models/Notification');
 const { hasPermission } = require('../middleware/guardianAccess');
 const paymentService = require('../services/paymentService');
 
-const PROOF_DIR = path.join(__dirname, '..', 'private', 'payment-proofs');
+const fileStorage = require('../services/fileStorage');
+
+// Project-relative folder. fileStorage maps it to disk locally and to a
+// private Vercel Blob prefix in production — see services/fileStorage.js.
+const PROOF_DIR = 'private/payment-proofs';
+const PROOF_ACCESS = { access: 'private' };
+
+// Drop an already-stored proof when the request turns out to be invalid, so a
+// rejected upload never leaves an orphaned file behind.
+function discardProof(file) {
+  if (!file || !file.filename) return;
+  fileStorage.deleteStored(PROOF_DIR, file.filename, PROOF_ACCESS);
+}
 
 function fullName(user) {
   if (!user) return null;
@@ -256,25 +268,25 @@ async function uploadEwalletProof(req, res) {
     const referenceNumber = String(req.body.referenceNumber || '').trim();
     if (!referenceNumber) {
       // Remove uploaded file if validation fails
-      fs.unlink(req.file.path, () => {});
+      discardProof(req.file);
       return res.status(400).json({ error: 'A reference number is required.' });
     }
 
     const appointment = await Appointment.findOne({ id: Number(req.params.appointmentId) });
     if (!appointment) {
-      fs.unlink(req.file.path, () => {});
+      discardProof(req.file);
       return res.status(404).json({ error: 'Appointment not found.' });
     }
 
     const isParentOwner = String(appointment.parentId || '') === String(req.user.userId);
     const isGuardian = !isParentOwner && await hasPermission(req.user.userId, appointment.childId, 'manageAppointments');
     if (!isParentOwner && !isGuardian && req.user.role !== 'admin') {
-      fs.unlink(req.file.path, () => {});
+      discardProof(req.file);
       return res.status(403).json({ error: 'Access denied.' });
     }
 
     if (appointment.status !== 'pending') {
-      fs.unlink(req.file.path, () => {});
+      discardProof(req.file);
       return res.status(400).json({ error: 'Cannot upload proof for a non-pending appointment.' });
     }
 
@@ -317,7 +329,7 @@ async function uploadEwalletProof(req, res) {
       paymentStatus: appointment.paymentStatus,
     });
   } catch (err) {
-    if (req.file) fs.unlink(req.file.path, () => {});
+    if (req.file) discardProof(req.file);
     console.error('uploadEwalletProof error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -546,7 +558,7 @@ async function getPendingEwallets(req, res) {
 
 // GET /api/payments/proof/:filename
 // Admin-only: securely serve an e-wallet proof image.
-function serveProofImage(req, res) {
+async function serveProofImage(req, res) {
   try {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Admin access required.' });
@@ -554,16 +566,17 @@ function serveProofImage(req, res) {
 
     // path.basename prevents path traversal attacks
     const filename = path.basename(req.params.filename);
-    const filePath = path.join(PROOF_DIR, filename);
 
-    if (!fs.existsSync(filePath)) {
+    // serveStored streams from disk locally and from the private Blob store in
+    // production. The proof is never exposed by a public URL either way — the
+    // admin check above is still the only way in.
+    const sent = await fileStorage.serveStored(res, PROOF_DIR, filename, PROOF_ACCESS);
+    if (!sent) {
       return res.status(404).json({ error: 'Proof image not found.' });
     }
-
-    res.sendFile(filePath);
   } catch (err) {
     console.error('serveProofImage error:', err);
-    res.status(500).json({ error: err.message });
+    if (!res.headersSent) res.status(500).json({ error: err.message });
   }
 }
 

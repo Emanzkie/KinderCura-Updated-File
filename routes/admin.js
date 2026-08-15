@@ -23,6 +23,7 @@ const TrainingDataset = require('../models/TrainingDataset');
 const Notification = require('../models/Notification');
 const SystemSetting = require('../models/SystemSetting');
 const paymentService = require('../services/paymentService');
+const fileStorage = require('../services/fileStorage');
 const AssessmentAnswer = require('../models/AssessmentAnswer');
 const CoreBankQuestion = require('../models/CoreBankQuestion');
 const PediaCustomQuestion = require('../models/PediaCustomQuestion');
@@ -74,14 +75,18 @@ function ensureDatasetDir() {
   return dir;
 }
 
-const datasetStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, ensureDatasetDir()),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const cleanBase = path.basename(file.originalname, ext).replace(/[^a-z0-9_-]/gi, '_');
-    cb(null, `${Date.now()}_${cleanBase}${ext}`);
-  },
-});
+// Project-relative folder. fileStorage maps it to disk locally and to Vercel
+// Blob in production. Training data is patient-derived, so it stays private.
+const DATASET_DIR = 'public/uploads/datasets';
+const DATASET_ACCESS = { access: 'private' };
+
+const datasetFilename = (req, file, cb) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  const cleanBase = path.basename(file.originalname, ext).replace(/[^a-z0-9_-]/gi, '_');
+  cb(null, `${Date.now()}_${cleanBase}${ext}`);
+};
+
+const datasetStorage = fileStorage.makeStorage(DATASET_DIR, datasetFilename);
 
 const datasetUpload = multer({
   storage: datasetStorage,
@@ -93,9 +98,9 @@ const datasetUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-function parseDatasetFile(fullPath, ext) {
-  const raw = fs.readFileSync(fullPath, 'utf8');
-
+// Takes the file's text rather than a path, so it works for both a file on
+// disk and an upload still buffered in memory on its way to blob storage.
+function parseDatasetContent(raw, ext) {
   if (ext === '.json') {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
@@ -129,8 +134,7 @@ function parseDatasetFile(fullPath, ext) {
 function safeRemoveUpload(publicPath) {
   if (!publicPath || !publicPath.startsWith('/uploads/datasets/')) return;
   const fileName = publicPath.replace('/uploads/datasets/', '');
-  const fullPath = path.join(__dirname, '..', 'public', 'uploads', 'datasets', fileName);
-  if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+  fileStorage.deleteStored(DATASET_DIR, fileName, DATASET_ACCESS);
 }
 
 function resolveNotificationModel() {
@@ -703,8 +707,14 @@ router.post('/training/upload', authMiddleware, adminOnly, (req, res) => {
 
     try {
       const ext = path.extname(req.file.originalname).toLowerCase();
-      const fullPath = path.join(ensureDatasetDir(), req.file.filename);
-      const parsed = parseDatasetFile(fullPath, ext);
+      // On blob-backed runs the bytes are still in memory; locally multer has
+      // already written them. Parse first, then commit the file, so an
+      // unparseable dataset never leaves a stored file behind.
+      const raw = req.file.buffer
+        ? req.file.buffer.toString('utf8')
+        : fs.readFileSync(path.join(ensureDatasetDir(), req.file.filename), 'utf8');
+      const parsed = parseDatasetContent(raw, ext);
+      await fileStorage.storeFile(DATASET_DIR, req.file.filename, req.file, DATASET_ACCESS);
 
       const dataset = await TrainingDataset.create({
         name: String(req.body.name || path.basename(req.file.originalname, ext)).trim(),

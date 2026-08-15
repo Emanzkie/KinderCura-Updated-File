@@ -6,6 +6,18 @@ require('dotenv').config();
 const nodemailer = require('nodemailer');
 const { wrapEmail } = require('../routes/appointments');
 
+// Public origin used for links and images inside outgoing emails.
+// APP_URL wins when set. On Vercel it falls back to the deployment's own
+// public hostname, so a forgotten env var sends a working link instead of a
+// localhost one that no recipient can open. Local development keeps its old
+// default.
+function appUrl() {
+  if (process.env.APP_URL) return String(process.env.APP_URL).replace(/\/$/, '');
+  const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+  if (vercelHost) return `https://${vercelHost}`;
+  return 'http://localhost:3001';
+}
+
 let _transporter = null;
 
 function getTransporter() {
@@ -91,7 +103,7 @@ function childCardsHtml(children = []) {
   return `<div class="km-child-grid">${children.map(c => `
     <div class="km-child-card">
       ${c.profileIcon && c.profileIcon !== 'child1' && !c.profileIcon.startsWith('http')
-        ? `<img src="${process.env.APP_URL || 'http://localhost:3001'}${escapeHtml(c.profileIcon)}" class="km-child-avatar" alt="" onerror="this.style.display='none'"/>`
+        ? `<img src="${appUrl()}${escapeHtml(c.profileIcon)}" class="km-child-avatar" alt="" onerror="this.style.display='none'"/>`
         : ''}
       <div class="km-child-info">
         <strong>${escapeHtml(`${c.firstName || ''} ${c.lastName || ''}`.trim() || 'Child')}</strong>
@@ -186,7 +198,7 @@ async function sendInvitationEmail({
   const presetLabel = (permissionPreset || invitation?.permissionPreset || 'standard')
     .charAt(0).toUpperCase() + (permissionPreset || invitation?.permissionPreset || 'standard').slice(1);
 
-  const baseUrl  = process.env.APP_URL || 'http://localhost:3001';
+  const baseUrl  = appUrl();
   const codePath = code ? `?code=${encodeURIComponent(code)}` : '';
   const acceptBtn = `<a href="${baseUrl}/accept-invitation${codePath}"
     class="km-btn" style="background:#6B8E6F">Accept</a>`;
@@ -262,7 +274,7 @@ async function sendWelcomeEmail({ to, guardianName, childName, inviterName, invi
       Welcome to KinderCura! You now have access to <strong>${escapeHtml(childName)}</strong>'s profile.
     </p>
     <div style="margin:18px 0">
-      <a href="${process.env.APP_URL || 'http://localhost:3001'}/parent/dashboard.html"
+      <a href="${appUrl()}/parent/dashboard.html"
          class="km-btn" style="background:#6B8E6F">Go to Dashboard</a>
     </div>
     <p style="margin-bottom:8px;color:#6B7967;font-size:0.9rem">
@@ -301,7 +313,7 @@ async function sendAcceptanceNotification({ to, inviterName, acceptorName, accep
       and now has access to <strong>${escapeHtml(childName)}</strong>'s profile.
     </p>
     <div style="margin:18px 0">
-      <a href="${process.env.APP_URL || 'http://localhost:3001'}/parent/guardians"
+      <a href="${appUrl()}/parent/guardians"
          class="km-btn" style="background:#6B8E6F">Manage Guardians</a>
     </div>
   `;
