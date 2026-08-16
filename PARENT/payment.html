@@ -57,13 +57,6 @@
             margin-top: 0.5rem;
         }
         .status-badge.verified { background:var(--status-positive-bg); color:var(--status-positive-fg); }
-        .form-group { margin-bottom: 1rem; }
-        .form-group label { display: block; font-size: 0.88rem; font-weight: 600; margin-bottom: 0.35rem; color: var(--text-dark, #333); }
-        .form-input { width: 100%; padding: 0.65rem 0.9rem; border: 1.5px solid #ddd; border-radius: 8px; font-size: 0.93rem; box-sizing: border-box; }
-        .form-input:focus { outline: none; border-color: var(--primary, #6B8E6F); }
-        .file-upload-hint { font-size: 0.78rem; color: var(--text-light, #888); margin-top: 0.3rem; }
-        .proof-preview { margin-top: 0.6rem; }
-        .proof-preview img { max-width: 100%; max-height: 200px; border-radius: 8px; border: 1px solid #ddd; }
         .back-link { display: inline-block; margin-top: 1rem; color: var(--primary, #6B8E6F); text-decoration: none; font-size: 0.9rem; }
         .back-link:hover { text-decoration: underline; }
         .loading-placeholder { text-align: center; color: var(--text-light, #888); padding: 2rem 0; }
@@ -134,12 +127,6 @@
                     <p>Get a QR code now and pay cash at the counter. The clinic secretary scans it to complete your payment.</p>
                     <button class="btn btn-primary" style="margin-top:1rem;width:100%;" id="payAtClinicBtn" onclick="payAtClinic()">Get Clinic QR</button>
                 </div>
-                <div class="payment-option-card">
-                    <div class="option-icon">📱</div>
-                    <h3>E-Wallet Transfer</h3>
-                    <p>Send payment manually and upload your proof. An admin verifies it before your appointment is approved.</p>
-                    <button class="btn btn-primary" style="margin-top:1rem;width:100%;" onclick="showEwalletForm()">Upload Proof</button>
-                </div>
             </div>
 
             <!-- Pay at Clinic: QR panel -->
@@ -205,33 +192,9 @@
                 <a href="/parent/appointments.html" class="btn btn-primary" style="display:inline-block;margin-top:0.5rem;">Back to Appointments</a>
             </div>
 
-            <!-- E-wallet form panel -->
-            <div id="ewalletPanel" class="panel">
-                <h3 style="margin-bottom:1rem;color:var(--primary);">E-Wallet Payment Details</h3>
-                <div class="form-group">
-                    <label for="ewalletProvider">E-Wallet Provider</label>
-                    <select id="ewalletProvider" class="form-input">
-                        <option value="gcash">GCash</option>
-                        <option value="maya">Maya</option>
-                        <option value="other">Other</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="referenceNumber">Reference Number <span style="color:red;">*</span></label>
-                    <input type="text" id="referenceNumber" class="form-input" placeholder="Enter transaction reference number">
-                </div>
-                <div class="form-group">
-                    <label for="proofImage">Proof of Payment (Screenshot) <span style="color:red;">*</span></label>
-                    <input type="file" id="proofImage" class="form-input" accept="image/jpeg,image/png,image/webp" onchange="previewProof(this)">
-                    <p class="file-upload-hint">JPG, PNG, or WebP. Maximum 5 MB.</p>
-                    <div class="proof-preview" id="proofPreview"></div>
-                </div>
-                <div id="ewalletError" class="error-msg" style="display:none;margin-bottom:1rem;"></div>
-                <button class="btn btn-primary" style="width:100%;" id="submitProofBtn" onclick="submitEwalletProof()">Submit Payment Proof</button>
-                <button class="btn" style="width:100%;margin-top:0.5rem;background:var(--surface-muted);color:var(--text-dark);" onclick="backToOptions()">&#8592; Back</button>
-            </div>
-
-            <!-- E-wallet submitted confirmation panel -->
+            <!-- E-wallet submitted confirmation panel: kept only so an appointment that
+                 already reached this legacy state before the flow was retired still
+                 shows a correct, read-only status instead of a blank/broken page. -->
             <div id="ewalletSubmittedPanel" class="panel">
                 <div class="success-banner">
                     <h3>&#10003; Proof Submitted</h3>

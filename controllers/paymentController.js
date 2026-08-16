@@ -20,13 +20,6 @@ const fileStorage = require('../services/fileStorage');
 const PROOF_DIR = 'private/payment-proofs';
 const PROOF_ACCESS = { access: 'private' };
 
-// Drop an already-stored proof when the request turns out to be invalid, so a
-// rejected upload never leaves an orphaned file behind.
-function discardProof(file) {
-  if (!file || !file.filename) return;
-  fileStorage.deleteStored(PROOF_DIR, file.filename, PROOF_ACCESS);
-}
-
 function fullName(user) {
   if (!user) return null;
   return `${user.firstName || ''} ${user.lastName || ''}`.trim() || null;
@@ -223,12 +216,21 @@ async function recordManualPayment(req, res) {
 // ── New payment flow handlers ─────────────────────────────────────────────────
 
 // POST /api/payments/appointments/:appointmentId/select-mode
-// Parent selects walk-in or e-wallet before any upload.
+// Parent selects walk-in before any upload.
+// 'ewallet' was the legacy manual e-wallet-transfer mode — retired in favor of
+// Pay Online (PayMongo) and Pay at Clinic (QR). Kept as a named case so a stale
+// client gets a clear, intentional response instead of a generic 400.
 async function selectPaymentMode(req, res) {
   try {
     const { mode } = req.body;
-    if (!['walk_in', 'ewallet'].includes(mode)) {
-      return res.status(400).json({ error: "Mode must be 'walk_in' or 'ewallet'." });
+    if (mode === 'ewallet') {
+      return res.status(410).json({
+        error: 'Manual E-Wallet Transfer is no longer available. Please use Pay Online or Pay at Clinic.',
+        code: 'EWALLET_RETIRED',
+      });
+    }
+    if (mode !== 'walk_in') {
+      return res.status(400).json({ error: "Mode must be 'walk_in'." });
     }
 
     const appointment = await Appointment.findOne({ id: Number(req.params.appointmentId) });
@@ -262,81 +264,14 @@ async function selectPaymentMode(req, res) {
 }
 
 // POST /api/payments/appointments/:appointmentId/ewallet-proof
-// Parent uploads e-wallet screenshot + reference number.
+// Retired: manual e-wallet proof upload. Superseded by Pay Online (PayMongo)
+// and Pay at Clinic (QR). The route no longer runs an upload middleware in
+// front of this (see routes/payments.js), so no file is ever accepted here.
 async function uploadEwalletProof(req, res) {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'A proof image is required.' });
-    }
-
-    const referenceNumber = String(req.body.referenceNumber || '').trim();
-    if (!referenceNumber) {
-      // Remove uploaded file if validation fails
-      discardProof(req.file);
-      return res.status(400).json({ error: 'A reference number is required.' });
-    }
-
-    const appointment = await Appointment.findOne({ id: Number(req.params.appointmentId) });
-    if (!appointment) {
-      discardProof(req.file);
-      return res.status(404).json({ error: 'Appointment not found.' });
-    }
-
-    const isParentOwner = String(appointment.parentId || '') === String(req.user.userId);
-    const isGuardian = !isParentOwner && await hasPermission(req.user.userId, appointment.childId, 'manageAppointments');
-    if (!isParentOwner && !isGuardian && req.user.role !== 'admin') {
-      discardProof(req.file);
-      return res.status(403).json({ error: 'Access denied.' });
-    }
-
-    if (appointment.status !== 'pending') {
-      discardProof(req.file);
-      return res.status(400).json({ error: 'Cannot upload proof for a non-pending appointment.' });
-    }
-
-    // Ensure mode is set to ewallet
-    appointment.pendingPaymentMode = 'ewallet';
-    appointment.paymentStatus = 'Payment Verification Pending';
-    await appointment.save();
-
-    // Create payment record as a pending e-wallet transaction
-    const payment = await Payment.create([{
-      appointmentId: appointment._id,
-      appointmentNumericId: appointment.id,
-      amount: 0,
-      totalAmount: appointment.totalAmount,
-      paymentType: 'full_payment',
-      balanceDue: appointment.totalAmount,
-      status: 'Verification Pending',
-      paymentMethod: 'ewallet',
-      referenceNumber,
-      proofImagePath: req.file.filename,
-      recordedBy: new mongoose.Types.ObjectId(String(req.user.userId)),
-      recordedByRole: req.user.role,
-      transactionDate: new Date(),
-    }]);
-
-    // Notify all admins about the new proof
-    const admins = await User.find({ role: 'admin', status: 'active' }).select('_id').lean();
-    for (const admin of admins) {
-      await pushNotification(
-        admin._id,
-        'E-Wallet Proof Submitted',
-        `Appointment #${appointment.id}: a parent submitted e-wallet proof. Reference: ${referenceNumber}.`,
-        'payment'
-      );
-    }
-
-    res.status(201).json({
-      success: true,
-      paymentId: payment[0].id,
-      paymentStatus: appointment.paymentStatus,
-    });
-  } catch (err) {
-    if (req.file) discardProof(req.file);
-    console.error('uploadEwalletProof error:', err);
-    res.status(500).json({ error: err.message });
-  }
+  return res.status(410).json({
+    error: 'Manual E-Wallet Transfer is no longer available. Please use Pay Online or Pay at Clinic.',
+    code: 'EWALLET_RETIRED',
+  });
 }
 
 // POST /api/payments/appointments/:appointmentId/confirm-walkin
@@ -428,136 +363,24 @@ async function confirmWalkIn(req, res) {
 }
 
 // POST /api/payments/appointments/:appointmentId/verify-ewallet
-// Admin approves or rejects an uploaded e-wallet proof.
+// Retired: manual e-wallet admin approve/reject. No new 'Payment Verification
+// Pending' record can be created (see uploadEwalletProof above), so this queue
+// can no longer receive anything to act on.
 async function verifyEwallet(req, res) {
-  try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required.' });
-    }
-
-    const { action, notes } = req.body;
-    if (!['approve', 'reject'].includes(action)) {
-      return res.status(400).json({ error: "Action must be 'approve' or 'reject'." });
-    }
-
-    const appointment = await Appointment.findOne({ id: Number(req.params.appointmentId) });
-    if (!appointment) return res.status(404).json({ error: 'Appointment not found.' });
-
-    if (appointment.paymentStatus !== 'Payment Verification Pending') {
-      return res.status(400).json({ error: `Appointment payment status is '${appointment.paymentStatus}', not pending verification.` });
-    }
-
-    const payment = await Payment.findOne({
-      appointmentId: appointment._id,
-      status: 'Verification Pending',
-    }).sort({ createdAt: -1 });
-
-    if (action === 'approve') {
-      const total = appointment.totalAmount || 0;
-
-      if (payment) {
-        payment.status = 'Paid';
-        payment.amount = total;
-        payment.balanceDue = 0;
-        payment.verifiedAt = new Date();
-        payment.verifiedBy = new mongoose.Types.ObjectId(String(req.user.userId));
-        if (notes) payment.notes = String(notes).trim();
-        await payment.save();
-      }
-
-      // CRITICAL: Update appointment payment fields BEFORE approving status.
-      appointment.amountPaid = total;
-      appointment.balanceDue = 0;
-      appointment.paymentStatus = 'Paid';
-      appointment.paymentType = 'Full';
-      await appointment.save();
-
-      appointment.status = 'approved';
-      await appointment.save();
-
-      await pushNotification(
-        appointment.parentId,
-        'E-Wallet Payment Verified — Appointment Approved',
-        `Your e-wallet payment for Appointment #${appointment.id} has been verified. Your appointment is now approved.`,
-        'payment'
-      );
-    } else {
-      // reject
-      if (payment) {
-        payment.status = 'Cancelled';
-        if (notes) payment.notes = String(notes).trim();
-        await payment.save();
-      }
-
-      appointment.paymentStatus = 'Pending Payment';
-      appointment.pendingPaymentMode = null;
-      await appointment.save();
-
-      await pushNotification(
-        appointment.parentId,
-        'E-Wallet Proof Rejected',
-        `Your e-wallet proof for Appointment #${appointment.id} was not accepted. Please re-submit or choose walk-in payment.`,
-        'payment'
-      );
-    }
-
-    const updated = await Appointment.findOne({ id: Number(req.params.appointmentId) }).lean();
-    res.json({
-      success: true,
-      action,
-      appointment: await hydrateBalanceAppointment(updated),
-    });
-  } catch (err) {
-    console.error('verifyEwallet error:', err);
-    res.status(500).json({ error: err.message });
-  }
+  return res.status(410).json({
+    error: 'Manual E-Wallet Transfer is no longer available.',
+    code: 'EWALLET_RETIRED',
+  });
 }
 
 // GET /api/payments/pending-ewallet
-// Admin: list all appointments with e-wallet proofs awaiting verification.
+// Retired along with verifyEwallet above — this fed the admin's manual
+// approval queue, which is no longer reachable from the admin UI.
 async function getPendingEwallets(req, res) {
-  try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required.' });
-    }
-
-    const appointments = await Appointment.find({ paymentStatus: 'Payment Verification Pending' })
-      .sort({ createdAt: -1 })
-      .lean();
-
-    const results = [];
-    for (const appt of appointments) {
-      const [child, parent, pediatrician, payment] = await Promise.all([
-        Child.findById(appt.childId).lean(),
-        User.findById(appt.parentId).lean(),
-        appt.pediatricianId ? User.findById(appt.pediatricianId).lean() : null,
-        Payment.findOne({ appointmentId: appt._id, status: 'Verification Pending' }).sort({ createdAt: -1 }).lean(),
-      ]);
-
-      results.push({
-        id: appt.id,
-        appointmentDate: appt.appointmentDate,
-        appointmentTime: appt.appointmentTime,
-        reason: appt.reason,
-        status: appt.status,
-        paymentStatus: appt.paymentStatus,
-        totalAmount: appt.totalAmount || 0,
-        childName: child ? `${child.firstName} ${child.lastName}` : 'Unknown',
-        parentName: parent ? `${parent.firstName} ${parent.lastName}` : 'Unknown',
-        parentEmail: parent?.email || null,
-        pediatricianName: pediatrician ? `${pediatrician.firstName} ${pediatrician.lastName}` : null,
-        referenceNumber: payment?.referenceNumber || null,
-        proofImagePath: payment?.proofImagePath || null,
-        proofSubmittedAt: payment?.createdAt || null,
-        paymentId: payment?.id || null,
-      });
-    }
-
-    res.json({ success: true, appointments: results, count: results.length });
-  } catch (err) {
-    console.error('getPendingEwallets error:', err);
-    res.status(500).json({ error: err.message });
-  }
+  return res.status(410).json({
+    error: 'Manual E-Wallet Transfer is no longer available.',
+    code: 'EWALLET_RETIRED',
+  });
 }
 
 // GET /api/payments/proof/:filename

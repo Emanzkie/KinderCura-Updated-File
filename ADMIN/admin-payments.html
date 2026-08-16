@@ -3,54 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Payment Verification - KinderCura Admin</title>
+    <title>Payment Monitoring - KinderCura Admin</title>
     <link rel="stylesheet" href="/css/dashboard-new-styles.css">
     <link rel="stylesheet" href="/notifications-card-ui.css">
     <style>
-        .proof-card {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 1.2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.07);
-            display: grid;
-            grid-template-columns: 1fr auto;
-            gap: 1rem;
-        }
-        .proof-card-info p { margin: 0.2rem 0; font-size: 0.9rem; color: var(--text-dark, #333); }
-        .proof-card-info .label { color: var(--text-light, #888); font-size: 0.8rem; }
-        .proof-card-info .ref { font-family: monospace; font-size: 0.95rem; font-weight: 700; color: var(--primary, #6B8E6F); }
-        .proof-image-wrap { width: 160px; flex-shrink: 0; }
-        .proof-image-wrap img { width: 100%; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; }
-        .proof-image-wrap .no-image { width: 100%; height: 100px; display: flex; align-items: center; justify-content: center; background:var(--surface-muted); border-radius: 8px; color:var(--text-light); font-size: 0.8rem; }
-        .card-actions-row { margin-top: 1rem; display: flex; gap: 0.6rem; flex-wrap: wrap; grid-column: 1 / -1; }
-        .btn-approve { background:var(--status-positive-fg); color: white; border: none; padding: 0.5rem 1.2rem; border-radius: 8px; cursor: pointer; font-size: 0.88rem; font-weight: 600; }
-        .btn-approve:hover { background: #219a52; }
-        .btn-reject { background:var(--status-attention-fg); color: white; border: none; padding: 0.5rem 1.2rem; border-radius: 8px; cursor: pointer; font-size: 0.88rem; font-weight: 600; }
-        .btn-reject:hover { background:var(--status-attention-fg); }
-        .status-badge {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.78rem;
-            font-weight: 600;
-        }
-        .badge-pending { background:var(--status-caution-bg); color:var(--status-caution-fg); }
-        .badge-paid { background:var(--status-positive-bg); color:var(--status-positive-fg); }
         .stat-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
         .stat-card { background: white; border-radius: 12px; padding: 1.2rem; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
         .stat-card .stat-num { font-size: 2.2rem; font-weight: 700; color: var(--primary, #6B8E6F); }
         .stat-card .stat-label { font-size: 0.82rem; color: var(--text-light, #888); margin-top: 0.2rem; }
         .empty-msg { text-align: center; color: var(--text-light, #888); padding: 3rem 1rem; }
-        /* Lightbox */
-        .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 9999; align-items: center; justify-content: center; }
-        .lightbox.open { display: flex; }
-        .lightbox img { max-width: 92vw; max-height: 88vh; border-radius: 8px; }
-        .lightbox-close { position: absolute; top: 1.2rem; right: 1.5rem; color: white; font-size: 2rem; cursor: pointer; line-height: 1; }
-        @media (max-width: 600px) {
-            .proof-card { grid-template-columns: 1fr; }
-            .proof-image-wrap { width: 100%; }
-        }
     </style>
 </head>
 <body>
@@ -89,35 +50,20 @@
 </header>
 
 <div class="dashboard-container">
-    <div style="background:white;padding:2rem;border-radius:15px;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;">
-        <div>
-            <h1 style="margin-bottom:0.3rem;">E-Wallet Payment Verification</h1>
-            <p style="color:var(--text-light);">Review uploaded payment proofs and approve or reject e-wallet transactions</p>
-        </div>
-        <button class="btn btn-primary" onclick="loadPendingEwallets()">&#8635; Refresh</button>
-    </div>
-
-    <div class="stat-row">
-        <div class="stat-card">
-            <div class="stat-num" id="statPending">—</div>
-            <div class="stat-label">Pending Verification</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-num" id="statLoaded">—</div>
-            <div class="stat-label">Loaded</div>
-        </div>
-    </div>
-
-    <div id="globalError" class="error-msg" style="display:none;margin-bottom:1rem;"></div>
-    <div id="proofList"><p class="empty-msg">Loading payment proofs…</p></div>
-
     <!-- ── Automated payment monitoring ─────────────────────────────────
          Read-only reconciliation over PayMongo and Pay-at-Clinic payments.
          These settle without admin approval — the secretary confirms cash and
          PayMongo confirms online payments — so this section is for oversight,
          not for taking action.
+
+         The manual "E-Wallet Payment Verification" queue that used to live
+         above this section has been retired: the legacy manual e-wallet
+         transfer flow no longer accepts new submissions (see
+         controllers/paymentController.js), so there is nothing left for that
+         queue to show. Historical e-wallet payments remain visible below via
+         the method filter.
     ─────────────────────────────────────────────────────────────────────── -->
-    <div style="background:white;padding:2rem;border-radius:15px;margin:2rem 0 1.5rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;">
+    <div style="background:white;padding:2rem;border-radius:15px;margin-bottom:1.5rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;">
         <div>
             <h1 style="margin-bottom:0.3rem;">Payment Monitoring</h1>
             <p style="color:var(--text-light);">Online (PayMongo) and Pay-at-Clinic transactions. These complete automatically — no approval needed.</p>
@@ -175,12 +121,6 @@
     </div>
 </div>
 
-<!-- Lightbox for full-size proof image -->
-<div class="lightbox" id="lightbox" onclick="closeLightbox()">
-    <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
-    <img id="lightboxImg" src="" alt="Payment proof">
-</div>
-
 <div class="notification-modal notifications-modal" id="notificationsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle">
     <div class="notification-modal-content notifications-content" role="document">
         <div class="notification-modal-header notifications-header">
@@ -202,127 +142,8 @@
 <script>
 requireAuth();
 
-const token = () => KC.token ? KC.token() : localStorage.getItem('kc_token') || sessionStorage.getItem('kc_token') || '';
-
 function escapeHtml(str) {
     return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function fmtDate(dateStr) {
-    if (!dateStr) return '—';
-    return new Date(dateStr).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-function fmtTime(timeStr) {
-    if (!timeStr) return '—';
-    const [h, m] = timeStr.split(':').map(Number);
-    const suffix = h >= 12 ? 'PM' : 'AM';
-    return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${suffix}`;
-}
-
-function formatMoney(v) {
-    const n = Number(v);
-    if (!Number.isFinite(n)) return '₱0.00';
-    return `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function fmtDatetime(str) {
-    if (!str) return '—';
-    return new Date(str).toLocaleString();
-}
-
-async function loadProofImage(filename, imgEl) {
-    if (!filename) { imgEl.alt = 'No image'; return; }
-    try {
-        const res = await fetch(`/api/payments/proof/${encodeURIComponent(filename)}`, {
-            headers: { Authorization: `Bearer ${token()}` },
-        });
-        if (!res.ok) { imgEl.alt = 'Could not load image'; return; }
-        const blob = await res.blob();
-        imgEl.src = URL.createObjectURL(blob);
-        imgEl.dataset.blobUrl = imgEl.src;
-    } catch {
-        imgEl.alt = 'Could not load image';
-    }
-}
-
-function openLightbox(src) {
-    document.getElementById('lightboxImg').src = src;
-    document.getElementById('lightbox').classList.add('open');
-}
-
-function closeLightbox() {
-    document.getElementById('lightbox').classList.remove('open');
-}
-
-async function loadPendingEwallets() {
-    const listEl = document.getElementById('proofList');
-    const errEl = document.getElementById('globalError');
-    errEl.style.display = 'none';
-    listEl.innerHTML = '<p class="empty-msg">Loading…</p>';
-
-    try {
-        const data = await apiFetch('/payments/pending-ewallet');
-        const appointments = data.appointments || [];
-
-        document.getElementById('statPending').textContent = appointments.length;
-        document.getElementById('statLoaded').textContent = appointments.length;
-
-        if (!appointments.length) {
-            listEl.innerHTML = '<p class="empty-msg">No e-wallet payments are awaiting verification.</p>';
-            return;
-        }
-
-        listEl.innerHTML = appointments.map((appt) => `
-            <div class="proof-card" id="proof-card-${appt.id}">
-                <div class="proof-card-info">
-                    <p><strong>Appointment #${appt.id}</strong> &nbsp;<span class="status-badge badge-pending">Verification Pending</span></p>
-                    <p><span class="label">Patient:</span> ${escapeHtml(appt.childName)}</p>
-                    <p><span class="label">Parent:</span> ${escapeHtml(appt.parentName)}${appt.parentEmail ? ` &lt;${escapeHtml(appt.parentEmail)}&gt;` : ''}</p>
-                    <p><span class="label">Pediatrician:</span> ${appt.pediatricianName ? 'Dr. ' + escapeHtml(appt.pediatricianName) : '—'}</p>
-                    <p><span class="label">Date:</span> ${fmtDate(appt.appointmentDate)} at ${fmtTime(appt.appointmentTime)}</p>
-                    <p><span class="label">Amount:</span> <strong>${formatMoney(appt.totalAmount)}</strong></p>
-                    <p><span class="label">Reference No.:</span> <span class="ref">${escapeHtml(appt.referenceNumber || '—')}</span></p>
-                    <p><span class="label">Submitted:</span> ${fmtDatetime(appt.proofSubmittedAt)}</p>
-                    <div class="card-actions-row">
-                        <button class="btn-approve" onclick="verifyPayment(${appt.id}, 'approve')">&#10003; Approve Payment</button>
-                        <button class="btn-reject" onclick="verifyPayment(${appt.id}, 'reject')">&#215; Reject Proof</button>
-                    </div>
-                </div>
-                <div class="proof-image-wrap" id="proof-img-wrap-${appt.id}">
-                    ${appt.proofImagePath
-                        ? `<img id="proof-img-${appt.id}" src="" alt="Loading proof…" onclick="openLightbox(this.src)" title="Click to enlarge">`
-                        : '<div class="no-image">No image uploaded</div>'}
-                </div>
-            </div>`).join('');
-
-        // Async-load each proof image
-        for (const appt of appointments) {
-            if (appt.proofImagePath) {
-                const imgEl = document.getElementById(`proof-img-${appt.id}`);
-                if (imgEl) loadProofImage(appt.proofImagePath, imgEl);
-            }
-        }
-    } catch (err) {
-        errEl.textContent = err.message || 'Could not load payment proofs.';
-        errEl.style.display = 'block';
-        listEl.innerHTML = '';
-    }
-}
-
-async function verifyPayment(appointmentId, action) {
-    const label = action === 'approve' ? 'Approve this payment?' : 'Reject this proof? The parent will be asked to re-submit.';
-    if (!confirm(label)) return;
-
-    try {
-        await apiFetch(`/payments/appointments/${appointmentId}/verify-ewallet`, {
-            method: 'POST',
-            body: JSON.stringify({ action }),
-        });
-        await loadPendingEwallets();
-    } catch (err) {
-        alert('Could not update payment: ' + err.message);
-    }
 }
 
 // ── Automated payment monitoring (read-only) ─────────────────────────────
@@ -402,7 +223,6 @@ async function loadPaymentMonitor() {
 document.addEventListener('DOMContentLoaded', () => {
     initNav();
     document.querySelectorAll('a.logout').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); logout(); }));
-    loadPendingEwallets();
     loadPaymentMonitor();
 });
 </script>
