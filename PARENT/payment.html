@@ -123,17 +123,75 @@
             <!-- Payment option cards -->
             <div id="optionCards" class="payment-options">
                 <div class="payment-option-card">
+                    <div class="option-icon">💳</div>
+                    <h3>Pay Online</h3>
+                    <p>Pay securely with GCash, Maya, or a card. Your appointment is confirmed automatically once payment succeeds.</p>
+                    <button class="btn btn-primary" style="margin-top:1rem;width:100%;" id="payOnlineBtn" onclick="payOnline()">Pay Online</button>
+                </div>
+                <div class="payment-option-card">
                     <div class="option-icon">🏥</div>
                     <h3>Pay at Clinic</h3>
-                    <p>Pay via cash or POS terminal when you arrive at the clinic.</p>
-                    <button class="btn btn-primary" style="margin-top:1rem;width:100%;" onclick="selectWalkIn()">Choose Walk-in</button>
+                    <p>Get a QR code now and pay cash at the counter. The clinic secretary scans it to complete your payment.</p>
+                    <button class="btn btn-primary" style="margin-top:1rem;width:100%;" id="payAtClinicBtn" onclick="payAtClinic()">Get Clinic QR</button>
                 </div>
                 <div class="payment-option-card">
                     <div class="option-icon">📱</div>
-                    <h3>E-Wallet Payment</h3>
-                    <p>Pay via GCash or Maya and upload your proof of payment.</p>
-                    <button class="btn btn-primary" style="margin-top:1rem;width:100%;" onclick="showEwalletForm()">Choose E-Wallet</button>
+                    <h3>E-Wallet Transfer</h3>
+                    <p>Send payment manually and upload your proof. An admin verifies it before your appointment is approved.</p>
+                    <button class="btn btn-primary" style="margin-top:1rem;width:100%;" onclick="showEwalletForm()">Upload Proof</button>
                 </div>
+            </div>
+
+            <!-- Pay at Clinic: QR panel -->
+            <div id="clinicQrPanel" class="panel">
+                <h3 style="margin-bottom:0.5rem;color:var(--primary);">Show this QR at the clinic counter</h3>
+                <p style="color:var(--text-light);margin-bottom:1rem;">
+                    The secretary will scan this code, confirm your details, and accept your payment.
+                </p>
+                <div style="text-align:center;padding:1.25rem;background:var(--surface-muted,#FAFAF6);border-radius:12px;">
+                    <img id="clinicQrImage" alt="Payment QR code" style="width:260px;max-width:100%;height:auto;border-radius:8px;background:#fff;padding:8px;">
+                    <p style="margin-top:0.9rem;font-family:monospace;font-size:1.05rem;font-weight:700;letter-spacing:0.04em;" id="clinicQrRef">—</p>
+                    <p style="color:var(--text-light);font-size:0.86rem;margin-top:0.25rem;">Payment reference</p>
+                    <p style="margin-top:0.9rem;font-size:1.3rem;font-weight:700;" id="clinicQrAmount">—</p>
+                    <p style="color:var(--text-light);font-size:0.86rem;">Amount due at the counter</p>
+                </div>
+                <p style="margin-top:1rem;font-size:0.88rem;color:var(--text-light);" id="clinicContactLine"></p>
+                <span class="status-badge" style="margin-top:0.75rem;display:inline-block;">Waiting for payment</span>
+                <div style="margin-top:1rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+                    <a href="/parent/appointments.html" class="btn btn-primary" style="display:inline-block;">Back to Appointments</a>
+                    <button class="btn" style="background:var(--surface-muted);color:var(--text-dark);" onclick="backToOptions()">Choose a different method</button>
+                </div>
+            </div>
+
+            <!-- Online payment: awaiting confirmation after returning from PayMongo -->
+            <div id="onlinePendingPanel" class="panel">
+                <h3 style="margin-bottom:0.5rem;color:var(--primary);">Confirming your payment…</h3>
+                <p style="color:var(--text-light);">
+                    We are checking with the payment provider. This usually takes a few seconds — please do not close this page.
+                </p>
+                <p style="margin-top:0.75rem;font-family:monospace;" id="onlinePendingRef"></p>
+            </div>
+
+            <!-- Online payment: success -->
+            <div id="onlineSuccessPanel" class="panel">
+                <div class="success-banner">
+                    <h3>&#10003; Payment Successful</h3>
+                    <p>Thank you. Your payment has been received and your appointment is confirmed.</p>
+                    <p id="onlineReceiptLine"></p>
+                    <p>A receipt has been emailed to you.</p>
+                    <span class="status-badge">Paid</span>
+                </div>
+                <a href="/parent/appointments.html" class="btn btn-primary" style="display:inline-block;margin-top:0.5rem;">Back to Appointments</a>
+            </div>
+
+            <!-- Online payment: failed or cancelled -->
+            <div id="onlineFailedPanel" class="panel">
+                <div class="error-msg" style="display:block;margin-bottom:1rem;">
+                    <strong>Payment was not completed.</strong>
+                    <p id="onlineFailedReason" style="margin-top:0.4rem;">No money has been taken from your account.</p>
+                </div>
+                <button class="btn btn-primary" style="width:100%;" onclick="backToOptions()">Choose a payment method again</button>
+                <a href="/parent/appointments.html" class="btn" style="display:block;text-align:center;width:100%;margin-top:0.5rem;background:var(--surface-muted);color:var(--text-dark);">Back to Appointments</a>
             </div>
 
             <!-- Walk-in confirmation panel -->

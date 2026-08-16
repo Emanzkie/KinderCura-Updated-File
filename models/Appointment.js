@@ -35,7 +35,10 @@ const appointmentSchema = new mongoose.Schema(
     },
     pendingPaymentMode: {
       type: String,
-      enum: ['walk_in', 'ewallet', null],
+      // 'walk_in' / 'ewallet' are the original manually-verified modes.
+      // 'paymongo'      — parent is paying online via PayMongo hosted checkout
+      // 'pay_at_clinic' — parent pays at the counter; secretary scans their QR
+      enum: ['walk_in', 'ewallet', 'paymongo', 'pay_at_clinic', null],
       default: null,
     },
     nextInstallmentDate: { type: Date, default: null },

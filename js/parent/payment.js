@@ -4,8 +4,13 @@ const appointmentId = new URLSearchParams(location.search).get('appointmentId');
 let appointmentData = null;
 let modeSelected = false;
 
+const PANEL_IDS = [
+    'optionCards', 'walkInPanel', 'ewalletPanel', 'ewalletSubmittedPanel',
+    'clinicQrPanel', 'onlinePendingPanel', 'onlineSuccessPanel', 'onlineFailedPanel',
+];
+
 function showPanel(id) {
-    ['optionCards', 'walkInPanel', 'ewalletPanel', 'ewalletSubmittedPanel'].forEach((pid) => {
+    PANEL_IDS.forEach((pid) => {
         const el = document.getElementById(pid);
         if (el) {
             el.style.display = pid === id ? (id === 'optionCards' ? 'grid' : 'block') : 'none';
@@ -143,9 +148,114 @@ function showEwalletForm() {
 }
 
 function backToOptions() {
-    document.getElementById('ewalletPanel').style.display = 'none';
-    document.getElementById('optionCards').style.display = 'grid';
-    document.getElementById('ewalletError').style.display = 'none';
+    clearError();
+    const ewErr = document.getElementById('ewalletError');
+    if (ewErr) ewErr.style.display = 'none';
+    showPanel('optionCards');
+}
+
+// ── Pay Online (PayMongo hosted checkout) ────────────────────────────────
+// The browser never sees a PayMongo key and never states an amount. It asks
+// the server to open a checkout session and then follows the URL it gets back.
+async function payOnline() {
+    clearError();
+    const btn = document.getElementById('payOnlineBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Opening secure checkout…'; }
+
+    try {
+        const data = await apiFetch(`/payments/appointments/${appointmentId}/checkout`, { method: 'POST' });
+        if (!data.checkoutUrl) throw new Error('The payment provider did not return a checkout link.');
+        // Remember the reference so the page can resume polling if the parent
+        // returns without the query string (e.g. by pressing Back).
+        sessionStorage.setItem(`kc_pay_ref_${appointmentId}`, data.paymentRef);
+        window.location.href = data.checkoutUrl;
+    } catch (err) {
+        showError(err.message || 'Could not start the online payment. Please try again or choose Pay at Clinic.');
+        if (btn) { btn.disabled = false; btn.textContent = 'Pay Online'; }
+    }
+}
+
+// ── Pay at Clinic (QR) ────────────────────────────────────────────────────
+async function payAtClinic() {
+    clearError();
+    const btn = document.getElementById('payAtClinicBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Generating QR…'; }
+
+    try {
+        const data = await apiFetch(`/payments/appointments/${appointmentId}/pay-at-clinic`, { method: 'POST' });
+        renderClinicQr(data);
+        showPanel('clinicQrPanel');
+    } catch (err) {
+        showError(err.message || 'Could not generate your clinic QR code. Please try again.');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Get Clinic QR'; }
+    }
+}
+
+function renderClinicQr(data) {
+    const img = document.getElementById('clinicQrImage');
+    if (img && data.qrDataUrl) img.src = data.qrDataUrl;
+
+    const refEl = document.getElementById('clinicQrRef');
+    if (refEl) refEl.textContent = data.paymentRef || '—';
+
+    const amountEl = document.getElementById('clinicQrAmount');
+    if (amountEl) amountEl.textContent = formatMoney(data.amount);
+
+    // Clinic contact comes from server configuration, never hard-coded here.
+    const contactEl = document.getElementById('clinicContactLine');
+    if (contactEl) {
+        const bits = [data.clinicName, data.clinicAddress, data.clinicPhone].filter(Boolean).map(escapeHtml);
+        contactEl.innerHTML = bits.length ? `Questions? ${bits.join(' · ')}` : '';
+    }
+}
+
+// ── Returning from the hosted checkout ────────────────────────────────────
+// The success URL is only a hint. The page polls our own API, and the server
+// confirms with PayMongo directly, so nothing is marked paid from the browser.
+async function resolveOnlineResult(result, paymentRef) {
+    if (result === 'cancelled') {
+        document.getElementById('onlineFailedReason').textContent =
+            'You cancelled the payment before it completed. No money has been taken.';
+        showPanel('onlineFailedPanel');
+        return;
+    }
+
+    document.getElementById('onlinePendingRef').textContent = `Reference: ${paymentRef}`;
+    showPanel('onlinePendingPanel');
+
+    // Ask the server to reconcile once, then poll our own record briefly. The
+    // webhook usually wins the race; the reconcile covers the case where it
+    // has not landed yet.
+    try {
+        await apiFetch(`/payments/ref/${encodeURIComponent(paymentRef)}/reconcile`, { method: 'POST' });
+    } catch { /* fall through to polling */ }
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+        try {
+            const status = await apiFetch(`/payments/ref/${encodeURIComponent(paymentRef)}/status`);
+            if (status.paid) {
+                const line = document.getElementById('onlineReceiptLine');
+                if (line && status.receiptNumber) line.textContent = `Receipt number: ${status.receiptNumber}`;
+                sessionStorage.removeItem(`kc_pay_ref_${appointmentId}`);
+                showPanel('onlineSuccessPanel');
+                return;
+            }
+            if (['Failed', 'Expired', 'Cancelled'].includes(status.status)) {
+                document.getElementById('onlineFailedReason').textContent =
+                    `The payment was marked ${status.status.toLowerCase()}. No money has been taken from your account.`;
+                showPanel('onlineFailedPanel');
+                return;
+            }
+        } catch { /* keep polling */ }
+        await new Promise((r) => setTimeout(r, 2500));
+    }
+
+    // Still unconfirmed. Say so honestly rather than implying success.
+    document.getElementById('onlineFailedReason').innerHTML =
+        'We have not received confirmation yet. If you completed the payment, it will appear shortly — '
+        + 'please check your appointments in a few minutes before paying again.';
+    showPanel('onlineFailedPanel');
 }
 
 function previewProof(input) {
@@ -223,4 +333,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     initNav();
     document.querySelectorAll('a.logout').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); logout(); }));
     await loadAppointmentSummary();
+
+    // PayMongo sends the parent back here with ?result=success|cancelled.
+    // Treat it purely as a signal to start checking — never as proof of payment.
+    const params = new URLSearchParams(location.search);
+    const result = params.get('result');
+    const paymentRef = params.get('ref') || sessionStorage.getItem(`kc_pay_ref_${appointmentId}`);
+    if (result && paymentRef) {
+        await resolveOnlineResult(result, paymentRef);
+    }
 });

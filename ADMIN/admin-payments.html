@@ -110,6 +110,69 @@
 
     <div id="globalError" class="error-msg" style="display:none;margin-bottom:1rem;"></div>
     <div id="proofList"><p class="empty-msg">Loading payment proofs…</p></div>
+
+    <!-- ── Automated payment monitoring ─────────────────────────────────
+         Read-only reconciliation over PayMongo and Pay-at-Clinic payments.
+         These settle without admin approval — the secretary confirms cash and
+         PayMongo confirms online payments — so this section is for oversight,
+         not for taking action.
+    ─────────────────────────────────────────────────────────────────────── -->
+    <div style="background:white;padding:2rem;border-radius:15px;margin:2rem 0 1.5rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;">
+        <div>
+            <h1 style="margin-bottom:0.3rem;">Payment Monitoring</h1>
+            <p style="color:var(--text-light);">Online (PayMongo) and Pay-at-Clinic transactions. These complete automatically — no approval needed.</p>
+        </div>
+        <button class="btn btn-primary" onclick="loadPaymentMonitor()">&#8635; Refresh</button>
+    </div>
+
+    <div class="stat-row">
+        <div class="stat-card"><div class="stat-num" id="monPaid">—</div><div class="stat-label">Paid</div></div>
+        <div class="stat-card"><div class="stat-num" id="monAmount">—</div><div class="stat-label">Total Collected</div></div>
+        <div class="stat-card"><div class="stat-num" id="monPending">—</div><div class="stat-label">Pending</div></div>
+        <div class="stat-card"><div class="stat-num" id="monFailed">—</div><div class="stat-label">Failed / Expired</div></div>
+        <div class="stat-card"><div class="stat-num" id="monRefunded">—</div><div class="stat-label">Refunded</div></div>
+        <div class="stat-card"><div class="stat-num" id="monOnline">—</div><div class="stat-label">Online</div></div>
+        <div class="stat-card"><div class="stat-num" id="monClinic">—</div><div class="stat-label">Pay at Clinic</div></div>
+    </div>
+
+    <div style="background:white;border-radius:15px;padding:1.25rem 1.5rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-bottom:1rem;">
+            <select id="monMethod" class="form-input" style="max-width:200px;" onchange="loadPaymentMonitor()">
+                <option value="">All methods</option>
+                <option value="paymongo">Online (PayMongo)</option>
+                <option value="pay_at_clinic">Pay at Clinic</option>
+                <option value="ewallet">E-Wallet Transfer</option>
+                <option value="cash">Cash</option>
+            </select>
+            <select id="monStatus" class="form-input" style="max-width:200px;" onchange="loadPaymentMonitor()">
+                <option value="">All statuses</option>
+                <option value="Paid">Paid</option>
+                <option value="Pending">Pending</option>
+                <option value="Failed">Failed</option>
+                <option value="Expired">Expired</option>
+                <option value="Refunded">Refunded</option>
+                <option value="Cancelled">Cancelled</option>
+            </select>
+        </div>
+        <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;min-width:820px;">
+                <thead>
+                    <tr style="text-align:left;border-bottom:2px solid var(--border,#DDD9CC);">
+                        <th style="padding:0.6rem 0.5rem;">Reference</th>
+                        <th style="padding:0.6rem 0.5rem;">Receipt</th>
+                        <th style="padding:0.6rem 0.5rem;">Appt</th>
+                        <th style="padding:0.6rem 0.5rem;">Method</th>
+                        <th style="padding:0.6rem 0.5rem;">Status</th>
+                        <th style="padding:0.6rem 0.5rem;text-align:right;">Amount</th>
+                        <th style="padding:0.6rem 0.5rem;">Payment Date</th>
+                    </tr>
+                </thead>
+                <tbody id="monBody">
+                    <tr><td colspan="7" style="padding:1rem 0.5rem;color:var(--text-light);">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 
 <!-- Lightbox for full-size proof image -->
@@ -262,10 +325,85 @@ async function verifyPayment(appointmentId, action) {
     }
 }
 
+// ── Automated payment monitoring (read-only) ─────────────────────────────
+
+function monMoney(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '₱0.00';
+    return `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function monMethodLabel(method) {
+    return {
+        paymongo: 'Online (PayMongo)',
+        pay_at_clinic: 'Pay at Clinic',
+        ewallet: 'E-Wallet Transfer',
+        cash: 'Cash',
+        card: 'Card',
+        gcash: 'GCash',
+        maya: 'Maya',
+        bank_transfer: 'Bank Transfer',
+        check: 'Check',
+        simulated_gateway: 'Online (legacy)',
+    }[method] || String(method || '—');
+}
+
+function monStatusColor(status) {
+    if (status === 'Paid') return '#3D5A40';
+    if (['Failed', 'Expired', 'Cancelled'].includes(status)) return '#8C3A2B';
+    if (status === 'Refunded') return '#7A5C9E';
+    return '#8A6D1F';
+}
+
+async function loadPaymentMonitor() {
+    const body = document.getElementById('monBody');
+    if (!body) return;
+
+    const params = new URLSearchParams();
+    const method = document.getElementById('monMethod')?.value;
+    const status = document.getElementById('monStatus')?.value;
+    if (method) params.set('method', method);
+    if (status) params.set('status', status);
+
+    try {
+        const qs = params.toString();
+        const data = await apiFetch(`/payments/admin/monitor${qs ? `?${qs}` : ''}`);
+        const s = data.summary || {};
+
+        document.getElementById('monPaid').textContent = s.paid ?? 0;
+        document.getElementById('monAmount').textContent = monMoney(s.paidAmount);
+        document.getElementById('monPending').textContent = s.pending ?? 0;
+        document.getElementById('monFailed').textContent = s.failed ?? 0;
+        document.getElementById('monRefunded').textContent = s.refunded ?? 0;
+        document.getElementById('monOnline').textContent = s.online ?? 0;
+        document.getElementById('monClinic').textContent = s.payAtClinic ?? 0;
+
+        const rows = data.payments || [];
+        if (!rows.length) {
+            body.innerHTML = '<tr><td colspan="7" style="padding:1rem 0.5rem;color:var(--text-light);">No payments match this filter.</td></tr>';
+            return;
+        }
+
+        body.innerHTML = rows.map((p) => `
+            <tr style="border-bottom:1px solid var(--border,#EEE);">
+                <td style="padding:0.6rem 0.5rem;font-family:monospace;font-size:0.86rem;">${escapeHtml(p.paymentRef || '—')}</td>
+                <td style="padding:0.6rem 0.5rem;font-family:monospace;font-size:0.86rem;">${escapeHtml(p.receiptNumber || '—')}</td>
+                <td style="padding:0.6rem 0.5rem;">${p.appointmentId != null ? `#${escapeHtml(String(p.appointmentId))}` : '—'}</td>
+                <td style="padding:0.6rem 0.5rem;">${escapeHtml(monMethodLabel(p.paymentMethod))}</td>
+                <td style="padding:0.6rem 0.5rem;font-weight:700;color:${monStatusColor(p.status)};">${escapeHtml(p.status)}</td>
+                <td style="padding:0.6rem 0.5rem;text-align:right;font-weight:600;">${monMoney(p.status === 'Paid' ? p.amount : p.totalAmount)}</td>
+                <td style="padding:0.6rem 0.5rem;white-space:nowrap;">${p.paidAt ? escapeHtml(new Date(p.paidAt).toLocaleString('en-PH')) : '—'}</td>
+            </tr>`).join('');
+    } catch (err) {
+        body.innerHTML = `<tr><td colspan="7" style="padding:1rem 0.5rem;color:#8C3A2B;">${escapeHtml(err.message || 'Could not load payments.')}</td></tr>`;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initNav();
     document.querySelectorAll('a.logout').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); logout(); }));
     loadPendingEwallets();
+    loadPaymentMonitor();
 });
 </script>
 </body>

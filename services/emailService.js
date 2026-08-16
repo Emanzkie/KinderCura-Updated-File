@@ -336,9 +336,162 @@ async function sendAcceptanceNotification({ to, inviterName, acceptorName, accep
   }
 }
 
+/* ─────────────────── payment receipt ─────────────────── */
+
+function receiptRow(label, value) {
+  return `<tr>
+    <td style="padding:7px 0;color:#6B7967;font-size:0.9rem;white-space:nowrap">${escapeHtml(label)}</td>
+    <td style="padding:7px 0 7px 18px;color:#3D4738;font-weight:600;font-size:0.92rem">${escapeHtml(value ?? '—')}</td>
+  </tr>`;
+}
+
+function formatPeso(amount, currency = 'PHP') {
+  const n = Number(amount);
+  const shown = Number.isFinite(n)
+    ? n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : '0.00';
+  return currency === 'PHP' ? `₱${shown}` : `${currency} ${shown}`;
+}
+
+function formatDateTime(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('en-PH', {
+    year: 'numeric', month: 'long', day: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  });
+}
+
+function formatDateOnly(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function formatClockTime(value) {
+  if (!value) return '—';
+  const [h, m] = String(value).split(':').map(Number);
+  if (!Number.isFinite(h)) return String(value);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  return `${(h % 12) || 12}:${String(m || 0).padStart(2, '0')} ${suffix}`;
+}
+
+/**
+ * Send the KinderCura payment receipt.
+ * Covers both payment routes — `context.paymentMethodLabel` is what
+ * distinguishes an online PayMongo receipt from a paid-at-clinic one.
+ *
+ * Callers must go through receiptService.settlePayment(), which guarantees
+ * this runs at most once per payment even if a webhook is redelivered.
+ */
+async function sendPaymentReceiptEmail(context = {}) {
+  const {
+    clinic = {}, receiptNumber, paymentRef, parentName, parentEmail,
+    childName, pediatricianName, appointmentId, appointmentDate, appointmentTime,
+    service, paymentMethod, amount, currency = 'PHP', paidAt, status = 'Paid',
+  } = context;
+
+  if (!parentEmail) {
+    return { sent: false, message: 'No recipient email supplied.' };
+  }
+
+  const methodLabel = {
+    paymongo: 'Paid Online (PayMongo)',
+    pay_at_clinic: 'Paid at Clinic',
+    cash: 'Cash at Clinic',
+    ewallet: 'E-Wallet Transfer',
+  }[paymentMethod] || String(paymentMethod || 'Payment');
+
+  const amountStr = formatPeso(amount, currency);
+
+  const body = `
+    <p style="margin-bottom:16px">Hi ${escapeHtml(parentName || 'there')},</p>
+    <p style="margin-bottom:18px">
+      We have received your payment. This email is your official receipt from
+      ${brandLine(escapeHtml(clinic.clinicName || 'KinderCura'), '#6B8E6F')}.
+    </p>
+
+    <div class="km-section">
+      <h3>🧾 Payment Receipt</h3>
+      <table style="width:100%;border-collapse:collapse">
+        ${receiptRow('Receipt Number', receiptNumber)}
+        ${receiptRow('Payment Reference', paymentRef)}
+        ${receiptRow('Parent Name', parentName)}
+        ${receiptRow('Child Name', childName)}
+        ${receiptRow('Pediatrician', pediatricianName)}
+        ${receiptRow('Appointment', appointmentId ? `#${appointmentId}` : '—')}
+        ${receiptRow('Appointment Date', formatDateOnly(appointmentDate))}
+        ${receiptRow('Appointment Time', formatClockTime(appointmentTime))}
+        ${receiptRow('Service', service)}
+        ${receiptRow('Payment Method', methodLabel)}
+        ${receiptRow('Amount Paid', amountStr)}
+        ${receiptRow('Payment Date', formatDateTime(paidAt))}
+        ${receiptRow('Payment Status', String(status).toUpperCase())}
+      </table>
+    </div>
+
+    <div class="km-warn">
+      Please keep this receipt for your records. Present the receipt number if
+      you have any question about this payment.
+    </div>
+
+    <div class="km-section">
+      <h3>📍 Clinic</h3>
+      <p style="font-size:0.9rem;line-height:1.7">
+        ${escapeHtml(clinic.clinicName || 'KinderCura Clinic')}<br/>
+        ${escapeHtml(clinic.address || '')}<br/>
+        ${escapeHtml(clinic.phoneNumber || '')}<br/>
+        ${escapeHtml(clinic.email || '')}
+      </p>
+    </div>
+  `;
+
+  const html = wrap('Payment Receipt', `Receipt ${receiptNumber || ''}`.trim(), body, '#6B8E6F');
+
+  const text = `
+KINDER CURA
+Payment Receipt
+
+Receipt Number:     ${receiptNumber || '—'}
+Payment Reference:  ${paymentRef || '—'}
+Parent Name:        ${parentName || '—'}
+Child Name:         ${childName || '—'}
+Pediatrician:       ${pediatricianName || '—'}
+Appointment Date:   ${formatDateOnly(appointmentDate)}
+Appointment Time:   ${formatClockTime(appointmentTime)}
+Service:            ${service || '—'}
+Payment Method:     ${methodLabel}
+Amount Paid:        ${amountStr}
+Payment Date:       ${formatDateTime(paidAt)}
+Payment Status:     ${String(status).toUpperCase()}
+
+${clinic.clinicName || 'KinderCura Clinic'}
+${clinic.address || ''}
+${clinic.phoneNumber || ''}
+  `.trim();
+
+  const transporter = getTransporter();
+  if (!transporter) {
+    console.log(`\n[EMAIL – PAYMENT RECEIPT]\nTo: ${parentEmail}\n${text}\n`);
+    return { sent: false, message: 'No transporter configured — logged to console.' };
+  }
+
+  await transporter.sendMail({
+    from: `"KinderCura" <${process.env.EMAIL_USER}>`,
+    to: String(parentEmail).trim(),
+    subject: `KinderCura Payment Receipt ${receiptNumber || ''} — ${amountStr}`.replace(/\s+/g, ' ').trim(),
+    html,
+    text,
+  });
+  return { sent: true };
+}
+
 module.exports = {
   sendInvitationEmail,
   sendWelcomeEmail,
   sendAcceptanceNotification,
+  sendPaymentReceiptEmail,
   getTransporter,
 };

@@ -65,7 +65,17 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-app.use(express.json());
+// The PayMongo webhook signature is an HMAC over the exact bytes PayMongo
+// sent. Re-serialising the parsed object produces different bytes and would
+// fail every legitimate signature, so the raw buffer is stashed here — only
+// for the webhook path, to avoid holding a copy of every request body.
+app.use(express.json({
+    verify: (req, _res, buf) => {
+        if (req.originalUrl && req.originalUrl.startsWith('/api/payments/webhook/')) {
+            req.rawBody = buf;
+        }
+    },
+}));
 app.use(express.urlencoded({ extended: true }));
 
 // Uploaded files are only on the local filesystem during development. On

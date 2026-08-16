@@ -53,4 +53,29 @@ router.post('/appointments/:appointmentId/verify-ewallet', authMiddleware, payme
 router.get('/pending-ewallet', authMiddleware, paymentController.getPendingEwallets);
 router.get('/proof/:filename', authMiddleware, paymentController.serveProofImage);
 
+// ── Automated payments ────────────────────────────────────────────────────
+
+// PayMongo webhook. Deliberately NOT behind authMiddleware: PayMongo cannot
+// present a JWT. It is authenticated by the Paymongo-Signature HMAC instead,
+// which is verified against the raw request bytes captured in server.js.
+router.post('/webhook/paymongo', paymentController.handlePaymongoWebhook);
+
+// Parent — Pay Online
+router.post('/appointments/:appointmentId/checkout', authMiddleware, paymentController.startOnlineCheckout);
+router.get('/ref/:paymentRef/status', authMiddleware, paymentController.getPaymentStatusByRef);
+router.post('/ref/:paymentRef/reconcile', authMiddleware, paymentController.reconcileCheckout);
+
+// Parent — Pay at Clinic
+router.post('/appointments/:appointmentId/pay-at-clinic', authMiddleware, paymentController.startPayAtClinic);
+
+// Secretary / cashier
+router.get('/clinic/today', authMiddleware, paymentController.getClinicToday);
+router.get('/clinic/lookup/:paymentRef', authMiddleware, paymentController.lookupClinicPayment);
+router.post('/clinic/:paymentRef/confirm', authMiddleware, paymentController.confirmClinicPayment);
+
+// Admin — monitoring and clinic configuration
+router.get('/admin/monitor', authMiddleware, paymentController.getAdminPaymentMonitor);
+router.get('/clinic-config', authMiddleware, paymentController.getClinicConfig);
+router.put('/clinic-config', authMiddleware, paymentController.updateClinicConfig);
+
 module.exports = router;
