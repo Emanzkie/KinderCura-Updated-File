@@ -2,10 +2,13 @@
 // Thin wrapper over the PayMongo REST API. This module is the ONLY place that
 // touches PAYMONGO_SECRET_KEY — nothing here is ever imported by browser code.
 //
-// Endpoint choice: PayMongo now documents `POST /v2/checkout_sessions` as the
-// recommended Checkout Session API for new integrations, so that is the
-// default. PAYMONGO_API_VERSION can be set to 'v1' to fall back to the older
-// `POST /checkout_sessions` without a code change.
+// Endpoint choice: `POST /v1/checkout_sessions` is the endpoint PayMongo
+// publicly documents for Checkout Sessions, so that is the default. The API
+// returns 401 for *every* unauthenticated path, so a v2 path cannot be proven
+// to exist without spending a live call — defaulting to the documented one
+// keeps "Pay Online" from failing on an endpoint we never verified.
+// PAYMONGO_API_VERSION=v2 opts in, without a code change, if the account is
+// enrolled in a newer API version.
 //
 // Webhook events: v1 emits `checkout_session.payment.paid`, while the current
 // event catalogue is centred on `payment.paid` / `payment.failed`. The webhook
@@ -15,7 +18,7 @@
 const crypto = require('crypto');
 
 const API_BASE = 'https://api.paymongo.com';
-const API_VERSION = process.env.PAYMONGO_API_VERSION === 'v1' ? 'v1' : 'v2';
+const API_VERSION = process.env.PAYMONGO_API_VERSION === 'v2' ? 'v2' : 'v1';
 
 /** True when the server has enough configuration to talk to PayMongo. */
 function isConfigured() {
@@ -112,7 +115,9 @@ async function createCheckoutSession({
   };
   if (successUrl) attributes.success_url = successUrl;
   if (cancelUrl) attributes.cancel_url = cancelUrl;
-  if (customerEmail) attributes.customer_email = customerEmail;
+  // The payer's email travels in `billing`, which is the documented place for
+  // it. A second top-level `customer_email` is not part of the Checkout
+  // Session attribute list and risks a 400 on an otherwise valid request.
   if (customerName || customerEmail) {
     attributes.billing = {
       name: customerName || undefined,

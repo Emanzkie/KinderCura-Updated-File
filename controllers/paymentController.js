@@ -743,7 +743,14 @@ async function startOnlineCheckout(req, res) {
       parentEmail: parent?.email || null,
     });
 
-    const origin = `${req.protocol}://${req.get('host')}`;
+    // Where PayMongo sends the parent back to. Behind Vercel's proxy
+    // req.protocol reports "http" unless trust-proxy is enabled, which would
+    // hand PayMongo an http:// return URL, so the configured public origin
+    // wins and req is only the local-development fallback.
+    const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+    const origin = process.env.APP_URL
+      ? String(process.env.APP_URL).replace(/\/$/, '')
+      : (vercelHost ? `https://${vercelHost}` : `${req.protocol}://${req.get('host')}`);
     const childName = child ? `${child.firstName} ${child.lastName}`.trim() : 'your child';
 
     const session = await paymongoService.createCheckoutSession({
