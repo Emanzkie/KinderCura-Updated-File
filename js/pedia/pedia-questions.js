@@ -200,11 +200,10 @@
 
         function getDomainClass(domain) {
             return {
-                'Gross Motor': 'domain-gross',
-                'Fine Motor': 'domain-fine',
-                'Language': 'domain-lang',
-                'Personal-Social': 'domain-social',
-                'Other': 'domain-other'
+                'Communication': 'domain-comm',
+                'Social Skills': 'domain-social',
+                'Cognitive': 'domain-cog',
+                'Motor Skills': 'domain-motor'
             }[domain] || 'domain-other';
         }
 
@@ -769,7 +768,7 @@
             document.getElementById('modalSub').textContent = 'Update your assessment question';
             document.getElementById('qText').value = q.questionText || '';
             document.getElementById('qType').value = q.questionType || 'yes_no';
-            document.getElementById('qDomain').value = q.domain || 'Other';
+            document.getElementById('qDomain').value = q.domain || 'Communication';
             document.getElementById('qAgeMin').value = q.ageMin ?? 0;
             document.getElementById('qAgeMax').value = q.ageMax ?? 18;
             document.getElementById('modalError').style.display = 'none';

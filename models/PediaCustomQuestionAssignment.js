@@ -18,6 +18,16 @@ const pediaCustomQuestionAssignmentSchema = new mongoose.Schema(
     parentId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     answer: { type: String, default: null },
     answeredAt: { type: Date, default: null },
+
+    // Which reassessment this question's answer was folded into, if any.
+    // null = never claimed by a screening session — either still pending, or
+    // answered standalone through the custom-questions page (routes/custom-
+    // questions.js), which never touches Assessment/AssessmentResult at all.
+    // Set once, at submit time, by routes/assessments.js `/submit` — never
+    // reassigned afterward, so an assignment can only ever feed scoring into
+    // ONE assessment, which is what keeps a historical AssessmentResult
+    // immutable to later Custom Question activity.
+    assessmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Assessment', default: null, index: true },
   },
   { timestamps: { createdAt: true, updatedAt: false }, collection: 'pedia_custom_question_assignments' }
 );

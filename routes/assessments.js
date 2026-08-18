@@ -16,7 +16,9 @@ const User = require('../models/User');
 const PatientProgressNote = require('../models/PatientProgressNote');
 const Notification = require('../models/Notification');
 const CoreBankQuestion = require('../models/CoreBankQuestion');
+const PediaCustomQuestionAssignment = require('../models/PediaCustomQuestionAssignment');
 const { DATA_ORIGIN } = require('../constants/dataOrigin');
+const { normalizeDomain } = require('../constants/assessmentDomains');
 const scoring = require('../constants/scoring');
 const sse = require('../sse');
 
@@ -66,9 +68,15 @@ function getAgeInfo(dateOfBirth) {
   return null;
 }
 
+// Case-insensitive on purpose: the core screening flow always sends lowercase
+// 'yes'/'sometimes'/'no' (js/parent/screening.js), but the custom-questions
+// yes/no widget sends 'Yes'/'No' (js/parent/custom-questions.js). Lowercasing
+// here is not a new scoring rule — it is the same 2/1/0 scale applied
+// correctly regardless of which UI produced the string.
 function scoreAnswer(answer) {
-  if (answer === 'yes') return 2;
-  if (answer === 'sometimes') return 1;
+  const normalized = String(answer ?? '').trim().toLowerCase();
+  if (normalized === 'yes') return 2;
+  if (normalized === 'sometimes') return 1;
   return 0;
 }
 
@@ -177,10 +185,34 @@ function buildDomainDetails(answers, result) {
     const strengths = [];
     const developing = [];
     const needsSupport = [];
+    let totalItems = 0;
 
     for (const a of domainAnswers) {
-      const read = interpretAnswer(a.answer);
       const text = a.questionText ? String(a.questionText) : '';
+
+      // A custom question whose type has no defined scoring rule (see the
+      // scoringGaps block in POST /submit) never entered this domain's
+      // percentage. Show it for the record, but keep it out of the
+      // strength/developing/concern narrative instead of letting
+      // interpretAnswer() guess a yes/sometimes/no reading for text it was
+      // never designed to score.
+      const normalizedAnswer = String(a.answer ?? '').trim().toLowerCase();
+      const isUnscoredCustomAnswer = a.origin === DATA_ORIGIN.PEDIA_ENTRY
+        && normalizedAnswer !== 'yes' && normalizedAnswer !== 'no' && normalizedAnswer !== 'sometimes';
+
+      if (isUnscoredCustomAnswer) {
+        items.push({
+          questionId: String(a.questionId || ''),
+          questionText: text || PARENT_ANSWER_FALLBACK,
+          answer: a.answer,
+          insight: 'Recorded — not included in this domain\'s score',
+          insightLevel: 'neutral',
+        });
+        continue;
+      }
+
+      const read = interpretAnswer(a.answer);
+      totalItems += 1;
 
       items.push({
         // 'Q05'-style core-bank code, not a MongoDB _id.
@@ -196,7 +228,6 @@ function buildDomainDetails(answers, result) {
       else needsSupport.push(describeItem(text, 'support'));
     }
 
-    const totalItems = items.length;
     const achievedItems = strengths.length;
     const developingItems = developing.length;
     const concernItems = needsSupport.length;
@@ -418,6 +449,88 @@ async function createParentDiagnosisNotification({ parentId, child, assessmentId
   }
 }
 
+// ---------------------------------------------------------------------------
+// Reassessment support: folding pediatrician Custom Questions into a NEW
+// Assessment/AssessmentResult pair, per the adviser requirement that a
+// completed historical assessment must never be updated by later custom-
+// question activity. See models/PediaCustomQuestionAssignment.js:assessmentId.
+// ---------------------------------------------------------------------------
+
+// Every assignment for this child that is still unclaimed by any assessment
+// AND unanswered. Matched on childId only (not parentId) so a secondary
+// guardian with submitAssessments permission can also pick these up — the
+// same access rule already used by /initialize and /submit below.
+async function findPendingCustomQuestions(childId) {
+  const assignments = await PediaCustomQuestionAssignment.find({
+    childId,
+    assessmentId: null,
+    $or: [{ answer: null }, { answer: '' }],
+  })
+    .populate({ path: 'questionId', populate: { path: 'pediatricianId', select: 'firstName lastName' } })
+    .sort({ createdAt: 1 })
+    .lean();
+
+  return assignments.filter((a) => a.questionId && a.questionId.isActive !== false);
+}
+
+function hasMeaningfulAnswerValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== '';
+}
+
+function serializePendingCustomQuestion(a) {
+  const q = a.questionId || {};
+  const ped = q.pediatricianId || {};
+  return {
+    assignmentId: a.id,
+    questionText: q.questionText || '',
+    questionType: q.questionType || 'short_answer',
+    options: Array.isArray(q.options) ? q.options : [],
+    domain: normalizeDomain(q.domain),
+    pediatricianName: ped.firstName ? `${ped.firstName} ${ped.lastName || ''}`.trim() : 'Pediatrician',
+  };
+}
+
+// Mirrors the notification helper already in routes/custom-questions.js so the
+// pediatrician still gets notified when a Custom Question is answered, even
+// though this answer arrives through the reassessment flow instead of the
+// standalone custom-questions page (preserves the existing notify-on-answer
+// behavior — see adviser rule J).
+async function notifyPediatricianCustomAnswer({ pediatricianId, child, questionText, answer }) {
+  if (!pediatricianId) return;
+
+  const notificationModel = resolveNotificationModel();
+  const childName = [child?.firstName, child?.lastName].filter(Boolean).join(' ').trim() || 'a child';
+  const shortAnswer = String(answer || '').trim().slice(0, 80);
+  const payload = {
+    userId: new mongoose.Types.ObjectId(String(pediatricianId)),
+    title: '📝 Custom Question Answered',
+    message: `${childName}'s parent answered: "${String(questionText || '').trim()}" — Answer: ${shortAnswer}`,
+    type: 'assessment',
+    relatedPage: '/pedia/pedia-questions.html',
+    isRead: false,
+  };
+
+  try {
+    if (notificationModel) {
+      await notificationModel.create(payload);
+      return;
+    }
+  } catch (err) {
+    console.warn('Custom question answer notification model create failed, using collection fallback:', err.message);
+  }
+
+  try {
+    await mongoose.connection.collection('notifications').insertOne({
+      ...payload,
+      id: await nextNotificationId(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  } catch (err) {
+    console.warn('Custom question answer notification insert fallback failed:', err.message);
+  }
+}
+
 // POST /api/assessments/initialize
 router.post('/initialize', authMiddleware, async (req, res) => {
   try {
@@ -444,6 +557,13 @@ router.post('/initialize', authMiddleware, async (req, res) => {
       startedAt: new Date(),
     });
 
+    // Any Custom Questions a pediatrician has assigned and the parent hasn't
+    // answered yet ride along in THIS new assessment — this is what makes a
+    // screening a reassessment. Nothing is claimed/stamped yet; that only
+    // happens on /submit, so an abandoned screening never orphans an
+    // assignment against an incomplete Assessment.
+    const pendingCustomQuestions = await findPendingCustomQuestions(child._id);
+
     res.json({
       success: true,
       assessmentId: String(assessment._id),
@@ -452,6 +572,7 @@ router.post('/initialize', authMiddleware, async (req, res) => {
       childAge: ageInfo.age,
       totalQuestions: 20,
       questions: [], // frontend already has the question list hardcoded
+      customQuestions: pendingCustomQuestions.map(serializePendingCustomQuestion),
     });
   } catch (err) {
     console.error('assessments initialize error:', err);
@@ -495,8 +616,9 @@ router.post('/save-draft', authMiddleware, async (req, res) => {
 // POST /api/assessments/submit
 router.post('/submit', authMiddleware, async (req, res) => {
   try {
-    let { assessmentId, childId, answers } = req.body;
+    let { assessmentId, childId, answers, customAnswers } = req.body;
     const answersArray = normalizeAnswers(answers);
+    const rawCustomAnswers = Array.isArray(customAnswers) ? customAnswers : [];
 
     if (!childId) return res.status(400).json({ error: 'childId is required.' });
 
@@ -538,7 +660,6 @@ router.post('/submit', authMiddleware, async (req, res) => {
       );
     }
 
-    const storedAnswers = await AssessmentAnswer.find({ assessmentId }).lean();
     const totals = {
       Communication: { earned: 0, total: 0 },
       'Social Skills': { earned: 0, total: 0 },
@@ -546,10 +667,140 @@ router.post('/submit', authMiddleware, async (req, res) => {
       'Motor Skills': { earned: 0, total: 0 },
     };
 
-    for (const a of storedAnswers) {
+    // Core-bank answers only, deliberately filtered by origin rather than "every
+    // stored answer for this assessmentId" — see the Custom Question block below
+    // for why a pedia_entry answer must never fall into this loop by accident.
+    const storedCoreAnswers = await AssessmentAnswer.find({ assessmentId, origin: DATA_ORIGIN.CORE_BANK }).lean();
+    for (const a of storedCoreAnswers) {
       if (!totals[a.domain]) continue;
       totals[a.domain].total += 2;
       totals[a.domain].earned += scoreAnswer(a.answer);
+    }
+
+    // ---------------------------------------------------------------------
+    // Custom Question answers — this is what makes the new Assessment a
+    // reassessment rather than a plain re-run of the core checklist.
+    //
+    // Each assignment can be claimed by exactly one assessment (enforced via
+    // the assessmentId/answer guard below), and once claimed it is written
+    // ONLY to this brand-new assessmentId's AssessmentAnswer rows — never to
+    // any previous AssessmentAnswer or AssessmentResult. The previous
+    // assessment was already 'complete' and its AssessmentResult document is
+    // never touched by anything in this block.
+    //
+    // Scoring reuses the exact same 2/0 point scale as scoreAnswer() above —
+    // no second scoring algorithm. A custom answer only contributes points
+    // when BOTH are true:
+    //   - its question's domain is one of the four scored domains. Every
+    //     Custom Question domain is normalized to one of these four (see
+    //     constants/assessmentDomains.js), so `domainIsScored` below is a
+    //     defensive check, not an expected exclusion path anymore.
+    //   - its question type is yes_no, so the answer maps onto the same
+    //     yes/no scale the core bank already uses
+    // multiple_choice and short_answer have no equivalent scale anywhere in
+    // this codebase, so they are recorded (for the record/history/domain
+    // details view) but deliberately excluded from scoring — surfaced below
+    // via scoringGaps instead of silently guessed at.
+    // ---------------------------------------------------------------------
+    const scoringGaps = [];
+    let customAnswersSaved = 0;
+
+    if (rawCustomAnswers.length) {
+      const seenAssignmentIds = new Set();
+      const dedupedCustomAnswers = [];
+      for (const item of rawCustomAnswers) {
+        const aId = Number(item?.assignmentId);
+        const ans = String(item?.answer ?? '').trim();
+        if (!Number.isFinite(aId) || !ans) continue;
+        if (seenAssignmentIds.has(aId)) continue; // dedupe: never score the same assignment twice in one submit
+        seenAssignmentIds.add(aId);
+        dedupedCustomAnswers.push({ assignmentId: aId, answer: ans });
+      }
+
+      if (dedupedCustomAnswers.length) {
+        // Matched on childId only (not parentId) so the same secondary-guardian
+        // access already checked above can also submit these.
+        const assignmentDocs = await PediaCustomQuestionAssignment.find({
+          id: { $in: dedupedCustomAnswers.map((i) => i.assignmentId) },
+          childId: child._id,
+        }).populate({ path: 'questionId', populate: { path: 'pediatricianId', select: 'firstName lastName' } });
+
+        const assignmentById = new Map(assignmentDocs.map((a) => [a.id, a]));
+        const submittedAt = new Date();
+
+        for (const { assignmentId: aId, answer: ans } of dedupedCustomAnswers) {
+          const assignment = assignmentById.get(aId);
+          if (!assignment || !assignment.questionId) continue;
+
+          // Already claimed by a (different) assessment, or already answered
+          // standalone — refuse to re-score it. This is the duplicate-
+          // submission/duplicate-scoring guard (adviser rule K).
+          if (assignment.assessmentId || hasMeaningfulAnswerValue(assignment.answer)) {
+            scoringGaps.push({
+              assignmentId: aId,
+              questionText: assignment.questionId.questionText,
+              reason: 'Already answered previously — skipped to avoid duplicate scoring.',
+            });
+            continue;
+          }
+
+          const question = assignment.questionId;
+          // Normalized here too (not just on save/read paths) so a question
+          // created before this fix — or edited directly in the database —
+          // still lands in the correct existing domain bucket at score time.
+          const domain = normalizeDomain(question.domain);
+
+          await AssessmentAnswer.findOneAndUpdate(
+            { assessmentId, questionId: `custom_${assignment.id}` },
+            {
+              assessmentId,
+              questionId: `custom_${assignment.id}`,
+              domain,
+              questionText: question.questionText || '',
+              answer: ans,
+              origin: DATA_ORIGIN.PEDIA_ENTRY,
+              sourceQuestionRef: String(question._id),
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+          );
+          customAnswersSaved += 1;
+
+          assignment.assessmentId = assessmentId;
+          assignment.answer = ans;
+          assignment.answeredAt = submittedAt;
+          await assignment.save();
+
+          const normalizedAnswer = ans.toLowerCase();
+          const domainIsScored = Boolean(totals[domain]);
+          const isYesNo = question.questionType === 'yes_no';
+          const mapsToScale = normalizedAnswer === 'yes' || normalizedAnswer === 'no';
+
+          if (domainIsScored && isYesNo && mapsToScale) {
+            totals[domain].total += 2;
+            totals[domain].earned += scoreAnswer(ans);
+          } else {
+            scoringGaps.push({
+              assignmentId: aId,
+              questionText: question.questionText,
+              domain,
+              questionType: question.questionType,
+              reason: !domainIsScored
+                ? `Domain "${domain}" is not a scored domain — answer recorded but not scored.`
+                : `Question type "${question.questionType}" has no defined scoring rule — answer recorded but not scored.`,
+            });
+          }
+
+          const pedId = question.pediatricianId?._id;
+          if (pedId) {
+            await notifyPediatricianCustomAnswer({
+              pediatricianId: pedId,
+              child,
+              questionText: question.questionText,
+              answer: ans,
+            });
+          }
+        }
+      }
     }
 
     const communicationScore = totals.Communication.total ? Math.round((totals.Communication.earned / totals.Communication.total) * 100) : 0;
@@ -596,7 +847,16 @@ router.post('/submit', authMiddleware, async (req, res) => {
 
     sse.broadcast('analytics:update', { type: 'assessment', action: 'complete' });
 
-    res.json({ success: true, resultId: String(result._id), assessmentId: String(assessmentId), analysisStatus: 'complete' });
+    res.json({
+      success: true,
+      resultId: String(result._id),
+      assessmentId: String(assessmentId),
+      analysisStatus: 'complete',
+      // Custom Question transparency: how many were folded into scoring vs.
+      // recorded-but-not-scored (and why). Never silently dropped.
+      customAnswersSaved,
+      scoringGaps,
+    });
   } catch (err) {
     console.error('assessments submit error:', err);
     res.status(500).json({ error: err.message });
@@ -1117,8 +1377,15 @@ router.get('/:childId/review-answers', authMiddleware, async (req, res) => {
       if (!grouped[domain]) grouped[domain] = [];
 
       // Answer-level insight comes from the shared interpretation helper so the
-      // parent Results page and this modal can never disagree about an answer.
-      const { insight, insightLevel } = interpretAnswer(a.answer);
+      // parent Results page and this modal can never disagree about an answer —
+      // except for a custom answer interpretAnswer() was never designed to read
+      // (see the matching guard in buildDomainDetails above).
+      const normalizedAnswer = String(a.answer ?? '').trim().toLowerCase();
+      const isUnscoredCustomAnswer = a.origin === DATA_ORIGIN.PEDIA_ENTRY
+        && normalizedAnswer !== 'yes' && normalizedAnswer !== 'no' && normalizedAnswer !== 'sometimes';
+      const { insight, insightLevel } = isUnscoredCustomAnswer
+        ? { insight: 'Recorded — not scored', insightLevel: 'neutral' }
+        : interpretAnswer(a.answer);
 
       grouped[domain].push({
         questionId: a.questionId,
@@ -1173,6 +1440,78 @@ router.get('/:childId/review-answers', authMiddleware, async (req, res) => {
     });
   } catch (err) {
     console.error('assessments review-answers error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/assessments/:assessmentId/compare
+// Compares this assessment's stored result against the immediately previous
+// COMPLETED assessment for the same child. Read-only: it never recomputes or
+// writes to either AssessmentResult — both stay exactly as originally
+// generated, which is the adviser's core data-integrity requirement.
+router.get('/:assessmentId/compare', authMiddleware, async (req, res) => {
+  try {
+    const currentAssessment = await Assessment.findById(req.params.assessmentId).lean();
+    if (!currentAssessment) return res.status(404).json({ error: 'Assessment not found.' });
+
+    const child = await Child.findById(currentAssessment.childId).lean();
+    if (!child) return res.status(404).json({ error: 'Child not found.' });
+
+    const isOwner = String(child.parentId) === String(req.user.userId);
+    const isPediaLinked = req.user.role === 'pediatrician' && await Appointment.exists({ childId: child._id, pediatricianId: req.user.userId });
+    const allowed = isOwner || isPediaLinked || req.user.role === 'admin' || await hasPermission(req.user.userId, child._id, 'viewAssessments');
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
+    const currentResult = await AssessmentResult.findOne({ assessmentId: currentAssessment._id }).lean();
+    if (!currentResult) return res.status(404).json({ error: 'This assessment has no results yet.' });
+
+    const anchorDate = currentAssessment.completedAt || currentAssessment.startedAt;
+    const previousAssessment = await Assessment.findOne({
+      childId: currentAssessment.childId,
+      status: 'complete',
+      _id: { $ne: currentAssessment._id },
+      completedAt: { $lt: anchorDate },
+    }).sort({ completedAt: -1 }).lean();
+
+    const previousResult = previousAssessment
+      ? await AssessmentResult.findOne({ assessmentId: previousAssessment._id }).lean()
+      : null;
+
+    const DOMAINS = [
+      { key: 'communication', field: 'communicationScore', label: 'Communication' },
+      { key: 'social', field: 'socialScore', label: 'Social Skills' },
+      { key: 'cognitive', field: 'cognitiveScore', label: 'Cognitive' },
+      { key: 'motor', field: 'motorScore', label: 'Motor Skills' },
+      { key: 'overall', field: 'overallScore', label: 'Overall' },
+    ];
+
+    const scores = {};
+    for (const d of DOMAINS) {
+      const current = currentResult[d.field] ?? null;
+      const previous = previousResult ? (previousResult[d.field] ?? null) : null;
+      scores[d.key] = {
+        label: d.label,
+        current: current != null ? Math.round(current) : null,
+        previous: previous != null ? Math.round(previous) : null,
+        difference: (current != null && previous != null) ? Math.round(current) - Math.round(previous) : null,
+      };
+    }
+
+    res.json({
+      success: true,
+      hasPrevious: Boolean(previousAssessment && previousResult),
+      current: {
+        assessmentId: String(currentAssessment._id),
+        date: currentAssessment.completedAt || currentAssessment.startedAt,
+      },
+      previous: previousAssessment ? {
+        assessmentId: String(previousAssessment._id),
+        date: previousAssessment.completedAt || previousAssessment.startedAt,
+      } : null,
+      scores,
+    });
+  } catch (err) {
+    console.error('assessments compare error:', err);
     res.status(500).json({ error: err.message });
   }
 });

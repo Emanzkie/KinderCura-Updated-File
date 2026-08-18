@@ -22,6 +22,7 @@ const User = require('../models/User');
 const Appointment = require('../models/Appointment');
 const Notification = require('../models/Notification');
 const { DATA_ORIGIN } = require('../constants/dataOrigin');
+const { ASSESSMENT_DOMAINS, normalizeDomain, isValidNewDomain } = require('../constants/assessmentDomains');
 
 // --- Safe notification helpers ------------------------------------------------
 // These helpers mirror the safer notification pattern used in appointments/chat.
@@ -98,7 +99,11 @@ function normalizeQuestion(doc) {
     questionText: doc.questionText,
     questionType: doc.questionType,
     options: Array.isArray(doc.options) ? doc.options : [],
-    domain: doc.domain || 'Other',
+    // Defensive normalize, not just a fallback: guarantees the API never
+    // hands the frontend a legacy domain string even for a document that
+    // hasn't been touched by the model's pre('validate') hook or the
+    // one-off migration script yet.
+    domain: normalizeDomain(doc.domain),
     ageMin: doc.ageMin ?? 0,
     ageMax: doc.ageMax ?? 18,
     isActive: Boolean(doc.isActive),
@@ -133,12 +138,15 @@ function normalizeAssignment(doc) {
     appointmentId: doc.appointmentId || null,
     answer: doc.answer || null,
     answeredAt: doc.answeredAt || null,
+    // Which reassessment claimed this answer, if any. null when the answer
+    // (if present) was given standalone through this page instead.
+    assessmentId: doc.assessmentId ? doc.assessmentId.toString() : null,
     createdAt: doc.createdAt || null,
     questionId: q.id,
     questionText: q.questionText,
     questionType: q.questionType,
     options: Array.isArray(q.options) ? q.options : [],
-    domain: q.domain || 'Other',
+    domain: normalizeDomain(q.domain),
     ageMin: q.ageMin ?? 0,
     ageMax: q.ageMax ?? 18,
     pediatricianName: ped.firstName ? `${ped.firstName} ${ped.lastName || ''}`.trim() : 'Pediatrician',
@@ -270,6 +278,11 @@ router.post('/bulk', authMiddleware, async (req, res) => {
         continue;
       }
 
+      if (q.domain !== undefined && !isValidNewDomain(q.domain)) {
+        errors.push({ index, error: `Question ${index}: Domain must be one of: ${ASSESSMENT_DOMAINS.join(', ')}.` });
+        continue;
+      }
+
       try {
         const doc = await PediaCustomQuestion.create({
           pediatricianId: req.user.userId,
@@ -277,7 +290,7 @@ router.post('/bulk', authMiddleware, async (req, res) => {
           questionText: String(q.questionText).trim(),
           questionType: q.questionType,
           options: q.questionType === 'multiple_choice' ? cleanOptions : [],
-          domain: q.domain || 'Other',
+          domain: q.domain || undefined,
           ageMin: q.ageMin != null ? Number(q.ageMin) : 0,
           ageMax: q.ageMax != null ? Number(q.ageMax) : 18,
           isActive: true,
@@ -346,12 +359,16 @@ router.post('/', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Multiple choice questions require at least 2 options.' });
     }
 
+    if (domain !== undefined && !isValidNewDomain(domain)) {
+      return res.status(400).json({ error: `Domain must be one of: ${ASSESSMENT_DOMAINS.join(', ')}.` });
+    }
+
     const doc = await PediaCustomQuestion.create({
       pediatricianId: req.user.userId,
       questionText: String(questionText).trim(),
       questionType,
       options: questionType === 'multiple_choice' ? cleanOptions : [],
-      domain: domain || 'Other',
+      domain: domain || undefined,
       ageMin: ageMin != null ? Number(ageMin) : 0,
       ageMax: ageMax != null ? Number(ageMax) : 18,
       isActive: true,
@@ -398,7 +415,12 @@ router.put('/:id', authMiddleware, async (req, res) => {
     if (options !== undefined) {
       doc.options = Array.isArray(options) ? options.map((o) => String(o).trim()).filter(Boolean) : [];
     }
-    if (domain !== undefined) doc.domain = domain || 'Other';
+    if (domain !== undefined) {
+      if (!isValidNewDomain(domain)) {
+        return res.status(400).json({ error: `Domain must be one of: ${ASSESSMENT_DOMAINS.join(', ')}.` });
+      }
+      doc.domain = domain;
+    }
     if (ageMin !== undefined) doc.ageMin = Number(ageMin);
     if (ageMax !== undefined) doc.ageMax = Number(ageMax);
     if (isActive !== undefined) doc.isActive = Boolean(isActive);
@@ -648,6 +670,17 @@ router.post('/answer/:assignmentId', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Assignment not found.' });
     }
 
+    // Already folded into a reassessment (routes/assessments.js POST /submit) —
+    // that endpoint already scored and permanently stored this answer under an
+    // AssessmentResult. Overwriting it here would desync the assignment record
+    // from history without ever being able to re-score that closed result, so
+    // it is refused rather than silently accepted (adviser rule K).
+    if (assignment.assessmentId) {
+      return res.status(409).json({
+        error: 'This question was already answered as part of a reassessment and cannot be changed here.',
+      });
+    }
+
     assignment.answer = String(answer);
     assignment.answeredAt = new Date();
     await assignment.save();
@@ -724,6 +757,14 @@ router.post('/set/:setId/answer-batch', authMiddleware, async (req, res) => {
 
     if (submittedAssignments.length !== normalizedAnswers.length) {
       return res.status(404).json({ error: 'One or more answers do not belong to this question set.' });
+    }
+
+    // Same guard as the single-answer endpoint above: a question already
+    // folded into a reassessment is closed to further edits here.
+    if (submittedAssignments.some(a => a.assessmentId)) {
+      return res.status(409).json({
+        error: 'One or more of these questions were already answered as part of a reassessment and cannot be changed here.',
+      });
     }
 
     const childIds = new Set(submittedAssignments.map(a => String(a.childId?._id || a.childId)));

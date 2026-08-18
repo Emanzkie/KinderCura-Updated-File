@@ -208,6 +208,71 @@ async function getLatestCompletedAssessment(childId) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Previous-vs-current comparison (GET /api/assessments/:assessmentId/compare)
+//
+// Purely additive and read-only: it renders whatever the backend already
+// computed from the two stored AssessmentResult documents. Neither result is
+// ever recalculated here, and the previous assessment's data is displayed
+// exactly as it was originally saved — this page never writes to it.
+// ---------------------------------------------------------------------------
+
+function diffColor(diff) {
+    if (diff == null) return 'var(--text-light)';
+    if (diff > 0) return '#27ae60';
+    if (diff < 0) return '#e74c3c';
+    return 'var(--text-light)';
+}
+
+function diffText(diff) {
+    if (diff == null) return '—';
+    if (diff > 0) return `+${diff}`;
+    return `${diff}`;
+}
+
+function comparisonRow(d, bold) {
+    if (!d) return '';
+    const rowStyle = bold ? 'font-weight:700;border-top:1px solid var(--border);' : '';
+    return `
+        <tr style="${rowStyle}">
+            <td style="padding:.5rem .25rem;text-align:left;">${escapeHtml(d.label)}</td>
+            <td style="padding:.5rem .25rem;text-align:center;">${d.previous != null ? d.previous + '%' : '—'}</td>
+            <td style="padding:.5rem .25rem;text-align:center;">${d.current != null ? d.current + '%' : '—'}</td>
+            <td style="padding:.5rem .25rem;text-align:center;color:${diffColor(d.difference)};font-weight:700;">${diffText(d.difference)}${d.difference != null ? '%' : ''}</td>
+        </tr>`;
+}
+
+function renderComparisonSection(compare) {
+    if (!compare || !compare.hasPrevious || !compare.scores) return '';
+    const s = compare.scores;
+    return `
+        <div class="comparison-card" style="background:white;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+            <h3 style="margin:0 0 .3rem;color:var(--primary);">Progress Since Last Assessment</h3>
+            <p style="margin:0 0 1rem;color:var(--text-light);font-size:.85rem;">
+                Previous: ${escapeHtml(fmtDate(compare.previous?.date))} &nbsp;→&nbsp; Current: ${escapeHtml(fmtDate(compare.current?.date))}
+            </p>
+            <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:.9rem;min-width:420px;">
+                    <thead>
+                        <tr style="color:var(--text-light);font-size:.75rem;text-transform:uppercase;">
+                            <th style="text-align:left;padding:.25rem;">Domain</th>
+                            <th style="padding:.25rem;">Previous</th>
+                            <th style="padding:.25rem;">Current</th>
+                            <th style="padding:.25rem;">Change</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${comparisonRow(s.communication)}
+                        ${comparisonRow(s.social)}
+                        ${comparisonRow(s.cognitive)}
+                        ${comparisonRow(s.motor)}
+                        ${comparisonRow(s.overall, true)}
+                    </tbody>
+                </table>
+            </div>
+        </div>`;
+}
+
 function fmtDate(dateString) {
     if (!dateString) return 'Recent';
     const date = new Date(dateString);
@@ -358,6 +423,15 @@ async function loadResults() {
         const r = data.results;
         if (!r) throw new Error('No results data returned from server.');
 
+        // Additive, best-effort: absent on a child's first assessment (no
+        // previous to compare against), and never blocks the results view.
+        let compareData = null;
+        try {
+            compareData = await apiFetch(`/assessments/${assessmentId}/compare`);
+        } catch (_) {
+            compareData = null;
+        }
+
         activeAssessment = { id: r.assessmentId, ...r };
         latestReview = {
             diagnosis: r.diagnosis || '',
@@ -445,6 +519,8 @@ async function loadResults() {
             <div class="domain-cards-grid">
                 ${domains.map((d, i) => renderDomainCard(d, domainDetails[d.label], i)).join('')}
             </div>
+
+            ${renderComparisonSection(compareData)}
 
             <div id="nextStepsBlock" style="background:white;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
                 <h3 style="margin-bottom:1.5rem;color:var(--primary);">Next Steps</h3>

@@ -59,6 +59,29 @@ requireAuth();
         let selectedChild = null;
         let QUESTION_SET = [];
 
+        // Pediatrician Custom Questions still pending for this child, fetched from
+        // /assessments/initialize. Presented after the core checklist so answering
+        // them becomes part of THIS new assessment (a reassessment) instead of the
+        // separate custom-questions page flow. Empty when nothing is pending, in
+        // which case this screening behaves exactly like before.
+        let CUSTOM_QUESTION_SET = [];
+        let FULL_SET = [];
+
+        function buildFullSet() {
+            const core = QUESTION_SET.map(q => ({ ...q, kind: 'core' }));
+            const custom = CUSTOM_QUESTION_SET.map(q => ({
+                id: `custom_${q.assignmentId}`,
+                kind: 'custom',
+                assignmentId: q.assignmentId,
+                text: q.questionText,
+                domain: q.domain,
+                questionType: q.questionType,
+                options: q.options,
+                pediatricianName: q.pediatricianName,
+            }));
+            FULL_SET = core.concat(custom);
+        }
+
         function getDifficultyClass(level) {
             const normalized = String(level || '').toLowerCase();
             if (normalized === 'easy') return 'easy';
@@ -138,8 +161,20 @@ requireAuth();
                 }));
         }
 
+        // Custom Question answers are keyed separately (by assignmentId, not
+        // questionId) because the backend scores/stores them through a different
+        // path — see routes/assessments.js POST /submit.
+        function getCustomAnswerPayload() {
+            return CUSTOM_QUESTION_SET
+                .filter(q => q?.assignmentId && answers[`custom_${q.assignmentId}`])
+                .map(q => ({
+                    assignmentId: q.assignmentId,
+                    answer: answers[`custom_${q.assignmentId}`]
+                }));
+        }
+
         function updateAnswerOptionStyles() {
-            const q = QUESTION_SET?.[currentQuestion];
+            const q = FULL_SET?.[currentQuestion];
             if (!q) return;
             document.querySelectorAll('.answer-option').forEach(option => {
                 option.classList.toggle('is-selected', answers[q.id] === option.dataset.answer);
@@ -150,9 +185,26 @@ requireAuth();
             const totals = Object.fromEntries(DOMAIN_ORDER.map(d => [d.key, 0]));
             const answered = Object.fromEntries(DOMAIN_ORDER.map(d => [d.key, 0]));
 
-            QUESTION_SET.forEach(q => {
-                totals[q.scoreDomain] += 1;
-                if (answers[q.id]) answered[q.scoreDomain] += 1;
+            // Domain progress bars are built dynamically from FULL_SET — core-bank
+            // items AND every pediatrician Custom Question assigned to this child,
+            // grouped by whichever of the four domains each item actually belongs
+            // to (q.scoreDomain for core, q.domain for custom — both are always one
+            // of the four official domains; custom is guaranteed by the server-side
+            // normalizeDomain() in routes/assessments.js). No number here is
+            // hardcoded: 9 core Motor Skills + 1 custom Motor Skills question means
+            // this loop produces totals['Motor Skills'] === 10 on its own.
+            //
+            // This is an ITEM-COUNT/completion tally only. Whether a given custom
+            // question's answer will actually contribute POINTS to the domain score
+            // is a completely separate decision made once, server-side, in
+            // routes/assessments.js POST /submit (yes_no only) — a multiple_choice
+            // or short_answer custom question still counts here as one more item to
+            // answer, even though it will be recorded-but-not-scored on submit.
+            FULL_SET.forEach(q => {
+                const domain = q.kind === 'custom' ? q.domain : q.scoreDomain;
+                if (!(domain in totals)) return; // defensive: should never happen post-normalization
+                totals[domain] += 1;
+                if (answers[q.id]) answered[domain] += 1;
             });
 
             DOMAIN_ORDER.forEach(domain => {
@@ -162,14 +214,81 @@ requireAuth();
                 document.getElementById(domain.barId).style.width = total ? `${Math.round((done / total) * 100)}%` : '0%';
             });
 
-            const overallPercent = Math.round((Object.keys(answers).length / Math.max(QUESTION_SET.length, 1)) * 100);
+            const answeredInFullSet = FULL_SET.filter(q => answers[q.id]).length;
+            const overallPercent = Math.round((answeredInFullSet / Math.max(FULL_SET.length, 1)) * 100);
             document.getElementById('overall-progress').textContent = `${overallPercent}%`;
             const overallBar = document.getElementById('overall-bar');
             if (overallBar) overallBar.style.width = `${overallPercent}%`;
         }
 
+        // Pediatrician-authored text (question text, options, domain, name) is
+        // untrusted input rendered via innerHTML below — escape it the same way
+        // js/parent/custom-questions.js already does for the identical data.
+        function esc(s) {
+            return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+
+        function encodeJsString(value) {
+            return JSON.stringify(String(value ?? '')).replace(/"/g, '&quot;');
+        }
+
+        // Answer widget for a custom question, based on its questionType. yes_no
+        // reuses the same 'Yes'/'No' values the standalone custom-questions page
+        // already saves (js/parent/custom-questions.js selectChoice), so a single
+        // scoring rule on the backend covers both entry points.
+        function buildCustomAnswerOptions(q) {
+            if (q.questionType === 'yes_no') {
+                return [{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }];
+            }
+            if (q.questionType === 'multiple_choice') {
+                return (q.options || []).map(opt => ({ value: opt, label: opt }));
+            }
+            return null; // short_answer -> free text
+        }
+
+        function renderCustomQuestionCard(q, hasPrevious, isLast) {
+            const currentAnswer = answers[q.id] || '';
+            const opts = buildCustomAnswerOptions(q);
+
+            const answerBlock = opts ? `
+                <div class="answer-list">
+                    ${opts.map(o => `
+                        <label class="answer-option option-btn ${currentAnswer === o.value ? 'is-selected' : ''}" data-answer="${esc(o.value)}">
+                            <input type="radio" name="answer" value="${esc(o.value)}" ${currentAnswer === o.value ? 'checked' : ''} onchange="recordAnswer(${encodeJsString(o.value)})">
+                            <span class="answer-option-mark"></span>
+                            <span class="answer-option-text">${esc(o.label)}</span>
+                        </label>
+                    `).join('')}
+                </div>` : `
+                <textarea class="assessment-question-box" style="width:100%;min-height:110px;padding:0.9rem;border-radius:10px;border:1px solid var(--border, #ddd);font:inherit;"
+                    placeholder="Type your answer here..."
+                    oninput="recordAnswer(this.value.trim())">${esc(currentAnswer)}</textarea>`;
+
+            return `
+                <section class="assessment-question-card question-card">
+                    <div class="assessment-question-header">
+                        <p class="assessment-counter">Question ${currentQuestion + 1} of ${FULL_SET.length}</p>
+                        <span class="assessment-question-domain category-badge">Pediatrician Question</span>
+                    </div>
+
+                    <div class="assessment-question-box">
+                        <p class="assessment-question-text">${esc(q.text)}</p>
+                        <p class="assessment-helper-text">Assigned by Dr. ${esc(q.pediatricianName || 'Pediatrician')} • ${esc(q.domain || 'Other')}</p>
+                    </div>
+
+                    <h3 class="assessment-answer-title">How would you answer?</h3>
+                    ${answerBlock}
+
+                    <div class="assessment-actions ${hasPrevious ? '' : 'single'}">
+                        ${hasPrevious ? `<button type="button" class="assessment-action-btn secondary" onclick="previousQuestion()">← Back</button>` : ''}
+                        <button type="button" class="assessment-action-btn primary" onclick="nextQuestion()">${isLast ? 'Complete Assessment ✓' : 'Next Question'}</button>
+                    </div>
+                </section>
+            `;
+        }
+
         function renderQuestion() {
-            const q = QUESTION_SET?.[currentQuestion];
+            const q = FULL_SET?.[currentQuestion];
             const content = document.getElementById('assessmentContent');
 
             if (!q) {
@@ -177,7 +296,7 @@ requireAuth();
                     '[SCREENING] Invalid question index:',
                     currentQuestion,
                     'total:',
-                    QUESTION_SET.length
+                    FULL_SET.length
                 );
                 if (content) {
                     content.innerHTML = `
@@ -190,12 +309,17 @@ requireAuth();
             }
 
             const hasPrevious = currentQuestion > 0;
-            const isLast = currentQuestion === QUESTION_SET.length - 1;
+            const isLast = currentQuestion === FULL_SET.length - 1;
+
+            if (q.kind === 'custom') {
+                content.innerHTML = renderCustomQuestionCard(q, hasPrevious, isLast);
+                return;
+            }
 
             content.innerHTML = `
                 <section class="assessment-question-card question-card">
                     <div class="assessment-question-header">
-                        <p class="assessment-counter">Question ${currentQuestion + 1} of ${QUESTION_SET.length}</p>
+                        <p class="assessment-counter">Question ${currentQuestion + 1} of ${FULL_SET.length}</p>
                         <span class="assessment-question-domain category-badge">${q?.displayDomain ?? 'Development'}</span>
                     </div>
 
@@ -229,7 +353,7 @@ requireAuth();
         }
 
         function recordAnswer(answer) {
-            const q = QUESTION_SET?.[currentQuestion];
+            const q = FULL_SET?.[currentQuestion];
             if (!q) {
                 console.error(
                     '[SCREENING] Cannot record answer — missing question at index:',
@@ -251,7 +375,11 @@ requireAuth();
 
         async function saveDraftIfNeeded() {
             if (!assessmentId) return;
-            const answeredCount = Object.keys(answers).length;
+            // Draft saving only covers core answers — custom question answers are
+            // claimed and saved atomically at final submit (routes/assessments.js
+            // POST /submit), so an abandoned screening never partially claims a
+            // pediatrician's assignment. See getCustomAnswerPayload.
+            const answeredCount = QUESTION_SET.filter(cq => answers[cq.id]).length;
             if (!answeredCount || answeredCount % 5 !== 0) return;
 
             try {
@@ -269,7 +397,7 @@ requireAuth();
         }
 
         async function nextQuestion() {
-            const q = QUESTION_SET?.[currentQuestion];
+            const q = FULL_SET?.[currentQuestion];
             if (!q) {
                 console.error(
                     '[SCREENING] nextQuestion — invalid question at index:',
@@ -282,7 +410,7 @@ requireAuth();
                 return;
             }
 
-            if (currentQuestion >= QUESTION_SET.length - 1) {
+            if (currentQuestion >= FULL_SET.length - 1) {
                 completeAssessment();
                 return;
             }
@@ -308,7 +436,8 @@ requireAuth();
                     body: JSON.stringify({
                         assessmentId,
                         childId: selectedChild.id,
-                        answers: getAnswerPayload()
+                        answers: getAnswerPayload(),
+                        customAnswers: getCustomAnswerPayload()
                     })
                 });
 
@@ -375,18 +504,29 @@ requireAuth();
                     return;
                 }
 
-                const exactAge = formatExactAge(selectedChild.dateOfBirth);
-                const ageRange = getAgeRangeLabel(ageMonths);
-                document.getElementById('assessmentMeta').textContent = `Interview-based checklist loaded for age ${exactAge} • ${QUESTION_SET.length} questions`;
-                document.getElementById('ageRangeLabel').textContent = ageRange;
-                document.getElementById('ageRangeDetails').innerHTML = `Current child age: ${exactAge}<br>Question set for this child: ${QUESTION_SET.length}`;
-
                 // Important: create the backend assessment record first so the answers still save correctly.
                 const initData = await apiFetch('/assessments/initialize', {
                     method: 'POST',
                     body: JSON.stringify({ childId: selectedChild.id })
                 });
                 assessmentId = initData.assessmentId;
+                CUSTOM_QUESTION_SET = Array.isArray(initData.customQuestions) ? initData.customQuestions : [];
+                buildFullSet();
+
+                const exactAge = formatExactAge(selectedChild.dateOfBirth);
+                const ageRange = getAgeRangeLabel(ageMonths);
+                // Show the COMPLETE reassessment question count (FULL_SET) up front,
+                // not just the core checklist count — previously this text read e.g.
+                // "20 questions + 1 pediatrician question", which read like the total
+                // was still 20. The breakdown is kept for transparency, but the
+                // headline number now matches what "Question X of Y" below counts.
+                const totalQuestions = FULL_SET.length;
+                const breakdown = CUSTOM_QUESTION_SET.length
+                    ? ` (${QUESTION_SET.length} core + ${CUSTOM_QUESTION_SET.length} pediatrician)`
+                    : '';
+                document.getElementById('assessmentMeta').textContent = `Interview-based checklist loaded for age ${exactAge} • ${totalQuestions} questions${breakdown}`;
+                document.getElementById('ageRangeLabel').textContent = ageRange;
+                document.getElementById('ageRangeDetails').innerHTML = `Current child age: ${exactAge}<br>Question set for this child: ${totalQuestions}${breakdown}`;
 
                 updateProgress();
                 renderQuestion();

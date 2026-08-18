@@ -9,6 +9,7 @@
 const mongoose = require('mongoose');
 const Counter = require('./Counter');
 const { DATA_ORIGIN, DATA_ORIGIN_VALUES } = require('../constants/dataOrigin');
+const { ASSESSMENT_DOMAINS, FALLBACK_DOMAIN, normalizeDomain } = require('../constants/assessmentDomains');
 
 // Schema definition for one custom question
 const pediaCustomQuestionSchema = new mongoose.Schema(
@@ -24,7 +25,12 @@ const pediaCustomQuestionSchema = new mongoose.Schema(
       required: true,
     },
     options: { type: [String], default: [] },
-    domain: { type: String, trim: true, default: 'Other' },
+    // Must always be one of the four official assessment scoring domains —
+    // see constants/assessmentDomains.js. The pre('validate') hook below
+    // normalizes any legacy value (e.g. 'Gross Motor', 'Other') on every
+    // save, so this enum can never actually reject a real document; it just
+    // guarantees nothing but the four values is ever persisted.
+    domain: { type: String, trim: true, enum: ASSESSMENT_DOMAINS, default: FALLBACK_DOMAIN },
     ageMin: { type: Number, default: 0 },
     ageMax: { type: Number, default: 18 },
     isActive: { type: Boolean, default: true },
@@ -42,6 +48,17 @@ const pediaCustomQuestionSchema = new mongoose.Schema(
   },
   { timestamps: true, collection: 'pedia_custom_questions' }
 );
+
+// Runs on every save (new document or edit), not just creation, so a legacy
+// domain value already sitting on an existing document gets normalized the
+// next time it's touched even if the one-off migration script
+// (scripts/migrate-custom-question-domains.js) hasn't been run yet.
+pediaCustomQuestionSchema.pre('validate', function (next) {
+  if (this.isModified('domain') || this.isNew) {
+    this.domain = normalizeDomain(this.domain);
+  }
+  next();
+});
 
 // Note: the Counter key stays 'custom_questions' so the numeric id sequence
 // continues from where it left off (seq 39) rather than restarting at 1.
