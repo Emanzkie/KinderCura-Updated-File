@@ -216,6 +216,52 @@
                 </div>`;
         }
 
+        // kc-badge only defines positive/caution/attention/neutral/info — this is a
+        // defensive pass-through so an unrecognized tone never emits a broken class.
+        function stageBadgeSafe(tone) {
+            return ['positive', 'caution', 'attention', 'neutral', 'info'].includes(tone) ? tone : 'neutral';
+        }
+
+        // Step 14: same Developmental Assessment & Care Plan summary shown on the
+        // Results page (js/parent/results.js renderCarePlanCard), built from the
+        // SAME backend fields (developmentalBand, overallCarePlan.*) so the two
+        // pages never disagree. Nothing here recomputes a band/risk/care stage —
+        // window.KCCarePlan only formats what GET /api/recommendations/:id already
+        // decided.
+        function renderCarePlanCard(developmentalBand, carePlan) {
+            if (!carePlan) return '';
+            const CP = window.KCCarePlan;
+
+            const bandLabel = CP.developmentalBandLabel(developmentalBand);
+            const bandTone = stageBadgeSafe(CP.toneForDevelopmentalBand(developmentalBand));
+            const riskLabel = CP.riskCategoryLabel(carePlan.riskCategory);
+            const riskTone = stageBadgeSafe(CP.toneForRiskCategory(carePlan.riskCategory));
+            const stageLabel = CP.careStageLabel(carePlan.careStageLabel);
+            const stageTone = stageBadgeSafe(CP.toneForCareStage(carePlan.careStage));
+            const consultationLabel = CP.consultationLevelLabel(carePlan.consultationLevel);
+            const monitoringLabel = CP.monitoringLevelLabel(carePlan.monitoringLevel);
+            const interpretation = CP.interpretationLine(carePlan.source);
+
+            const field = (label, valueHtml) => `
+                <div>
+                    <p style="margin:0 0 .4rem;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-light);">${escapeHtml(label)}</p>
+                    ${valueHtml}
+                </div>`;
+
+            return `
+            <div style="background:white;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);margin-bottom:2rem;">
+                <h3 style="margin:0 0 1.2rem;color:var(--primary);">Developmental Assessment &amp; Care Plan</h3>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1.4rem;">
+                    ${field('Developmental Band', `<span class="kc-badge kc-badge--${bandTone}">${escapeHtml(bandLabel)}</span>`)}
+                    ${field('Developmental Risk Category', `<span class="kc-badge kc-badge--${riskTone}">${escapeHtml(riskLabel)}</span>`)}
+                    ${field('Care Stage', `<span class="kc-badge kc-badge--${stageTone}">${escapeHtml(stageLabel)}</span>`)}
+                    ${field('Consultation', `<p style="margin:0;font-weight:600;color:var(--text-dark);">${escapeHtml(consultationLabel)}</p>`)}
+                    ${field('Monitoring', `<p style="margin:0;font-weight:600;color:var(--text-dark);">${escapeHtml(monitoringLabel)}</p>`)}
+                </div>
+                <p style="margin:1.3rem 0 0;font-size:.8rem;color:var(--text-light);">${escapeHtml(interpretation)}</p>
+            </div>`;
+        }
+
         async function loadRecommendations() {
             const assessmentId = await resolveContext();
             if (!assessmentId || !activeChild) {
@@ -249,6 +295,8 @@
                 // The pediatrician diagnosis and parent recommendation now live on
                 // the Results page only, so this Recommendations page does not
                 // duplicate that reviewed clinical note anymore.
+
+                html += renderCarePlanCard(data.developmentalBand, data.overallCarePlan);
 
                 if (data.consultationNeeded && !booked) {
                     html += `

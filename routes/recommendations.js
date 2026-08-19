@@ -15,74 +15,43 @@ const Appointment = require('../models/Appointment');
 const User = require('../models/User');
 const Child = require('../models/Child');
 const scoring = require('../constants/scoring');
+const staging = require('../constants/developmental-staging');
 
-const TrainedModel = require('../models/TrainedModel');
-const modelManager = require('../ml/model_manager');
+const assessmentProgress = require('../services/assessmentProgress');
 
-/**
- * Try to get an ML prediction for the assessment scores.
- * Returns null if no model is active or prediction fails (rule-based fallback).
- */
-async function tryMLPrediction(resultDoc) {
-  try {
-    const activeModel = await TrainedModel.findOne({ isActive: true, status: 'completed' }).lean();
-    if (!activeModel || !activeModel.modelPath) return null;
-
-    const path = require('path');
-    let modelPath = activeModel.modelPath;
-    if (!path.isAbsolute(modelPath)) {
-      modelPath = path.join(__dirname, '..', modelPath);
-    }
-    modelPath = path.normalize(modelPath);
-
-    const scores = {
-      communication_score: resultDoc.communicationScore || 0,
-      social_score: resultDoc.socialScore || 0,
-      cognitive_score: resultDoc.cognitiveScore || 0,
-      motor_score: resultDoc.motorScore || 0,
-      overall_score: resultDoc.overallScore || 0,
-    };
-
-    // Fetch the child document to get dateOfBirth and gender for the ML model.
-    // The trainer uses age_months and gender_encoded as features, so we must
-    // supply them here — otherwise predict.py will error on missing features.
-    try {
-      const child = await Child.findById(resultDoc.childId).lean();
-      if (child) {
-        // Calculate age in months: (now - birth) / average milliseconds per month
-        if (child.dateOfBirth) {
-          const now = new Date();
-          const birth = new Date(child.dateOfBirth);
-          const diffMs = now.getTime() - birth.getTime();
-          // Average days per month = 365.25 / 12 ≈ 30.4375
-          const ageMonths = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.4375)));
-          scores.age_months = ageMonths;
-        }
-        // Include gender if available (predict.py maps it to gender_encoded)
-        if (child.gender) {
-          scores.gender = child.gender;
-        }
-      }
-    } catch (childErr) {
-      // Non-critical: if we can't fetch the child, proceed without age/gender.
-      // The Python script will fail only if the model was trained with these
-      // features — in that case the catch below will trigger rule-based fallback.
-      console.warn('Could not fetch child for ML prediction:', childErr.message);
-    }
-
-    const prediction = await modelManager.predict(modelPath, scores);
-    return {
-      riskCategory: prediction.risk_category,
-      consultationNeeded: prediction.consultation_needed,
-      probabilities: prediction.probabilities,
-      modelVersion: activeModel.version,
-    };
-  } catch (err) {
-    console.warn('ML prediction fallback — using rule-based:', err.message);
-    return null;
-  }
+// ── Three concepts, three layers (see constants/developmental-staging.js) ──
+// A. DEVELOPMENTAL BAND — a SCORE classification (constants/scoring.js:
+//    on-track/developing/at-risk/delayed). Computed live from overallScore
+//    wherever needed below; never persisted (see models/AssessmentResult.js).
+// B. ML RISK CATEGORY — Low/Medium/High, ml/predict.py's raw output.
+//    Produced ONCE, at assessment-completion time
+//    (routes/assessments.js POST /submit) — not here.
+// C. CARE STAGE — the centralized staging module's care-plan interpretation
+//    of EITHER the risk category (ml) or, as fallback, the developmental
+//    band (rule_based). This file (the recommendation engine) reads what
+//    that interpretation already decided; it never re-derives Low/Medium/
+//    High or a stage mapping itself.
+//
+// Step 5: this route reads the PREDICTION ALREADY STORED on the
+// AssessmentResult (see models/AssessmentResult.js `prediction`) rather than
+// calling ML again on every page load. That is what makes an assessment's
+// recommendation stable over time — it must not change just because a
+// newer ML model gets trained later. `predictionInfo` below can legitimately
+// be `source: 'rule_based'` (no active model existed when this assessment
+// was completed, or it's a pre-Step-5 legacy record) — never assume it's ML
+// just because it's non-null; always read `.source`.
+function getPredictionForResult(resultDoc) {
+  return assessmentProgress.getStoredOrDerivedCareStage(resultDoc);
 }
 
+// ── Domain-level recommendations (unchanged in Step 3) ────────────────────
+// These stay rule-based, keyed off each domain's own score band. They answer
+// "what should the parent practice for communication/social/cognitive/motor
+// this week" — a different question from "what is the child's OVERALL
+// developmental stage", which is what buildOverallCarePlan() below answers
+// using the centralized staging module. Do not confuse the two: this map
+// is domain-tier wording selection, not an overall risk decision.
+//
 // Maps a score band to the recommendation tier. `level` selects the wording in
 // suggestionMap below; `priority` is what the parent page sorts and badges on.
 //
@@ -96,7 +65,7 @@ const RECOMMENDATION_LEVEL_BY_BAND = Object.freeze({
   [scoring.BAND.DELAYED]:    { priority: 'high',   level: 'low' },
 });
 
-function buildRecommendationSet(resultDoc, mlPrediction) {
+function buildRecommendationSet(resultDoc, predictionInfo) {
   const suggestionMap = {
     communication: {
       high:   { suggestion: 'Continue encouraging verbal communication through storytelling and reading aloud daily.', activities: ['Read together 20 min/day', 'Ask open-ended questions', 'Sing songs and nursery rhymes'] },
@@ -127,9 +96,12 @@ function buildRecommendationSet(resultDoc, mlPrediction) {
     { key: 'motor',         score: resultDoc.motorScore },
   ];
 
-  // If we have an ML prediction, use it for the overall consultation flag.
-  // Individual domain recommendations still use score thresholds for granularity.
-  const mlConsultation = mlPrediction ? mlPrediction.consultationNeeded : null;
+  // Only a REAL ml-sourced prediction augments the per-domain consultation
+  // flag — a rule_based-sourced predictionInfo (no active model at
+  // completion time, or a pre-Step-5 legacy record) must not change
+  // domain-tier behavior. Individual domain recommendations still use score
+  // thresholds for granularity either way.
+  const mlConsultation = predictionInfo && predictionInfo.source === 'ml' ? predictionInfo.consultationNeeded : null;
 
   return domains.map((d) => {
     const { priority, level } = RECOMMENDATION_LEVEL_BY_BAND[scoring.bandFor(d.score)];
@@ -147,6 +119,46 @@ function buildRecommendationSet(resultDoc, mlPrediction) {
       consultationNeeded: mlConsultation != null ? (domainConsultation || mlConsultation) : domainConsultation,
     };
   });
+}
+
+// ── Overall care stage + care plan ─────────────────────────────────────────
+// This is the OVERALL consultation/monitoring decision (separate from the
+// per-domain recommendations above, and separate from the developmental
+// band computed in the route handler below). The careStage/care-plan values
+// come straight from predictionInfo — Step 5's stored-prediction-first
+// design means predictionInfo is source: 'ml' when a compatible model was
+// active at completion time, or 'rule_based' otherwise (no active model
+// then, or a pre-Step-5 legacy record). IMPORTANT: this function must read
+// predictionInfo.source rather than assuming 'ml' — a truthy predictionInfo
+// is NOT the same thing as a real ML result, and mislabeling one as the
+// other is exactly the "pretend a rule-based result is an ML prediction"
+// mistake this whole feature exists to avoid.
+function buildOverallCarePlan(resultDoc, predictionInfo) {
+  if (predictionInfo && predictionInfo.careStage) {
+    return {
+      source: predictionInfo.source,
+      careStage: predictionInfo.careStage,
+      careStageLabel: predictionInfo.careStageLabel,
+      riskCategory: predictionInfo.riskCategory,
+      consultationLevel: predictionInfo.consultationLevel,
+      monitoringLevel: predictionInfo.monitoringLevel,
+    };
+  }
+
+  // Defensive fallback only — getPredictionForResult() always resolves to a
+  // full care-stage object (stored, or rule-based-derived), so this branch
+  // should be unreachable in practice.
+  const careStage = staging.getCareStageFromScore(resultDoc.overallScore);
+  const carePlan = staging.getCarePlanForCareStage(careStage);
+  const definition = staging.getCareStageDefinition(careStage);
+  return {
+    source: 'rule_based',
+    careStage,
+    careStageLabel: definition ? definition.label : null,
+    riskCategory: null,
+    consultationLevel: carePlan ? carePlan.consultationLevel : null,
+    monitoringLevel: carePlan ? carePlan.monitoringLevel : null,
+  };
 }
 
 function clinicNameFor(pediatrician) {
@@ -281,12 +293,15 @@ router.get('/:assessmentId', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Assessment results not found.' });
     }
 
-    // Attempt ML prediction (returns null if no model or prediction fails)
-    const mlPrediction = await tryMLPrediction(resultDoc);
+    // Step 5: read the prediction already stored on this assessment result
+    // (or, for a pre-Step-5 legacy record, derive a rule-based-only value —
+    // never a fresh ML call here). Always resolves to a full object; check
+    // `.source` to see whether it's really ML.
+    const predictionInfo = getPredictionForResult(resultDoc);
 
     let recDocs = await Recommendation.find({ assessmentResultId: resultDoc._id }).sort({ generatedAt: 1 }).lean();
     if (!recDocs.length) {
-      const generated = buildRecommendationSet(resultDoc, mlPrediction).map((r) => ({
+      const generated = buildRecommendationSet(resultDoc, predictionInfo).map((r) => ({
         assessmentResultId: resultDoc._id,
         childId: resultDoc.childId,
         ...r,
@@ -315,20 +330,50 @@ router.get('/:assessmentId', authMiddleware, async (req, res) => {
       }),
     ]);
 
+    // Overall care stage + consultation/monitoring plan, from the stored (or
+    // legacy-fallback) predictionInfo. See buildOverallCarePlan().
+    const overallCarePlan = buildOverallCarePlan(resultDoc, predictionInfo);
+
+    // A. Developmental band — the SCORE classification, kept separate from
+    // riskCategory (B, ML) and careStage (C, care-plan). Never persisted
+    // (see models/AssessmentResult.js) — computed live from overallScore.
+    const developmentalBand = staging.getDevelopmentalBandFromScore(resultDoc.overallScore);
+
     res.json({
       success: true,
-      consultationNeeded: mlPrediction ? mlPrediction.consultationNeeded : suggested.context.consultationNeeded,
+      // Preserves the exact pre-Step-5 fallback chain: only a REAL ml-sourced
+      // prediction overrides the domain-focus-area-based signal below.
+      consultationNeeded: (predictionInfo && predictionInfo.source === 'ml')
+        ? predictionInfo.consultationNeeded
+        : suggested.context.consultationNeeded,
       urgent: suggested.context.urgent,
       focusAreas: suggested.context.focusAreas,
       suggestionSummary: suggested.context.summary,
       bookedConsultation: bookedCount > 0,
       suggestedPediatricians: suggested.pediatricians.slice(0, 5),
       recommendations,
-      mlPrediction: mlPrediction ? {
-        riskCategory: mlPrediction.riskCategory,
-        consultationNeeded: mlPrediction.consultationNeeded,
-        probabilities: mlPrediction.probabilities,
-        modelVersion: mlPrediction.modelVersion,
+      // A. Developmental band (score classification) — separate from B/C below.
+      developmentalBand,
+      // C. Overall care stage/care-plan for the frontend to eventually
+      // surface (e.g. "Care Stage: Severe Concern", "Consultation:
+      // required", "Monitoring: close_monitoring"). `source` tells the
+      // caller whether this came from ML or the rule-based fallback — never
+      // presented as ML when it isn't.
+      overallCarePlan,
+      // B + C. Historical prediction snapshot for this assessment (Step 5)
+      // — the value actually stored at completion time, not a fresh
+      // recomputation. riskCategory (B, ML) is kept distinct from careStage
+      // (C, care-plan interpretation) — see models/AssessmentResult.js.
+      // Never exposes the model's filesystem path.
+      prediction: predictionInfo ? {
+        source: predictionInfo.source,
+        modelVersion: predictionInfo.modelVersion,
+        riskCategory: predictionInfo.riskCategory,
+        careStage: predictionInfo.careStage,
+        careStageLabel: predictionInfo.careStageLabel,
+        consultationLevel: predictionInfo.consultationLevel,
+        monitoringLevel: predictionInfo.monitoringLevel,
+        probabilities: predictionInfo.probabilities,
       } : null,
     });
   } catch (err) {
@@ -338,3 +383,8 @@ router.get('/:assessmentId', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
+
+// Exposed for tests only (see tests/unit/recommendations-staging.test.js).
+// Attaching to the router function is inert for Express — app.use() only
+// ever calls it as a request handler, so this does not affect routing.
+router.__testables = { buildOverallCarePlan, getPredictionForResult };

@@ -68,6 +68,8 @@
 
     <script src="/api.js"></script>
 <script src="/notifications-card-ui.js"></script>
+<!-- Must load before recommendations.js — provides window.KCCarePlan (care-plan label formatting). -->
+<script src="/js/shared/care-plan-labels.js"></script>
 <script src="/js/parent/recommendations.js"></script>
 </body>
 </html>

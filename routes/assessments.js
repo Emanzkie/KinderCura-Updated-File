@@ -17,9 +17,12 @@ const PatientProgressNote = require('../models/PatientProgressNote');
 const Notification = require('../models/Notification');
 const CoreBankQuestion = require('../models/CoreBankQuestion');
 const PediaCustomQuestionAssignment = require('../models/PediaCustomQuestionAssignment');
+const AuditLog = require('../models/AuditLog');
 const { DATA_ORIGIN } = require('../constants/dataOrigin');
 const { normalizeDomain } = require('../constants/assessmentDomains');
 const scoring = require('../constants/scoring');
+const staging = require('../constants/developmental-staging');
+const assessmentProgress = require('../services/assessmentProgress');
 const sse = require('../sse');
 
 // The core bank is 34 static rows that only change on deploy, so it is cached
@@ -339,6 +342,26 @@ function parseNextAssessmentDate(value) {
   return { value: parsed };
 }
 
+// API-facing view of a care-stage lookup (services/assessmentProgress.js
+// getStoredOrDerivedCareStage / getAssessmentCareStage) — deliberately
+// excludes anything filesystem-related (e.g. no model path). Returns null
+// when there is no result to summarize (assessment not yet complete).
+// riskCategory (ML classification) and careStage (care-plan classification)
+// are kept as two separate fields — see constants/developmental-staging.js.
+function predictionSummary(careStageInfo) {
+  if (!careStageInfo) return null;
+  return {
+    source: careStageInfo.source,
+    modelVersion: careStageInfo.modelVersion,
+    riskCategory: careStageInfo.riskCategory,
+    careStage: careStageInfo.careStage,
+    careStageLabel: careStageInfo.careStageLabel,
+    consultationLevel: careStageInfo.consultationLevel,
+    monitoringLevel: careStageInfo.monitoringLevel,
+    probabilities: careStageInfo.probabilities,
+  };
+}
+
 async function buildHistoryForChild(childId) {
   const assessments = await Assessment.find({ childId }).sort({ startedAt: -1 }).lean();
   const assessmentIds = assessments.map((a) => a._id);
@@ -363,6 +386,14 @@ async function buildHistoryForChild(childId) {
       cognitiveScore: r?.cognitiveScore ?? null,
       motorScore: r?.motorScore ?? null,
       overallScore: r?.overallScore ?? null,
+      // A. Developmental band — SCORE classification, computed live from
+      // overallScore (never persisted). Separate from riskCategory/careStage
+      // inside `prediction` below — see constants/developmental-staging.js.
+      developmentalBand: r ? staging.getDevelopmentalBandFromScore(r.overallScore) : null,
+      // B + C. Historical prediction snapshot (Step 5) — stored value only,
+      // never recomputed against the currently active model. null when `r`
+      // is null (assessment has no result yet, e.g. still in progress).
+      prediction: r ? predictionSummary(assessmentProgress.getStoredOrDerivedCareStage(r)) : null,
     };
   });
 }
@@ -815,6 +846,18 @@ router.post('/submit', authMiddleware, async (req, res) => {
     if (scoring.isRiskFlagged(cognitiveScore)) riskFlags.push('Cognitive development concern');
     if (scoring.isRiskFlagged(motorScore)) riskFlags.push('Motor skills delay detected');
 
+    // ML PREDICTION -> STAGING INTERPRETATION -> persisted snapshot.
+    // Generated once, right here, at completion time, and never recomputed
+    // afterward — this is what lets a reassessment comparison months later
+    // compare against exactly what THIS assessment showed, even if a newer
+    // ML model is trained in the meantime. Never blocks a valid assessment
+    // result from saving: buildPredictionForStorage always resolves to a
+    // complete rule-based OR ML record, never throws, never partial.
+    const prediction = await assessmentProgress.buildPredictionForStorage(
+      { communicationScore, socialScore, cognitiveScore, motorScore, overallScore },
+      childId
+    );
+
     const result = await AssessmentResult.findOneAndUpdate(
       { assessmentId },
       {
@@ -834,6 +877,7 @@ router.post('/submit', authMiddleware, async (req, res) => {
         // documents scored under the old 51/26 bands stay distinguishable.
         // null on a document means it predates constants/scoring.js.
         scoringBandsVersion: scoring.SCORING_BANDS_VERSION,
+        prediction,
         generatedAt: new Date(),
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -926,6 +970,27 @@ router.get('/pedia-patients', authMiddleware, async (req, res) => {
           ? latestAssessment.clinicalOutcomeDomains
           : [],
         clinicalOutcomeAt: latestAssessment?.clinicalOutcomeAt || null,
+
+        // Step 10: reviewed ML training-target label — separate from
+        // clinicalOutcome above. Additive so reopening the diagnosis modal
+        // can show what was already reviewed instead of a blank dropdown.
+        mlLabel: latestAssessment?.mlLabel ? {
+          riskCategory: latestAssessment.mlLabel.riskCategory,
+          reviewedAt: latestAssessment.mlLabel.reviewedAt,
+          notes: latestAssessment.mlLabel.notes || null,
+        } : null,
+        mlReviewStatus: latestAssessment?.mlReviewStatus || 'unreviewed',
+
+        // Step 14: pediatrician view — same developmentalBand/prediction
+        // shape already exposed to the parent (GET
+        // /:assessmentId/results). developmentalBand (score classification)
+        // computed live from overallScore, never persisted; prediction
+        // (riskCategory/careStage) is the STORED snapshot from this child's
+        // latest completed assessment (see
+        // services/assessmentProgress.js getStoredOrDerivedCareStage) —
+        // never recomputed against whichever model is active now.
+        developmentalBand: latestResult ? staging.getDevelopmentalBandFromScore(latestResult.overallScore) : null,
+        prediction: latestResult ? predictionSummary(assessmentProgress.getStoredOrDerivedCareStage(latestResult)) : null,
       });
     }
 
@@ -1141,6 +1206,162 @@ router.post('/diagnose/:childId', authMiddleware, async (req, res) => {
   }
 });
 
+const ML_LABEL_VALUES = ['Low', 'Medium', 'High'];
+
+// Pure (no I/O) — returns null when riskCategory is a valid reviewed ML
+// label, or a human-readable reason it isn't. Split out from the route
+// handler so the validation rule is unit-testable without a live request.
+function getMlLabelValidationError(riskCategory) {
+  const value = String(riskCategory ?? '').trim();
+  if (!value) return 'riskCategory is required.';
+  if (!ML_LABEL_VALUES.includes(value)) return `riskCategory must be one of: ${ML_LABEL_VALUES.join(', ')}`;
+  return null;
+}
+
+// POST /api/assessments/:assessmentId/ml-label
+// Step 10: lets an authorized pediatrician assign a REVIEWED ML training
+// target (Low/Medium/High) to a completed assessment — see
+// models/Assessment.js `mlLabel`. This is NOT a diagnosis and does not
+// touch `diagnosis`/`clinicalOutcome` — it exists purely so a later dataset
+// export (routes/admin.js GET /training/reviewed-assessments/export) has an
+// independently-supplied ground-truth label. The system NEVER computes this
+// value itself — see "Important Label Quality Rules" in the Step 10 task:
+// no threshold-of-score, no ML prediction, no recommendation output.
+// Small typed error so the route can map it to the right HTTP status
+// without the business logic itself knowing about Express.
+class HttpError extends Error {
+  constructor(statusCode, message) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
+
+/**
+ * Core logic for reviewing an assessment's ML training-target label — split
+ * out from the route handler so authorization/validation are unit-testable
+ * without a live HTTP request. Throws HttpError on any rejection; never
+ * partially applies a change (assessment.save() is the only write, after
+ * every check has passed).
+ *
+ * @param {string} assessmentId
+ * @param {{userId: string, role: string}} user  the authenticated reviewer
+ * @param {{riskCategory: string, notes?: string|null}} input
+ */
+async function reviewAssessmentMlLabel(assessmentId, user, input) {
+  if (user.role !== 'pediatrician') {
+    throw new HttpError(403, 'Pediatricians only.');
+  }
+
+  const assessment = await Assessment.findById(assessmentId);
+  if (!assessment) throw new HttpError(404, 'Assessment not found.');
+
+  if (assessment.status !== 'complete') {
+    throw new HttpError(400, 'Only a completed assessment can be given a reviewed ML label.');
+  }
+
+  // Authorization: the pediatrician must actually be linked to this child
+  // (an existing appointment) — the same check already used for
+  // /:assessmentId/compare and routes/recommendations.js. Role alone is not
+  // enough; this is what stops one pediatrician labelling another's
+  // unrelated patient.
+  const isPediaLinked = await Appointment.exists({ childId: assessment.childId, pediatricianId: user.userId });
+  if (!isPediaLinked) {
+    throw new HttpError(403, 'You are not linked to this patient — only a pediatrician with an appointment for this child may review it.');
+  }
+
+  const mlLabelError = getMlLabelValidationError(input.riskCategory);
+  if (mlLabelError) throw new HttpError(400, mlLabelError);
+  const riskCategory = String(input.riskCategory).trim();
+
+  const notes = input.notes != null ? String(input.notes).trim().slice(0, 1000) || null : null;
+
+  // Revision, not versioning: the project has no existing per-field history
+  // mechanism for Assessment, and Step 10 asks for the smallest clean
+  // implementation — not a new one. mlLabel always holds the LATEST valid
+  // review; the value it's replacing (if any) is preserved in the AuditLog
+  // entry below rather than silently discarded.
+  const previousRiskCategory = assessment.mlLabel ? assessment.mlLabel.riskCategory : null;
+
+  assessment.mlLabel = {
+    riskCategory,
+    reviewedBy: user.userId,
+    reviewedAt: new Date(),
+    reviewSource: 'pediatrician',
+    notes,
+  };
+  assessment.mlReviewStatus = 'reviewed';
+  await assessment.save();
+
+  await AuditLog.create({
+    actorId: user.userId,
+    action: 'ml_label_reviewed',
+    targetType: 'Assessment',
+    targetId: assessment._id,
+    details: { childId: String(assessment.childId), riskCategory, previousRiskCategory, notes },
+  });
+
+  return {
+    mlLabel: {
+      riskCategory: assessment.mlLabel.riskCategory,
+      reviewedBy: String(assessment.mlLabel.reviewedBy),
+      reviewedAt: assessment.mlLabel.reviewedAt,
+      reviewSource: assessment.mlLabel.reviewSource,
+      notes: assessment.mlLabel.notes,
+    },
+    mlReviewStatus: assessment.mlReviewStatus,
+  };
+}
+
+router.post('/:assessmentId/ml-label', authMiddleware, async (req, res) => {
+  try {
+    const result = await reviewAssessmentMlLabel(req.params.assessmentId, req.user, req.body || {});
+    res.json({ success: true, ...result });
+  } catch (err) {
+    if (err instanceof HttpError) return res.status(err.statusCode).json({ error: err.message });
+    console.error('assessments ml-label error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/assessments/:assessmentId/ml-label/exclude
+// Marks a completed assessment as unfit for ML dataset export (e.g. poor
+// data quality, an unreliable screening) WITHOUT assigning a risk category.
+// Distinct from simply never reviewing it — 'unreviewed' just means no one
+// has looked yet; 'excluded' is an explicit reviewer decision that this
+// assessment must never be exported, which the export route enforces by
+// only selecting mlReviewStatus === 'reviewed'.
+router.post('/:assessmentId/ml-label/exclude', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== 'pediatrician') {
+      return res.status(403).json({ error: 'Pediatricians only.' });
+    }
+
+    const assessment = await Assessment.findById(req.params.assessmentId);
+    if (!assessment) return res.status(404).json({ error: 'Assessment not found.' });
+
+    const isPediaLinked = await Appointment.exists({ childId: assessment.childId, pediatricianId: req.user.userId });
+    if (!isPediaLinked) {
+      return res.status(403).json({ error: 'You are not linked to this patient.' });
+    }
+
+    assessment.mlReviewStatus = 'excluded';
+    await assessment.save();
+
+    await AuditLog.create({
+      actorId: req.user.userId,
+      action: 'ml_label_excluded',
+      targetType: 'Assessment',
+      targetId: assessment._id,
+      details: { childId: String(assessment.childId) },
+    });
+
+    res.json({ success: true, mlReviewStatus: assessment.mlReviewStatus });
+  } catch (err) {
+    console.error('assessments ml-label exclude error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/assessments/:assessmentId/results
 // Returns the numeric results plus any pediatrician diagnosis/recommendation
 // saved on the Assessment record, so the parent Results page can show the
@@ -1187,6 +1408,19 @@ router.get('/:assessmentId/results', authMiddleware, async (req, res) => {
         // records) — callers must treat it as optional. Every field above is
         // unchanged so existing consumers keep working.
         domainDetails,
+
+        // A. Developmental band — SCORE classification, computed live from
+        // overallScore (never persisted). Separate from riskCategory/
+        // careStage inside `prediction` below — see
+        // constants/developmental-staging.js.
+        developmentalBand: staging.getDevelopmentalBandFromScore(result.overallScore),
+
+        // B + C. Historical prediction snapshot (Step 5) — the stored
+        // classification this assessment was actually given at completion
+        // time, never recomputed against whatever ML model is active now.
+        // See services/assessmentProgress.js getStoredOrDerivedCareStage.
+        // Never exposes the model's filesystem path.
+        prediction: predictionSummary(assessmentProgress.getStoredOrDerivedCareStage(result)),
       },
     });
   } catch (err) {
@@ -1449,6 +1683,18 @@ router.get('/:childId/review-answers', authMiddleware, async (req, res) => {
 // COMPLETED assessment for the same child. Read-only: it never recomputes or
 // writes to either AssessmentResult — both stay exactly as originally
 // generated, which is the adviser's core data-integrity requirement.
+//
+// Step 4 (reassessment comparison): also reports the OVERALL CARE STAGE for
+// both assessments (ML-derived when a compatible model is active, rule-based
+// fallback otherwise — see services/assessmentProgress.js) and the direction
+// of change between them, plus each side's separate developmentalBand (Step
+// 8 — a score classification, not the same thing as careStage; see
+// constants/developmental-staging.js). This is an assessment-HISTORY
+// comparison, not a diagnosis: it never claims medical recovery/cure and
+// never implies a pediatrician's supervision should be reduced — it only
+// reports "the flagged care stage went from X to Y". The existing per-domain
+// `scores` table below is unchanged for backward compatibility with
+// js/parent/results.js.
 router.get('/:assessmentId/compare', authMiddleware, async (req, res) => {
   try {
     const currentAssessment = await Assessment.findById(req.params.assessmentId).lean();
@@ -1465,50 +1711,47 @@ router.get('/:assessmentId/compare', authMiddleware, async (req, res) => {
     const currentResult = await AssessmentResult.findOne({ assessmentId: currentAssessment._id }).lean();
     if (!currentResult) return res.status(404).json({ error: 'This assessment has no results yet.' });
 
+    // Current assessment itself must be a completed one — comparing against
+    // an in-progress/draft screening would be meaningless and misleading.
+    if (currentAssessment.status !== 'complete') {
+      return res.status(400).json({ error: 'This assessment is not yet complete.' });
+    }
+
     const anchorDate = currentAssessment.completedAt || currentAssessment.startedAt;
-    const previousAssessment = await Assessment.findOne({
-      childId: currentAssessment.childId,
-      status: 'complete',
-      _id: { $ne: currentAssessment._id },
-      completedAt: { $lt: anchorDate },
-    }).sort({ completedAt: -1 }).lean();
+    const previousAssessment = await assessmentProgress.getPreviousCompletedAssessment(
+      currentAssessment.childId,
+      currentAssessment._id,
+      anchorDate
+    );
 
     const previousResult = previousAssessment
       ? await AssessmentResult.findOne({ assessmentId: previousAssessment._id }).lean()
       : null;
 
-    const DOMAINS = [
-      { key: 'communication', field: 'communicationScore', label: 'Communication' },
-      { key: 'social', field: 'socialScore', label: 'Social Skills' },
-      { key: 'cognitive', field: 'cognitiveScore', label: 'Cognitive' },
-      { key: 'motor', field: 'motorScore', label: 'Motor Skills' },
-      { key: 'overall', field: 'overallScore', label: 'Overall' },
-    ];
-
-    const scores = {};
-    for (const d of DOMAINS) {
-      const current = currentResult[d.field] ?? null;
-      const previous = previousResult ? (previousResult[d.field] ?? null) : null;
-      scores[d.key] = {
-        label: d.label,
-        current: current != null ? Math.round(current) : null,
-        previous: previous != null ? Math.round(previous) : null,
-        difference: (current != null && previous != null) ? Math.round(current) - Math.round(previous) : null,
-      };
-    }
+    const summary = await assessmentProgress.buildAssessmentProgressSummary(
+      currentAssessment,
+      currentResult,
+      previousAssessment,
+      previousResult
+    );
 
     res.json({
       success: true,
       hasPrevious: Boolean(previousAssessment && previousResult),
-      current: {
-        assessmentId: String(currentAssessment._id),
-        date: currentAssessment.completedAt || currentAssessment.startedAt,
-      },
-      previous: previousAssessment ? {
-        assessmentId: String(previousAssessment._id),
-        date: previousAssessment.completedAt || previousAssessment.startedAt,
+      current: summary.current,
+      previous: summary.previous,
+      scores: summary.scores,
+      comparison: summary.comparison,
+      // Convenience top-level care-plan views — same data as current/previous
+      // above, mirroring routes/recommendations.js's overallCarePlan shape.
+      currentCarePlan: summary.current ? {
+        consultationLevel: summary.current.consultationLevel,
+        monitoringLevel: summary.current.monitoringLevel,
       } : null,
-      scores,
+      previousCarePlan: summary.previous ? {
+        consultationLevel: summary.previous.consultationLevel,
+        monitoringLevel: summary.previous.monitoringLevel,
+      } : null,
     });
   } catch (err) {
     console.error('assessments compare error:', err);
@@ -1517,3 +1760,8 @@ router.get('/:assessmentId/compare', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
+
+// Exposed for tests only (see tests/unit/reviewed-assessment-export.test.js).
+// Attaching to the router function is inert for Express — app.use() only
+// ever calls it as a request handler, so this does not affect routing.
+router.__testables = { ML_LABEL_VALUES, getMlLabelValidationError, reviewAssessmentMlLabel };

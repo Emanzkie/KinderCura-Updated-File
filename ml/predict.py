@@ -63,27 +63,18 @@ def predict(model_path: str, data_json: str):
             data[new] = data[old]
 
     # ── Build feature vector ─────────────────────────────────────────────
+    # gender_encoded is intentionally not supported here (see ml/trainer.py
+    # for why). A model trained before that change will list gender_encoded
+    # in its feature_columns and simply fail with a clear "missing feature"
+    # error below — it needs to be retrained on a gender-free dataset rather
+    # than have its predictions silently miscomputed.
     features = []
     for col in feature_columns:
-        if col == "gender_encoded":
-            # Map gender string → numeric the same way training did
-            gender_val = str(data.get("gender", "unknown")).lower().strip()
-            # Simple deterministic mapping — same LabelEncoder order as training
-            try:
-                encoded = label_encoder.transform([gender_val])[0] if hasattr(label_encoder, "classes_") else 0
-            except Exception:
-                encoded = 0  # unknown gender gets default
-            # Actually gender_encoded was fit separately during training.
-            # We use a simple hash fallback: female=0, male=1, other=2
-            gender_map = {"female": 0, "male": 1, "f": 0, "m": 1}
-            encoded = gender_map.get(gender_val, 2)
-            features.append(float(encoded))
-        else:
-            val = data.get(col)
-            if val is None:
-                fail(f"Missing required feature: {col}")
-                return
-            features.append(float(val))
+        val = data.get(col)
+        if val is None:
+            fail(f"Missing required feature: {col}")
+            return
+        features.append(float(val))
 
     import pandas as pd
     X = pd.DataFrame([features], columns=feature_columns)

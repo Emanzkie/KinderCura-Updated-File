@@ -35,10 +35,18 @@ const assessmentSchema = new mongoose.Schema(
     // "Yes please" — which is why the system had zero usable outcome labels
     // and no way to validate its own scoring against clinical judgement.
     //
-    // This is the ONLY field that can ever serve as ground truth. A screening
+    // This is the ONLY field that can ever serve as ground truth for
+    // validating the SCORING system's clinical judgement. A screening
     // counts as labelled training data when, and only when, this is non-null.
     // null = not yet reviewed, or reviewed without a conclusion recorded.
     // Never infer a label from `diagnosis` text, and never default this.
+    //
+    // Step 10: this is a DIFFERENT concept from `mlLabel` below.
+    // clinicalOutcome is the pediatrician's actual clinical conclusion (5
+    // values, used to validate scoring against clinical judgement). mlLabel
+    // is a reviewed Low/Medium/High training TARGET for the ML classifier
+    // specifically — the two are never auto-derived from each other, and a
+    // screening can have one without the other.
     clinicalOutcome: {
       type: String,
       enum: [
@@ -73,6 +81,48 @@ const assessmentSchema = new mongoose.Schema(
       index: true,
     },
     reviewedAt: { type: Date, default: null },
+
+    // ── ML training-target review (Step 10) ─────────────────────────────────
+    // NOT a diagnosis, NOT the same field as clinicalOutcome above. This is
+    // an authorized pediatrician's explicitly reviewed Low/Medium/High
+    // training target for ml/trainer.py — the only legitimate source of
+    // risk_category for a real (non-synthetic) exported dataset row (see
+    // routes/admin.js GET /training/reviewed-assessments/export). The
+    // system NEVER writes this field itself from scores, ML predictions, or
+    // recommendation output — see routes/assessments.js POST
+    // /:assessmentId/ml-label, the only writer.
+    //
+    // null = not reviewed. Reviewing again overwrites this with the latest
+    // label (mlReviewStatus stays 'reviewed'); the previous value is not
+    // lost — see AuditLog action 'ml_label_reviewed', written by the same
+    // route on every save.
+    mlLabel: {
+      type: new mongoose.Schema(
+        {
+          riskCategory: { type: String, enum: ['Low', 'Medium', 'High'], required: true },
+          reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+          reviewedAt: { type: Date, required: true },
+          reviewSource: { type: String, enum: ['pediatrician'], default: 'pediatrician' },
+          notes: { type: String, default: null, trim: true },
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
+
+    // Dataset-export eligibility state for THIS assessment's mlLabel.
+    //   unreviewed -> no reviewed label yet; never exportable.
+    //   reviewed   -> mlLabel is set and this assessment IS exportable
+    //                 (subject to the export route's other validity checks).
+    //   excluded   -> a reviewer explicitly marked this assessment as unfit
+    //                 for training data (e.g. poor data quality) — never
+    //                 exportable, independent of whether mlLabel is set.
+    mlReviewStatus: {
+      type: String,
+      enum: ['unreviewed', 'reviewed', 'excluded'],
+      default: 'unreviewed',
+      index: true,
+    },
   },
   { timestamps: true, collection: 'assessments' }
 );

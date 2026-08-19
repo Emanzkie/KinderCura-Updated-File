@@ -52,7 +52,8 @@
 
         <div class="card" style="margin-bottom:2rem;">
             <h3><img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Upload Dataset</h3>
-            <p style="color:var(--text-light);margin:0.4rem 0 1.2rem;">Add a CSV or JSON dataset for assessment data.</p>
+            <p style="color:var(--text-light);margin:0.4rem 0 0.6rem;">Add a CSV or JSON dataset for assessment data.</p>
+            <p style="color:var(--text-light);margin:0 0 1.2rem;font-size:0.9rem;">A dataset row represents one completed assessment: its <strong>calculated scores</strong> (communication/social/cognitive/motor/overall), optionally the individual assessment question answers, and a labeled <code>risk_category</code> value (<strong>Low</strong>, <strong>Medium</strong>, or <strong>High</strong>) — this is the target the model learns to predict. KinderCura does not automatically generate risk labels from assessment scores; datasets without valid, independently-supplied labels will be rejected during training. Use a template below for the exact required column format (its sample values are placeholders, not clinical data). See <code>ml/datasets/README.md</code> in the repository for the full canonical structure, including the optional per-question columns.</p>
             <div id="uploadError" style="display:none;background:#fde8e8;color:var(--status-attention-fg);padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"></div>
             <div id="uploadSuccess" style="display:none;background:#dff5e3;color:#1e6f3f;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"></div>
             <div class="dataset-form-grid">
@@ -68,6 +69,14 @@
                         <option value="general">General</option>
                     </select>
                 </div>
+                <div class="form-group" style="margin-bottom:1rem;">
+                    <label>Data Source <span style="color:var(--text-light);font-weight:400;">(what this dataset actually contains)</span></label>
+                    <select id="datasetSourceType">
+                        <option value="unknown">Not specified</option>
+                        <option value="synthetic">Synthetic / Test Data</option>
+                        <option value="reviewed_assessment">Reviewed Assessment Data</option>
+                    </select>
+                </div>
                 <div class="form-group" style="margin-bottom:1rem;grid-column:1/-1;">
                     <label>Notes <span style="color:var(--text-light);font-weight:400;">(optional)</span></label>
                     <textarea id="datasetNotes" rows="3"></textarea>
@@ -81,6 +90,37 @@
                 <button class="btn btn-primary" id="uploadBtn" onclick="uploadDataset()">Upload Dataset</button>
                 <button class="btn btn-secondary" onclick="downloadDatasetTemplate('csv')">Download CSV Template</button>
                 <button class="btn btn-secondary" onclick="downloadDatasetTemplate('json')">Download JSON Template</button>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom:2rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+                <h3><img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reviewed Assessment Data</h3>
+                <button class="btn btn-secondary" onclick="loadReviewedSummary()">Refresh</button>
+            </div>
+            <p style="color:var(--text-light);margin:0.6rem 0 1rem;font-size:0.9rem;">
+                Real KinderCura assessments a pediatrician has explicitly reviewed and labeled (<code>Low</code>/<code>Medium</code>/<code>High</code>) — see each patient's diagnosis review. This is <strong>not synthetic data</strong>. Exporting does not train or activate anything; download the file, then upload it below like any other dataset when you're ready.
+            </p>
+            <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center;">
+                <div>
+                    <p id="reviewedCount" style="font-size:2rem;font-weight:700;color:var(--primary);margin:0;">—</p>
+                    <p style="font-size:0.8rem;color:var(--text-light);margin:0.2rem 0 0;">Reviewed assessments available to export</p>
+                </div>
+                <p id="reviewedByLabel" style="font-size:0.85rem;color:var(--text-light);margin:0;"></p>
+                <button class="btn btn-primary" onclick="exportReviewedAssessments()" style="margin-left:auto;">Export Reviewed Assessments (CSV)</button>
+            </div>
+
+            <!-- Step 12: dataset readiness / quality control. Purely
+                 technical characterization of the SAME reviewed data above —
+                 never a clinical judgement, never a diagnosis. -->
+            <div style="margin-top:1.2rem;padding-top:1rem;border-top:1px solid var(--border);">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+                    <h4 style="margin:0;color:var(--primary);font-size:0.95rem;">Dataset Readiness <span style="font-weight:400;color:var(--text-light);font-size:0.8rem;">(technical suitability for training — not a clinical judgement)</span></h4>
+                    <span id="readinessBadge" class="dataset-status status-ready">—</span>
+                </div>
+                <div id="qualityDetails" style="margin-top:0.8rem;font-size:0.85rem;color:var(--text-dark);line-height:1.6;">
+                    <p style="color:var(--text-light);">Loading...</p>
+                </div>
             </div>
         </div>
 
@@ -103,6 +143,33 @@
                     </thead>
                     <tbody id="datasetRows">
                         <tr><td colspan="6" class="empty-cell">Loading datasets...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:2rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+                <h3><img src="/icons/cognitive.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Trained Models</h3>
+                <button class="btn btn-secondary" onclick="loadModels()">Refresh</button>
+            </div>
+            <p style="color:var(--text-light);margin:0.6rem 0 1rem;font-size:0.9rem;">
+                Training a dataset produces a <strong>candidate</strong> model only — it never changes which model live assessments use. A candidate must be explicitly activated below before it affects predictions. "Completed" means training finished without error, not that a model is approved for production.
+            </p>
+            <div id="modelListWrap" style="overflow-x:auto;">
+                <table class="dataset-table">
+                    <thead>
+                        <tr>
+                            <th>Version</th>
+                            <th>Dataset</th>
+                            <th>Status</th>
+                            <th>Metrics</th>
+                            <th>Feature Columns</th>
+                            <th style="text-align:center;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modelRows">
+                        <tr><td colspan="6" class="empty-cell">Loading models...</td></tr>
                     </tbody>
                 </table>
             </div>

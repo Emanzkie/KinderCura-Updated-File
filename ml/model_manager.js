@@ -25,6 +25,26 @@ const MODEL_DIR = path.join(__dirname, '..', 'uploads', 'models');
 const TRAINER_SCRIPT = path.join(__dirname, 'trainer.py');
 const PREDICT_SCRIPT = path.join(__dirname, 'predict.py');
 
+// Feature names the current pipeline no longer supports. gender_encoded was
+// dropped from trainer.py/predict.py because trainer.py fit a LabelEncoder
+// on gender at train time but never persisted it in the model artifact —
+// predict.py had to guess the encoding, and could guess wrong. A model
+// trained before that change still lists gender_encoded in its stored
+// featuresUsed; it must not be used for live prediction.
+const UNSUPPORTED_FEATURES = ['gender_encoded'];
+
+/**
+ * True when a TrainedModel document's feature set is still supported by the
+ * current ml/predict.py. Callers (routes/ml.js, routes/recommendations.js)
+ * must check this BEFORE calling predict() on an active model, so an
+ * incompatible old model fails cleanly and predictably rather than throwing
+ * out of a Python subprocess call.
+ */
+function isModelCompatible(trainedModelDoc) {
+  const features = Array.isArray(trainedModelDoc?.featuresUsed) ? trainedModelDoc.featuresUsed : [];
+  return !features.some((f) => UNSUPPORTED_FEATURES.includes(f));
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────
 
 /**
@@ -177,12 +197,14 @@ async function trainModel(datasetPath, datasetId) {
 
     // ── Success: update the TrainedModel document with real metrics ──────
     if (modelDoc) {
-      // Deactivate any previously active model
-      await TrainedModel.updateMany({ isActive: true }, { $set: { isActive: false } });
-
+      // Step 7: training NEVER activates a model, and NEVER touches the
+      // currently active one. A model finishing training successfully is a
+      // CANDIDATE only — isActive stays at its schema default (false) until
+      // an admin explicitly approves it via POST /api/ml/models/:id/activate.
+      // This is what protects real users from ever silently switching to
+      // (e.g.) a model trained on synthetic/test data.
       modelDoc.modelPath = result.model_path;
       modelDoc.status = 'completed';
-      modelDoc.isActive = true;
       modelDoc.trainedAt = new Date();
 
       // Flat metric fields (consumed by routes/ml.js and routes/admin.js)
@@ -202,6 +224,8 @@ async function trainModel(datasetPath, datasetId) {
       // Extended analytics
       modelDoc.featureImportances = result.feature_importances || {};
       modelDoc.perClassMetrics = result.per_class_metrics || {};
+      modelDoc.confusionMatrix = result.confusion_matrix || null;
+      modelDoc.classDistribution = result.class_distribution || null;
       modelDoc.classNames = result.class_names || [];
       modelDoc.featuresUsed = result.features_used || [];
       modelDoc.trainingSamples = result.training_samples || 0;
@@ -333,5 +357,6 @@ module.exports = {
   checkPythonEnvironment,
   resolveDatasetPath,
   ensureModelDir,
+  isModelCompatible,
   MODEL_DIR,
 };

@@ -13,6 +13,7 @@ const { authMiddleware, adminOnly } = require('../middleware/auth');
 const TrainingDataset = require('../models/TrainingDataset');
 const TrainedModel = require('../models/TrainedModel');
 const modelManager = require('../ml/model_manager');
+const staging = require('../constants/developmental-staging');
 const sse = require('../sse');
 
 /**
@@ -89,10 +90,10 @@ router.post('/train-model', authMiddleware, adminOnly, async (req, res) => {
     try {
       const metrics = await modelManager.trainModel(datasetPath);
 
-      // Update TrainedModel with results
-      // Deactivate any previous active model
-      await TrainedModel.updateMany({ isActive: true }, { $set: { isActive: false } });
-
+      // Step 7: a successfully trained model is a CANDIDATE only — it does
+      // NOT become active, and the currently active model (if any) is left
+      // completely untouched. Activation is a separate, explicit admin
+      // action: POST /api/ml/models/:modelId/activate below.
       modelDoc.modelPath = metrics.model_path;
       modelDoc.accuracy = metrics.accuracy;
       modelDoc.precision = metrics.precision;
@@ -100,6 +101,8 @@ router.post('/train-model', authMiddleware, adminOnly, async (req, res) => {
       modelDoc.f1Score = metrics.f1;
       modelDoc.featureImportances = metrics.feature_importances;
       modelDoc.perClassMetrics = metrics.per_class_metrics || {};
+      modelDoc.confusionMatrix = metrics.confusion_matrix || null;
+      modelDoc.classDistribution = metrics.class_distribution || null;
       modelDoc.classNames = metrics.class_names || [];
       modelDoc.featuresUsed = metrics.features_used || [];
       modelDoc.trainingSamples = metrics.training_samples;
@@ -107,7 +110,7 @@ router.post('/train-model', authMiddleware, adminOnly, async (req, res) => {
       modelDoc.totalRows = metrics.total_rows || 0;
       modelDoc.rowsDropped = metrics.rows_dropped || 0;
       modelDoc.status = 'completed';
-      modelDoc.isActive = true;
+      // isActive intentionally not set here — stays false (schema default).
       await modelDoc.save();
 
       // Update dataset
@@ -222,6 +225,16 @@ router.post('/predict', authMiddleware, async (req, res) => {
       });
     }
 
+    // Refuse to predict with a model trained on a feature set the current
+    // pipeline no longer supports (e.g. gender — see ml/model_manager.js).
+    // Predicting anyway would silently miscompute rather than fail cleanly.
+    if (!modelManager.isModelCompatible(activeModel)) {
+      return res.status(409).json({
+        error: 'The active trained model uses features no longer supported by the prediction pipeline (e.g. gender). Retrain a model to enable ML predictions.',
+        fallback: true,
+      });
+    }
+
     // Resolve model path (it may be stored as a relative unix-style path)
     let modelPath = activeModel.modelPath;
     if (!path.isAbsolute(modelPath)) {
@@ -244,12 +257,36 @@ router.post('/predict', authMiddleware, async (req, res) => {
 
     const prediction = await modelManager.predict(modelPath, scores);
 
+    // ── ML vs. interpretation boundary ──────────────────────────────────
+    // ml/predict.py's job ends at risk_category — a raw classification
+    // label (B). It has no notion of "care stage" or "consultation level";
+    // that interpretation (C) is the centralized staging module's job, not
+    // the model's. Recommendation/care-plan text is a further step
+    // downstream (routes/recommendations.js) that this endpoint does not
+    // produce. developmental_band (A) is a THIRD, separate concept — a
+    // score classification, not an ML output — included here since the
+    // caller already supplied overall_score.
+    const careStage = staging.getCareStageFromRiskCategory(prediction.risk_category);
+    const careStageDefinition = careStage ? staging.getCareStageDefinition(careStage) : null;
+    const developmentalBand = req.body.overall_score != null
+      ? staging.getDevelopmentalBandFromScore(req.body.overall_score)
+      : null;
+
     res.json({
       success: true,
+      // Legacy/back-compat fields — unchanged shape.
       risk_category: prediction.risk_category,
       consultation_needed: prediction.consultation_needed,
       probabilities: prediction.probabilities,
       model_version: activeModel.version,
+      // A. Developmental band — score classification (constants/scoring.js).
+      developmental_band: developmentalBand,
+      // C. Care stage — centralized staging interpretation of the risk
+      // category above (constants/developmental-staging.js).
+      care_stage: careStageDefinition ? careStageDefinition.careStage : null,
+      care_stage_label: careStageDefinition ? careStageDefinition.label : null,
+      consultation_level: careStageDefinition ? careStageDefinition.consultationLevel : null,
+      monitoring_level: careStageDefinition ? careStageDefinition.monitoringLevel : null,
     });
   } catch (err) {
     console.error('ML predict error:', err.message);
@@ -257,45 +294,164 @@ router.post('/predict', authMiddleware, async (req, res) => {
   }
 });
 
+// Step 7: a single label for the admin UI, distinct from the raw `status` +
+// `isActive` + compatibility flags underneath. "completed" alone does NOT
+// mean "ready for production" — only "training finished without error".
+// Reused by both /models below and the activation endpoint's response.
+function modelLifecycleState(m, compatible) {
+  if (m.status === 'training') return 'training';
+  if (m.status === 'failed') return 'failed';
+  if (m.status !== 'completed') return m.status;
+  if (m.isActive) return 'active';
+  return compatible ? 'candidate' : 'incompatible';
+}
+
 /**
  * GET /api/ml/models
- * Lists all trained model versions with metrics and status.
+ * Lists all trained model versions with metrics, status, and — Step 7 —
+ * enough lifecycle info (compatibility, lifecycleState) for the admin UI to
+ * distinguish a merely-completed candidate from the actual active model.
  */
 router.get('/models', authMiddleware, adminOnly, async (req, res) => {
   try {
     const models = await TrainedModel.find()
       .sort({ version: -1 })
       .populate('trainedBy', 'firstName lastName')
-      .populate('datasetId', 'name originalName')
+      .populate('datasetId', 'name originalName provenance')
       .lean();
 
     res.json({
       success: true,
-      models: models.map((m) => ({
-        id: String(m._id),
-        version: m.version,
-        datasetName: m.datasetId?.name || 'Unknown',
-        accuracy: m.accuracy,
-        precision: m.precision,
-        recall: m.recall,
-        f1Score: m.f1Score,
-        perClassMetrics: m.perClassMetrics,
-        classNames: m.classNames,
-        trainingSamples: m.trainingSamples,
-        testSamples: m.testSamples,
-        totalRows: m.totalRows,
-        status: m.status,
-        isActive: m.isActive,
-        trainedBy: m.trainedBy
-          ? `${m.trainedBy.firstName} ${m.trainedBy.lastName}`
-          : 'Admin',
-        errorMessage: m.errorMessage || null,
-        createdAt: m.createdAt,
-      })),
+      models: models.map((m) => {
+        const compatible = m.status === 'completed' ? modelManager.isModelCompatible(m) : null;
+        // Step 13: the dataset's own structured provenance — never
+        // re-derived here, just read from what POST /training/upload
+        // recorded (routes/admin.js). 'unknown' for datasets uploaded
+        // before that field existed, or trained via routes/ml.js
+        // /train-model directly (no datasetId join).
+        const sourceType = m.datasetId?.provenance?.sourceType || 'unknown';
+        return {
+          id: String(m._id),
+          version: m.version,
+          datasetName: m.datasetId?.name || 'Unknown',
+          sourceType,
+          accuracy: m.accuracy,
+          precision: m.precision,
+          recall: m.recall,
+          f1Score: m.f1Score,
+          perClassMetrics: m.perClassMetrics,
+          confusionMatrix: m.confusionMatrix || null,
+          classDistribution: m.classDistribution || null,
+          classNames: m.classNames,
+          featuresUsed: m.featuresUsed,
+          trainingSamples: m.trainingSamples,
+          testSamples: m.testSamples,
+          totalRows: m.totalRows,
+          rowsDropped: m.rowsDropped,
+          status: m.status,
+          isActive: m.isActive,
+          compatible,
+          lifecycleState: modelLifecycleState(m, compatible),
+          trainedBy: m.trainedBy
+            ? `${m.trainedBy.firstName} ${m.trainedBy.lastName}`
+            : 'Admin',
+          errorMessage: m.errorMessage || null,
+          createdAt: m.createdAt,
+        };
+      }),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+/**
+ * POST /api/ml/models/:modelId/activate
+ *
+ * Step 7 — the ONLY place a model's isActive flag is ever set to true.
+ * Training (routes/admin.js, routes/ml.js POST /train-model, ml/model_manager.js)
+ * never activates a model on its own; it only produces a candidate. This
+ * endpoint is the explicit, admin-approved promotion of a candidate to the
+ * model actually used for live predictions.
+ *
+ * Rejects: model not found, not status 'completed' (still training or
+ * failed), no saved model file, or incompatible with the current feature
+ * set (e.g. the old gender_encoded model — see ml/model_manager.js
+ * isModelCompatible). None of these ever change which model is currently
+ * active.
+ */
+
+// Pure (no I/O) — returns null when `model` is eligible for activation, or a
+// human-readable reason it isn't. Kept separate from the route handler so
+// the rejection rules are unit-testable without a live document/DB.
+function getModelActivationBlocker(model) {
+  if (model.status === 'training') return 'This model is still training and cannot be activated yet.';
+  if (model.status === 'failed') return 'This model failed training and cannot be activated.';
+  if (model.status !== 'completed') return `Only a completed model can be activated (current status: "${model.status}").`;
+  if (!model.modelPath) return 'This model has no saved model file and cannot be activated.';
+  if (!modelManager.isModelCompatible(model)) {
+    return 'This model uses features no longer supported by the prediction pipeline (e.g. gender) and cannot be activated. Train a new model under the current feature set instead.';
+  }
+  return null;
+}
+
+// Safe order: activate the requested model FIRST, then deactivate every
+// other model. Every read path (routes/ml.js /predict, services/
+// assessmentProgress.js) already checks isModelCompatible() before trusting
+// whichever active model it finds, so a brief moment with two active
+// documents is harmless — it can only ever result in a correct prediction
+// or a safe rule-based fallback, never a crash or a silently wrong one.
+// Doing it in the other order would risk a brief window with NO active
+// model, which is unnecessary here.
+async function performModelActivation(model) {
+  model.isActive = true;
+  await model.save();
+  await TrainedModel.updateMany({ _id: { $ne: model._id }, isActive: true }, { $set: { isActive: false } });
+}
+
+router.post('/models/:modelId/activate', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const model = await TrainedModel.findById(req.params.modelId);
+    if (!model) {
+      return res.status(404).json({ error: 'Model not found.' });
+    }
+
+    const blocker = getModelActivationBlocker(model);
+    if (blocker) {
+      return res.status(409).json({ error: blocker });
+    }
+
+    await performModelActivation(model);
+
+    sse.broadcast('analytics:update', {
+      type: 'ml',
+      action: 'model_activated',
+      modelId: String(model._id),
+      modelVersion: model.version,
+    });
+
+    res.json({
+      success: true,
+      model: {
+        id: String(model._id),
+        version: model.version,
+        status: model.status,
+        isActive: true,
+        lifecycleState: 'active',
+        featuresUsed: model.featuresUsed,
+        classNames: model.classNames,
+        accuracy: model.accuracy,
+      },
+    });
+  } catch (err) {
+    console.error('Model activation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
+
+// Exposed for tests only (see tests/unit/model-activation.test.js). Attaching
+// to the router function is inert for Express — app.use() only ever calls it
+// as a request handler, so this does not affect routing.
+router.__testables = { modelLifecycleState, getModelActivationBlocker, performModelActivation };

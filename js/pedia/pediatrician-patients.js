@@ -151,6 +151,53 @@ const API = window.location.origin + '/api';
         return value < toDateInputValue(new Date());
     }
 
+    // kc-badge only defines positive/caution/attention/neutral/info — this is a
+    // defensive pass-through so an unrecognized tone never emits a broken class.
+    function stageBadgeSafe(tone) {
+        return ['positive', 'caution', 'attention', 'neutral', 'info'].includes(tone) ? tone : 'neutral';
+    }
+
+    // Step 14: pediatrician-facing Developmental Band / Risk Category / Care
+    // Stage / Consultation / Monitoring row — built from the SAME
+    // developmentalBand + prediction fields the parent Results page reads
+    // (routes/assessments.js GET /pedia-patients, added Step 14). Nothing
+    // here recomputes a band/risk/care stage; window.KCCarePlan only formats
+    // what the backend already decided.
+    function renderCarePlanRow(developmentalBand, prediction) {
+        if (!prediction) return '';
+        const CP = window.KCCarePlan;
+        const chip = (label, valueHtml) => `
+            <div>
+                <p style="margin:0 0 .3rem;font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-light);">${escapeHtml(label)}</p>
+                ${valueHtml}
+            </div>`;
+        return `
+        <div style="margin-top:1rem;padding:0.9rem 1rem;background:white;border-radius:8px;border-left:3px solid var(--primary);">
+            <p style="font-size:0.8rem;font-weight:700;color:var(--primary);margin:0 0 .7rem;">Developmental Assessment &amp; Care Plan</p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.9rem;">
+                ${chip('Developmental Band', `<span class="kc-badge kc-badge--${stageBadgeSafe(CP.toneForDevelopmentalBand(developmentalBand))}">${escapeHtml(CP.developmentalBandLabel(developmentalBand))}</span>`)}
+                ${chip('Risk Category', `<span class="kc-badge kc-badge--${stageBadgeSafe(CP.toneForRiskCategory(prediction.riskCategory))}">${escapeHtml(CP.riskCategoryLabel(prediction.riskCategory))}</span>`)}
+                ${chip('Care Stage', `<span class="kc-badge kc-badge--${stageBadgeSafe(CP.toneForCareStage(prediction.careStage))}">${escapeHtml(CP.careStageLabel(prediction.careStageLabel))}</span>`)}
+                ${chip('Consultation', `<p style="margin:0;font-size:.83rem;font-weight:600;color:var(--text-dark);">${escapeHtml(CP.consultationLevelLabel(prediction.consultationLevel))}</p>`)}
+                ${chip('Monitoring', `<p style="margin:0;font-size:.83rem;font-weight:600;color:var(--text-dark);">${escapeHtml(CP.monitoringLevelLabel(prediction.monitoringLevel))}</p>`)}
+            </div>
+            <p style="margin:.7rem 0 0;font-size:.74rem;color:var(--text-light);">${escapeHtml(CP.interpretationLine(prediction.source))}</p>
+        </div>`;
+    }
+
+    // Pediatrician-reviewed ML training-target label (Step 10) — distinct
+    // from the diagnosis/clinical outcome. Shown so a pediatrician can see at
+    // a glance whether this patient's latest assessment still needs review.
+    function mlReviewBadge(mlLabel, mlReviewStatus) {
+        if (mlLabel?.riskCategory) {
+            return `<span class="badge" style="background:var(--status-info-bg);color:var(--status-info-fg);">ML Review: ${escapeHtml(mlLabel.riskCategory)}</span>`;
+        }
+        if (mlReviewStatus === 'excluded') {
+            return `<span class="badge" style="background:var(--status-neutral-bg);color:var(--status-neutral-fg);">ML Review: Excluded</span>`;
+        }
+        return `<span class="badge" style="background:var(--status-neutral-bg);color:var(--status-neutral-fg);">ML Review: Not yet reviewed</span>`;
+    }
+
     function inlineArg(value) {
         return escapeHtml(String(value ?? '')
             .replace(/\\/g, '\\\\')
@@ -249,6 +296,7 @@ const API = window.location.origin + '/api';
                     <div style="display:flex;flex-direction:column;gap:0.4rem;align-items:flex-end;">
                         ${aptStatusBadge(p.appointmentStatus)}
                         <span class="badge ${hasDiag ? 'badge-diagnosed' : 'badge-no-diag'}">${hasDiag ? '&#10003; Diagnosed' : '⏳ Awaiting Diagnosis'}</span>
+                        ${mlReviewBadge(p.mlLabel, p.mlReviewStatus)}
                     </div>
                 </div>
 
@@ -267,6 +315,7 @@ const API = window.location.origin + '/api';
                             </div>`;
                         }).join('')}
                     </div>
+                    ${renderCarePlanRow(p.developmentalBand, p.prediction)}
                     ${hasDiag ? `
                     <div style="margin-top:1rem;padding:0.8rem 1rem;background:white;border-radius:8px;border-left:3px solid var(--primary);">
                         <p style="font-size:0.8rem;font-weight:600;color:var(--primary);margin-bottom:0.3rem;">Your Diagnosis:</p>
@@ -303,7 +352,7 @@ const API = window.location.origin + '/api';
                         style="flex:1;min-width:130px;padding:0.7rem;border-color:var(--status-info-fg);color:var(--status-info-fg);">
                         <img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Review Pre-Assessment
                     </button>
-                    <button class="btn btn-secondary" onclick="openDiagnosis('${p.childId}','${childNameEsc}','${diagEsc}','${recEsc}','${nextDateEsc}','${nextReasonEsc}','${overallScore}')"
+                    <button class="btn btn-secondary" onclick="openDiagnosis('${p.childId}','${childNameEsc}','${diagEsc}','${recEsc}','${nextDateEsc}','${nextReasonEsc}','${overallScore}','${p.assessmentId||''}')"
                         style="flex:1;min-width:130px;padding:0.7rem;">
                         ${hasDiag ? '<img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">️ Edit Diagnosis' : '<img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Provide Diagnosis'}
                     </button>
@@ -378,9 +427,10 @@ const API = window.location.origin + '/api';
         window.open(`/parent/results.html?assessmentId=${assessmentId}&childId=${childId}`, '_blank');
     }
 
-    function openDiagnosis(childId, childName, existingDiag, existingRec, existingNextDate, existingNextReason, overallScore) {
+    function openDiagnosis(childId, childName, existingDiag, existingRec, existingNextDate, existingNextReason, overallScore, assessmentId) {
         window.currentChildId = childId;
         window.currentDiagnosisScore = overallScore;
+        window.currentAssessmentId = assessmentId || null;
         document.getElementById('diagModalTitle').textContent =
             existingDiag ? `Edit Diagnosis — ${childName}` : `Provide Diagnosis — ${childName}`;
         document.getElementById('diagPatientName').textContent = `Patient: ${childName}`;
@@ -426,7 +476,52 @@ const API = window.location.origin + '/api';
             });
         }
 
+        // Step 10: prefill the reviewed ML label from what's already
+        // recorded for this child's latest assessment — same lookup
+        // pattern as clinicalOutcome above, read from _allPatients rather
+        // than the onclick args.
+        const mlLabelSelect = document.getElementById('ml-label-select');
+        const mlLabelNotes = document.getElementById('ml-label-notes');
+        const mlLabelStatus = document.getElementById('ml-label-status');
+        if (mlLabelSelect) mlLabelSelect.value = patient?.mlLabel?.riskCategory || '';
+        if (mlLabelNotes) mlLabelNotes.value = patient?.mlLabel?.notes || '';
+        if (mlLabelStatus) {
+            mlLabelStatus.textContent = patient?.mlLabel
+                ? `Last reviewed ${formatDisplayDate(toDateInputValue(patient.mlLabel.reviewedAt)) || ''}`
+                : (patient?.mlReviewStatus === 'excluded' ? 'Excluded from dataset export' : 'Not yet reviewed');
+        }
+
         document.getElementById('diagnosisModal').style.display = 'flex';
+    }
+
+    // Step 10: separate save action from submitDiagnosis() — a pediatrician
+    // can record this reviewed ML training label independently of writing a
+    // full diagnosis. Posts to routes/assessments.js POST
+    // /:assessmentId/ml-label, which does its own server-side authorization
+    // (must be linked to this patient) and validation (Low/Medium/High only).
+    async function submitMlLabel() {
+        if (!window.currentAssessmentId) {
+            alert('No assessment is associated with this patient yet — an ML label needs a completed assessment.');
+            return;
+        }
+        const riskCategory = document.getElementById('ml-label-select')?.value || '';
+        if (!riskCategory) {
+            alert('Choose Low, Medium, or High before saving the ML label.');
+            return;
+        }
+        const notes = document.getElementById('ml-label-notes')?.value.trim() || '';
+        try {
+            const result = await apiFetch(`/assessments/${window.currentAssessmentId}/ml-label`, {
+                method: 'POST',
+                body: JSON.stringify({ riskCategory, notes: notes || null }),
+            });
+            const statusEl = document.getElementById('ml-label-status');
+            if (statusEl) statusEl.textContent = `Saved — reviewed ${formatDisplayDate(toDateInputValue(result.mlLabel?.reviewedAt)) || 'just now'}`;
+            alert('✅ ML developmental risk label saved. This does not replace medical diagnosis.');
+            loadPatients();
+        } catch (err) {
+            alert('Failed to save ML label: ' + err.message);
+        }
     }
 
     async function submitDiagnosis() {
@@ -495,8 +590,15 @@ const API = window.location.origin + '/api';
         document.getElementById('next-assessment-date').value = '';
         document.getElementById('next-assessment-reason').value = '';
         document.getElementById('next-assessment-suggestion').textContent = '';
+        const mlLabelSelect = document.getElementById('ml-label-select');
+        const mlLabelNotes = document.getElementById('ml-label-notes');
+        const mlLabelStatus = document.getElementById('ml-label-status');
+        if (mlLabelSelect) mlLabelSelect.value = '';
+        if (mlLabelNotes) mlLabelNotes.value = '';
+        if (mlLabelStatus) mlLabelStatus.textContent = '';
         window.currentChildId = null;
         window.currentDiagnosisScore = null;
+        window.currentAssessmentId = null;
     }
 
     function exportPatients() {
@@ -541,6 +643,19 @@ const API = window.location.origin + '/api';
             const when = a.completedAt || a.startedAt;
             const dateText = when ? new Date(when).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}) : '—';
             const score = a.overallScore != null ? `${a.overallScore}% overall` : 'Assessment started';
+            // Step 14: developmentalBand + prediction (careStage) already ride
+            // along on every entry from GET /assessments/:childId/history
+            // (routes/assessments.js buildHistoryForChild, Step 5/8) — this is
+            // the per-assessment history that lets a pediatrician see
+            // previous-vs-current bands/care stages over time, not just the
+            // latest one shown on the card.
+            const CP = window.KCCarePlan;
+            const bandStageLine = (a.overallScore != null && CP) ? `
+                    <p style="font-size:0.78rem;color:var(--text-light);margin:0.35rem 0 0;">
+                        Band: <strong style="color:var(--text-dark);">${escapeHtml(CP.developmentalBandLabel(a.developmentalBand))}</strong>
+                        &nbsp;·&nbsp; Risk: <strong style="color:var(--text-dark);">${escapeHtml(CP.riskCategoryLabel(a.prediction?.riskCategory))}</strong>
+                        &nbsp;·&nbsp; Care Stage: <strong style="color:var(--text-dark);">${escapeHtml(CP.careStageLabel(a.prediction?.careStageLabel))}</strong>
+                    </p>` : '';
             return `
                 <div style="background:var(--bg-primary);border-radius:10px;padding:0.9rem 1rem;">
                     <div style="display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap;">
@@ -548,6 +663,7 @@ const API = window.location.origin + '/api';
                         <span style="font-size:0.75rem;color:var(--text-light);">${a.status || '—'}</span>
                     </div>
                     <p style="font-size:0.85rem;color:var(--primary);margin:0.35rem 0 0;">${score}</p>
+                    ${bandStageLine}
                     ${a.diagnosis ? `<p style="font-size:0.82rem;color:var(--text-dark);margin:0.5rem 0 0;line-height:1.45;"><strong>Diagnosis:</strong> ${escapeHtml(a.diagnosis)}</p>` : ''}
                     ${a.nextAssessmentDate ? `<p style="font-size:0.82rem;color:var(--text-dark);margin:0.5rem 0 0;line-height:1.45;"><strong>Next assessment:</strong> ${formatDisplayDate(a.nextAssessmentDate)}${a.nextAssessmentReason ? ` - ${escapeHtml(a.nextAssessmentReason)}` : ''}</p>` : ''}
                 </div>`;

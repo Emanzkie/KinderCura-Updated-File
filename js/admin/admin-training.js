@@ -288,6 +288,7 @@ async function uploadDataset() {
         fd.append('dataset', file);
         fd.append('name', document.getElementById('datasetName').value.trim());
         fd.append('targetModule', document.getElementById('targetModule').value);
+        fd.append('sourceType', document.getElementById('datasetSourceType').value);
         fd.append('notes', document.getElementById('datasetNotes').value.trim());
 
         const res = await fetch(`${API}/admin/training/upload`, {
@@ -303,6 +304,7 @@ async function uploadDataset() {
         document.getElementById('datasetName').value = '';
         document.getElementById('datasetNotes').value = '';
         document.getElementById('datasetFile').value = '';
+        document.getElementById('datasetSourceType').value = 'unknown';
         await loadDatasets();
     } catch (err) {
         errEl.textContent = err.message;
@@ -335,6 +337,7 @@ function pollDatasetStatus() {
         if (data && Array.isArray(data.datasets) && !data.datasets.some((dataset) => dataset.status === 'training')) {
             clearInterval(_pollTimer);
             _pollTimer = null;
+            await loadModels(); // training just finished — surface the new candidate
         }
     }, 4000);
 }
@@ -349,12 +352,27 @@ async function deleteDataset(datasetId) {
     }
 }
 
+// Template rows are neutral, made-up placeholder values used only to show
+// the required file format (columns + risk_category labeling) — they are
+// NOT clinically validated examples and must not be treated as real cases.
+// gender is intentionally not included: see ml/trainer.py for why it was
+// dropped from the ML feature set.
+//
+// Step 9: these are the assessment's CALCULATED SCORE columns — the minimum
+// ml/trainer.py actually requires. A dataset may optionally also include
+// one column per KinderCura assessment question (Q01-Q34) for a richer,
+// item-level record of what was actually answered; trainer.py ignores any
+// column it doesn't need, so extra columns are always safe to include. See
+// ml/datasets/kindercura_assessment_dataset.csv and
+// ml/datasets/README.md for the full canonical structure (question
+// columns, answer encoding, and why risk_category must be an independently
+// supplied label — never generated from the scores).
 function downloadDatasetTemplate(format) {
     if (format === 'json') {
         const sample = JSON.stringify([
-            { communication_score: 80, social_score: 70, cognitive_score: 60, motor_score: 75, overall_score: 71, age_months: 48, gender: 'female', risk_category: 'Low' },
-            { communication_score: 60, social_score: 55, cognitive_score: 40, motor_score: 50, overall_score: 51, age_months: 36, gender: 'male', risk_category: 'Medium' },
-            { communication_score: 30, social_score: 25, cognitive_score: 35, motor_score: 28, overall_score: 30, age_months: 30, gender: 'male', risk_category: 'High' }
+            { communication_score: 80, social_score: 70, cognitive_score: 60, motor_score: 75, overall_score: 71, age_months: 48, risk_category: 'Low' },
+            { communication_score: 60, social_score: 55, cognitive_score: 40, motor_score: 50, overall_score: 51, age_months: 36, risk_category: 'Medium' },
+            { communication_score: 30, social_score: 25, cognitive_score: 35, motor_score: 28, overall_score: 30, age_months: 30, risk_category: 'High' }
         ], null, 2);
         const blob = new Blob([sample], { type: 'application/json' });
         const a = document.createElement('a');
@@ -365,7 +383,7 @@ function downloadDatasetTemplate(format) {
         return;
     }
 
-    const sample = 'communication_score,social_score,cognitive_score,motor_score,overall_score,age_months,gender,risk_category\n80,70,60,75,71,48,female,Low\n60,55,40,50,51,36,male,Medium\n30,25,35,28,30,30,male,High\n';
+    const sample = 'communication_score,social_score,cognitive_score,motor_score,overall_score,age_months,risk_category\n80,70,60,75,71,48,Low\n60,55,40,50,51,36,Medium\n30,25,35,28,30,30,High\n';
     const blob = new Blob([sample], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -374,8 +392,197 @@ function downloadDatasetTemplate(format) {
     URL.revokeObjectURL(a.href);
 }
 
+// ── Trained Models (Step 7: explicit model activation) ─────────────────────
+// Training (via processDataset() above) only ever produces a CANDIDATE
+// model — see routes/admin.js / routes/ml.js / ml/model_manager.js. This
+// panel is the only place a candidate becomes the model live predictions
+// use, and it always requires an explicit admin confirmation click.
+
+const MODEL_STATE_CHIP = {
+    active:       { className: 'status-ready',      text: 'Active' },
+    candidate:    { className: 'status-processed',  text: 'Candidate' },
+    incompatible: { className: 'status-review',     text: 'Incompatible' },
+    training:     { className: 'status-processing', text: 'Training' },
+    failed:       { className: 'status-review',     text: 'Failed' },
+};
+
+function modelStateChip(lifecycleState) {
+    const chip = MODEL_STATE_CHIP[lifecycleState] || { className: 'status-ready', text: lifecycleState || 'Unknown' };
+    return `<span class="dataset-status ${chip.className}">${chip.text}</span>`;
+}
+
+// Heuristic only (dataset naming convention already used across this
+// project — see constants/dataOrigin.js "Core Question Bank" naming notes).
+// Never claims a dataset IS clinical data; only flags the ones that clearly
+// aren't, so an admin does not mistake a demo model for a validated one.
+function formatMetric(value) {
+    return typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '—';
+}
+
+async function loadModels() {
+    try {
+        const data = await apiFetch('/ml/models');
+        const models = Array.isArray(data.models) ? data.models : [];
+        const rowsEl = document.getElementById('modelRows');
+
+        if (!models.length) {
+            rowsEl.innerHTML = '<tr><td colspan="6" class="empty-cell">No trained models yet. Process a dataset above to train one.</td></tr>';
+            return;
+        }
+
+        rowsEl.innerHTML = models.map((m) => {
+            // Step 13: sourceType comes straight from the dataset's own
+            // structured provenance field (routes/ml.js /models, joined from
+            // TrainingDataset.provenance) — never re-guessed from the name here.
+            const sourceLabel = m.sourceType === 'reviewed_assessment'
+                ? '<div class="dataset-meta" style="color:var(--primary-dark);font-weight:600;">Reviewed Assessment Data</div>'
+                : (m.sourceType === 'synthetic'
+                    ? '<div class="dataset-meta" style="color:var(--danger);">Test/Synthetic Data — not clinically validated</div>'
+                    : '<div class="dataset-meta">Source not recorded</div>');
+            const metrics = m.status === 'completed'
+                ? `Acc ${formatMetric(m.accuracy)} · Prec ${formatMetric(m.precision)} · Rec ${formatMetric(m.recall)} · F1 ${formatMetric(m.f1Score)}`
+                    + `<div class="dataset-meta">${m.trainingSamples ?? '—'} train / ${m.testSamples ?? '—'} test (of ${m.totalRows ?? '—'} rows, ${m.rowsDropped ?? 0} dropped)</div>`
+                : (m.status === 'failed' ? `<span style="color:var(--danger);">${escapeHtml(m.errorMessage || 'Training failed')}</span>` : '—');
+            const features = Array.isArray(m.featuresUsed) && m.featuresUsed.length
+                ? escapeHtml(m.featuresUsed.join(', '))
+                : '—';
+
+            let actionCell;
+            if (m.lifecycleState === 'active') {
+                actionCell = '<button class="btn btn-secondary dataset-action" disabled>Active</button>';
+            } else if (m.lifecycleState === 'candidate') {
+                actionCell = `<button class="btn btn-primary dataset-action" onclick="activateModel('${escapeHtml(m.id)}', ${m.version})">Activate</button>`;
+            } else if (m.lifecycleState === 'incompatible') {
+                actionCell = '<button class="btn btn-secondary dataset-action" disabled title="Uses a feature set the current prediction pipeline no longer supports (e.g. gender).">Cannot Activate</button>';
+            } else {
+                actionCell = '<button class="btn btn-secondary dataset-action" disabled>—</button>';
+            }
+
+            return `
+                <tr>
+                    <td data-label="Version"><strong>v${m.version}</strong></td>
+                    <td data-label="Dataset">
+                        ${escapeHtml(m.datasetName)}
+                        ${sourceLabel}
+                    </td>
+                    <td data-label="Status">${modelStateChip(m.lifecycleState)}</td>
+                    <td data-label="Metrics">${metrics}</td>
+                    <td data-label="Feature Columns"><div class="dataset-fields">${features}</div></td>
+                    <td class="dataset-actions" data-label="Actions">${actionCell}</td>
+                </tr>`;
+        }).join('');
+    } catch (err) {
+        document.getElementById('modelRows').innerHTML =
+            `<tr><td colspan="6" class="empty-cell error-cell">${escapeHtml(err.message)}</td></tr>`;
+    }
+}
+
+async function activateModel(modelId, version) {
+    if (!confirm(`Activate model v${version} for new assessment predictions? This replaces the model currently used for live ML predictions.`)) return;
+    try {
+        await apiFetch(`/ml/models/${modelId}/activate`, { method: 'POST' });
+        await loadModels();
+    } catch (err) {
+        alert('Could not activate model: ' + err.message);
+        await loadModels();
+    }
+}
+
+// ── Reviewed Assessment Data (Step 10) ──────────────────────────────────────
+// Real, pediatrician-reviewed KinderCura assessments (routes/assessments.js
+// POST /:assessmentId/ml-label), NOT synthetic. Export is a plain file
+// download — it does not register a dataset, train, or activate anything;
+// the admin uploads the downloaded file through the existing Upload Dataset
+// form above when ready, exactly like any other dataset.
+
+async function loadReviewedSummary() {
+    const countEl = document.getElementById('reviewedCount');
+    const byLabelEl = document.getElementById('reviewedByLabel');
+    try {
+        const data = await apiFetch('/admin/training/reviewed-assessments/summary');
+        countEl.textContent = data.total ?? 0;
+        const byLabel = data.byLabel || {};
+        byLabelEl.textContent = data.total
+            ? `Low: ${byLabel.Low || 0} · Medium: ${byLabel.Medium || 0} · High: ${byLabel.High || 0}`
+            : 'No assessments have been reviewed yet.';
+    } catch (err) {
+        countEl.textContent = '—';
+        byLabelEl.textContent = 'Could not load: ' + err.message;
+    }
+    loadReviewedQuality();
+}
+
+// ── Dataset readiness / quality control (Step 12) ───────────────────────────
+// Purely technical characterization of the same reviewed data above ("Is
+// this technically suitable for the current ML training pipeline?") — never
+// a clinical judgement, never a label change. See routes/admin.js
+// buildReviewedAssessmentQualitySummary().
+const READINESS_CHIP = {
+    ready: { className: 'status-ready', text: 'READY' },
+    warning: { className: 'status-processing', text: 'WARNING' },
+    not_ready: { className: 'status-review', text: 'NOT READY' },
+};
+
+async function loadReviewedQuality() {
+    const badge = document.getElementById('readinessBadge');
+    const details = document.getElementById('qualityDetails');
+    try {
+        const q = await apiFetch('/admin/training/reviewed-assessments/quality');
+        const chip = READINESS_CHIP[q.readiness.status] || READINESS_CHIP.not_ready;
+        badge.className = `dataset-status ${chip.className}`;
+        badge.textContent = chip.text;
+
+        const cd = q.classDistribution || {};
+        const missingAge = q.ageStatistics?.missingCount ?? 0;
+        const reasonsHtml = q.readiness.reasons.length
+            ? `<ul style="margin:0.5rem 0 0;padding-left:1.2rem;">${q.readiness.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join('')}</ul>`
+            : '<p style="margin:0.5rem 0 0;color:var(--text-light);">No quality concerns detected.</p>';
+
+        details.innerHTML = `
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.75rem;margin-bottom:0.5rem;">
+                <div><strong>${q.eligibleAssessments}</strong> eligible <div class="dataset-meta">of ${q.totalReviewedAssessments} reviewed</div></div>
+                <div><strong>${cd.Low?.count ?? 0} / ${cd.Medium?.count ?? 0} / ${cd.High?.count ?? 0}</strong><div class="dataset-meta">Low / Medium / High</div></div>
+                <div><strong>${q.duplicateCount}</strong><div class="dataset-meta">Duplicate rows</div></div>
+                <div><strong>${missingAge}</strong><div class="dataset-meta">Missing age_months</div></div>
+                <div><strong>${q.excludedAssessments}</strong><div class="dataset-meta">Excluded</div></div>
+                <div><strong>${q.reviewStatistics?.uniqueReviewers ?? 0}</strong><div class="dataset-meta">Reviewers</div></div>
+            </div>
+            <p style="margin:0;font-weight:600;">${escapeHtml(chip.text)}${q.readiness.reasons.length ? ' — see notes below:' : '.'}</p>
+            ${reasonsHtml}`;
+    } catch (err) {
+        badge.className = 'dataset-status status-review';
+        badge.textContent = 'ERROR';
+        details.innerHTML = `<p style="color:var(--danger);margin:0;">${escapeHtml(err.message)}</p>`;
+    }
+}
+
+async function exportReviewedAssessments() {
+    try {
+        const res = await fetch(`${API}/admin/training/reviewed-assessments/export`, {
+            headers: KC.token() ? { Authorization: `Bearer ${KC.token()}` } : {},
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || `Export failed (${res.status})`);
+        }
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        // Filename mirrors the server's Content-Disposition naming
+        // convention (routes/admin.js) so re-uploading it is correctly
+        // recognized as reviewed-assessment provenance, not synthetic.
+        a.download = `kindercura-reviewed-assessments-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    } catch (err) {
+        alert('Could not export reviewed assessments: ' + err.message);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     loadDatasets();
+    loadModels();
+    loadReviewedSummary();
     if (typeof loadNotificationCount === 'function') loadNotificationCount();
     setInterval(() => {
         if (typeof loadNotificationCount === 'function') loadNotificationCount();

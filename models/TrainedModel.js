@@ -36,6 +36,13 @@ const trainedModelSchema = new mongoose.Schema(
     // Extended analytics fields from the Python trainer output
     featureImportances: { type: mongoose.Schema.Types.Mixed, default: {} },
     perClassMetrics: { type: mongoose.Schema.Types.Mixed, default: {} },
+    // { labels: [...classNames order], matrix: [[...]] } from ml/trainer.py
+    // confusion_matrix — TEST split only. Step 13.
+    confusionMatrix: { type: mongoose.Schema.Types.Mixed, default: null },
+    // Full pre-split label counts, e.g. { Low: 20, Medium: 15, High: 5 } —
+    // the class balance actually used for this training run. Distinct from
+    // perClassMetrics (test-split support only). Step 13.
+    classDistribution: { type: mongoose.Schema.Types.Mixed, default: null },
     classNames: [{ type: String }],
     featuresUsed: [{ type: String }],
     trainingSamples: { type: Number, default: 0 },

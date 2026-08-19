@@ -242,14 +242,56 @@ function comparisonRow(d, bold) {
         </tr>`;
 }
 
+// Step 14: one side (previous or current) of the explicit developmental
+// band / risk category / care stage block below — the three concepts stay
+// on three separate lines (never collapsed into one label) per the
+// reassessment-display requirement. Reads straight off compare.previous /
+// compare.current (services/assessmentProgress.js
+// buildAssessmentProgressSummary) — never recomputed here.
+function renderCareStageColumn(heading, side) {
+    if (!side) return '';
+    const CP = window.KCCarePlan;
+    return `
+        <div>
+            <p style="margin:0 0 .5rem;font-weight:700;color:var(--text-dark);">${escapeHtml(heading)}</p>
+            <p style="margin:0 0 .3rem;font-size:.85rem;">Developmental Band: <strong>${escapeHtml(CP.developmentalBandLabel(side.developmentalBand))}</strong></p>
+            <p style="margin:0 0 .3rem;font-size:.85rem;">Risk Category: <strong>${escapeHtml(CP.riskCategoryLabel(side.riskCategory))}</strong></p>
+            <p style="margin:0;font-size:.85rem;">Care Stage: <strong>${escapeHtml(CP.careStageLabel(side.careStageLabel))}</strong></p>
+        </div>`;
+}
+
 function renderComparisonSection(compare) {
-    if (!compare || !compare.hasPrevious || !compare.scores) return '';
+    if (!compare) return '';
+    const CP = window.KCCarePlan;
+
+    // First completed assessment: there is nothing to compare against yet.
+    // Never phrased as improved/worsened/no change — see Step 14 section 6.
+    if (!compare.hasPrevious) {
+        return `
+        <div class="comparison-card" style="background:white;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+            <h3 style="margin:0 0 .5rem;color:var(--primary);">Progress Since Last Assessment</h3>
+            <p style="margin:0;color:var(--text-light);">First completed assessment — there is no earlier screening to compare yet.</p>
+        </div>`;
+    }
+
+    if (!compare.scores) return '';
     const s = compare.scores;
+    const direction = compare.comparison?.direction;
+    const directionTone = stageBadgeSafe(CP.toneForDirection(direction));
+
     return `
         <div class="comparison-card" style="background:white;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
             <h3 style="margin:0 0 .3rem;color:var(--primary);">Progress Since Last Assessment</h3>
-            <p style="margin:0 0 1rem;color:var(--text-light);font-size:.85rem;">
+            <p style="margin:0 0 1.2rem;color:var(--text-light);font-size:.85rem;">
                 Previous: ${escapeHtml(fmtDate(compare.previous?.date))} &nbsp;→&nbsp; Current: ${escapeHtml(fmtDate(compare.current?.date))}
+            </p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1rem;">
+                ${renderCareStageColumn('Previous', compare.previous)}
+                ${renderCareStageColumn('Current', compare.current)}
+            </div>
+            <p style="margin:0 0 1.2rem;font-size:.9rem;">
+                <strong>Progress:</strong>
+                <span class="kc-badge kc-badge--${directionTone}" style="margin-left:.4rem;">${escapeHtml(CP.directionLabel(direction))}</span>
             </p>
             <div style="overflow-x:auto;">
                 <table style="width:100%;border-collapse:collapse;font-size:.9rem;min-width:420px;">
@@ -271,6 +313,60 @@ function renderComparisonSection(compare) {
                 </table>
             </div>
         </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Step 14: Developmental Assessment & Care Plan summary card.
+//
+// Purely a DISPLAY of what the backend already decided — developmentalBand,
+// riskCategory, careStage/careStageLabel, consultationLevel, monitoringLevel,
+// and source all come straight from GET /api/assessments/:id/results
+// (r.developmentalBand, r.prediction.*). Nothing here recomputes a band,
+// risk category, or care stage from scores; window.KCCarePlan only maps the
+// already-decided value to readable text/badge tone (see
+// js/shared/care-plan-labels.js). `prediction` is always a full object (see
+// services/assessmentProgress.js getStoredOrDerivedCareStage) — it is never
+// partially filled, so this function only needs to guard against it being
+// entirely absent (e.g. a pre-Step-5 legacy result).
+// ---------------------------------------------------------------------------
+function renderCarePlanCard(developmentalBand, prediction) {
+    if (!prediction) return '';
+    const CP = window.KCCarePlan;
+
+    const bandLabel = CP.developmentalBandLabel(developmentalBand);
+    const bandTone = CP.toneForDevelopmentalBand(developmentalBand);
+    const riskLabel = CP.riskCategoryLabel(prediction.riskCategory);
+    const riskTone = CP.toneForRiskCategory(prediction.riskCategory);
+    const stageLabel = CP.careStageLabel(prediction.careStageLabel);
+    const stageTone = CP.toneForCareStage(prediction.careStage);
+    const consultationLabel = CP.consultationLevelLabel(prediction.consultationLevel);
+    const monitoringLabel = CP.monitoringLevelLabel(prediction.monitoringLevel);
+    const interpretation = CP.interpretationLine(prediction.source);
+
+    const field = (label, valueHtml) => `
+        <div>
+            <p style="margin:0 0 .4rem;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-light);">${escapeHtml(label)}</p>
+            ${valueHtml}
+        </div>`;
+
+    return `
+    <div class="comparison-card" style="background:white;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+        <h3 style="margin:0 0 1.2rem;color:var(--primary);">Developmental Assessment &amp; Care Plan</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1.4rem;">
+            ${field('Developmental Band', `<span class="kc-badge kc-badge--${stageBadgeSafe(bandTone)}">${escapeHtml(bandLabel)}</span>`)}
+            ${field('Developmental Risk Category', `<span class="kc-badge kc-badge--${stageBadgeSafe(riskTone)}">${escapeHtml(riskLabel)}</span>`)}
+            ${field('Care Stage', `<span class="kc-badge kc-badge--${stageBadgeSafe(stageTone)}">${escapeHtml(stageLabel)}</span>`)}
+            ${field('Consultation', `<p style="margin:0;font-weight:600;color:var(--text-dark);">${escapeHtml(consultationLabel)}</p>`)}
+            ${field('Monitoring', `<p style="margin:0;font-weight:600;color:var(--text-dark);">${escapeHtml(monitoringLabel)}</p>`)}
+        </div>
+        <p style="margin:1.3rem 0 0;font-size:.8rem;color:var(--text-light);">${escapeHtml(interpretation)}</p>
+    </div>`;
+}
+
+// kc-badge only defines positive/caution/attention/neutral/info — this is a
+// defensive pass-through so an unrecognized tone never emits a broken class.
+function stageBadgeSafe(tone) {
+    return ['positive', 'caution', 'attention', 'neutral', 'info'].includes(tone) ? tone : 'neutral';
 }
 
 function fmtDate(dateString) {
@@ -515,6 +611,8 @@ async function loadResults() {
                     </p>` : ''}
                 </div>
             </div>
+
+            ${renderCarePlanCard(r.developmentalBand, r.prediction)}
 
             <div class="domain-cards-grid">
                 ${domains.map((d, i) => renderDomainCard(d, domainDetails[d.label], i)).join('')}

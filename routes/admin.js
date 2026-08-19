@@ -131,6 +131,427 @@ function parseDatasetContent(raw, ext) {
   };
 }
 
+// ── Step 10: reviewed-assessment dataset export ───────────────────────────
+// Turns pediatrician-reviewed assessments (Assessment.mlLabel, see
+// routes/assessments.js POST /:assessmentId/ml-label) into rows in the same
+// canonical shape as ml/datasets/kindercura_assessment_dataset.csv — but
+// these rows are REAL, not synthetic. risk_category here is ALWAYS
+// assessment.mlLabel.riskCategory (the pediatrician's reviewed label) —
+// never AssessmentResult.prediction (the ML's own output) and never a
+// score threshold. Using either of those as "ground truth" would be
+// exactly the circular-training mistake this feature exists to prevent.
+function ageMonthsAt(dateOfBirth, atDate) {
+  if (!dateOfBirth || !atDate) return null;
+  const diffMs = new Date(atDate).getTime() - new Date(dateOfBirth).getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) return null;
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.4375));
+}
+
+/**
+ * Loads every eligible reviewed assessment and shapes it into canonical
+ * dataset rows. Eligibility (all required, per Step 10 §6):
+ *   - Assessment.status === 'complete'
+ *   - Assessment.mlReviewStatus === 'reviewed'
+ *   - Assessment.mlLabel.riskCategory is a valid Low/Medium/High
+ *   - Assessment.mlLabel.reviewedBy exists
+ *   - a matching AssessmentResult exists (real scores to export)
+ * Anything that fails one of these is silently skipped and counted, never
+ * exported with missing/invalid data.
+ */
+// Pure (no I/O) — the exact eligibility filter, split out so the rule
+// itself (not just its effect) is unit-testable without a live DB.
+function buildReviewedAssessmentFilter() {
+  return {
+    status: 'complete',
+    mlReviewStatus: 'reviewed',
+    'mlLabel.riskCategory': { $in: ['Low', 'Medium', 'High'] },
+    'mlLabel.reviewedBy': { $exists: true, $ne: null },
+  };
+}
+
+async function buildReviewedAssessmentExportRows() {
+  const candidates = await Assessment.find(buildReviewedAssessmentFilter()).lean();
+
+  const skipped = { noResult: 0 };
+  if (!candidates.length) return { rows: [], total: 0, skipped, byLabel: { Low: 0, Medium: 0, High: 0 }, questionIds: [] };
+
+  const assessmentIds = candidates.map((a) => a._id);
+  const childIds = [...new Set(candidates.map((a) => String(a.childId)))];
+
+  const [results, answers, children, questionDocs] = await Promise.all([
+    AssessmentResult.find({ assessmentId: { $in: assessmentIds } }).lean(),
+    AssessmentAnswer.find({ assessmentId: { $in: assessmentIds }, origin: DATA_ORIGIN.CORE_BANK }).lean(),
+    Child.find({ _id: { $in: childIds } }).select('dateOfBirth').lean(),
+    CoreBankQuestion.find({}).select('questionId').sort({ questionId: 1 }).lean(),
+  ]);
+
+  const resultByAssessment = new Map(results.map((r) => [String(r.assessmentId), r]));
+  const childById = new Map(children.map((c) => [String(c._id), c]));
+  const questionIds = questionDocs.map((q) => q.questionId);
+
+  const answersByAssessment = new Map();
+  for (const a of answers) {
+    const key = String(a.assessmentId);
+    if (!answersByAssessment.has(key)) answersByAssessment.set(key, new Map());
+    answersByAssessment.get(key).set(a.questionId, a.answer);
+  }
+
+  // routes/assessments.js scoreAnswer(): yes=2, sometimes=1, anything else=0.
+  const ANSWER_SCORE = { yes: 2, sometimes: 1, no: 0 };
+
+  const rows = [];
+  const byLabel = { Low: 0, Medium: 0, High: 0 };
+  let refCounter = 0;
+
+  for (const assessment of candidates) {
+    const result = resultByAssessment.get(String(assessment._id));
+    if (!result) { skipped.noResult += 1; continue; }
+
+    refCounter += 1;
+    const child = childById.get(String(assessment.childId));
+    const ageMonths = ageMonthsAt(child?.dateOfBirth, assessment.completedAt || assessment.startedAt);
+    const answerMap = answersByAssessment.get(String(assessment._id)) || new Map();
+
+    const row = {
+      assessment_ref: `REVIEWED-${String(refCounter).padStart(3, '0')}`,
+      age_months: ageMonths != null ? ageMonths : '',
+    };
+    for (const qid of questionIds) {
+      const answer = answerMap.get(qid);
+      // Blank = not administered (age-gated) — NOT "0"/"no". Only a
+      // recognized answer string is ever converted to a point value.
+      row[qid] = Object.prototype.hasOwnProperty.call(ANSWER_SCORE, answer) ? ANSWER_SCORE[answer] : '';
+    }
+    row.communication_score = result.communicationScore;
+    row.social_score = result.socialScore;
+    row.cognitive_score = result.cognitiveScore;
+    row.motor_score = result.motorScore;
+    row.overall_score = result.overallScore;
+    // The reviewed label ONLY — never the stored ML prediction.
+    row.risk_category = assessment.mlLabel.riskCategory;
+
+    // Step 12: internal-only fields for quality analysis (duplicate
+    // detection, reviewer stats) — prefixed with `_` and never included in
+    // rowsToCsv()'s output, which only reads the whitelisted CSV fieldnames
+    // below. Never sent to the frontend either (see buildQualitySummary,
+    // which reads these and strips them before responding).
+    row._assessmentId = String(assessment._id);
+    row._childId = String(assessment.childId);
+    row._completedAt = assessment.completedAt || assessment.startedAt || null;
+    row._reviewedBy = String(assessment.mlLabel.reviewedBy);
+    row._reviewedAt = assessment.mlLabel.reviewedAt || null;
+
+    byLabel[row.risk_category] = (byLabel[row.risk_category] || 0) + 1;
+    rows.push(row);
+  }
+
+  return { rows, total: rows.length, skipped, byLabel, questionIds };
+}
+
+function rowsToCsv(rows, questionIds) {
+  const fieldnames = ['assessment_ref', 'age_months', ...questionIds,
+    'communication_score', 'social_score', 'cognitive_score', 'motor_score', 'overall_score', 'risk_category'];
+  const escapeCell = (v) => {
+    const s = v == null ? '' : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [fieldnames.join(',')];
+  for (const row of rows) {
+    lines.push(fieldnames.map((f) => escapeCell(row[f])).join(','));
+  }
+  return lines.join('\n') + '\n';
+}
+
+// ── Step 12: dataset readiness / quality control ───────────────────────────
+// A technical, ML-pipeline-facing analysis of the SAME reviewed-assessment
+// population buildReviewedAssessmentExportRows() already selects — this
+// function calls it rather than re-querying, so the quality summary and the
+// CSV export can never disagree about which assessments are eligible (see
+// Step 12 task §13). This layer never touches mlLabel, never generates a
+// label, and never claims clinical validity — it only characterizes what is
+// technically available for ml/trainer.py to train on.
+
+// ML-pipeline data-quality heuristics — NOT clinical thresholds. Chosen to
+// match/reflect real constraints elsewhere in this codebase, documented
+// per-constant below.
+const QUALITY = Object.freeze({
+  // Mirrors ml/trainer.py prepare_features()'s own hard minimum ("At least
+  // 10 rows are needed for a meaningful model") — reused, not reinvented.
+  MIN_ELIGIBLE_ROWS: 10,
+  // sklearn's train_test_split(..., stratify=...) requires every represented
+  // class to have at least 2 members (so at least 1 can land in each split).
+  MIN_ROWS_PER_REPRESENTED_CLASS: 2,
+  // Below this, a class is flagged even if it clears the hard minimum above.
+  // A simple, documented, adjustable data-quality heuristic — not a claim
+  // about what class balance is medically expected.
+  CLASS_IMBALANCE_MAX_SHARE: 0.75,
+});
+
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
+function summarizeMissingness(rows, questionIds) {
+  const total = rows.length;
+  const questionMissingness = {};
+  for (const qid of questionIds) {
+    const missing = rows.filter((r) => r[qid] === '').length;
+    questionMissingness[qid] = { missing, total, percentage: total ? round2((missing / total) * 100) : 0 };
+  }
+  const scoreFields = ['age_months', 'communication_score', 'social_score', 'cognitive_score', 'motor_score', 'overall_score'];
+  const scoreMissingness = {};
+  for (const field of scoreFields) {
+    const missing = rows.filter((r) => r[field] === '' || r[field] == null).length;
+    scoreMissingness[field] = { missing, total, percentage: total ? round2((missing / total) * 100) : 0 };
+  }
+  return { questionMissingness, scoreMissingness };
+}
+
+/**
+ * A duplicate here means the SAME real-world assessment event appears more
+ * than once — approximated as two reviewed rows sharing both childId AND
+ * completedAt. Deliberately NOT "same child appears more than once": a
+ * child's legitimate reassessments always have different completedAt
+ * timestamps and must never be flagged (Step 12 task §6 — this is what
+ * makes longitudinal comparison work at all, see services/assessmentProgress.js).
+ */
+function detectDuplicates(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    const key = `${row._childId}::${new Date(row._completedAt || 0).toISOString()}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row._assessmentId);
+  }
+  let duplicateCount = 0;
+  const duplicateGroups = [];
+  for (const ids of groups.values()) {
+    if (ids.length > 1) {
+      duplicateCount += ids.length;
+      duplicateGroups.push({ groupSize: ids.length });
+    }
+  }
+  return { duplicateCount, duplicateGroups };
+}
+
+function summarizeAge(rows) {
+  const values = rows.map((r) => r.age_months).filter((v) => v !== '' && v != null).sort((a, b) => a - b);
+  if (!values.length) return { min: null, max: null, median: null, missingCount: rows.length };
+  const mid = Math.floor(values.length / 2);
+  const median = values.length % 2 ? values[mid] : round2((values[mid - 1] + values[mid]) / 2);
+  return {
+    min: values[0],
+    max: values[values.length - 1],
+    median,
+    missingCount: rows.length - values.length,
+  };
+}
+
+/**
+ * Reviewer stats WITHOUT exposing raw pediatrician identifiers in the API
+ * response — Step 12 task §9 ("the admin UI should show a privacy-safe
+ * representation"). Assigns a stable-within-this-response pseudonym
+ * ("Reviewer 1", "Reviewer 2", ...) by first-seen order; the real ObjectId
+ * never leaves this function.
+ */
+function summarizeReviewers(rows) {
+  const countByReviewer = new Map();
+  let latestReviewAt = null;
+  for (const row of rows) {
+    countByReviewer.set(row._reviewedBy, (countByReviewer.get(row._reviewedBy) || 0) + 1);
+    if (row._reviewedAt && (!latestReviewAt || new Date(row._reviewedAt) > new Date(latestReviewAt))) {
+      latestReviewAt = row._reviewedAt;
+    }
+  }
+  const reviewsByReviewer = [...countByReviewer.entries()].map(([, count], i) => ({
+    reviewerRef: `Reviewer ${i + 1}`,
+    count,
+  }));
+  return { uniqueReviewers: countByReviewer.size, latestReviewAt, reviewsByReviewer };
+}
+
+function summarizeClassDistribution(byLabel, total) {
+  const classDistribution = {};
+  for (const label of ['Low', 'Medium', 'High']) {
+    const count = byLabel[label] || 0;
+    classDistribution[label] = { count, percentage: total ? round2((count / total) * 100) : 0 };
+  }
+  return classDistribution;
+}
+
+/**
+ * Assembles the full dataset-readiness/quality summary. Reuses
+ * buildReviewedAssessmentExportRows() as the SINGLE source of the eligible
+ * (exportable) row set — see module docstring above. Additionally queries
+ * the broader "reviewed" population (without the strict validity filters)
+ * purely to surface diagnostic flags for reviewed-but-ineligible records —
+ * this does not create a second, competing eligibility rule; the exportable
+ * set itself is computed exactly once, in exactly one place.
+ */
+async function buildReviewedAssessmentQualitySummary() {
+  const exportResult = await buildReviewedAssessmentExportRows();
+  const { rows, total: eligibleAssessments, skipped, byLabel, questionIds } = exportResult;
+
+  const [totalReviewedAssessments, excludedAssessments] = await Promise.all([
+    Assessment.countDocuments({ status: 'complete', mlReviewStatus: 'reviewed' }),
+    Assessment.countDocuments({ mlReviewStatus: 'excluded' }),
+  ]);
+
+  const classDistribution = summarizeClassDistribution(byLabel, eligibleAssessments);
+  const missingness = summarizeMissingness(rows, questionIds);
+  const { duplicateCount, duplicateGroups } = detectDuplicates(rows);
+  const ageStatistics = summarizeAge(rows);
+  const reviewStatistics = summarizeReviewers(rows);
+
+  // Reviewed-but-ineligible diagnostics: assessments marked 'reviewed' that
+  // did NOT make it into the exportable set. skipped.noResult already comes
+  // from buildReviewedAssessmentExportRows() itself (no duplicated query);
+  // any further gap between totalReviewedAssessments and
+  // (eligibleAssessments + skipped.noResult) means a document failed the
+  // strict mlLabel validity filter (buildReviewedAssessmentFilter) despite
+  // being marked 'reviewed' — e.g. reviewedBy or riskCategory missing/invalid.
+  const unaccountedReviewed = Math.max(0, totalReviewedAssessments - eligibleAssessments - skipped.noResult);
+
+  const qualityFlags = [];
+  if (skipped.noResult > 0) {
+    qualityFlags.push({ flag: 'missing_score', count: skipped.noResult, message: `${skipped.noResult} reviewed assessment(s) have no matching AssessmentResult and cannot be exported.` });
+  }
+  if (unaccountedReviewed > 0) {
+    qualityFlags.push({ flag: 'invalid_label', count: unaccountedReviewed, message: `${unaccountedReviewed} assessment(s) are marked reviewed but have an invalid or incomplete mlLabel (missing riskCategory or reviewer) and were excluded from export.` });
+  }
+  if (duplicateCount > 0) {
+    qualityFlags.push({ flag: 'duplicate_reference', count: duplicateCount, message: `${duplicateCount} eligible row(s) share the same child and completion timestamp as another row — likely duplicate submissions, not legitimate reassessments.` });
+  }
+  if (ageStatistics.missingCount > 0) {
+    qualityFlags.push({ flag: 'age_data_missing', count: ageStatistics.missingCount, message: `${ageStatistics.missingCount} eligible row(s) have no computable age_months.` });
+  }
+  const zeroAnswerRows = rows.filter((r) => questionIds.every((qid) => r[qid] === '')).length;
+  if (zeroAnswerRows > 0) {
+    qualityFlags.push({ flag: 'missing_questions', count: zeroAnswerRows, message: `${zeroAnswerRows} eligible row(s) have no recorded answers for any core-bank question, despite being complete.` });
+  }
+  const maxShareEntry = Object.entries(classDistribution).reduce((max, [label, d]) => (d.count > (max?.count ?? -1) ? { label, ...d } : max), null);
+  if (eligibleAssessments > 0 && maxShareEntry && maxShareEntry.percentage / 100 > QUALITY.CLASS_IMBALANCE_MAX_SHARE) {
+    qualityFlags.push({ flag: 'unusual_class_distribution', message: `Class distribution is imbalanced (${maxShareEntry.label} accounts for ${maxShareEntry.percentage}% of eligible assessments) — a machine-learning data-quality heuristic, not a clinical claim.` });
+  }
+  if (eligibleAssessments > 0 && reviewStatistics.uniqueReviewers <= 1) {
+    qualityFlags.push({ flag: 'single_reviewer', message: 'All eligible labels come from a single reviewer — no cross-reviewer consistency check is possible yet.' });
+  }
+
+  // ── Readiness: technical suitability for the CURRENT ml/trainer.py
+  // pipeline, nothing more. Never "clinically valid"/"clinically invalid".
+  const reasons = [];
+  let blocked = false;
+
+  if (eligibleAssessments < QUALITY.MIN_ELIGIBLE_ROWS) {
+    blocked = true;
+    reasons.push(`Only ${eligibleAssessments} eligible assessment(s) available (at least ${QUALITY.MIN_ELIGIBLE_ROWS} are required by the current training pipeline).`);
+  }
+  const underrepresentedClasses = Object.entries(classDistribution).filter(([, d]) => d.count > 0 && d.count < QUALITY.MIN_ROWS_PER_REPRESENTED_CLASS).map(([label]) => label);
+  if (underrepresentedClasses.length) {
+    blocked = true;
+    reasons.push(`${underrepresentedClasses.join(', ')} class has fewer than ${QUALITY.MIN_ROWS_PER_REPRESENTED_CLASS} eligible example(s), which a stratified train/test split requires.`);
+  }
+  // Non-blocking flags still get surfaced as reasons for transparency, per
+  // the Step 12 example response (imbalance appears alongside the row-count
+  // blocker in one flat list).
+  for (const qf of qualityFlags) reasons.push(qf.message);
+
+  const status = blocked ? 'not_ready' : (qualityFlags.length ? 'warning' : 'ready');
+
+  return {
+    totalReviewedAssessments,
+    eligibleAssessments,
+    excludedAssessments,
+    classDistribution,
+    missingness,
+    duplicateCount,
+    duplicateGroups,
+    ageStatistics,
+    reviewStatistics,
+    qualityFlags,
+    readiness: {
+      // "ready" means no HARD technical blocker — a WARNING dataset can
+      // still be trained on if the admin chooses (Step 12 task §12: do not
+      // automatically prevent training merely because it isn't perfect).
+      ready: !blocked,
+      status,
+      reasons,
+    },
+  };
+}
+
+// ── Step 13: training-time quality gate ────────────────────────────────
+// Reuses the SAME live readiness logic Step 12's quality endpoint uses
+// (buildReviewedAssessmentQualitySummary, above) — this checks the CURRENT
+// state of the reviewed-assessment population in the database, not a
+// snapshot of the uploaded CSV, so it reflects reality even if reviews
+// changed since export. Only applies when the dataset's provenance is
+// explicitly 'reviewed_assessment' — synthetic/unknown datasets are never
+// gated against reviewed-assessment readiness rules, which wouldn't mean
+// anything for them. Extracted as its own function (rather than inlined in
+// the route) so the gate decision itself is directly unit-testable without
+// needing an HTTP layer.
+async function resolveTrainingQualityGate(dataset) {
+  if (dataset.provenance?.sourceType !== 'reviewed_assessment') {
+    return { blocked: false, warnings: [], readiness: null };
+  }
+  const quality = await buildReviewedAssessmentQualitySummary();
+  if (quality.readiness.status === 'not_ready') {
+    return { blocked: true, warnings: [], readiness: quality.readiness };
+  }
+  const warnings = quality.readiness.status === 'warning' ? quality.readiness.reasons : [];
+  return { blocked: false, warnings, readiness: quality.readiness };
+}
+
+// GET /api/admin/training/reviewed-assessments/quality
+// Dataset readiness / quality-control summary for the reviewed-assessment
+// export — see buildReviewedAssessmentQualitySummary() above. Purely
+// descriptive: never modifies mlLabel, never generates a label, never
+// claims clinical validity.
+router.get('/training/reviewed-assessments/quality', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const summary = await buildReviewedAssessmentQualitySummary();
+    res.json({ success: true, ...summary });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/training/reviewed-assessments/summary
+// How many reviewed assessments are currently available to export, broken
+// down by label — lets the admin UI show a count before exporting.
+router.get('/training/reviewed-assessments/summary', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { total, skipped, byLabel } = await buildReviewedAssessmentExportRows();
+    res.json({ success: true, total, byLabel, skippedIncompleteResult: skipped.noResult });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/training/reviewed-assessments/export
+// Downloads the reviewed-assessment rows as a CSV in the canonical dataset
+// shape (see ml/datasets/README.md). Does NOT register a TrainingDataset or
+// train anything — the admin reviews the file, then uploads it through the
+// existing POST /training/upload flow like any other dataset (workflow:
+// export -> admin review -> upload -> train -> candidate -> explicit activate).
+// No PII: no child/parent name, email, phone, address, or Mongo _id is
+// included — assessment_ref is a synthetic sequential label.
+router.get('/training/reviewed-assessments/export', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { rows, questionIds } = await buildReviewedAssessmentExportRows();
+    if (!rows.length) {
+      return res.status(404).json({ error: 'No reviewed assessments are available to export yet.' });
+    }
+    const csv = rowsToCsv(rows, questionIds);
+    const filename = `kindercura-reviewed-assessments-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 function safeRemoveUpload(publicPath) {
   if (!publicPath || !publicPath.startsWith('/uploads/datasets/')) return;
   const fileName = publicPath.replace('/uploads/datasets/', '');
@@ -588,6 +1009,52 @@ router.get('/export-data', authMiddleware, adminOnly, async (req, res) => {
   }
 });
 
+// Derives a dataset's display provenance. Prefers the STRUCTURED
+// provenance.sourceType field (set explicitly at upload time — see POST
+// /training/upload) whenever it's recorded; only falls back to the Step 10
+// filename heuristic for datasets uploaded before that field existed
+// (provenance.sourceType is 'unknown'/unset) — never overrides an explicitly
+// recorded value. Extracted as its own function so this is directly
+// unit-testable without going through the route/HTTP layer.
+function computeDatasetProvenance(d) {
+  const recordedSourceType = d.provenance?.sourceType;
+  const n = `${d.name || ''} ${d.originalName || ''}`.toLowerCase();
+  // NOTE: \b does not work here — '_' is a word character, so \bdemo\b
+  // fails on 'kindercura_demo_training_dataset'. Treat any non-alphanumeric
+  // (including '_') as the boundary instead.
+  const selfDeclaredDemo =
+    /(^|[^a-z0-9])(demo|sample|synthetic|fixture|mock|dummy|test)([^a-z0-9]|$)/.test(n) ||
+    /_style|-style/.test(n);
+  const isReviewedAssessmentExport = /reviewed[-_]?assessment/.test(n);
+  // Real instruments these filenames gesture at. Naming one does not
+  // make a file contain its data — that is exactly the confusion to kill.
+  const imitates = [];
+  if (/ecdi\s*2030|ecdi2030/.test(n)) imitates.push('ECDI2030 (UNICEF)');
+  if (/dscore|d-score|childdevdata/.test(n)) imitates.push('D-score / childdevdata');
+  if (/kindercura/.test(n)) imitates.push('KinderCura screening export');
+
+  const sourceType = (recordedSourceType && recordedSourceType !== 'unknown')
+    ? recordedSourceType
+    : (isReviewedAssessmentExport ? 'reviewed_assessment' : (selfDeclaredDemo ? 'synthetic' : 'unrecorded'));
+  const isSynthetic = sourceType === 'synthetic';
+  const isReviewedAssessment = sourceType === 'reviewed_assessment';
+
+  return {
+    sourceType,
+    recordedExplicitly: Boolean(recordedSourceType && recordedSourceType !== 'unknown'),
+    recordedSource: d.notes && String(d.notes).trim() ? String(d.notes).trim() : null,
+    isSynthetic,
+    isReviewedAssessment,
+    imitates,
+    // Rendered verbatim by the UI. Never "Clinically Validated".
+    label: isReviewedAssessment
+      ? 'Reviewed Assessment Data'
+      : (isSynthetic
+        ? 'Test/Synthetic Data'
+        : (d.notes && String(d.notes).trim() ? String(d.notes).trim() : 'not recorded')),
+  };
+}
+
 // GET /api/admin/training/datasets
 // Loads dataset cards and the admin upload/training table.
 router.get('/training/datasets', authMiddleware, adminOnly, async (req, res) => {
@@ -618,36 +1085,12 @@ router.get('/training/datasets', authMiddleware, adminOnly, async (req, res) => 
       trainedAt: d.trainedAt,
 
       // ── Provenance ────────────────────────────────────────────────────────
-      // TrainingDataset has no source field, so there is nothing to read: the
-      // only recorded provenance is `notes`, which is null on every existing
-      // row. Rather than leave the column blank, classify from the filename —
-      // but ONLY to mark a file as synthetic, never to claim it is genuine.
-      // A file is flagged synthetic when it self-declares via 'demo' or
-      // '_style'; anything else is reported as unrecorded, not as real.
-      provenance: (() => {
-        const n = `${d.name || ''} ${d.originalName || ''}`.toLowerCase();
-        // NOTE: \b does not work here — '_' is a word character, so \bdemo\b
-        // fails on 'kindercura_demo_training_dataset'. Treat any non-alphanumeric
-        // (including '_') as the boundary instead.
-        const selfDeclaredDemo =
-          /(^|[^a-z0-9])(demo|sample|synthetic|fixture|mock|dummy|test)([^a-z0-9]|$)/.test(n) ||
-          /_style|-style/.test(n);
-        // Real instruments these filenames gesture at. Naming one does not
-        // make a file contain its data — that is exactly the confusion to kill.
-        const imitates = [];
-        if (/ecdi\s*2030|ecdi2030/.test(n)) imitates.push('ECDI2030 (UNICEF)');
-        if (/dscore|d-score|childdevdata/.test(n)) imitates.push('D-score / childdevdata');
-        if (/kindercura/.test(n)) imitates.push('KinderCura screening export');
-        return {
-          recordedSource: d.notes && String(d.notes).trim() ? String(d.notes).trim() : null,
-          isSynthetic: selfDeclaredDemo,
-          imitates,
-          // Rendered verbatim by the UI.
-          label: selfDeclaredDemo
-            ? 'Synthetic demo fixture'
-            : (d.notes && String(d.notes).trim() ? String(d.notes).trim() : 'not recorded'),
-        };
-      })(),
+      // Step 13: prefers the STRUCTURED provenance.sourceType field (set
+      // explicitly at upload time — see POST /training/upload) whenever it's
+      // recorded. Only falls back to the Step 10 filename heuristic for
+      // datasets uploaded before that field existed (provenance.sourceType
+      // is 'unknown'/unset) — never overrides an explicitly recorded value.
+      provenance: computeDatasetProvenance(d),
     }));
 
     // "Models trained" MUST come from the trained_models collection — a model
@@ -716,6 +1159,13 @@ router.post('/training/upload', authMiddleware, adminOnly, (req, res) => {
       const parsed = parseDatasetContent(raw, ext);
       await fileStorage.storeFile(DATASET_DIR, req.file.filename, req.file, DATASET_ACCESS);
 
+      // Step 13: structured provenance, set explicitly at upload time —
+      // never inferred from the filename (that heuristic in GET
+      // /training/datasets below is a fallback for datasets uploaded
+      // before this field existed, not the primary source of truth).
+      const SOURCE_TYPES = ['reviewed_assessment', 'synthetic', 'unknown'];
+      const sourceType = SOURCE_TYPES.includes(req.body.sourceType) ? req.body.sourceType : 'unknown';
+
       const dataset = await TrainingDataset.create({
         name: String(req.body.name || path.basename(req.file.originalname, ext)).trim(),
         originalName: req.file.originalname,
@@ -730,6 +1180,7 @@ router.post('/training/upload', authMiddleware, adminOnly, (req, res) => {
         notes: req.body.notes ? String(req.body.notes).trim() : null,
         uploadedBy: req.user.userId,
         status: 'uploaded',
+        provenance: { sourceType },
       });
 
       sse.broadcast('analytics:update', { type: 'dataset', action: 'upload', targetModule: dataset.targetModule });
@@ -769,6 +1220,16 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
       return res.status(404).json({ error: `Dataset file not found on disk: ${dataset.filePath}` });
     }
 
+    // ── Step 13: quality gate for reviewed-assessment datasets ────────────
+    const gate = await resolveTrainingQualityGate(dataset);
+    if (gate.blocked) {
+      return res.status(409).json({
+        error: 'This reviewed-assessment dataset is not ready for training.',
+        readiness: gate.readiness,
+      });
+    }
+    const qualityWarnings = gate.warnings;
+
     // Mark as training
     dataset.status = 'training';
     dataset.errorMessage = null;
@@ -799,9 +1260,12 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
 
     // Run training in the background (async, no await in request handler)
     modelManager.trainModel(datasetPath).then(async (metrics) => {
-      // Deactivate previous active models
-      await TrainedModel.updateMany({ isActive: true }, { $set: { isActive: false } });
-
+      // Step 7: a successfully trained model is a CANDIDATE only. It does
+      // NOT become active and the currently active model is left untouched
+      // — an admin must explicitly activate it via the Trained Models panel
+      // (POST /api/ml/models/:modelId/activate). This is what stops, e.g.,
+      // a model trained from synthetic/test data from ever silently
+      // becoming what real users' predictions are based on.
       modelDoc.modelPath = metrics.model_path;
       modelDoc.accuracy = metrics.accuracy;
       modelDoc.precision = metrics.precision;
@@ -809,6 +1273,8 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
       modelDoc.f1Score = metrics.f1;
       modelDoc.featureImportances = metrics.feature_importances;
       modelDoc.perClassMetrics = metrics.per_class_metrics || {};
+      modelDoc.confusionMatrix = metrics.confusion_matrix || null;
+      modelDoc.classDistribution = metrics.class_distribution || null;
       modelDoc.classNames = metrics.class_names || [];
       modelDoc.featuresUsed = metrics.features_used || [];
       modelDoc.trainingSamples = metrics.training_samples;
@@ -816,7 +1282,7 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
       modelDoc.totalRows = metrics.total_rows || 0;
       modelDoc.rowsDropped = metrics.rows_dropped || 0;
       modelDoc.status = 'completed';
-      modelDoc.isActive = true;
+      // isActive intentionally not set here — stays false (schema default).
       await modelDoc.save();
 
       dataset.status = 'trained';
@@ -827,7 +1293,9 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
       dataset.trainingSummary =
         `Model v${nextVersion}: ${(metrics.accuracy * 100).toFixed(1)}% accuracy. ` +
         `${metrics.training_samples} train / ${metrics.test_samples} test samples. ` +
-        `Categories: ${(metrics.class_names || []).join(', ')}.`;
+        `Categories: ${(metrics.class_names || []).join(', ')}. ` +
+        `Saved as a candidate — not active until approved in Trained Models.` +
+        (qualityWarnings.length ? ` Reviewed-data quality warnings at training time: ${qualityWarnings.join(' ')}` : '');
       await dataset.save();
 
       sse.broadcast('analytics:update', { type: 'ml', action: 'training_completed', datasetId: String(dataset._id), accuracy: metrics.accuracy });
@@ -1638,3 +2106,13 @@ router.get('/data-origin/list', authMiddleware, adminOnly, async (req, res) => {
 });
 
 module.exports = router;
+
+// Exposed for tests only (see tests/unit/reviewed-assessment-export.test.js).
+// Attaching to the router function is inert for Express — app.use() only
+// ever calls it as a request handler, so this does not affect routing.
+router.__testables = {
+  buildReviewedAssessmentFilter, buildReviewedAssessmentExportRows, rowsToCsv, ageMonthsAt,
+  buildReviewedAssessmentQualitySummary, summarizeMissingness, detectDuplicates, summarizeAge,
+  summarizeReviewers, summarizeClassDistribution, QUALITY, resolveTrainingQualityGate,
+  computeDatasetProvenance,
+};

@@ -19,6 +19,24 @@ const trainingDatasetSchema = new mongoose.Schema(
       default: 'general',
     },
     notes: { type: String, default: null },
+
+    // ── Provenance (Step 13) ─────────────────────────────────────────────
+    // Where this dataset's rows actually came from. A STRUCTURED field —
+    // set explicitly at upload time (see routes/admin.js POST
+    // /training/upload), never inferred from the filename. routes/admin.js
+    // GET /training/datasets still falls back to a filename heuristic for
+    // datasets uploaded before this field existed, but always prefers this
+    // field when it's set. This is also what the training quality gate
+    // (POST /training/:id/train) checks to decide whether a dataset is
+    // subject to the reviewed-assessment readiness rules from Step 12 —
+    // synthetic/unknown datasets are never gated against that logic.
+    provenance: {
+      sourceType: {
+        type: String,
+        enum: ['reviewed_assessment', 'synthetic', 'unknown'],
+        default: 'unknown',
+      },
+    },
     // 'registered' = the file was uploaded and its structure recorded. NOTHING
     // was trained. This value exists because 'trained' was previously set by a
     // path that only registered the file, which made the admin page report
