@@ -22,96 +22,99 @@ const sse = require('../sse');
  * Body: { datasetId: string }
  */
 router.post('/train-model', authMiddleware, adminOnly, async (req, res) => {
-  const { datasetId } = req.body;
-  if (!datasetId) {
-    return res.status(400).json({ error: 'datasetId is required.' });
-  }
-
-  try {
-    // 1. Check Python environment first
-    const envCheck = await modelManager.checkPythonEnvironment();
-    if (!envCheck.ok) {
-      return res.status(503).json({ error: envCheck.error });
+    const { datasetId, featureSet = 'score_based' } = req.body;
+    if (!datasetId) {
+      return res.status(400).json({ error: 'datasetId is required.' });
     }
 
-    // 2. Find the dataset
-    const dataset = await TrainingDataset.findById(datasetId);
-    if (!dataset) {
-      return res.status(404).json({ error: 'Dataset not found.' });
-    }
-
-    if (dataset.status === 'training') {
-      return res.status(409).json({ error: 'This dataset is already being trained.' });
-    }
-
-    // 3. Resolve dataset file on disk
-    const datasetPath = modelManager.resolveDatasetPath(dataset.filePath);
-    if (!datasetPath) {
-      return res.status(404).json({
-        error: `Dataset file not found on disk. Expected at: ${dataset.filePath}`,
-      });
-    }
-
-    // 4. Mark dataset as training
-    dataset.status = 'training';
-    dataset.errorMessage = null;
-    await dataset.save();
-
-    // 5. Determine next model version
-    const lastModel = await TrainedModel.findOne().sort({ version: -1 }).lean();
-    const nextVersion = (lastModel?.version || 0) + 1;
-
-    // 6. Create a placeholder TrainedModel doc
-    const modelDoc = await TrainedModel.create({
-      datasetId: dataset._id,
-      version: nextVersion,
-      modelPath: '',
-      status: 'training',
-      trainedBy: req.user.userId,
-    });
-
-    // Broadcast that training has started
-    sse.broadcast('analytics:update', {
-      type: 'ml',
-      action: 'training_started',
-      datasetId: String(dataset._id),
-      modelVersion: nextVersion,
-    });
-
-    // 7. Respond immediately — training runs in the background
-    res.json({
-      success: true,
-      message: 'Training started. Check model status for progress.',
-      modelId: String(modelDoc._id),
-      version: nextVersion,
-    });
-
-    // 8. Run training asynchronously
     try {
-      const metrics = await modelManager.trainModel(datasetPath);
+      // 1. Check Python environment first
+      const envCheck = await modelManager.checkPythonEnvironment();
+      if (!envCheck.ok) {
+        return res.status(503).json({ error: envCheck.error });
+      }
 
-      // Step 7: a successfully trained model is a CANDIDATE only — it does
-      // NOT become active, and the currently active model (if any) is left
-      // completely untouched. Activation is a separate, explicit admin
-      // action: POST /api/ml/models/:modelId/activate below.
-      modelDoc.modelPath = metrics.model_path;
-      modelDoc.accuracy = metrics.accuracy;
-      modelDoc.precision = metrics.precision;
-      modelDoc.recall = metrics.recall;
-      modelDoc.f1Score = metrics.f1;
-      modelDoc.featureImportances = metrics.feature_importances;
-      modelDoc.perClassMetrics = metrics.per_class_metrics || {};
-      modelDoc.confusionMatrix = metrics.confusion_matrix || null;
-      modelDoc.classDistribution = metrics.class_distribution || null;
-      modelDoc.classNames = metrics.class_names || [];
-      modelDoc.featuresUsed = metrics.features_used || [];
-      modelDoc.trainingSamples = metrics.training_samples;
-      modelDoc.testSamples = metrics.test_samples;
-      modelDoc.totalRows = metrics.total_rows || 0;
-      modelDoc.rowsDropped = metrics.rows_dropped || 0;
-      modelDoc.status = 'completed';
-      // isActive intentionally not set here — stays false (schema default).
-      await modelDoc.save();
+      // 2. Find the dataset
+      const dataset = await TrainingDataset.findById(datasetId);
+      if (!dataset) {
+        return res.status(404).json({ error: 'Dataset not found.' });
+      }
+
+      if (dataset.status === 'training') {
+        return res.status(409).json({ error: 'This dataset is already being trained.' });
+      }
+
+      // 3. Resolve dataset file on disk
+      const datasetPath = modelManager.resolveDatasetPath(dataset.filePath);
+      if (!datasetPath) {
+        return res.status(404).json({
+          error: `Dataset file not found on disk. Expected at: ${dataset.filePath}`,
+        });
+      }
+
+      // 4. Mark dataset as training
+      dataset.status = 'training';
+      dataset.errorMessage = null;
+      await dataset.save();
+
+      // 5. Determine next model version
+      const lastModel = await TrainedModel.findOne().sort({ version: -1 }).lean();
+      const nextVersion = (lastModel?.version || 0) + 1;
+
+      // 6. Create a placeholder TrainedModel doc
+      const modelDoc = await TrainedModel.create({
+        datasetId: dataset._id,
+        version: nextVersion,
+        modelPath: '',
+        status: 'training',
+        featureSetType: featureSet,
+        trainedBy: req.user.userId,
+      });
+
+      // Broadcast that training has started
+      sse.broadcast('analytics:update', {
+        type: 'ml',
+        action: 'training_started',
+        datasetId: String(dataset._id),
+        modelVersion: nextVersion,
+      });
+
+      // 7. Respond immediately — training runs in the background
+      res.json({
+        success: true,
+        message: 'Training started. Check model status for progress.',
+        modelId: String(modelDoc._id),
+        version: nextVersion,
+      });
+
+      // 8. Run training asynchronously
+      try {
+        const metrics = await modelManager.trainModel(datasetPath, dataset._id, { featureSet });
+
+        // Step 7: a successfully trained model is a CANDIDATE only — it does
+        // NOT become active, and the currently active model (if any) is left
+        // completely untouched. Activation is a separate, explicit admin
+        // action: POST /api/ml/models/:modelId/activate below.
+        modelDoc.modelPath = metrics.model_path;
+        modelDoc.accuracy = metrics.accuracy;
+        modelDoc.precision = metrics.precision;
+        modelDoc.recall = metrics.recall;
+        modelDoc.f1Score = metrics.f1;
+        modelDoc.featureImportances = metrics.feature_importances;
+        modelDoc.perClassMetrics = metrics.per_class_metrics || {};
+        modelDoc.confusionMatrix = metrics.confusion_matrix || null;
+        modelDoc.classDistribution = metrics.class_distribution || null;
+        modelDoc.classNames = metrics.class_names || [];
+        modelDoc.featuresUsed = metrics.features_used || [];
+        modelDoc.featureCount = metrics.feature_count || (metrics.features_used ? metrics.features_used.length : 0);
+        modelDoc.featureSetType = metrics.feature_set_type || featureSet;
+        modelDoc.trainingSamples = metrics.training_samples;
+        modelDoc.testSamples = metrics.test_samples;
+        modelDoc.totalRows = metrics.total_rows || 0;
+        modelDoc.rowsDropped = metrics.rows_dropped || 0;
+        modelDoc.status = 'completed';
+        // isActive intentionally not set here — stays false (schema default).
+        await modelDoc.save();
 
       // Update dataset
       dataset.status = 'trained';
@@ -194,6 +197,8 @@ router.get('/model-status', authMiddleware, adminOnly, async (req, res) => {
         perClassMetrics: activeModel.perClassMetrics,
         classNames: activeModel.classNames,
         featuresUsed: activeModel.featuresUsed,
+        featureSetType: activeModel.featureSetType || 'score_based',
+        featureCount: activeModel.featureCount || (activeModel.featuresUsed ? activeModel.featuresUsed.length : 0),
         trainingSamples: activeModel.trainingSamples,
         testSamples: activeModel.testSamples,
         totalRows: activeModel.totalRows,
@@ -344,6 +349,8 @@ router.get('/models', authMiddleware, adminOnly, async (req, res) => {
           classDistribution: m.classDistribution || null,
           classNames: m.classNames,
           featuresUsed: m.featuresUsed,
+          featureSetType: m.featureSetType || 'score_based',
+          featureCount: m.featureCount || (m.featuresUsed ? m.featuresUsed.length : 0),
           trainingSamples: m.trainingSamples,
           testSamples: m.testSamples,
           totalRows: m.totalRows,
@@ -439,6 +446,8 @@ router.post('/models/:modelId/activate', authMiddleware, adminOnly, async (req, 
         isActive: true,
         lifecycleState: 'active',
         featuresUsed: model.featuresUsed,
+        featureSetType: model.featureSetType || 'score_based',
+        featureCount: model.featureCount || (model.featuresUsed ? model.featuresUsed.length : 0),
         classNames: model.classNames,
         accuracy: model.accuracy,
       },

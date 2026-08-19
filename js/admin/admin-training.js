@@ -443,6 +443,10 @@ async function loadModels() {
                 ? `Acc ${formatMetric(m.accuracy)} · Prec ${formatMetric(m.precision)} · Rec ${formatMetric(m.recall)} · F1 ${formatMetric(m.f1Score)}`
                     + `<div class="dataset-meta">${m.trainingSamples ?? '—'} train / ${m.testSamples ?? '—'} test (of ${m.totalRows ?? '—'} rows, ${m.rowsDropped ?? 0} dropped)</div>`
                 : (m.status === 'failed' ? `<span style="color:var(--danger);">${escapeHtml(m.errorMessage || 'Training failed')}</span>` : '—');
+            const featureSetType = m.featureSetType || (Array.isArray(m.featuresUsed) && m.featuresUsed.some((f) => /^Q\d{2}$/.test(f)) ? 'question_based' : 'score_based');
+            const featureSetBadge = featureSetType === 'question_based'
+                ? '<div style="font-weight:600;color:var(--primary);margin-bottom:0.25rem;">Question-based</div>'
+                : '<div style="font-weight:600;color:var(--primary-dark);margin-bottom:0.25rem;">Score-based</div>';
             const features = Array.isArray(m.featuresUsed) && m.featuresUsed.length
                 ? escapeHtml(m.featuresUsed.join(', '))
                 : '—';
@@ -467,7 +471,7 @@ async function loadModels() {
                     </td>
                     <td data-label="Status">${modelStateChip(m.lifecycleState)}</td>
                     <td data-label="Metrics">${metrics}</td>
-                    <td data-label="Feature Columns"><div class="dataset-fields">${features}</div></td>
+                    <td data-label="Feature Columns"><div class="dataset-fields">${featureSetBadge}${features}</div></td>
                     <td class="dataset-actions" data-label="Actions">${actionCell}</td>
                 </tr>`;
         }).join('');

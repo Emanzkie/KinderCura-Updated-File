@@ -45,6 +45,14 @@ const trainedModelSchema = new mongoose.Schema(
     classDistribution: { type: mongoose.Schema.Types.Mixed, default: null },
     classNames: [{ type: String }],
     featuresUsed: [{ type: String }],
+    featureCount: { type: Number, default: 0 },
+    // Step 15: feature-set configuration used for this training run
+    featureSetType: {
+      type: String,
+      enum: ['score_based', 'question_based'],
+      default: 'score_based',
+      index: true,
+    },
     trainingSamples: { type: Number, default: 0 },
     testSamples: { type: Number, default: 0 },
     totalRows: { type: Number, default: 0 },

@@ -137,8 +137,11 @@ async function checkPythonEnvironment() {
  * @param {string} datasetId    The MongoDB _id of the TrainingDataset document
  * @returns {Promise<object>}   Resolved metrics object from trainer.py
  */
-async function trainModel(datasetPath, datasetId) {
+async function trainModel(datasetPath, datasetId, options = {}) {
   const outputDir = ensureModelDir();
+  const featureSet = typeof options === 'string'
+    ? options
+    : (options?.featureSet || 'score_based');
 
   // Determine next model version
   const lastModel = await TrainedModel.findOne().sort({ version: -1 }).lean();
@@ -153,6 +156,7 @@ async function trainModel(datasetPath, datasetId) {
       version: nextVersion,
       modelPath: '',
       status: 'training',
+      featureSetType: featureSet,
     });
   }
 
@@ -161,7 +165,7 @@ async function trainModel(datasetPath, datasetId) {
     const result = await new Promise((resolve, reject) => {
       const proc = spawn(
         'python',
-        [TRAINER_SCRIPT, '--input', datasetPath, '--output', outputDir],
+        [TRAINER_SCRIPT, '--input', datasetPath, '--output', outputDir, '--feature-set', featureSet],
         { timeout: 300000 } // 5-minute max
       );
 
@@ -228,6 +232,8 @@ async function trainModel(datasetPath, datasetId) {
       modelDoc.classDistribution = result.class_distribution || null;
       modelDoc.classNames = result.class_names || [];
       modelDoc.featuresUsed = result.features_used || [];
+      modelDoc.featureCount = result.feature_count || (result.features_used ? result.features_used.length : 0);
+      modelDoc.featureSetType = result.feature_set_type || featureSet;
       modelDoc.trainingSamples = result.training_samples || 0;
       modelDoc.testSamples = result.test_samples || 0;
       modelDoc.totalRows = result.total_rows || 0;
@@ -330,6 +336,9 @@ async function getModelStatus(modelId) {
       trainedAt: doc.trainedAt,
       createdAt: doc.createdAt,
       errorMessage: doc.errorMessage || null,
+      featureSetType: doc.featureSetType || 'score_based',
+      featureCount: doc.featureCount || (Array.isArray(doc.featuresUsed) ? doc.featuresUsed.length : 0),
+      featuresUsed: doc.featuresUsed || [],
       metrics: {
         accuracy: doc.metrics?.accuracy ?? doc.accuracy ?? 0,
         precision: doc.metrics?.precision ?? doc.precision ?? 0,

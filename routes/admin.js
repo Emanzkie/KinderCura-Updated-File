@@ -1238,6 +1238,7 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
     // Determine next model version
     const lastModel = await TrainedModel.findOne().sort({ version: -1 }).lean();
     const nextVersion = (lastModel?.version || 0) + 1;
+    const featureSet = req.body?.featureSet || 'score_based';
 
     // Create placeholder model doc
     const modelDoc = await TrainedModel.create({
@@ -1245,6 +1246,7 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
       version: nextVersion,
       modelPath: '',
       status: 'training',
+      featureSetType: featureSet,
       trainedBy: req.user.userId,
     });
 
@@ -1259,7 +1261,7 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
     });
 
     // Run training in the background (async, no await in request handler)
-    modelManager.trainModel(datasetPath).then(async (metrics) => {
+    modelManager.trainModel(datasetPath, dataset._id, { featureSet }).then(async (metrics) => {
       // Step 7: a successfully trained model is a CANDIDATE only. It does
       // NOT become active and the currently active model is left untouched
       // — an admin must explicitly activate it via the Trained Models panel
@@ -1277,6 +1279,8 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
       modelDoc.classDistribution = metrics.class_distribution || null;
       modelDoc.classNames = metrics.class_names || [];
       modelDoc.featuresUsed = metrics.features_used || [];
+      modelDoc.featureCount = metrics.feature_count || (metrics.features_used ? metrics.features_used.length : 0);
+      modelDoc.featureSetType = metrics.feature_set_type || featureSet;
       modelDoc.trainingSamples = metrics.training_samples;
       modelDoc.testSamples = metrics.test_samples;
       modelDoc.totalRows = metrics.total_rows || 0;
