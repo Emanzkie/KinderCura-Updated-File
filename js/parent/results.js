@@ -142,7 +142,7 @@ function renderDomainCard(domain, details, index) {
 
     const body = hasDetails ? `
         <section class="domain-why">
-            <h4>Why this score?</h4>
+            <h4>Score Explanation</h4>
             <p>${escapeHtml(details.explanation || '')}</p>
         </section>
         ${renderDomainBullets('Strengths', details.strengths, 'strength')}
