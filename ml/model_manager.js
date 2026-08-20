@@ -1,51 +1,78 @@
 // ml/model_manager.js
 // Purpose:
 // - Bridge between Node.js and the Python ML scripts (trainer.py / predict.py)
-// - Spawns Python as a child process, captures JSON output from stdout
-// - Persists training results into the TrainedModel MongoDB collection
-// - Validates that Python + required packages are available before attempting work
+// - Supports both local Python execution (child_process.spawn) and Vercel Python Serverless Functions
+// - Communicates over HTTP with separate /api/py/train and /api/py/predict endpoints in production
+// - Authenticates using dedicated ML_SERVICE_SECRET (no fallback to JWT/SESSION secret)
+// - Persists training results and model artifacts safely via services/fileStorage.js
+// - Validates ML environment readiness before attempting training
 //
 // Exported functions:
-//   trainModel(datasetPath, datasetId)  – train a model, persist metrics to DB
-//   getPrediction(modelPath, inputData) – predict risk category for one assessment
-//   getModelStatus(modelId)             – query a TrainedModel document by ID
-//   checkPythonEnvironment()            – verify Python + sklearn are available
-//   resolveDatasetPath(filePath)        – locate a dataset file on disk
-//   ensureModelDir()                    – create uploads/models/ if missing
-//   predict(modelPath, scores)          – alias kept for backward compatibility
+//   trainModel(datasetPath, datasetId, options) – train a model, persist metrics and artifact
+//   getPrediction(modelPath, inputData)         – predict risk category for one assessment
+//   getModelStatus(modelId)                     – query a TrainedModel document by ID
+//   checkPythonEnvironment()                    – verify Python / ML service availability
+//   resolveDatasetPath(filePath)                – locate a dataset file on disk or storage
+//   ensureModelDir()                            – create uploads/models/ if missing
+//   predict(modelPath, scores)                  – alias kept for backward compatibility
 
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
 const TrainedModel = require('../models/TrainedModel');
+const fileStorage = require('../services/fileStorage');
 
 // ── Path constants ──────────────────────────────────────────────────────
 const MODEL_DIR = path.join(__dirname, '..', 'uploads', 'models');
 const TRAINER_SCRIPT = path.join(__dirname, 'trainer.py');
 const PREDICT_SCRIPT = path.join(__dirname, 'predict.py');
 
-// Feature names the current pipeline no longer supports. gender_encoded was
-// dropped from trainer.py/predict.py because trainer.py fit a LabelEncoder
-// on gender at train time but never persisted it in the model artifact —
-// predict.py had to guess the encoding, and could guess wrong. A model
-// trained before that change still lists gender_encoded in its stored
-// featuresUsed; it must not be used for live prediction.
+// Feature names the current pipeline no longer supports.
 const UNSUPPORTED_FEATURES = ['gender_encoded'];
 
 /**
  * True when a TrainedModel document's feature set is still supported by the
- * current ml/predict.py. Callers (routes/ml.js, routes/recommendations.js)
- * must check this BEFORE calling predict() on an active model, so an
- * incompatible old model fails cleanly and predictably rather than throwing
- * out of a Python subprocess call.
+ * current ml/predict.py.
  */
 function isModelCompatible(trainedModelDoc) {
   const features = Array.isArray(trainedModelDoc?.featuresUsed) ? trainedModelDoc.featuresUsed : [];
   return !features.some((f) => UNSUPPORTED_FEATURES.includes(f));
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────
+// ── Mode & URL Helpers ──────────────────────────────────────────────────
+
+/**
+ * True when the app should use the deployed Vercel Python Serverless Function
+ * instead of spawning a local Python child process.
+ */
+function isRemoteML() {
+  if (process.env.USE_LOCAL_PYTHON === 'true') return false;
+  return Boolean(process.env.VERCEL || process.env.NOW_REGION || process.env.ML_SERVICE_URL);
+}
+
+/**
+ * Base URL for the ML service.
+ */
+function getMLServiceUrl() {
+  if (process.env.ML_SERVICE_URL) {
+    return process.env.ML_SERVICE_URL.replace(/\/+$/, '');
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL.replace(/\/+$/, '')}`;
+  }
+  return 'http://localhost:3000';
+}
+
+/**
+ * Internal authorization secret for ML endpoints.
+ * Strict: reads ML_SERVICE_SECRET only.
+ */
+function getMLSecret() {
+  return process.env.ML_SERVICE_SECRET || '';
+}
+
+// ── Storage & Dataset Helpers ───────────────────────────────────────────
 
 /**
  * Ensure the uploads/models directory exists.
@@ -59,35 +86,86 @@ function ensureModelDir() {
 
 /**
  * Resolve the path to the dataset file on disk.
- * Datasets are stored under public/uploads/datasets/ with a filePath like
- * "/uploads/datasets/17xxxxx_name.csv".
  */
 function resolveDatasetPath(filePath) {
+  if (!filePath) return null;
   const fileName = filePath.replace(/^\/uploads\/datasets\//, '');
 
   const candidates = [
     path.join(__dirname, '..', 'public', 'uploads', 'datasets', fileName),
     path.join(__dirname, '..', 'uploads', 'datasets', fileName),
+    path.join(__dirname, '..', filePath),
   ];
 
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;
   }
 
-  // If the caller passed an absolute or project-relative path, try it directly
+  // If caller passed an absolute path
   if (fs.existsSync(filePath)) return filePath;
 
   return null;
 }
 
 /**
- * Check that Python 3 and the required ML packages are available.
- * Returns { ok, python, error }.
+ * Load dataset content as a string, checking in-memory content, disk, or fileStorage.
+ */
+async function loadDatasetContent(datasetPathOrContent) {
+  if (!datasetPathOrContent) return null;
+  if (typeof datasetPathOrContent === 'string' && (datasetPathOrContent.includes('\n') || datasetPathOrContent.includes(','))) {
+    return datasetPathOrContent;
+  }
+  if (Buffer.isBuffer(datasetPathOrContent)) {
+    return datasetPathOrContent.toString('utf8');
+  }
+  if (typeof datasetPathOrContent === 'string' && fs.existsSync(datasetPathOrContent)) {
+    return fs.readFileSync(datasetPathOrContent, 'utf8');
+  }
+  // Try reading via fileStorage (Blob or disk)
+  if (typeof datasetPathOrContent === 'string') {
+    const fileName = path.basename(datasetPathOrContent);
+    const stored = await fileStorage.readStored('uploads/datasets', fileName);
+    if (stored) return stored.toString('utf8');
+  }
+  return null;
+}
+
+// ── Environment Check ───────────────────────────────────────────────────
+
+/**
+ * Check that Python 3 and ML components are ready.
+ * In remote mode, checks /api/py/train health endpoint.
+ * In local mode, checks local python + sklearn imports.
  */
 async function checkPythonEnvironment() {
+  if (isRemoteML()) {
+    try {
+      const url = `${getMLServiceUrl()}/api/py/train`;
+      const secret = getMLSecret();
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: { 'x-ml-secret': secret },
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        return { ok: true, python: data.python || 'remote-python', mode: 'remote' };
+      }
+      return {
+        ok: false,
+        error: `Python ML service returned HTTP ${res.status}: ${res.statusText}`,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        error: `Python ML service is unreachable: ${err.message}`,
+      };
+    }
+  }
+
+  // Local child_process.spawn verification
   return new Promise((resolve) => {
-    // Separate imports with semicolons and spawn without shell: true
-    // to avoid PowerShell splitting the comma-separated Python import.
     const checkCode = 'import sklearn; import pandas; import joblib; print("OK")';
     const proc = spawn('python', ['-c', checkCode], { timeout: 15000 });
 
@@ -98,7 +176,7 @@ async function checkPythonEnvironment() {
 
     proc.on('close', (code) => {
       if (code === 0 && stdout.trim() === 'OK') {
-        resolve({ ok: true, python: 'python' });
+        resolve({ ok: true, python: 'python', mode: 'local' });
       } else {
         resolve({
           ok: false,
@@ -119,23 +197,13 @@ async function checkPythonEnvironment() {
   });
 }
 
-// ── Core functions ──────────────────────────────────────────────────────
+// ── Core Functions ──────────────────────────────────────────────────────
 
 /**
- * A. trainModel(datasetPath, datasetId)
+ * A. trainModel(datasetPath, datasetId, options)
  *
- * Executes:  python ml/trainer.py --input <datasetPath> --output uploads/models/
- *
- * 1. Creates a TrainedModel doc with status 'training' in the database.
- * 2. Spawns the Python trainer as a child process and captures stdout/stderr.
- * 3. Parses the JSON metrics from stdout.
- * 4. On success → updates the doc to 'completed' with real metrics.
- * 5. On failure → updates the doc to 'failed' with the error message.
- * 6. Returns the result object (metrics + model path + DB doc id).
- *
- * @param {string} datasetPath  Absolute path to the CSV/JSON dataset file
- * @param {string} datasetId    The MongoDB _id of the TrainingDataset document
- * @returns {Promise<object>}   Resolved metrics object from trainer.py
+ * Trains a candidate model, persists the .joblib artifact, and saves metrics
+ * to the TrainedModel MongoDB collection with isActive: false.
  */
 async function trainModel(datasetPath, datasetId, options = {}) {
   const outputDir = ensureModelDir();
@@ -147,8 +215,6 @@ async function trainModel(datasetPath, datasetId, options = {}) {
   const lastModel = await TrainedModel.findOne().sort({ version: -1 }).lean();
   const nextVersion = (lastModel?.version || 0) + 1;
 
-  // Create a TrainedModel document in 'training' state so the admin UI can
-  // show progress immediately.
   let modelDoc;
   if (datasetId) {
     modelDoc = await TrainedModel.create({
@@ -161,63 +227,104 @@ async function trainModel(datasetPath, datasetId, options = {}) {
   }
 
   try {
-    // Spawn the Python training script
-    const result = await new Promise((resolve, reject) => {
-      const proc = spawn(
-        'python',
-        [TRAINER_SCRIPT, '--input', datasetPath, '--output', outputDir, '--feature-set', featureSet],
-        { timeout: 300000 } // 5-minute max
-      );
+    let result;
 
-      let stdout = '';
-      let stderr = '';
+    if (isRemoteML()) {
+      // ── Remote Vercel Python Function (/api/py/train) ─────────────────────
+      const datasetContent = options?.datasetContent || await loadDatasetContent(datasetPath);
+      if (!datasetContent) {
+        throw new Error(`Could not load dataset content from: ${datasetPath}`);
+      }
 
-      proc.stdout.on('data', (d) => (stdout += d.toString()));
-      proc.stderr.on('data', (d) => (stderr += d.toString()));
+      const fileType = (typeof datasetPath === 'string' && datasetPath.toLowerCase().endsWith('.json')) ? 'json' : 'csv';
+      const secret = getMLSecret();
+      const url = `${getMLServiceUrl()}/api/py/train`;
 
-      proc.on('close', (code) => {
-        try {
-          const parsed = JSON.parse(stdout.trim());
-          if (parsed.success) {
-            resolve(parsed);
-          } else {
-            reject(new Error(parsed.error || 'Training failed with no details.'));
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-ml-secret': secret,
+        },
+        body: JSON.stringify({
+          dataset_content: datasetContent,
+          file_type: fileType,
+          feature_set: featureSet,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || `ML training service returned HTTP ${response.status}`);
+      }
+      result = data;
+
+      // Persist model artifact via fileStorage
+      if (result.model_artifact_base64) {
+        const artifactBuffer = Buffer.from(result.model_artifact_base64, 'base64');
+        const filename = result.model_filename || `kindercura_model_${Date.now()}.joblib`;
+
+        await fileStorage.storeFile('uploads/models', filename, {
+          buffer: artifactBuffer,
+          mimetype: 'application/octet-stream',
+        });
+
+        result.model_path = `uploads/models/${filename}`;
+      }
+    } else {
+      // ── Local Python Subprocess Execution ────────────────────────────────
+      result = await new Promise((resolve, reject) => {
+        const proc = spawn(
+          'python',
+          [TRAINER_SCRIPT, '--input', datasetPath, '--output', outputDir, '--feature-set', featureSet],
+          { timeout: 300000 }
+        );
+
+        let stdout = '';
+        let stderr = '';
+
+        proc.stdout.on('data', (d) => (stdout += d.toString()));
+        proc.stderr.on('data', (d) => (stderr += d.toString()));
+
+        proc.on('close', (code) => {
+          try {
+            const parsed = JSON.parse(stdout.trim());
+            if (parsed.success) {
+              resolve(parsed);
+            } else {
+              reject(new Error(parsed.error || 'Training failed with no details.'));
+            }
+          } catch (parseErr) {
+            reject(
+              new Error(
+                `Training process exited with code ${code}. ` +
+                `stdout: ${stdout.trim() || '(empty)'}. ` +
+                `stderr: ${stderr.trim() || '(empty)'}`
+              )
+            );
           }
-        } catch (parseErr) {
-          reject(
-            new Error(
-              `Training process exited with code ${code}. ` +
-              `stdout: ${stdout.trim() || '(empty)'}. ` +
-              `stderr: ${stderr.trim() || '(empty)'}`
-            )
-          );
-        }
-      });
+        });
 
-      proc.on('error', (err) => {
-        reject(new Error(`Failed to start training process: ${err.message}`));
+        proc.on('error', (err) => {
+          reject(new Error(`Failed to start training process: ${err.message}`));
+        });
       });
-    });
+    }
 
-    // ── Success: update the TrainedModel document with real metrics ──────
+    // ── Success: update candidate TrainedModel document ────────────────────
     if (modelDoc) {
-      // Step 7: training NEVER activates a model, and NEVER touches the
-      // currently active one. A model finishing training successfully is a
-      // CANDIDATE only — isActive stays at its schema default (false) until
-      // an admin explicitly approves it via POST /api/ml/models/:id/activate.
-      // This is what protects real users from ever silently switching to
-      // (e.g.) a model trained on synthetic/test data.
+      // Candidate model only — isActive remains false until explicit admin approval.
       modelDoc.modelPath = result.model_path;
       modelDoc.status = 'completed';
       modelDoc.trainedAt = new Date();
 
-      // Flat metric fields (consumed by routes/ml.js and routes/admin.js)
+      // Flat metric fields
       modelDoc.accuracy = result.accuracy;
       modelDoc.precision = result.precision;
       modelDoc.recall = result.recall;
       modelDoc.f1Score = result.f1;
 
-      // Structured metrics sub-object (consumed by getModelStatus)
+      // Structured metrics
       modelDoc.metrics = {
         accuracy: result.accuracy,
         precision: result.precision,
@@ -244,7 +351,6 @@ async function trainModel(datasetPath, datasetId, options = {}) {
 
     return result;
   } catch (err) {
-    // ── Failure: record the error in the database ───────────────────────
     if (modelDoc) {
       modelDoc.status = 'failed';
       modelDoc.errorMessage = err.message;
@@ -255,20 +361,75 @@ async function trainModel(datasetPath, datasetId, options = {}) {
 }
 
 /**
+ * Resolve local disk path for a model file if it exists.
+ */
+function resolveModelPath(modelPath) {
+  if (!modelPath) return null;
+  const fileName = path.basename(modelPath);
+  const candidates = [
+    modelPath,
+    path.join(__dirname, '..', 'uploads', 'models', fileName),
+    path.join(__dirname, '..', modelPath),
+    path.resolve(modelPath),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return null;
+}
+
+/**
+ * Load model file as a Buffer from disk or fileStorage.
+ */
+async function loadModelBuffer(modelPath) {
+  const resolved = resolveModelPath(modelPath);
+  if (resolved && fs.existsSync(resolved)) {
+    return fs.readFileSync(resolved);
+  }
+  const fileName = path.basename(modelPath);
+  return fileStorage.readStored('uploads/models', fileName);
+}
+
+/**
  * B. getPrediction(modelPath, inputData)
  *
- * Executes:  python ml/predict.py --model <modelPath> --data '<inputData JSON>'
- *
- * Passes the inputData object as a JSON string via the --data CLI argument.
- * Parses the JSON result from stdout containing:
- *   { success, risk_category, consultation_needed, probabilities, features_used }
- *
- * @param {string} modelPath  Absolute path to the .joblib model file
- * @param {object} inputData  Score fields (communication_score, social_score, etc.)
- * @returns {Promise<object>}  Prediction result with risk_category + probabilities
+ * Predicts risk category for an assessment.
+ * Uses /api/py/predict over HTTP in remote mode, or local predict.py spawn in local mode.
  */
 async function getPrediction(modelPath, inputData) {
-  if (!fs.existsSync(modelPath)) {
+  const resolvedLocalPath = resolveModelPath(modelPath);
+  const modelBuffer = await loadModelBuffer(modelPath);
+
+  if (isRemoteML() || (!resolvedLocalPath && fileStorage.USE_BLOB)) {
+    if (!modelBuffer) {
+      throw new Error(`Model file not found: ${modelPath}`);
+    }
+
+    const artifactBase64 = modelBuffer.toString('base64');
+    const secret = getMLSecret();
+    const url = `${getMLServiceUrl()}/api/py/predict`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-ml-secret': secret,
+      },
+      body: JSON.stringify({
+        model_artifact_base64: artifactBase64,
+        data: inputData,
+      }),
+    });
+
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || `Prediction service returned HTTP ${response.status}`);
+    }
+    return result;
+  }
+
+  // Local child_process.spawn execution
+  if (!resolvedLocalPath) {
     throw new Error(`Model file not found: ${modelPath}`);
   }
 
@@ -277,9 +438,10 @@ async function getPrediction(modelPath, inputData) {
   return new Promise((resolve, reject) => {
     const proc = spawn(
       'python',
-      [PREDICT_SCRIPT, '--model', modelPath, '--data', dataArg],
-      { timeout: 30000 } // 30-second max
+      [PREDICT_SCRIPT, '--model', resolvedLocalPath, '--data', dataArg],
+      { timeout: 30000 }
     );
+
 
     let stdout = '';
     let stderr = '';
@@ -314,12 +476,6 @@ async function getPrediction(modelPath, inputData) {
 
 /**
  * C. getModelStatus(modelId)
- *
- * Queries the TrainedModel collection by _id and returns the current status,
- * metrics, and metadata.  Returns null if the model is not found.
- *
- * @param {string} modelId  MongoDB ObjectId string for the TrainedModel doc
- * @returns {Promise<object|null>}
  */
 async function getModelStatus(modelId) {
   try {
@@ -352,20 +508,22 @@ async function getModelStatus(modelId) {
   }
 }
 
-// ── Backward-compatible alias ───────────────────────────────────────────
-// routes/recommendations.js and routes/ml.js call `modelManager.predict()`
-// so we keep that name as an alias for getPrediction.
+// Backward-compatible alias
 const predict = getPrediction;
 
-// ── Exports ─────────────────────────────────────────────────────────────
 module.exports = {
   trainModel,
   getPrediction,
   getModelStatus,
-  predict,             // backward-compat alias for getPrediction
+  predict,
   checkPythonEnvironment,
   resolveDatasetPath,
+  loadDatasetContent,
   ensureModelDir,
   isModelCompatible,
+  isRemoteML,
+  getMLServiceUrl,
+  getMLSecret,
   MODEL_DIR,
 };
+

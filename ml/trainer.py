@@ -26,6 +26,7 @@ Exit codes:
 """
 
 import argparse
+import io
 import json
 import os
 import sys
@@ -120,11 +121,16 @@ QUESTION_ANSWER_MAP = {
 }
 
 
+class TrainingError(Exception):
+    """Custom exception raised when ML training validation or execution fails."""
+    pass
+
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────
 def fail(message: str):
-    """Print an error payload and exit with code 1."""
-    print(json.dumps({"success": False, "error": message}))
-    sys.exit(1)
+    """Raise a TrainingError with the failure reason."""
+    raise TrainingError(message)
 
 
 def load_dataset(filepath: str) -> pd.DataFrame:
@@ -136,6 +142,7 @@ def load_dataset(filepath: str) -> pd.DataFrame:
         return pd.read_csv(filepath)
     fail(f"Unsupported file extension '{ext}'. Only .csv and .json are accepted.")
     return pd.DataFrame()  # unreachable – keeps linters happy
+
 
 
 def validate_columns(df: pd.DataFrame, feature_set: str = FEATURE_SET_SCORE):
@@ -373,13 +380,15 @@ def prepare_features(df: pd.DataFrame, feature_set: str = FEATURE_SET_SCORE):
     return prepare_score_features(df)
 
 
-# ── Main training routine ────────────────────────────────────────────────
-def train(input_path: str, output_dir: str, feature_set: str = FEATURE_SET_SCORE):
+# ── Main training routines ───────────────────────────────────────────────
+def train_dataframe(df: pd.DataFrame, output_dir: str, feature_set: str = FEATURE_SET_SCORE) -> dict:
+    """Core training routine on a DataFrame. Validates columns and features, fits
+    RandomForestClassifier, generates evaluation metrics, saves the .joblib
+    artifact in output_dir, and returns the result dictionary."""
     if feature_set not in VALID_FEATURE_SETS:
         fail(f"Invalid feature_set '{feature_set}'. Expected one of: {', '.join(sorted(VALID_FEATURE_SETS))}")
 
-    # Load & validate
-    df = load_dataset(input_path)
+    # Validate columns & prepare features
     validate_columns(df, feature_set)
     X, y, feature_cols, rows_dropped, class_distribution = prepare_features(df, feature_set)
 
@@ -427,7 +436,7 @@ def train(input_path: str, output_dir: str, feature_set: str = FEATURE_SET_SCORE
 
     # Save model artifact (includes the classifier + label encoder + feature list)
     os.makedirs(output_dir, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
     model_filename = f"kindercura_model_{timestamp}.joblib"
     model_path = os.path.join(output_dir, model_filename)
 
@@ -457,10 +466,11 @@ def train(input_path: str, output_dir: str, feature_set: str = FEATURE_SET_SCORE
                 "support": int(report[cls_name]["support"]),
             }
 
-    # Output metrics as JSON on stdout for the Node.js bridge
+    # Structured metrics dictionary
     result = {
         "success": True,
         "model_path": model_path.replace("\\", "/"),
+        "model_filename": model_filename,
         "accuracy": round(accuracy, 4),
         "precision": round(precision, 4),
         "recall": round(recall, 4),
@@ -482,7 +492,27 @@ def train(input_path: str, output_dir: str, feature_set: str = FEATURE_SET_SCORE
         "feature_set_type": feature_set,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+    return result
+
+
+def train_dataset_content(content: str, file_type: str = "csv", output_dir: str = "/tmp/models", feature_set: str = FEATURE_SET_SCORE) -> dict:
+    """Parse dataset content from memory (CSV or JSON string) and run training."""
+    normalized_type = file_type.lower().strip().replace(".", "")
+    if normalized_type == "json":
+        df = pd.read_json(io.StringIO(content))
+    elif normalized_type == "csv":
+        df = pd.read_csv(io.StringIO(content))
+    else:
+        fail(f"Unsupported file type '{file_type}'. Only csv and json are accepted.")
+    return train_dataframe(df, output_dir, feature_set)
+
+
+def train(input_path: str, output_dir: str, feature_set: str = FEATURE_SET_SCORE) -> dict:
+    """Load dataset from input_path, train model, print metrics JSON to stdout, and return result dict."""
+    df = load_dataset(input_path)
+    result = train_dataframe(df, output_dir, feature_set)
     print(json.dumps(result))
+    return result
 
 
 # ── CLI entry point ──────────────────────────────────────────────────────
@@ -503,10 +533,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if not os.path.isfile(args.input):
-        fail(f"Input file not found: {args.input}")
+        print(json.dumps({"success": False, "error": f"Input file not found: {args.input}"}))
+        sys.exit(1)
 
     try:
         train(args.input, args.output, args.feature_set)
+    except TrainingError as err:
+        print(json.dumps({"success": False, "error": str(err)}))
+        sys.exit(1)
     except SystemExit:
         raise
     except Exception as exc:
@@ -517,3 +551,4 @@ if __name__ == "__main__":
             "traceback": traceback.format_exc(),
         }))
         sys.exit(1)
+

@@ -1214,11 +1214,22 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
       return res.status(503).json({ error: envCheck.error });
     }
 
-    // Resolve the file on disk
-    const datasetPath = modelManager.resolveDatasetPath(dataset.filePath);
+    // Resolve the file on disk or in storage
+    let datasetPath = modelManager.resolveDatasetPath(dataset.filePath);
+    let datasetContent = null;
     if (!datasetPath) {
-      return res.status(404).json({ error: `Dataset file not found on disk: ${dataset.filePath}` });
+      const storedName = dataset.storedName || path.basename(dataset.filePath);
+      const storedBuffer = await fileStorage.readStored(DATASET_DIR, storedName, DATASET_ACCESS);
+      if (storedBuffer) {
+        datasetContent = storedBuffer.toString('utf8');
+        datasetPath = `/uploads/datasets/${storedName}`;
+      }
     }
+
+    if (!datasetPath && !datasetContent) {
+      return res.status(404).json({ error: `Dataset file not found: ${dataset.filePath}` });
+    }
+
 
     // ── Step 13: quality gate for reviewed-assessment datasets ────────────
     const gate = await resolveTrainingQualityGate(dataset);
@@ -1261,7 +1272,7 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
     });
 
     // Run training in the background (async, no await in request handler)
-    modelManager.trainModel(datasetPath, dataset._id, { featureSet }).then(async (metrics) => {
+    modelManager.trainModel(datasetPath, dataset._id, { featureSet, datasetContent }).then(async (metrics) => {
       // Step 7: a successfully trained model is a CANDIDATE only. It does
       // NOT become active and the currently active model is left untouched
       // — an admin must explicitly activate it via the Trained Models panel

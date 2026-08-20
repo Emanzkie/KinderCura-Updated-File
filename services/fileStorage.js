@@ -174,12 +174,15 @@ async function storeFile(relDir, filename, file, { access = 'public' } = {}) {
     }
 
     const finalPath = path.join(localDir(relDir), safeName);
-    if (file.path && path.resolve(file.path) !== path.resolve(finalPath)) {
+    if (file.buffer) {
+        fs.writeFileSync(finalPath, file.buffer);
+    } else if (file.path && path.resolve(file.path) !== path.resolve(finalPath)) {
         fs.renameSync(file.path, finalPath);
     }
     file.path = finalPath;
     file.filename = safeName;
     return stored;
+
 }
 
 /** True when the stored file can be read back. */

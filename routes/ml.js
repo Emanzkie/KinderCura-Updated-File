@@ -13,6 +13,7 @@ const { authMiddleware, adminOnly } = require('../middleware/auth');
 const TrainingDataset = require('../models/TrainingDataset');
 const TrainedModel = require('../models/TrainedModel');
 const modelManager = require('../ml/model_manager');
+const fileStorage = require('../services/fileStorage');
 const staging = require('../constants/developmental-staging');
 const sse = require('../sse');
 
@@ -44,11 +45,21 @@ router.post('/train-model', authMiddleware, adminOnly, async (req, res) => {
         return res.status(409).json({ error: 'This dataset is already being trained.' });
       }
 
-      // 3. Resolve dataset file on disk
-      const datasetPath = modelManager.resolveDatasetPath(dataset.filePath);
+      // 3. Resolve dataset file on disk or in storage
+      let datasetPath = modelManager.resolveDatasetPath(dataset.filePath);
+      let datasetContent = null;
       if (!datasetPath) {
+        const storedName = dataset.storedName || path.basename(dataset.filePath);
+        const storedBuffer = await fileStorage.readStored('uploads/datasets', storedName);
+        if (storedBuffer) {
+          datasetContent = storedBuffer.toString('utf8');
+          datasetPath = `/uploads/datasets/${storedName}`;
+        }
+      }
+
+      if (!datasetPath && !datasetContent) {
         return res.status(404).json({
-          error: `Dataset file not found on disk. Expected at: ${dataset.filePath}`,
+          error: `Dataset file not found. Expected at: ${dataset.filePath}`,
         });
       }
 
@@ -56,6 +67,7 @@ router.post('/train-model', authMiddleware, adminOnly, async (req, res) => {
       dataset.status = 'training';
       dataset.errorMessage = null;
       await dataset.save();
+
 
       // 5. Determine next model version
       const lastModel = await TrainedModel.findOne().sort({ version: -1 }).lean();
@@ -89,7 +101,7 @@ router.post('/train-model', authMiddleware, adminOnly, async (req, res) => {
 
       // 8. Run training asynchronously
       try {
-        const metrics = await modelManager.trainModel(datasetPath, dataset._id, { featureSet });
+        const metrics = await modelManager.trainModel(datasetPath, dataset._id, { featureSet, datasetContent });
 
         // Step 7: a successfully trained model is a CANDIDATE only — it does
         // NOT become active, and the currently active model (if any) is left

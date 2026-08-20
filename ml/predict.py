@@ -45,9 +45,13 @@ QUESTION_ANSWER_MAP = {
 }
 
 
+class PredictionError(Exception):
+    """Custom exception raised when ML prediction fails."""
+    pass
+
+
 def fail(message: str):
-    print(json.dumps({"success": False, "error": message}))
-    sys.exit(1)
+    raise PredictionError(message)
 
 
 def encode_question_value_for_predict(val):
@@ -73,27 +77,17 @@ def encode_question_value_for_predict(val):
     return float(mapped)
 
 
-def predict(model_path: str, data_json: str):
-    # ── Load model artifact ──────────────────────────────────────────────
-    try:
-        artifact = joblib.load(model_path)
-    except Exception as exc:
-        fail(f"Could not load model: {exc}")
-        return
+def predict_from_artifact(artifact: dict, data: dict) -> dict:
+    """Predict risk category from a loaded model artifact dictionary and input data dict."""
+    import pandas as pd
 
     clf = artifact["classifier"]
     label_encoder = artifact["label_encoder"]
     feature_columns = artifact["feature_columns"]
     class_names = artifact["class_names"]
 
-    # ── Parse input data ─────────────────────────────────────────────────
-    try:
-        data = json.loads(data_json)
-    except json.JSONDecodeError as exc:
-        fail(f"Invalid JSON input: {exc}")
-        return
-
     # Accept camelCase from the Node.js world
+    data_normalized = dict(data)
     rename_map = {
         "communicationScore": "communication_score",
         "socialScore": "social_score",
@@ -103,38 +97,24 @@ def predict(model_path: str, data_json: str):
         "ageMonths": "age_months",
     }
     for old, new in rename_map.items():
-        if old in data and new not in data:
-            data[new] = data[old]
+        if old in data_normalized and new not in data_normalized:
+            data_normalized[new] = data_normalized[old]
 
-    # ── Build feature vector ─────────────────────────────────────────────
-    # gender_encoded is intentionally not supported here (see ml/trainer.py
-    # for why). A model trained before that change will list gender_encoded
-    # in its feature_columns and simply fail with a clear "missing feature"
-    # error below — it needs to be retrained on a gender-free dataset rather
-    # than have its predictions silently miscomputed.
-    #
-    # Step 15: a question_based model's feature_columns are Q01-Q34 (+
-    # optional age_months) instead of the five scores — predict.py never
-    # hardcodes which feature set is active, it always builds X from
-    # whatever feature_columns the artifact actually stores (requirement:
-    # prediction automatically uses exactly the stored feature columns).
-    # Question columns tolerate a blank/missing value (age-gated — expected);
-    # every other column still requires an explicit value, exactly as before.
+    # Build feature vector
     features = []
     for col in feature_columns:
-        val = data.get(col)
+        val = data_normalized.get(col)
         if QUESTION_COLUMN_PATTERN.match(col):
             features.append(encode_question_value_for_predict(val))
             continue
         if val is None:
             fail(f"Missing required feature: {col}")
-            return
+            return {}
         features.append(float(val))
 
-    import pandas as pd
     X = pd.DataFrame([features], columns=feature_columns)
 
-    # ── Predict ──────────────────────────────────────────────────────────
+    # Predict
     prediction_encoded = clf.predict(X)[0]
     probabilities = clf.predict_proba(X)[0]
 
@@ -149,14 +129,35 @@ def predict(model_path: str, data_json: str):
     for i, cls_name in enumerate(class_names):
         prob_map[cls_name] = round(float(probabilities[i]), 4)
 
-    result = {
+    return {
         "success": True,
         "risk_category": risk_category,
         "consultation_needed": consultation_needed,
         "probabilities": prob_map,
         "features_used": feature_columns,
     }
+
+
+def predict(model_path: str, data_json: str) -> dict:
+    """Load model artifact from disk and run prediction for data_json string or dict."""
+    try:
+        artifact = joblib.load(model_path)
+    except Exception as exc:
+        fail(f"Could not load model: {exc}")
+        return {}
+
+    if isinstance(data_json, str):
+        try:
+            data = json.loads(data_json)
+        except json.JSONDecodeError as exc:
+            fail(f"Invalid JSON input: {exc}")
+            return {}
+    else:
+        data = data_json
+
+    result = predict_from_artifact(artifact, data)
     print(json.dumps(result))
+    return result
 
 
 if __name__ == "__main__":
@@ -167,7 +168,12 @@ if __name__ == "__main__":
 
     try:
         predict(args.model, args.data)
+    except PredictionError as err:
+        print(json.dumps({"success": False, "error": str(err)}))
+        sys.exit(1)
     except SystemExit:
         raise
     except Exception as exc:
-        fail(f"Prediction failed: {exc}")
+        print(json.dumps({"success": False, "error": f"Prediction failed: {exc}"}))
+        sys.exit(1)
+

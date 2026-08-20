@@ -24,12 +24,29 @@
           "questions-database.json"
         ]
       }
+    },
+    {
+      "src": "api/ml_train.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "api/ml_predict.py",
+      "use": "@vercel/python"
     }
   ],
   "routes": [
+    {
+      "src": "/api/py/train",
+      "dest": "api/ml_train.py"
+    },
+    {
+      "src": "/api/py/predict",
+      "dest": "api/ml_predict.py"
+    },
     {
       "src": "/(.*)",
       "dest": "api/index.js"
     }
   ]
 }
+
