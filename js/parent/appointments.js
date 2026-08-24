@@ -101,7 +101,7 @@ function updateTimeFieldHelp(info = latestAvailability) {
         return;
     }
 
-    help.textContent = 'Choose one of the loaded 30-minute time slots.';
+    help.textContent = 'Select one of the available 30-minute appointment slots.';
 }
 
 function applyAppointmentSlotSettings(settings) {
@@ -445,7 +445,8 @@ function renderAvailabilityStatus(info) {
     panel.innerHTML = `
         <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:flex-start;">
             <div>
-                <p style="font-weight:700;color:var(--text-dark);margin:0 0 .25rem;">Live Schedule Check</p>
+                <p style="font-weight:700;color:var(--text-dark);margin:0 0 .25rem;">Availability Schedule</p>
+                <p class="mini" style="margin:0 0 .25rem;">View the pediatrician's available schedule and open appointment slots.</p>
                 <p class="mini" style="margin:0;">${escapeHtml(info.message || '')}</p>
             </div>
             <span class="pill ${statusClass}">${statusText}</span>
@@ -458,7 +459,7 @@ function renderAvailabilityStatus(info) {
         </div>
         ${Array.isArray(info.availableSlots) && info.availableSlots.length ? `
             <div style="margin-top:.7rem;">
-                <p class="mini" style="margin:0 0 .35rem;">Available 30-minute slots</p>
+                <p class="mini" style="margin:0 0 .35rem;">Available 30-minute appointment slots</p>
                 <div class="slot-chips">
                     ${info.availableSlots.map((slot) => `<span class="slot-chip free">${escapeHtml(fmtTime(slot))}</span>`).join('')}
                 </div>
