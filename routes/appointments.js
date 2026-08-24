@@ -77,7 +77,9 @@ function resolveNotificationModel() {
   return null;
 }
 
-const DEFAULT_SLOT_MINUTES = 30;
+// 1-hour preferred-start-time interval. The parent's selected time is a request;
+// the clinic confirms the final schedule during approval (see approval flow below).
+const DEFAULT_SLOT_MINUTES = 60;
 
 async function getAppointmentSlotSettings() {
   try {
@@ -403,7 +405,7 @@ function normalizeBreakWindows(breaks, timeWindow) {
     .sort((a, b) => a.startMinutes - b.startMinutes);
 }
 
-function buildThirtyMinuteSlots({ timeWindow, breakWindows, slotMinutes }) {
+function buildIntervalSlots({ timeWindow, breakWindows, slotMinutes }) {
   if (!timeWindow?.valid || slotMinutes <= 0) return [];
 
   const slots = [];
@@ -461,7 +463,7 @@ function validateRequestedTime(appointmentTime, slotSettings) {
     return {
       valid: false,
       message: slotSettings?.enforceThirtyMinuteSlots
-        ? 'Please select a valid 30-minute time slot.'
+        ? 'Please select a valid appointment start time.'
         : 'Please select a valid appointment time.',
       requestedTime: null,
     };
@@ -470,7 +472,7 @@ function validateRequestedTime(appointmentTime, slotSettings) {
   if (slotSettings?.enforceThirtyMinuteSlots && (parsed.minutes % DEFAULT_SLOT_MINUTES !== 0)) {
     return {
       valid: false,
-      message: 'Please select a valid 30-minute time slot.',
+      message: 'Please select a valid appointment start time.',
       requestedTime: null,
     };
   }
@@ -683,20 +685,26 @@ async function evaluateAvailability({ pediatrician, appointmentDate, appointment
   const startTime = normalizedAvailability.startTime;
   const endTime = normalizedAvailability.endTime;
   const breaks = normalizedAvailability.breaks || [];
-  const maxPatientsPerDay = Math.max(1, Number(normalizedAvailability.maxPatientsPerDay || 10));
+  // Capacity must come from what the pediatrician actually saved — never guess a number.
+  const configuredMaxPatientsPerDay = normalizedAvailability.maxPatientsPerDay != null
+    ? Math.max(1, Number(normalizedAvailability.maxPatientsPerDay))
+    : null;
   const dayName = dateOnly.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
 
-  if (!normalizedAvailability.configured) {
+  if (!normalizedAvailability.configured || configuredMaxPatientsPerDay == null) {
     return {
       ...baseUnavailable,
       available: false,
-      message: 'This pediatrician has not finished setting appointment availability yet.',
+      configured: false,
+      message: 'Availability has not been configured yet.',
       dayName,
       startTime,
       endTime,
-      maxPatientsPerDay,
+      maxPatientsPerDay: null,
     };
   }
+
+  const maxPatientsPerDay = configuredMaxPatientsPerDay;
 
   const isDayAvailable = availableDays.includes(dayName);
 
@@ -753,7 +761,7 @@ async function evaluateAvailability({ pediatrician, appointmentDate, appointment
     return {
       ...baseUnavailable,
       available: false,
-      message: 'This pediatrician availability window is incomplete. Please update the saved hours.',
+      message: "This pediatrician's saved schedule is incomplete. Please choose another pediatrician or try again later.",
       dayName,
       startTime,
       endTime,
@@ -766,7 +774,7 @@ async function evaluateAvailability({ pediatrician, appointmentDate, appointment
   }
 
   const breakWindows = normalizeBreakWindows(breaks, timeWindow);
-  const generatedSlotEntries = buildThirtyMinuteSlots({
+  const generatedSlotEntries = buildIntervalSlots({
     timeWindow,
     breakWindows,
     slotMinutes: DEFAULT_SLOT_MINUTES,
@@ -832,7 +840,7 @@ async function evaluateAvailability({ pediatrician, appointmentDate, appointment
         return {
           ...baseUnavailable,
           available: false,
-          message: 'Please select one of the available 30-minute time slots.',
+          message: 'Please choose one of the available start times.',
           dayName,
           startTime,
           endTime,
@@ -852,7 +860,7 @@ async function evaluateAvailability({ pediatrician, appointmentDate, appointment
         return {
           ...baseUnavailable,
           available: false,
-          message: 'This time slot is already booked. Please choose another time.',
+          message: 'This start time is already booked. Please choose another time.',
           dayName,
           startTime,
           endTime,
@@ -914,7 +922,7 @@ async function evaluateAvailability({ pediatrician, appointmentDate, appointment
         return {
           ...baseUnavailable,
           available: false,
-          message: 'This time slot is already booked. Please choose another time.',
+          message: 'This start time is already booked. Please choose another time.',
           dayName,
           startTime,
           endTime,
@@ -957,7 +965,7 @@ async function evaluateAvailability({ pediatrician, appointmentDate, appointment
 
     return {
       available: true,
-      message: 'Schedule is available for booking.',
+      message: 'Your preferred start time is available. The clinic will confirm the final schedule.',
       slotSettings,
       requestedTime: requestedValidation.requestedTime,
       dayName,
@@ -979,13 +987,13 @@ async function evaluateAvailability({ pediatrician, appointmentDate, appointment
   }
 
   const dayIsFull = bookedCount >= maxPatientsPerDay;
-  const dayHasAvailableThirtyMinuteSlots = availableSlots.length > 0;
+  const dayHasAvailableStartTimes = availableSlots.length > 0;
 
   if (slotSettings.enforceThirtyMinuteSlots && !generatedSlots.length) {
     return {
       ...baseUnavailable,
       available: false,
-      message: 'This pediatrician does not have any 30-minute slots inside the saved schedule yet.',
+      message: 'No appointment start times are available for this schedule.',
       dayName,
       startTime,
       endTime,
@@ -1022,11 +1030,11 @@ async function evaluateAvailability({ pediatrician, appointmentDate, appointment
     };
   }
 
-  if (slotSettings.enforceThirtyMinuteSlots && !dayHasAvailableThirtyMinuteSlots) {
+  if (slotSettings.enforceThirtyMinuteSlots && !dayHasAvailableStartTimes) {
     return {
       ...baseUnavailable,
       available: false,
-      message: `No 30-minute time slots are left for ${fmtDate(dateOnly)}. Please choose another date.`,
+      message: `No available start times are left for ${fmtDate(dateOnly)}. Please choose another date.`,
       dayName,
       startTime,
       endTime,
@@ -1047,7 +1055,7 @@ async function evaluateAvailability({ pediatrician, appointmentDate, appointment
   return {
     available: true,
     message: slotSettings.enforceThirtyMinuteSlots
-      ? 'Select one of the available 30-minute time slots.'
+      ? 'Choose your preferred appointment start time. The clinic will confirm the final schedule.'
       : 'Schedule is available for booking.',
     slotSettings,
     dayName,
@@ -1124,7 +1132,7 @@ async function hydrateAppointment(appointmentDoc) {
 
 // GET /api/appointments/slot-settings
 // Shared by parent and pediatrician pages so the time field can switch between
-// enforced 30-minute slots and the legacy manual time input without guessing.
+// enforced 1-hour start times and the legacy manual time input without guessing.
 router.get('/slot-settings', authMiddleware, async (req, res) => {
   try {
     if (!['parent', 'pediatrician', 'admin'].includes(req.user.role)) {

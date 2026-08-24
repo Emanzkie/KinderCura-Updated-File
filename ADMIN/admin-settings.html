@@ -128,16 +128,16 @@
                         <div style="margin-bottom: 1.5rem; padding: 1.25rem; border-radius: 12px; background: var(--bg-primary); border-left: 4px solid var(--primary);">
                             <h3 style="color: var(--primary); margin-bottom: 0.5rem; font-size: 1rem;">Appointment Slot Rules</h3>
                             <p style="color: var(--text-light); font-size: 0.88rem; margin-bottom: 1rem;">
-                                This admin switch controls whether new bookings and reschedules must use 30-minute slots at :00 and :30. Existing appointments remain valid.
+                                This admin switch controls whether new bookings and reschedules must use 1-hour start times (on the hour). Existing appointments remain valid.
                             </p>
                             <label style="display: flex; align-items: center; gap: 0.8rem; cursor: pointer; font-weight: 600; margin-bottom: 0.75rem;">
                                 <input type="checkbox" id="enforceThirtyMinuteSlots">
-                                <span>Enforce 30-min slots</span>
+                                <span>Enforce 1-hour start times</span>
                             </label>
                             <p id="appointmentSlotSettingState" style="color: var(--text-light); font-size: 0.82rem; margin: 0 0 1rem;">
                                 Loading appointment slot setting...
                             </p>
-                            <!-- Important note: the migration scripts handle legacy non-30-minute appointments without invalidating them. -->
+                            <!-- Important note: the migration scripts handle legacy non-hourly appointments without invalidating them. -->
                             <button class="btn btn-primary" onclick="saveAppointmentSlotSetting()" style="padding: 0.8rem 1.5rem;">Save Appointment Slot Setting</button>
                         </div>
 

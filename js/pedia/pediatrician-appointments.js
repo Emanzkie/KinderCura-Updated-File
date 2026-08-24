@@ -26,13 +26,13 @@ async function apiFetch(ep, opts={}) {
     return d;
 }
 
-let appointmentSlotSettings = { enforceThirtyMinuteSlots: true, slotMinutes: 30 };
+let appointmentSlotSettings = { enforceThirtyMinuteSlots: true, slotMinutes: 60 };
 
 function currentPediatricianId() {
     return _u?.id || _u?._id || '';
 }
 
-function useThirtyMinuteSlots() {
+function useStartTimeSlots() {
     return Boolean(appointmentSlotSettings?.enforceThirtyMinuteSlots);
 }
 
@@ -55,12 +55,12 @@ function renderRescheduleTimeField() {
     const previousValue = getRescheduleTimeValue();
     if (!wrap) return;
 
-    if (useThirtyMinuteSlots()) {
+    if (useStartTimeSlots()) {
         wrap.innerHTML = `
             <select id="rTime" disabled>
-                <option value="">Select a date to load 30-minute slots</option>
+                <option value="">Select a date to see available start times</option>
             </select>`;
-        setRescheduleTimeHelp('Choose a date to load the available 30-minute slots.');
+        setRescheduleTimeHelp('Choose a date to see the available start times.');
     } else {
         wrap.innerHTML = '<input type="time" id="rTime" step="60">';
         setRescheduleTimeHelp('Manual time selection is currently allowed by the admin setting.');
@@ -81,7 +81,7 @@ function populateRescheduleTimeOptions(slots) {
     if (!field || field.tagName !== 'SELECT') return;
 
     const safeSlots = Array.isArray(slots) ? slots : [];
-    field.innerHTML = `<option value="">${date ? (safeSlots.length ? 'Select a 30-minute slot' : 'No 30-minute slots available') : 'Select a date to load 30-minute slots'}</option>`
+    field.innerHTML = `<option value="">${date ? (safeSlots.length ? 'Select a start time' : 'No start times available') : 'Select a date to see available start times'}</option>`
         + safeSlots.map((slot) => `<option value="${slot}">${fmtTime(slot)}</option>`).join('');
     field.disabled = !date || !safeSlots.length;
 }
@@ -92,18 +92,18 @@ async function loadRescheduleSlotSettings() {
         appointmentSlotSettings = data.settings || appointmentSlotSettings;
     } catch {}
     renderRescheduleTimeField();
-    if (useThirtyMinuteSlots() && document.getElementById('rDate')?.value) {
+    if (useStartTimeSlots() && document.getElementById('rDate')?.value) {
         await loadRescheduleAvailability();
     }
 }
 
 async function loadRescheduleAvailability() {
     const date = document.getElementById('rDate').value;
-    if (!useThirtyMinuteSlots()) return;
+    if (!useStartTimeSlots()) return;
 
     if (!date) {
         populateRescheduleTimeOptions([]);
-        setRescheduleTimeHelp('Choose a date to load the available 30-minute slots.');
+        setRescheduleTimeHelp('Choose a date to see the available start times.');
         return;
     }
 
@@ -114,7 +114,7 @@ async function loadRescheduleAvailability() {
         });
         const data = await apiFetch(`/appointments/availability/check?${params.toString()}`);
         appointmentSlotSettings = data.availability?.slotSettings || appointmentSlotSettings;
-        if (!useThirtyMinuteSlots()) {
+        if (!useStartTimeSlots()) {
             renderRescheduleTimeField();
             setRescheduleTimeHelp('Manual time selection is currently allowed by the admin setting.');
             return;
@@ -122,8 +122,8 @@ async function loadRescheduleAvailability() {
         populateRescheduleTimeOptions(data.availability?.availableSlots || []);
         setRescheduleTimeHelp(
             Array.isArray(data.availability?.breakRanges) && data.availability.breakRanges.length
-                ? 'Provider breaks are skipped automatically while the 30-minute slots are generated.'
-                : 'Choose one of the available 30-minute slots.'
+                ? 'Break periods are skipped automatically.'
+                : 'Choose one of the available start times.'
         );
     } catch (err) {
         populateRescheduleTimeOptions([]);

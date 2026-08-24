@@ -6,10 +6,10 @@ let activeChild = null;
 let allPediatricians = [];
 let suggestionContext = null;
 let latestAvailability = null;
-let appointmentSlotSettings = { enforceThirtyMinuteSlots: true, slotMinutes: 30 };
+let appointmentSlotSettings = { enforceThirtyMinuteSlots: true, slotMinutes: 60 };
 let availabilityBlocksBooking = false;
 
-function useThirtyMinuteSlots() {
+function useStartTimeSlots() {
     return Boolean(appointmentSlotSettings?.enforceThirtyMinuteSlots);
 }
 
@@ -86,22 +86,22 @@ function updateTimeFieldHelp(info = latestAvailability) {
         return;
     }
 
-    if (!useThirtyMinuteSlots()) {
+    if (!useStartTimeSlots()) {
         help.textContent = 'Manual time selection is currently allowed by the admin setting.';
         return;
     }
 
     if (!date) {
-        help.textContent = 'Select a date to load the allowed 30-minute slots at :00 and :30.';
+        help.textContent = 'Select a date to see the available start times.';
         return;
     }
 
     if (Array.isArray(info?.breakRanges) && info.breakRanges.length) {
-        help.textContent = 'Break periods are skipped automatically while the 30-minute slots are generated.';
+        help.textContent = 'Break periods are skipped automatically.';
         return;
     }
 
-    help.textContent = 'Select one of the available 30-minute appointment slots.';
+    help.textContent = 'Choose your preferred appointment start time. The clinic will confirm the final schedule.';
 }
 
 function applyAppointmentSlotSettings(settings) {
@@ -124,10 +124,10 @@ function renderTimeField() {
     const previousValue = getSelectedAppointmentTime();
     if (!wrap) return;
 
-    if (useThirtyMinuteSlots()) {
+    if (useStartTimeSlots()) {
         wrap.innerHTML = `
             <select id="apptTime" class="form-input" disabled>
-                <option value="">Select a date to load 30-minute slots</option>
+                <option value="">Select a date to see available start times</option>
             </select>`;
     } else {
         wrap.innerHTML = '<input type="time" id="apptTime" class="form-input" step="60">';
@@ -174,7 +174,7 @@ function applyTimeFieldConstraints() {
 
     if (field.tagName === 'SELECT') {
         field.disabled = !date;
-        field.innerHTML = `<option value="">${date ? 'Select a 30-minute slot' : 'Select a date to load 30-minute slots'}</option>`;
+        field.innerHTML = `<option value="">${date ? 'Select a start time' : 'Select a date to see available start times'}</option>`;
         updateTimeFieldHelp();
         return;
     }
@@ -204,9 +204,9 @@ function populateTimeSlotOptions(info) {
 
     const slots = Array.isArray(info?.availableSlots) ? info.availableSlots : [];
     const previousValue = field.value;
-    let placeholder = 'Select a 30-minute slot';
-    if (!date) placeholder = 'Select a date to load 30-minute slots';
-    else if (!slots.length) placeholder = 'No 30-minute slots available';
+    let placeholder = 'Select a start time';
+    if (!date) placeholder = 'Select a date to see available start times';
+    else if (!slots.length) placeholder = 'No start times available';
 
     field.innerHTML = `<option value="">${placeholder}</option>` + slots
         .map((slot) => `<option value="${slot}">${escapeHtml(fmtTime(slot))}</option>`)
@@ -248,18 +248,19 @@ function timeToMinutes(value) {
 }
 
 function availabilitySummary(ped) {
-    if (!ped) return { days: '—', hours: '—', max: '—' };
+    if (!ped) return { days: '—', hours: '—', max: null };
     if (!hasConfiguredAvailability(ped)) {
         return {
             days: 'Set by pediatrician in Settings',
             hours: 'Set by pediatrician in Settings',
-            max: Number(ped?.availability?.maxPatientsPerDay || 10),
+            max: null,
         };
     }
+    const configuredMax = Number(ped.availability.maxPatientsPerDay);
     return {
         days: ped.availability.days.join(', '),
         hours: `${fmtTime(ped.availability.startTime)} - ${fmtTime(ped.availability.endTime)}`,
-        max: Number(ped.availability.maxPatientsPerDay || 10),
+        max: Number.isFinite(configuredMax) && configuredMax > 0 ? configuredMax : null,
     };
 }
 
@@ -334,8 +335,8 @@ function renderSelectedPediatrician() {
             <div class="mini"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Available Days: ${escapeHtml(availability.days)}</div>
             <div class="mini">⏰ Hours: ${escapeHtml(availability.hours)}</div>
         </div>
-        <div class="mini" style="margin-top:.45rem;">👥 Maximum patients per day: ${availability.max}</div>
-        ${hasConfiguredAvailability(ped) ? '' : '<div class="mini" style="margin-top:.55rem;color:var(--status-attention-fg);font-weight:600;">This pediatrician must finish saving availability in Settings before parents can book.</div>'}`;
+        ${availability.max != null ? `<div class="mini" style="margin-top:.45rem;">👥 Maximum Patients Per Day: ${availability.max}</div>` : ''}
+        ${hasConfiguredAvailability(ped) ? '' : '<div class="mini" style="margin-top:.55rem;color:var(--status-attention-fg);font-weight:600;">Availability has not been configured yet.</div>'}`;
 
     applyTimeFieldConstraints();
     // updatePaymentStep() used to run here. Payment selection moved to
@@ -437,6 +438,19 @@ function renderAvailabilityStatus(info) {
     populateTimeSlotOptions(info);
     panel.style.display = 'block';
 
+    if (info.configured === false) {
+        panel.innerHTML = `
+            <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:flex-start;">
+                <div>
+                    <p style="font-weight:700;color:var(--text-dark);margin:0 0 .25rem;">Availability Schedule</p>
+                    <p class="mini" style="margin:0;">Availability has not been configured yet.</p>
+                </div>
+                <span class="pill red">Unavailable</span>
+            </div>`;
+        setBookButtonState(true);
+        return;
+    }
+
     const statusClass = info.available ? 'green' : 'red';
     const statusText = info.available
         ? 'Available'
@@ -453,20 +467,20 @@ function renderAvailabilityStatus(info) {
         </div>
         <div class="clinic-grid" style="margin-top:.8rem;">
             <div class="mini">Day: ${escapeHtml(info.dayName || '-')}</div>
-            <div class="mini">Booking hours: ${escapeHtml(fmtTime(info.startTime))} - ${escapeHtml(fmtTime(info.endTime))}</div>
-            <div class="mini">Booked today: ${Number(info.bookedCount || 0)} / ${Number(info.maxPatientsPerDay || 0)}</div>
-            <div class="mini">Remaining daily capacity: ${Number(info.remainingSlots || 0)}</div>
+            <div class="mini">Clinic Hours: ${escapeHtml(fmtTime(info.startTime))} - ${escapeHtml(fmtTime(info.endTime))}</div>
+            <div class="mini">Booked Today: ${Number(info.bookedCount || 0)} / ${Number(info.maxPatientsPerDay || 0)}</div>
+            <div class="mini">Remaining Daily Capacity: ${Number(info.remainingSlots || 0)}</div>
         </div>
         ${Array.isArray(info.availableSlots) && info.availableSlots.length ? `
             <div style="margin-top:.7rem;">
-                <p class="mini" style="margin:0 0 .35rem;">Available 30-minute appointment slots</p>
+                <p class="mini" style="margin:0 0 .35rem;">Available Start Times</p>
                 <div class="slot-chips">
                     ${info.availableSlots.map((slot) => `<span class="slot-chip free">${escapeHtml(fmtTime(slot))}</span>`).join('')}
                 </div>
             </div>` : ''}
         ${Array.isArray(info.bookedTimes) && info.bookedTimes.length ? `
             <div style="margin-top:.7rem;">
-                <p class="mini" style="margin:0 0 .35rem;">Booked time slots for this date</p>
+                <p class="mini" style="margin:0 0 .35rem;">Already Booked Times for This Date</p>
                 <div class="slot-chips">
                     ${info.bookedTimes.map((slot) => `<span class="slot-chip taken">${escapeHtml(fmtTime(slot))}</span>`).join('')}
                 </div>

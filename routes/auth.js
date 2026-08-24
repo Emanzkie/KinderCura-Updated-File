@@ -661,12 +661,11 @@ router.post('/register', handleProfileUpload, async (req, res) => {
       phoneNumber: phoneNumber || null,
       consultationFee: parseNumberOrNull(consultationFee),
       bio: bio || null,
-      availability: {
-        days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-        startTime: '09:00',
-        endTime: '17:00',
-        maxPatientsPerDay: 10,
-      },
+      // Left unconfigured (no days) on purpose: a pediatrician must explicitly save
+      // their own schedule in Settings > Availability before parents can see them
+      // as bookable. See normalizeAvailability()/evaluateAvailability() in
+      // routes/appointments.js, which treat an empty days list as not configured.
+      availability: { days: [] },
       organization: organization || null,
       department: department || null,
       // ── PRC Verification: auto-populate at registration time ──

@@ -190,8 +190,8 @@
                 document.getElementById('enforceThirtyMinuteSlots').checked = settings.enforceThirtyMinuteSlots !== false;
                 setAppointmentSlotSettingState(
                     settings.enforceThirtyMinuteSlots === false
-                        ? '30-minute slot enforcement is currently OFF. Legacy manual time entry is allowed.'
-                        : '30-minute slot enforcement is currently ON for new bookings and reschedules.'
+                        ? '1-hour start time enforcement is currently OFF. Legacy manual time entry is allowed.'
+                        : '1-hour start time enforcement is currently ON for new bookings and reschedules.'
                 );
             } catch (err) {
                 setAppointmentSlotSettingState(err.message || 'Could not load appointment slot setting.', true);
@@ -210,8 +210,8 @@
                 document.getElementById('enforceThirtyMinuteSlots').checked = saved.enforceThirtyMinuteSlots !== false;
                 setAppointmentSlotSettingState(
                     saved.enforceThirtyMinuteSlots === false
-                        ? 'Saved. 30-minute slot enforcement is OFF.'
-                        : 'Saved. 30-minute slot enforcement is ON.'
+                        ? 'Saved. 1-hour start time enforcement is OFF.'
+                        : 'Saved. 1-hour start time enforcement is ON.'
                 );
             } catch (err) {
                 setAppointmentSlotSettingState(err.message || 'Could not save appointment slot setting.', true);

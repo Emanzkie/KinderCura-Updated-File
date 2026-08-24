@@ -569,7 +569,7 @@ function resolveNotificationModel() {
 async function getSystemSettingsDoc() {
   return SystemSetting.findOneAndUpdate(
     { singleton: 'default' },
-    { $setOnInsert: { singleton: 'default', appointmentSlots: { enforceThirtyMinuteSlots: true, slotMinutes: 30 } } },
+    { $setOnInsert: { singleton: 'default', appointmentSlots: { enforceThirtyMinuteSlots: true, slotMinutes: 60 } } },
     { new: true, upsert: true }
   );
 }
@@ -577,7 +577,7 @@ async function getSystemSettingsDoc() {
 function formatAppointmentSlotSettings(doc) {
   return {
     enforceThirtyMinuteSlots: Boolean(doc?.appointmentSlots?.enforceThirtyMinuteSlots ?? true),
-    slotMinutes: 30,
+    slotMinutes: 60,
   };
 }
 
@@ -1367,7 +1367,7 @@ router.put('/settings/appointments', authMiddleware, adminOnly, async (req, res)
         $set: {
           appointmentSlots: {
             enforceThirtyMinuteSlots,
-            slotMinutes: 30,
+            slotMinutes: 60,
           },
         },
         $setOnInsert: { singleton: 'default' },

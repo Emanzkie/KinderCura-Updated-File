@@ -4,9 +4,11 @@ const mongoose = require('mongoose');
 
 const appointmentSlotSettingsSchema = new mongoose.Schema(
   {
-    // When true, new bookings and reschedules must use 30-minute aligned slots.
+    // When true, new bookings and reschedules must use 1-hour aligned start times.
+    // Field name kept as enforceThirtyMinuteSlots for backward compatibility with
+    // existing saved documents; it now gates the 60-minute interval (see slotMinutes).
     enforceThirtyMinuteSlots: { type: Boolean, default: true },
-    slotMinutes: { type: Number, default: 30 },
+    slotMinutes: { type: Number, default: 60 },
   },
   { _id: false }
 );
