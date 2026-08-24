@@ -1,39 +1,9 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "api/index.js",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": [
-          "SIGN-UP,LOGIN/**",
-          "PARENT/**",
-          "PEDIA/**",
-          "ADMIN/**",
-          "SECRETARY/**",
-          "CSS files/**",
-          "ICONS/**",
-          "js/**",
-          "assets/**",
-          "public/**",
-          "views/**",
-          "uploads/**",
-          "api.js",
-          "notifications-card-ui.js",
-          "notifications-card-ui.css",
-          "questions-database.json"
-        ]
-      }
-    },
-    {
-      "src": "api/ml_train.py",
-      "use": "@vercel/python"
-    },
-    {
-      "src": "api/ml_predict.py",
-      "use": "@vercel/python"
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "{SIGN-UP\\,LOGIN/**,PARENT/**,PEDIA/**,ADMIN/**,SECRETARY/**,CSS files/**,ICONS/**,js/**,assets/**,public/**,views/**,uploads/**,api.js,notifications-card-ui.js,notifications-card-ui.css,questions-database.json}"
     }
-  ],
+  },
   "routes": [
     {
       "src": "/api/py/train",
@@ -49,4 +19,3 @@
     }
   ]
 }
-
