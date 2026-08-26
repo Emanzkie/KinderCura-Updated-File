@@ -265,6 +265,9 @@ async function buildSuggestedPediatricians(resultDoc) {
 }
 
 router.get('/:assessmentId', authMiddleware, async (req, res) => {
+  // Includes each pediatrician's current consultation fee for display; never
+  // let a browser/proxy cache serve a stale rate.
+  res.setHeader('Cache-Control', 'no-store');
   try {
     const assessmentId = req.params.assessmentId;
     const assessment = await Assessment.findById(assessmentId).lean();

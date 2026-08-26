@@ -776,3 +776,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     await resolveContext();
     await loadAppointments();
 });
+
+// Bfcache restore (browser Back/Forward) re-shows the page without re-running
+// DOMContentLoaded, so a pediatrician's rate change made in another tab while
+// this tab was cached would otherwise keep showing whatever fee was in memory
+// when the tab was last active. Re-fetch on restore so the fee shown is
+// always current, without touching the initial-load path above.
+window.addEventListener('pageshow', (event) => {
+    if (!event.persisted) return;
+    resolveContext();
+});

@@ -1150,6 +1150,9 @@ router.get('/slot-settings', authMiddleware, async (req, res) => {
 // GET /api/appointments/pediatricians/list
 // Used by parent appointments page.
 router.get('/pediatricians/list', authMiddleware, async (req, res) => {
+  // Consultation fees change over time; never let a browser/proxy cache serve
+  // a stale rate for a page that is about to create a new booking.
+  res.setHeader('Cache-Control', 'no-store');
   try {
     if (!['parent','legal_guardian','foster_parent','court_appointed','admin'].includes(req.user.role)) {
       return res.status(403).json({ error: 'Parents or admins only.' });

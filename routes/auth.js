@@ -358,6 +358,23 @@ function parseNumberOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+// Consultation fee is the pediatrician's CURRENT rate — it gets snapshotted
+// into each new appointment's totalAmount at booking time and must never be
+// zero/negative, since that would silently make every new booking free.
+// Sentinel return values: undefined = field not present in the request body
+// (caller should leave the stored value untouched); null = client explicitly
+// cleared the fee. Anything else throws so the route can return a 400
+// instead of persisting bad data.
+function parseConsultationFee(value) {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error('Consultation fee must be a positive number.');
+  }
+  return Math.round(n * 100) / 100;
+}
+
 
 async function getParentPreAssessmentState(parentId) {
   const childIds = new Set();
@@ -627,6 +644,13 @@ router.post('/register', handleProfileUpload, async (req, res) => {
       deleteUploadedPrcFile(req.file);
     }
 
+    let cleanConsultationFee;
+    try {
+      cleanConsultationFee = parseConsultationFee(consultationFee);
+    } catch (err) {
+      return fail(400, err.message);
+    }
+
     const userObjectId = new mongoose.Types.ObjectId();
     const prcDocumentPath = cleanRole === 'pediatrician' && req.file
       ? await movePrcUploadToUserFile(req.file, userObjectId)
@@ -659,7 +683,7 @@ router.post('/register', handleProfileUpload, async (req, res) => {
       clinicAddress: clinicAddress || null,
       licenseExpiry: licenseExpiry ? new Date(licenseExpiry) : null,
       phoneNumber: phoneNumber || null,
-      consultationFee: parseNumberOrNull(consultationFee),
+      consultationFee: cleanConsultationFee ?? null,
       bio: bio || null,
       // Left unconfigured (no days) on purpose: a pediatrician must explicitly save
       // their own schedule in Settings > Availability before parents can see them
@@ -883,6 +907,13 @@ router.put('/update-profile', authMiddleware, async (req, res) => {
     const user = await User.findById(req.user.userId);
     if (!user) return res.status(404).json({ error: 'User not found.' });
 
+    let cleanConsultationFee;
+    try {
+      cleanConsultationFee = parseConsultationFee(consultationFee);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
     if (firstName !== undefined) user.firstName = String(firstName).trim();
     if (lastName !== undefined) user.lastName = String(lastName).trim();
     if (middleName !== undefined) user.middleName = middleName ? String(middleName).trim() : null;
@@ -894,7 +925,7 @@ router.put('/update-profile', authMiddleware, async (req, res) => {
     if (clinicName !== undefined) user.clinicName = clinicName ? String(clinicName).trim() : null;
     if (clinicAddress !== undefined) user.clinicAddress = clinicAddress ? String(clinicAddress).trim() : null;
     if (phoneNumber !== undefined) user.phoneNumber = phoneNumber ? String(phoneNumber).trim() : null;
-    if (consultationFee !== undefined) user.consultationFee = parseNumberOrNull(consultationFee);
+    if (cleanConsultationFee !== undefined) user.consultationFee = cleanConsultationFee;
     if (bio !== undefined) user.bio = bio ? String(bio).trim() : null;
 
     await user.save();
@@ -926,6 +957,7 @@ router.put('/change-password', authMiddleware, async (req, res) => {
 
 // GET /api/auth/pediatrician/settings
 router.get('/pediatrician/settings', authMiddleware, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   try {
     if (req.user.role !== 'pediatrician') {
       return res.status(403).json({ error: 'Pediatricians only.' });
@@ -974,8 +1006,16 @@ router.put('/pediatrician/settings', authMiddleware, async (req, res) => {
       user.email = cleanEmail;
     }
 
+    if (consultationFee !== undefined) {
+      try {
+        const cleanConsultationFee = parseConsultationFee(consultationFee);
+        if (cleanConsultationFee !== undefined) user.consultationFee = cleanConsultationFee;
+      } catch (err) {
+        return res.status(400).json({ error: err.message });
+      }
+    }
+
     if (phoneNumber !== undefined) user.phoneNumber = phoneNumber ? String(phoneNumber).trim() : null;
-    if (consultationFee !== undefined) user.consultationFee = parseNumberOrNull(consultationFee);
     if (bio !== undefined) user.bio = bio ? String(bio).trim() : null;
     if (clinicName !== undefined) user.clinicName = clinicName ? String(clinicName).trim() : null;
     if (clinicAddress !== undefined) user.clinicAddress = clinicAddress ? String(clinicAddress).trim() : null;

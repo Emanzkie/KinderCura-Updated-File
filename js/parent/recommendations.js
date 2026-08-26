@@ -368,3 +368,11 @@
             document.querySelectorAll('a.logout').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); logout(); }));
             loadRecommendations();
         });
+
+        // Bfcache restore (browser Back/Forward) skips DOMContentLoaded, so a
+        // pediatrician's rate change made elsewhere while this tab was cached
+        // would otherwise keep showing the stale fee. Re-fetch on restore.
+        window.addEventListener('pageshow', (event) => {
+            if (!event.persisted) return;
+            loadRecommendations();
+        });
