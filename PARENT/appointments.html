@@ -127,6 +127,16 @@
 </div>
 
 
+<div class="kc-modal-backdrop" id="receiptModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="receiptModalTitle">
+    <div class="kc-modal" role="document">
+        <div class="kc-modal__header">
+            <h3 id="receiptModalTitle">Payment Receipt</h3>
+            <button type="button" class="kc-modal__close" onclick="closeReceiptModal()" aria-label="Close receipt">&times;</button>
+        </div>
+        <div class="kc-modal__body" id="receiptBody">Loading…</div>
+    </div>
+</div>
+
 <div class="notification-modal notifications-modal" id="notificationsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle">
     <div class="notification-modal-content notifications-content" role="document">
         <div class="notification-modal-header notifications-header">

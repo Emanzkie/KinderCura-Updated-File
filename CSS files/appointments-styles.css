@@ -653,6 +653,70 @@ body {
     color: var(--danger);
 }
 
+/* Per-appointment payment summary + receipt link (parent Appointments page) */
+.appointment-payment-summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-top: 0.7rem;
+    padding-top: 0.7rem;
+    border-top: 1px dashed var(--border);
+}
+
+.payment-badge {
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: white;
+    white-space: nowrap;
+}
+
+.payment-badge.payment-paid { background: var(--success); }
+.payment-badge.payment-down,
+.payment-badge.payment-partial { background: var(--accent); color: var(--text-dark); }
+.payment-badge.payment-cancelled { background: var(--danger); }
+.payment-badge.payment-unpaid { background: var(--text-light); }
+
+.payment-link-btn {
+    border: 1px solid var(--primary);
+    background: transparent;
+    color: var(--primary-dark);
+    border-radius: 20px;
+    padding: 0.28rem 0.85rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.payment-link-btn:hover { background: var(--bg-primary); }
+
+/* Receipt modal body content — shared markup shape with the admin receipt view. */
+.receipt-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.8rem;
+    background: var(--bg-primary);
+    border-radius: 10px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+.receipt-summary > div { display: flex; flex-direction: column; gap: 0.2rem; }
+.receipt-summary span { font-size: 0.78rem; color: var(--text-light); }
+.receipt-summary strong { font-size: 1.05rem; color: var(--text-dark); }
+
+.receipt-meta p { margin: 0 0 0.4rem; font-size: 0.9rem; }
+
+.receipt-payments { margin-top: 0.8rem; }
+.receipt-payment-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.7rem 0;
+    border-bottom: 1px solid var(--border);
+}
+.receipt-payment-row:last-child { border-bottom: none; }
+
 .mini {
     font-size: 0.85rem;
     color: var(--text-light);

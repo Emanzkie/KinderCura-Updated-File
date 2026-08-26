@@ -34,6 +34,9 @@ router.post('/webhook/paymongo', paymentController.handlePaymongoWebhook);
 router.post('/appointments/:appointmentId/checkout', authMiddleware, paymentController.startOnlineCheckout);
 router.get('/ref/:paymentRef/status', authMiddleware, paymentController.getPaymentStatusByRef);
 router.post('/ref/:paymentRef/reconcile', authMiddleware, paymentController.reconcileCheckout);
+// Shared receipt view — parent (own), clinic staff (own clinic), or admin.
+// Accepts either the payment reference (KC-PAY-...) or the receipt number (KC-RCPT-...).
+router.get('/ref/:paymentRef/receipt', authMiddleware, paymentController.getPaymentReceipt);
 
 // Parent — Pay at Clinic
 router.post('/appointments/:appointmentId/pay-at-clinic', authMiddleware, paymentController.startPayAtClinic);

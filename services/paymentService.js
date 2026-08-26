@@ -236,6 +236,9 @@ async function createInitialPayment({ appointment, plan, actor, session = null }
   const payment = await Payment.create([{
     appointmentId: appointment._id,
     appointmentNumericId: appointment.id,
+    parentId: appointment.parentId || null,
+    childId: appointment.childId || null,
+    pediatricianId: appointment.pediatricianId || null,
     amount: plan.amountPaid,
     totalAmount: plan.paymentFields.totalAmount,
     paymentType: plan.paymentType,
@@ -339,6 +342,9 @@ async function recordManualPayment({
   const payment = await Payment.create([{
     appointmentId: appointment._id,
     appointmentNumericId: appointment.id,
+    parentId: appointment.parentId || null,
+    childId: appointment.childId || null,
+    pediatricianId: appointment.pediatricianId || null,
     amount,
     totalAmount: total,
     paymentType: type,

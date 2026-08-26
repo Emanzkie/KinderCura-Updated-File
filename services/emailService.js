@@ -409,7 +409,7 @@ async function sendPaymentReceiptEmail(context = {}) {
   const body = `
     <p style="margin-bottom:16px">Hi ${escapeHtml(parentName || 'there')},</p>
     <p style="margin-bottom:18px">
-      We have received your payment. This email is your official receipt from
+      We have received your payment. This email is your payment receipt from
       ${brandLine(escapeHtml(clinic.clinicName || 'KinderCura'), '#6B8E6F')}.
     </p>
 

@@ -311,6 +311,9 @@ async function confirmWalkIn(req, res) {
     await Payment.create([{
       appointmentId: appointment._id,
       appointmentNumericId: appointment.id,
+      parentId: appointment.parentId || null,
+      childId: appointment.childId || null,
+      pediatricianId: appointment.pediatricianId || null,
       amount: total,
       totalAmount: total,
       paymentType: 'full_payment',
@@ -1143,6 +1146,20 @@ async function getAdminPaymentMonitor(req, res) {
       if (p.paymentMethod === 'paymongo') totals.online += 1;
     }
 
+    // Batch-fetch display names rather than hydrating per row, same pattern
+    // getClinicToday already uses below for its appointment list.
+    const [parents, children, pediatricians] = await Promise.all([
+      User.find({ _id: { $in: payments.map((p) => p.parentId).filter(Boolean) } })
+        .select('firstName lastName').lean(),
+      Child.find({ _id: { $in: payments.map((p) => p.childId).filter(Boolean) } })
+        .select('firstName lastName').lean(),
+      User.find({ _id: { $in: payments.map((p) => p.pediatricianId).filter(Boolean) } })
+        .select('firstName lastName').lean(),
+    ]);
+    const parentMap = new Map(parents.map((u) => [String(u._id), fullName(u)]));
+    const childMap = new Map(children.map((c) => [String(c._id), fullName(c)]));
+    const pediatricianMap = new Map(pediatricians.map((u) => [String(u._id), fullName(u)]));
+
     res.json({
       success: true,
       summary: { ...totals, paidAmount: Math.round(paidAmount * 100) / 100, count: payments.length },
@@ -1151,6 +1168,9 @@ async function getAdminPaymentMonitor(req, res) {
         paymentRef: p.paymentRef || p.referenceNumber,
         receiptNumber: p.receiptNumber,
         appointmentId: p.appointmentNumericId,
+        parentName: parentMap.get(String(p.parentId)) || null,
+        childName: childMap.get(String(p.childId)) || null,
+        pediatricianName: pediatricianMap.get(String(p.pediatricianId)) || null,
         amount: p.amount,
         totalAmount: p.totalAmount,
         currency: p.currency || 'PHP',
@@ -1158,12 +1178,52 @@ async function getAdminPaymentMonitor(req, res) {
         status: p.status,
         paidAt: p.paidAt,
         createdAt: p.createdAt,
-        paymongoPaymentId: p.paymongoPaymentId,
+        // The webhook resource for `checkout_session.payment.paid` is the
+        // checkout session itself (`cs_...`), not a `pay_...` payment
+        // sub-resource, so paymongoPaymentId is often left null even for a
+        // genuinely-settled PayMongo payment. Fall back to whichever PayMongo
+        // identifier the row actually has so the admin view isn't blank.
+        paymongoPaymentId: p.paymongoPaymentId || p.paymongoPaymentIntentId || p.paymongoCheckoutSessionId || null,
         receiptSentAt: p.receiptSentAt,
       })),
     });
   } catch (err) {
     console.error('getAdminPaymentMonitor error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// GET /api/payments/ref/:paymentRef/receipt
+// One receipt view, shared by the parent's own appointment history and the
+// admin payment monitor. Always built from the stored Payment/Appointment
+// snapshot (receiptService.buildReceiptContext) — never recomputed from the
+// pediatrician's current consultation rate, so an old receipt still shows
+// its original historical amount after later rate changes.
+async function getPaymentReceipt(req, res) {
+  try {
+    // Walk-in / manual payments never got a KC-PAY paymentRef — they only ever
+    // had `referenceNumber` (e.g. KC-CASH-...), which the admin monitor already
+    // surfaces as its fallback "Reference" value, so it must be matchable too.
+    const ref = String(req.params.paymentRef || '').trim();
+    const payment = await Payment.findOne({
+      $or: [{ paymentRef: ref }, { receiptNumber: ref }, { referenceNumber: ref }],
+    });
+    if (!payment) return res.status(404).json({ error: 'Payment reference not found.' });
+
+    if (req.user.role !== 'admin') {
+      const appointment = payment.appointmentId
+        ? await Appointment.findById(payment.appointmentId).lean()
+        : null;
+      const allowed = appointment
+        ? await canAccessAppointment(req, appointment)
+        : String(payment.parentId || '') === String(req.user.userId);
+      if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+    }
+
+    const receipt = await receiptService.buildReceiptContext(payment);
+    res.json({ success: true, receipt });
+  } catch (err) {
+    console.error('getPaymentReceipt error:', err.message);
     res.status(500).json({ error: err.message });
   }
 }
@@ -1214,6 +1274,7 @@ module.exports = {
   confirmClinicPayment,
   getClinicToday,
   getAdminPaymentMonitor,
+  getPaymentReceipt,
   getClinicConfig,
   updateClinicConfig,
   getAppointmentPayments,

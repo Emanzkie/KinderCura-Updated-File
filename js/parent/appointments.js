@@ -736,6 +736,7 @@ function renderActive(list) {
             </div>
             ${a.status === 'pending' ? '<p style="font-size:0.82rem;color:var(--status-caution-fg);margin:0;">⏳ Your request is being reviewed by the clinic staff.</p>' : ''}
             ${a.status === 'approved' ? `<p style="font-size:0.82rem;color:var(--status-positive-fg);margin:0;">✅ Confirmed by clinic staff on behalf of Dr. ${escapeHtml(a.pediatricianName || 'Pediatrician')}</p>` : ''}
+            ${renderPaymentSummary(a)}
             ${['approved', 'completed'].includes(a.status) ? `<button onclick="window.location.href='/parent/chat.html?appointmentId=${a.id}'" style="margin-top:.7rem;background:var(--primary);color:white;border:none;padding:.45rem 1.1rem;border-radius:20px;font-size:.8rem;cursor:pointer;"><img src="/icons/chat.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Chat with Dr. ${escapeHtml(a.pediatricianName || 'Pediatrician')}</button>` : ''}
         </div>`).join('');
 }
@@ -759,6 +760,7 @@ function renderPast(list) {
                 </div>
                 <span class="badge ${a.status}">${a.status.charAt(0).toUpperCase() + a.status.slice(1)}</span>
             </div>
+            ${renderPaymentSummary(a)}
         </div>`).join('');
 }
 

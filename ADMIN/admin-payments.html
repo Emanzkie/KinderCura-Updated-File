@@ -101,23 +101,38 @@
             </select>
         </div>
         <div style="overflow-x:auto;">
-            <table style="width:100%;border-collapse:collapse;min-width:820px;">
+            <table style="width:100%;border-collapse:collapse;min-width:1180px;">
                 <thead>
                     <tr style="text-align:left;border-bottom:2px solid var(--border,#DDD9CC);">
                         <th style="padding:0.6rem 0.5rem;">Reference</th>
                         <th style="padding:0.6rem 0.5rem;">Receipt</th>
                         <th style="padding:0.6rem 0.5rem;">Appt</th>
+                        <th style="padding:0.6rem 0.5rem;">Parent</th>
+                        <th style="padding:0.6rem 0.5rem;">Child</th>
+                        <th style="padding:0.6rem 0.5rem;">Pediatrician</th>
                         <th style="padding:0.6rem 0.5rem;">Method</th>
+                        <th style="padding:0.6rem 0.5rem;">PayMongo Ref</th>
                         <th style="padding:0.6rem 0.5rem;">Status</th>
                         <th style="padding:0.6rem 0.5rem;text-align:right;">Amount</th>
                         <th style="padding:0.6rem 0.5rem;">Payment Date</th>
+                        <th style="padding:0.6rem 0.5rem;"></th>
                     </tr>
                 </thead>
                 <tbody id="monBody">
-                    <tr><td colspan="7" style="padding:1rem 0.5rem;color:var(--text-light);">Loading…</td></tr>
+                    <tr><td colspan="12" style="padding:1rem 0.5rem;color:var(--text-light);">Loading…</td></tr>
                 </tbody>
             </table>
         </div>
+    </div>
+</div>
+
+<div class="kc-modal-backdrop" id="receiptModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="receiptModalTitle">
+    <div class="kc-modal" role="document">
+        <div class="kc-modal__header">
+            <h3 id="receiptModalTitle">Payment Receipt</h3>
+            <button type="button" class="kc-modal__close" onclick="closeReceiptModal()" aria-label="Close receipt">&times;</button>
+        </div>
+        <div class="kc-modal__body" id="receiptBody">Loading…</div>
     </div>
 </div>
 
@@ -210,14 +225,57 @@ async function loadPaymentMonitor() {
                 <td style="padding:0.6rem 0.5rem;font-family:monospace;font-size:0.86rem;">${escapeHtml(p.paymentRef || '—')}</td>
                 <td style="padding:0.6rem 0.5rem;font-family:monospace;font-size:0.86rem;">${escapeHtml(p.receiptNumber || '—')}</td>
                 <td style="padding:0.6rem 0.5rem;">${p.appointmentId != null ? `#${escapeHtml(String(p.appointmentId))}` : '—'}</td>
+                <td style="padding:0.6rem 0.5rem;">${escapeHtml(p.parentName || '—')}</td>
+                <td style="padding:0.6rem 0.5rem;">${escapeHtml(p.childName || '—')}</td>
+                <td style="padding:0.6rem 0.5rem;">${p.pediatricianName ? 'Dr. ' + escapeHtml(p.pediatricianName) : '—'}</td>
                 <td style="padding:0.6rem 0.5rem;">${escapeHtml(monMethodLabel(p.paymentMethod))}</td>
+                <td style="padding:0.6rem 0.5rem;font-family:monospace;font-size:0.8rem;">${escapeHtml(p.paymongoPaymentId || '—')}</td>
                 <td style="padding:0.6rem 0.5rem;font-weight:700;color:${monStatusColor(p.status)};">${escapeHtml(p.status)}</td>
                 <td style="padding:0.6rem 0.5rem;text-align:right;font-weight:600;">${monMoney(p.status === 'Paid' ? p.amount : p.totalAmount)}</td>
                 <td style="padding:0.6rem 0.5rem;white-space:nowrap;">${p.paidAt ? escapeHtml(new Date(p.paidAt).toLocaleString('en-PH')) : '—'}</td>
+                <td style="padding:0.6rem 0.5rem;white-space:nowrap;">${(p.paymentRef || p.receiptNumber) ? `<button class="btn btn-secondary" style="padding:0.3rem 0.7rem;font-size:0.78rem;" onclick="viewReceipt('${escapeHtml(p.paymentRef || p.receiptNumber)}')">Receipt</button>` : ''}</td>
             </tr>`).join('');
     } catch (err) {
-        body.innerHTML = `<tr><td colspan="7" style="padding:1rem 0.5rem;color:#8C3A2B;">${escapeHtml(err.message || 'Could not load payments.')}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="12" style="padding:1rem 0.5rem;color:#8C3A2B;">${escapeHtml(err.message || 'Could not load payments.')}</td></tr>`;
     }
+}
+
+// ── Receipt viewer — always the stored transaction, never recalculated from
+// the pediatrician's current rate. Shared shape with the parent's receipt view.
+async function viewReceipt(paymentRef) {
+    const modal = document.getElementById('receiptModal');
+    const body = document.getElementById('receiptBody');
+    if (!modal || !body) return;
+    modal.style.display = 'flex';
+    body.innerHTML = '<p class="mini">Loading receipt…</p>';
+
+    try {
+        const data = await apiFetch(`/payments/ref/${encodeURIComponent(paymentRef)}/receipt`);
+        body.innerHTML = renderReceipt(data.receipt || {});
+    } catch (err) {
+        body.innerHTML = `<p style="color:#8C3A2B;">${escapeHtml(err.message || 'Could not load receipt.')}</p>`;
+    }
+}
+
+function renderReceipt(r) {
+    return `
+        <div style="background:var(--bg-primary,#FAFAF6);border-radius:10px;padding:1rem;margin-bottom:1rem;">
+            <div style="display:flex;justify-content:space-between;"><span class="mini">Receipt Number</span><strong>${escapeHtml(r.receiptNumber || '—')}</strong></div>
+            <div style="display:flex;justify-content:space-between;"><span class="mini">Payment Reference</span><strong>${escapeHtml(r.paymentRef || '—')}</strong></div>
+            <div style="display:flex;justify-content:space-between;"><span class="mini">Amount Paid</span><strong>${monMoney(r.amount)}</strong></div>
+        </div>
+        <p><strong>Parent:</strong> ${escapeHtml(r.parentName || '—')}</p>
+        <p><strong>Child:</strong> ${escapeHtml(r.childName || '—')}</p>
+        <p><strong>Pediatrician:</strong> ${escapeHtml(r.pediatricianName || '—')}</p>
+        <p><strong>Appointment:</strong> ${r.appointmentId != null ? `#${escapeHtml(String(r.appointmentId))}` : '—'} — ${escapeHtml(r.service || 'Consultation')}</p>
+        <p><strong>Payment Method:</strong> ${escapeHtml(monMethodLabel(r.paymentMethod))}</p>
+        <p><strong>Payment Status:</strong> <span style="font-weight:700;color:${monStatusColor(r.status)};">${escapeHtml(r.status || '—')}</span></p>
+        <p><strong>Paid At:</strong> ${r.paidAt ? escapeHtml(new Date(r.paidAt).toLocaleString('en-PH')) : '—'}</p>`;
+}
+
+function closeReceiptModal() {
+    const modal = document.getElementById('receiptModal');
+    if (modal) modal.style.display = 'none';
 }
 
 document.addEventListener('DOMContentLoaded', () => {
