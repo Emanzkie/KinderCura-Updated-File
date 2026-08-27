@@ -11,6 +11,7 @@ const { authMiddleware, secretaryOrPediatrician } = require('../middleware/auth'
 const { hasPermission } = require('../middleware/guardianAccess');
 const Appointment = require('../models/Appointment');
 const Notification = require('../models/Notification');
+const Payment = require('../models/Payment');
 const User = require('../models/User');
 const Child = require('../models/Child');
 const Assessment = require('../models/Assessment');
@@ -1076,12 +1077,60 @@ async function evaluateAvailability({ pediatrician, appointmentDate, appointment
   };
 }
 
+// Pick the payment row that best represents this appointment's money state:
+// a settled ('Paid') row wins; otherwise the most recent attempt. Read-only —
+// the appointment's own amountPaid/paymentStatus snapshot stays the source of
+// truth for amounts (see receiptService.syncAppointmentAfterPayment).
+async function findRelevantPayment(appointmentDoc) {
+  try {
+    const rows = await Payment.find({ appointmentId: appointmentDoc._id })
+      .sort({ createdAt: -1 })
+      .lean();
+    if (!rows.length) return null;
+    return rows.find((p) => p.status === 'Paid') || rows[0];
+  } catch {
+    return null;
+  }
+}
+
+// Short brand label for a PayMongo e-wallet source type. Kept local (rather
+// than importing receiptService) to avoid a load-time require cycle through
+// emailService. Mirrors receiptService.ewalletBrandLabel.
+function ewalletBrandLabel(sourceType, fallback = '—') {
+  const key = String(sourceType || '').trim().toLowerCase();
+  return { gcash: 'GCash', paymaya: 'Maya', maya: 'Maya', grab_pay: 'GrabPay' }[key] || fallback;
+}
+
+// Payment status shown on the pediatrician appointment card. The appointment
+// snapshot only knows Unpaid/Pending/Paid/Cancelled; Failed/Expired/Refunded
+// live on the payment row, so fold those in without ever inventing "Paid".
+function derivePaymentDisplayStatus(appointmentDoc, payment) {
+  const apptStatus = appointmentDoc.paymentStatus || 'Unpaid';
+  if (apptStatus === 'Paid') return 'Paid';
+  const rec = payment?.status;
+  if (['Failed', 'Expired', 'Refunded'].includes(rec)) return rec;
+  if (apptStatus === 'Cancelled' || rec === 'Cancelled') return 'Cancelled';
+  return apptStatus;
+}
+
 async function hydrateAppointment(appointmentDoc) {
-  const [child, parent, pediatrician] = await Promise.all([
+  const [child, parent, pediatrician, payment] = await Promise.all([
     Child.findById(appointmentDoc.childId).lean(),
     User.findById(appointmentDoc.parentId).lean(),
     appointmentDoc.pediatricianId ? User.findById(appointmentDoc.pediatricianId).lean() : null,
+    findRelevantPayment(appointmentDoc),
   ]);
+
+  const paymentDisplayStatus = derivePaymentDisplayStatus(appointmentDoc, payment);
+  const isPaid = paymentDisplayStatus === 'Paid';
+  // 'GCash' / 'Maya' when PayMongo told us which wallet; a neutral fallback
+  // only once the money is actually in; '—' while still unpaid.
+  const paymentMethodLabel = isPaid
+    ? ewalletBrandLabel(
+      payment?.paymongoSourceType,
+      payment?.paymentMethod === 'pay_at_clinic' ? 'Pay at Clinic' : 'GCash / Maya'
+    )
+    : '—';
 
   return {
     id: appointmentDoc.id,
@@ -1099,6 +1148,16 @@ async function hydrateAppointment(appointmentDoc) {
     totalAmount: appointmentDoc.totalAmount || 0,
     amountPaid: appointmentDoc.amountPaid || 0,
     balanceDue: appointmentDoc.balanceDue || 0,
+    // ── Payment detail for the pediatrician appointment card ────────────────
+    // Additive, read-only fields. Amounts come from the appointment snapshot;
+    // method / reference / receipt / paidAt come from the payment row.
+    paymentDisplayStatus,
+    paymentMethodLabel,
+    paymentRecordStatus: payment?.status || null,
+    paymentRef: payment?.paymentRef || payment?.referenceNumber || null,
+    receiptNumber: payment?.receiptNumber || null,
+    paidAt: payment?.paidAt || null,
+    paymongoSourceType: payment?.paymongoSourceType || null,
     nextInstallmentDate: appointmentDoc.nextInstallmentDate || null,
     requiredDownPayment: paymentService.calculateRequiredDownPayment(appointmentDoc.totalAmount || 0),
     createdAt: appointmentDoc.createdAt,

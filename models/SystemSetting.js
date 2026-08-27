@@ -33,7 +33,10 @@ const clinicSettingsSchema = new mongoose.Schema(
     onlinePaymentEnabled: { type: Boolean, default: true },
     payAtClinicEnabled: { type: Boolean, default: true },
     // Which PayMongo methods the hosted checkout should offer.
-    paymongoMethods: { type: [String], default: ['gcash', 'paymaya', 'card'] },
+    // E-wallet only — card is intentionally excluded (adviser requirement,
+    // Aug 2026). paymongoService.sanitizeOnlineMethods() also drops any
+    // non-e-wallet value, so a stale stored doc cannot re-add 'card'.
+    paymongoMethods: { type: [String], default: ['gcash', 'paymaya'] },
     active: { type: Boolean, default: true },
   },
   { _id: false }

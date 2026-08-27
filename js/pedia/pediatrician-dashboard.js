@@ -209,6 +209,17 @@ if (!getToken() || !_u) {
         function notificationDestination(n){
             const title = String(n?.title || '').toLowerCase();
             const msg = String(n?.message || '').toLowerCase();
+            const type = String(n?.type || '').toLowerCase();
+
+            // Successful payment: use stored relatedPage/relatedId to deep-link
+            // straight to the paid appointment's card.
+            const isPaymentNotif = type === 'payment'
+                || (title.includes('payment') && (title.includes('received') || msg.includes('has been paid')));
+            if (isPaymentNotif) {
+                const base = String(n?.relatedPage || '').trim() || '/pedia/pediatrician-appointments.html';
+                const relatedId = String(n?.relatedId ?? '').trim();
+                return relatedId ? `${base}?appointmentId=${encodeURIComponent(relatedId)}` : base;
+            }
 
             if (title.includes('appointment') || msg.includes('appointment')) return '/pedia/pediatrician-appointments.html';
             if (title.includes('question') || msg.includes('question')) return '/pedia/pedia-questions.html';

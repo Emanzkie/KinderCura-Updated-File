@@ -60,7 +60,7 @@ async function resolveClinicPediatricianId(req) {
   throw new Error('Clinic staff only.');
 }
 
-async function pushNotification(userId, title, message, type = 'payment') {
+async function pushNotification(userId, title, message, type = 'payment', extra = {}) {
   if (!userId) return;
   try {
     const NotifModel = (typeof Notification?.create === 'function')
@@ -73,6 +73,10 @@ async function pushNotification(userId, title, message, type = 'payment') {
       type,
       isRead: false,
     };
+    // relatedPage / relatedId let the bell UI jump straight to the right page
+    // (and appointment) without parsing the message text.
+    if (extra && extra.relatedPage) payload.relatedPage = String(extra.relatedPage);
+    if (extra && extra.relatedId != null) payload.relatedId = String(extra.relatedId);
     if (NotifModel) {
       await NotifModel.create(payload);
     } else {
@@ -691,6 +695,7 @@ async function reconcileCheckout(req, res) {
         paymentId: outcome.paymentId,
         paymentIntentId: outcome.paymentIntentId,
         checkoutSessionId: payment.paymongoCheckoutSessionId,
+        sourceType: outcome.sourceType,
       },
       notes: 'Confirmed by server-side reconciliation with PayMongo.',
     });
@@ -710,24 +715,57 @@ async function reconcileCheckout(req, res) {
   }
 }
 
-/** Notify the parent (and clinic) that a payment settled. */
+/**
+ * Notify the pediatrician (primary) and the parent that a payment settled.
+ *
+ * The pediatrician is the primary recipient: this runs from the webhook /
+ * reconciliation path, so it does not depend on the secretary being online.
+ * Called only when `settlePayment` reported a fresh settlement
+ * (`alreadySettled === false`), so a retried webhook or a later reconcile does
+ * not produce a duplicate "Payment Received" notification.
+ */
 async function notifyPaymentSettled(payment) {
   try {
     const appointment = await Appointment.findById(payment.appointmentId).lean();
     if (!appointment) return;
+
+    const amount = `${payment.currency === 'PHP' || !payment.currency ? '₱' : `${payment.currency} `}`
+      + Number(payment.amount).toFixed(2);
+    const methodLabel = receiptService.ewalletBrandLabel(
+      payment.paymongoSourceType,
+      payment.paymentMethod === 'pay_at_clinic' ? 'Pay at Clinic' : 'GCash / Maya'
+    );
+
+    // Parent — unchanged behaviour.
     await pushNotification(
       appointment.parentId,
       'Payment Received — Appointment Confirmed',
-      `We received ${payment.currency || 'PHP'} ${Number(payment.amount).toFixed(2)} for Appointment #${appointment.id}. `
+      `We received ${amount} for Appointment #${appointment.id}. `
         + `Receipt ${payment.receiptNumber} has been emailed to you.`,
-      'payment'
+      'payment',
+      { relatedPage: '/parent/appointments.html', relatedId: String(appointment.id) }
     );
+
+    // Pediatrician — primary recipient and viewer.
     if (appointment.pediatricianId) {
+      let childName = null;
+      try {
+        const child = await Child.findById(appointment.childId).select('firstName lastName').lean();
+        childName = child ? `${child.firstName || ''} ${child.lastName || ''}`.trim() || null : null;
+      } catch { /* name is best-effort */ }
+
+      const parts = [
+        `Appointment #${appointment.id}${childName ? ` for ${childName}` : ''} has been paid.`,
+        `Amount: ${amount} via ${methodLabel}.`,
+      ];
+      if (payment.receiptNumber) parts.push(`Receipt: ${payment.receiptNumber}.`);
+
       await pushNotification(
         appointment.pediatricianId,
         'Payment Received',
-        `Appointment #${appointment.id} has been paid (${payment.receiptNumber}).`,
-        'payment'
+        parts.join(' '),
+        'payment',
+        { relatedPage: '/pedia/pediatrician-appointments.html', relatedId: String(appointment.id) }
       );
     }
   } catch (err) {
@@ -833,6 +871,7 @@ async function handlePaymongoWebhook(req, res) {
           paymentId: String(resource?.id || '').startsWith('pay_') ? resource.id : null,
           paymentIntentId: attrs.payment_intent_id || attrs.payment_intent?.id || null,
           checkoutSessionId: String(resource?.id || '').startsWith('cs_') ? resource.id : null,
+          sourceType: paymongoService.readSourceTypeFromWebhookResource(resource),
         },
         notes: `Confirmed by PayMongo webhook (${eventType}).`,
       });

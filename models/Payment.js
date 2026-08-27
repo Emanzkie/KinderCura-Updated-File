@@ -86,6 +86,14 @@ const paymentSchema = new mongoose.Schema(
     paymongoCheckoutSessionId: { type: String, trim: true, default: null, index: true },
     paymongoPaymentId: { type: String, trim: true, default: null, index: true },
     paymongoPaymentIntentId: { type: String, trim: true, default: null, index: true },
+
+    // Which e-wallet the parent actually used at PayMongo checkout, e.g.
+    // 'gcash' or 'paymaya'. `paymentMethod` stays 'paymongo' for all online
+    // payments (admin monitoring counts on that); this optional field just
+    // records the brand so receipts, the pediatrician notification, and the
+    // appointment card can show "GCash" / "Maya" instead of a generic label.
+    // Null on older rows and whenever PayMongo's payload does not carry it.
+    paymongoSourceType: { type: String, trim: true, lowercase: true, default: null },
     checkoutUrl: { type: String, trim: true, default: null },
     checkoutExpiresAt: { type: Date, default: null },
 

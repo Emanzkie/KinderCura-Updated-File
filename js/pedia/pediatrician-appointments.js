@@ -189,6 +189,50 @@ function badge(status) {
     return `<span class="badge ${status}">${status.charAt(0).toUpperCase()+status.slice(1)}</span>`;
 }
 
+// ── Payment section (pediatrician appointment card) ───────────────────────────
+function peso(n) {
+    const v = Number(n);
+    return '₱' + (Number.isFinite(v) ? v : 0).toFixed(2);
+}
+
+// Renders "Payment Status / Amount Paid / Payment Method" from the backend
+// data. Never shows "Paid" unless the backend-derived status says so.
+function paymentSection(a) {
+    const status = a.paymentDisplayStatus || a.paymentStatus || 'Unpaid';
+    const isPaid = status === 'Paid';
+    const amountPaid = isPaid
+        ? (a.amountPaid != null ? a.amountPaid : a.totalAmount)
+        : (a.amountPaid || 0);
+    const method = a.paymentMethodLabel || (isPaid ? 'GCash / Maya' : '—');
+
+    const colours = {
+        Paid: '#3D5A40',
+        'Pending Payment': '#8a6d00',
+        Unpaid: '#8a6d00',
+        Failed: '#8C3A2B',
+        Expired: '#8C3A2B',
+        Cancelled: '#8C3A2B',
+        Refunded: '#8C3A2B',
+    };
+    const colour = colours[status] || 'var(--text-dark)';
+
+    const ref = a.receiptNumber || a.paymentRef || null;
+    const rows = [
+        `<div><p class="info-label">Payment Status</p><p class="info-val" style="color:${colour};font-weight:700;">${escapeHtml(status)}</p></div>`,
+        `<div><p class="info-label">Amount Paid</p><p class="info-val">${peso(amountPaid)}${a.totalAmount ? ` <span style="color:var(--text-light);font-weight:400;">of ${peso(a.totalAmount)}</span>` : ''}</p></div>`,
+        `<div><p class="info-label">Payment Method</p><p class="info-val">${escapeHtml(method)}</p></div>`,
+    ];
+    if (isPaid && ref) {
+        rows.push(`<div><p class="info-label">${a.receiptNumber ? 'Receipt No.' : 'Payment Ref'}</p><p class="info-val">${escapeHtml(ref)}</p></div>`);
+    }
+
+    return `
+        <div class="payment-section" style="margin:0.25rem 0 1rem;padding:0.75rem 0.9rem;background:var(--surface-muted,#FAFAF6);border-radius:10px;">
+            <p style="font-weight:700;font-size:0.8rem;color:var(--text-dark);margin:0 0 0.5rem;text-transform:uppercase;letter-spacing:0.03em;">Payment</p>
+            <div class="info-grid">${rows.join('')}</div>
+        </div>`;
+}
+
 // ── Render functions ──────────────────────────────────────────────────────────
 function emptyState(msg, icon='📭') {
     return `<div class="empty"><p style="font-size:2rem;margin-bottom:0.8rem;">${icon}</p><p style="font-weight:600;">${msg}</p></div>`;
@@ -201,7 +245,7 @@ function renderUpcoming(apts) {
         const info = getDisplayInfo(a);
         const isPending  = a.status === 'pending';
         const isApproved = a.status === 'approved';
-        return `<div class="appt-card">
+        return `<div class="appt-card" id="appt-card-${a.id}">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;">
                 <div>
                     <p style="font-weight:700;font-size:1rem;color:var(--text-dark);margin:0 0 0.2rem;">${info.child}</p>
@@ -227,6 +271,7 @@ function renderUpcoming(apts) {
                     <p class="info-val">${a.status.charAt(0).toUpperCase()+a.status.slice(1)}</p>
                 </div>
             </div>
+            ${paymentSection(a)}
             ${a.notes ? `<p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem;"><img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${a.notes}</p>` : ''}
             <div class="action-row">
                 ${isPending  ? `<button class="btn btn-primary btn-sm" onclick="updateStatus('${a.id}','approved','${info.child}')">✅ Approve</button>` : ''}
@@ -245,7 +290,7 @@ function renderCompleted(apts) {
     if (!apts.length) { el.innerHTML = emptyState('No completed appointments','✅'); return; }
     el.innerHTML = apts.map(a => {
         const info = getDisplayInfo(a);
-        return `<div class="appt-card">
+        return `<div class="appt-card" id="appt-card-${a.id}">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;">
                 <div>
                     <p style="font-weight:700;font-size:1rem;color:var(--text-dark);margin:0 0 0.2rem;">${info.child}</p>
@@ -258,6 +303,7 @@ function renderCompleted(apts) {
                 <div><p class="info-label">Time</p><p class="info-val">${fmtTime(a.appointmentTime)}</p></div>
                 <div><p class="info-label">Reason</p><p class="info-val">${a.reason||'General checkup'}</p></div>
             </div>
+            ${paymentSection(a)}
             ${a.notes ? `<p style="color:var(--text-light);font-size:0.85rem;"><img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${a.notes}</p>` : ''}
         </div>`;
     }).join('');
@@ -268,7 +314,7 @@ function renderCancelled(apts) {
     if (!apts.length) { el.innerHTML = emptyState('No cancelled or rejected appointments','📭'); return; }
     el.innerHTML = apts.map(a => {
         const info = getDisplayInfo(a);
-        return `<div class="appt-card">
+        return `<div class="appt-card" id="appt-card-${a.id}">
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <div>
                     <p style="font-weight:700;font-size:1rem;color:var(--text-dark);margin:0 0 0.2rem;">${info.child}</p>
@@ -278,6 +324,7 @@ function renderCancelled(apts) {
                 </div>
                 ${badge(a.status)}
             </div>
+            ${paymentSection(a)}
         </div>`;
     }).join('');
 }
@@ -290,10 +337,36 @@ async function loadAppointments() {
         renderUpcoming(all.filter(a => ['pending','approved'].includes(a.status)));
         renderCompleted(all.filter(a => a.status === 'completed'));
         renderCancelled(all.filter(a => ['cancelled','rejected'].includes(a.status)));
+        focusAppointmentFromQuery();
     } catch(e) {
         document.getElementById('upcoming-pane').innerHTML = emptyState('Could not load appointments','<img src="/icons/smart_notif.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">️');
         console.error(e);
     }
+}
+
+// When opened from a "Payment Received" notification the URL carries
+// ?appointmentId=<id>. Switch to whichever tab holds that card, scroll to it,
+// and flash a highlight. No-op (page opens normally) when the param is absent
+// or the card is not on this pediatrician's list.
+function focusAppointmentFromQuery() {
+    let id = null;
+    try { id = new URLSearchParams(window.location.search).get('appointmentId'); } catch { id = null; }
+    if (!id) return;
+
+    const card = document.getElementById(`appt-card-${id}`);
+    if (!card) return;
+
+    const pane = card.closest('[id$="-pane"]');
+    if (pane && pane.id) {
+        const tab = pane.id.replace('-pane', '');
+        if (['upcoming', 'completed', 'cancelled'].includes(tab)) switchTab(tab);
+    }
+
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const prev = card.style.boxShadow;
+    card.style.transition = 'box-shadow 0.3s ease';
+    card.style.boxShadow = '0 0 0 3px var(--primary, #6B8E6F)';
+    setTimeout(() => { card.style.boxShadow = prev; }, 2600);
 }
 
 // ── Status updates ────────────────────────────────────────────────────────────
@@ -411,6 +484,18 @@ function notificationDestination(n) {
     const title = String(n?.title || '').toLowerCase();
     const type  = String(n?.type  || '').toLowerCase();
     const msg   = String(n?.message || '').toLowerCase();
+    const relatedPage = String(n?.relatedPage || '').trim();
+    const relatedId   = String(n?.relatedId ?? '').trim();
+
+    // Successful payment notification: prefer the stored relatedPage/relatedId
+    // over keyword matching, and deep-link to the specific appointment card.
+    const isPaymentNotif = type === 'payment'
+        || (title.includes('payment') && (title.includes('received') || msg.includes('has been paid')));
+    if (isPaymentNotif) {
+        const base = relatedPage
+            || (role === 'pediatrician' ? '/pedia/pediatrician-appointments.html' : '/parent/appointments.html');
+        return relatedId ? `${base}?appointmentId=${encodeURIComponent(relatedId)}` : base;
+    }
 
     if (role === 'pediatrician') {
         if (type === 'chat' || title.includes('message') || msg.includes('message from')) return '/pedia/pedia-chat.html';

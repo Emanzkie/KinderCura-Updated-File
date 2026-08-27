@@ -91,6 +91,9 @@ function formatNotification(n) {
     message: n.message || '',
     type: n.type || 'system',
     relatedPage: n.relatedPage || null,
+    // Context id (appointmentId, questionSetId, …). Exposed so the bell UI can
+    // deep-link without parsing the message text.
+    relatedId: n.relatedId != null ? String(n.relatedId) : null,
     isRead: Boolean(n.isRead),
     createdAt: n.createdAt || n.created_at || new Date(),
   };

@@ -71,6 +71,28 @@ function toCentavos(pesos) {
   return Math.round(Number(pesos) * 100);
 }
 
+// KinderCura online payment is e-wallet only, strictly GCash + Maya (adviser
+// requirement, Aug 2026): card / debit / Visa / Mastercard / GrabPay / bank
+// transfer must never be offered on the hosted checkout. This allowlist is the
+// single enforcement point — whatever the caller or the stored clinic config
+// asks for, only these PayMongo `payment_method_types` can reach the Checkout
+// Session.
+const ALLOWED_ONLINE_METHODS = ['gcash', 'paymaya'];
+const DEFAULT_ONLINE_METHODS = ['gcash', 'paymaya'];
+
+/**
+ * Reduce any requested method list to the supported e-wallet allowlist.
+ * Anything not on the list (card, grab_pay, bank transfer, …) is dropped; an
+ * empty result falls back to GCash + Maya so checkout never goes out with no
+ * methods.
+ */
+function sanitizeOnlineMethods(methods) {
+  const list = (Array.isArray(methods) ? methods : [])
+    .map((m) => String(m).trim().toLowerCase())
+    .filter((m) => ALLOWED_ONLINE_METHODS.includes(m));
+  return list.length ? [...new Set(list)] : [...DEFAULT_ONLINE_METHODS];
+}
+
 /**
  * Create a hosted Checkout Session.
  *
@@ -88,7 +110,7 @@ async function createCheckoutSession({
   cancelUrl,
   customerEmail = null,
   customerName = null,
-  paymentMethods = ['gcash', 'paymaya', 'card'],
+  paymentMethods = [...DEFAULT_ONLINE_METHODS],
   metadata = {},
   sendEmailReceipt = false,
 }) {
@@ -105,7 +127,7 @@ async function createCheckoutSession({
       currency,
       description: lineDescription || undefined,
     }],
-    payment_method_types: paymentMethods,
+    payment_method_types: sanitizeOnlineMethods(paymentMethods),
     reference_number: referenceNumber,
     description: lineDescription || lineName,
     // KinderCura issues its own receipt, so PayMongo's is off by default to
@@ -168,7 +190,30 @@ function readSessionOutcome(sessionJson) {
     paymentIntentId: attrs.payment_intent?.id || attrs.payment_intent_id || null,
     referenceNumber: attrs.reference_number || attrs.metadata?.kc_payment_ref || null,
     amount: paid?.attributes?.amount ?? null,
+    // The e-wallet the payer used, e.g. 'gcash' / 'paymaya'. PayMongo puts it
+    // on the paid payment's source; older/checkout-only payloads may omit it.
+    sourceType: paid?.attributes?.source?.type
+      || paid?.attributes?.payment_method_used
+      || null,
   };
+}
+
+/**
+ * Best-effort extraction of the e-wallet brand ('gcash' / 'paymaya') from a
+ * webhook resource, whichever shape PayMongo delivered:
+ *  - `payment.paid`            -> resource.attributes.source.type
+ *  - `checkout_session.*.paid` -> resource.attributes.payments[0].attributes.source.type
+ * Returns null when the payload does not carry it.
+ */
+function readSourceTypeFromWebhookResource(resource) {
+  const attrs = resource?.attributes || {};
+  const fromPayment = attrs.source?.type || attrs.payment_method_used || null;
+  if (fromPayment) return String(fromPayment).toLowerCase();
+
+  const payments = Array.isArray(attrs.payments) ? attrs.payments : [];
+  const paid = payments.find((p) => (p?.attributes?.status || p?.status) === 'paid') || payments[0] || null;
+  const fromSession = paid?.attributes?.source?.type || paid?.attributes?.payment_method_used || null;
+  return fromSession ? String(fromSession).toLowerCase() : null;
 }
 
 /**
@@ -221,8 +266,11 @@ module.exports = {
   isConfigured,
   isTestMode,
   createCheckoutSession,
+  sanitizeOnlineMethods,
+  ALLOWED_ONLINE_METHODS,
   retrieveCheckoutSession,
   readSessionOutcome,
+  readSourceTypeFromWebhookResource,
   verifyWebhookSignature,
   toCentavos,
 };

@@ -79,6 +79,22 @@ function paymentMethodLabel(method) {
 }
 
 /**
+ * Short brand label for a PayMongo e-wallet source type ('gcash' / 'paymaya').
+ * Returns 'GCash' / 'Maya' when known, or `fallback` (default '—') otherwise.
+ * Online checkout is e-wallet only, so 'GCash / Maya' is a safe fallback when
+ * the money is in but PayMongo did not tell us which wallet was used.
+ */
+function ewalletBrandLabel(sourceType, fallback = '—') {
+  const key = String(sourceType || '').trim().toLowerCase();
+  return {
+    gcash: 'GCash',
+    paymaya: 'Maya',
+    maya: 'Maya',
+    grab_pay: 'GrabPay',
+  }[key] || fallback;
+}
+
+/**
  * Mark a payment as settled, allocate its receipt number, sync the appointment,
  * and email the receipt — at most once, no matter how many times this runs.
  *
@@ -131,6 +147,10 @@ async function settlePayment({
   if (paymongo?.paymentId) set.paymongoPaymentId = paymongo.paymentId;
   if (paymongo?.paymentIntentId) set.paymongoPaymentIntentId = paymongo.paymentIntentId;
   if (paymongo?.checkoutSessionId) set.paymongoCheckoutSessionId = paymongo.checkoutSessionId;
+  // Brand of the e-wallet used ('gcash' / 'paymaya'), when PayMongo told us.
+  // paymentMethod itself stays whatever `method` is ('paymongo'), so admin
+  // monitoring that keys on 'paymongo' is unaffected.
+  if (paymongo?.sourceType) set.paymongoSourceType = String(paymongo.sourceType).toLowerCase();
 
   // The `status: { $ne: 'Paid' }` guard is the concurrency control: if two
   // webhook deliveries race, exactly one update matches and the other sees null.
@@ -221,6 +241,7 @@ async function markPaymentOutcome(paymentId, status, { reason = null, eventId = 
 module.exports = {
   buildReceiptContext,
   paymentMethodLabel,
+  ewalletBrandLabel,
   settlePayment,
   syncAppointmentAfterPayment,
   markPaymentOutcome,
