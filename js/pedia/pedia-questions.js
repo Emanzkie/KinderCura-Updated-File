@@ -767,11 +767,23 @@
             document.getElementById('modalTitle').textContent = 'Edit Question';
             document.getElementById('modalSub').textContent = 'Update your assessment question';
             document.getElementById('qText').value = q.questionText || '';
-            document.getElementById('qType').value = q.questionType || 'yes_no';
+            // Short Answer is retired. A legacy short_answer question loads with
+            // the type reset to Yes / No so it cannot be saved as short_answer
+            // again; the pediatrician must pick a supported type.
+            const supportedTypes = ['yes_no', 'multiple_choice'];
+            const legacyShortAnswer = !supportedTypes.includes(q.questionType);
+            document.getElementById('qType').value = legacyShortAnswer ? 'yes_no' : q.questionType;
             document.getElementById('qDomain').value = q.domain || 'Communication';
             document.getElementById('qAgeMin').value = q.ageMin ?? 0;
             document.getElementById('qAgeMax').value = q.ageMax ?? 18;
-            document.getElementById('modalError').style.display = 'none';
+            const editErr = document.getElementById('modalError');
+            if (legacyShortAnswer) {
+                editErr.textContent = 'This question was a Short Answer question, which is no longer supported. '
+                    + 'Please choose Yes / No or Multiple Choice before saving.';
+                editErr.style.display = 'block';
+            } else {
+                editErr.style.display = 'none';
+            }
             // Hide batch UI when editing
             document.getElementById('multiQuestionHeader').style.display = 'none';
             document.getElementById('addToBatchBtn').style.display = 'none';

@@ -733,7 +733,7 @@ async function notifyPaymentSettled(payment) {
       + Number(payment.amount).toFixed(2);
     const methodLabel = receiptService.ewalletBrandLabel(
       payment.paymongoSourceType,
-      payment.paymentMethod === 'pay_at_clinic' ? 'Pay at Clinic' : 'GCash / Maya'
+      payment.paymentMethod === 'pay_at_clinic' ? 'Pay at Clinic' : 'E-Wallet'
     );
 
     // Parent — unchanged behaviour.

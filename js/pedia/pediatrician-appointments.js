@@ -203,7 +203,7 @@ function paymentSection(a) {
     const amountPaid = isPaid
         ? (a.amountPaid != null ? a.amountPaid : a.totalAmount)
         : (a.amountPaid || 0);
-    const method = a.paymentMethodLabel || (isPaid ? 'GCash / Maya' : '—');
+    const method = a.paymentMethodLabel || (isPaid ? 'E-Wallet' : '—');
 
     const colours = {
         Paid: '#3D5A40',

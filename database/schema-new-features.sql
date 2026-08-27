@@ -59,7 +59,8 @@ CREATE TABLE custom_questions (
     pediatricianId INT NOT NULL FOREIGN KEY REFERENCES users(id) ON DELETE CASCADE,
     questionText   NVARCHAR(500) NOT NULL,
     questionType   NVARCHAR(20)  NOT NULL
-                   CHECK (questionType IN ('yes_no','multiple_choice','short_answer')),
+                   -- 'short_answer' retired: free-text answers don't fit assessment scoring.
+                   CHECK (questionType IN ('yes_no','multiple_choice')),
     options        NVARCHAR(MAX),   -- JSON array of strings for multiple_choice
     domain         NVARCHAR(50),    -- Gross Motor | Fine Motor | Language | Personal-Social | Other
     ageMin         INT DEFAULT 0,   -- minimum child age (years) this applies to

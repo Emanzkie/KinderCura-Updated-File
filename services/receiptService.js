@@ -81,8 +81,9 @@ function paymentMethodLabel(method) {
 /**
  * Short brand label for a PayMongo e-wallet source type ('gcash' / 'paymaya').
  * Returns 'GCash' / 'Maya' when known, or `fallback` (default '—') otherwise.
- * Online checkout is e-wallet only, so 'GCash / Maya' is a safe fallback when
- * the money is in but PayMongo did not tell us which wallet was used.
+ * When the money is in but PayMongo did not tell us which wallet was used
+ * (e.g. legacy records), callers pass 'E-Wallet' — never a "GCash / Maya"
+ * guess, and never inferred from amount / receipt / reference.
  */
 function ewalletBrandLabel(sourceType, fallback = '—') {
   const key = String(sourceType || '').trim().toLowerCase();

@@ -24,6 +24,13 @@ const Notification = require('../models/Notification');
 const { DATA_ORIGIN } = require('../constants/dataOrigin');
 const { ASSESSMENT_DOMAINS, normalizeDomain, isValidNewDomain } = require('../constants/assessmentDomains');
 
+// Custom questions feed assessment scoring, which only understands a yes/no
+// scale (multiple choice is recorded but not scored). Free-text 'short_answer'
+// was retired: it cannot be created or re-saved through the API. Historical
+// short_answer records stay readable — the model enum still lists the value —
+// but every create/update path below rejects it with a clear error.
+const SUPPORTED_QUESTION_TYPES = ['yes_no', 'multiple_choice'];
+
 // --- Safe notification helpers ------------------------------------------------
 // These helpers mirror the safer notification pattern used in appointments/chat.
 // If the Notification model export shape changes, we still keep the system working.
@@ -242,7 +249,7 @@ router.post('/bulk', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Maximum 20 questions per batch.' });
     }
 
-    const VALID_TYPES = ['yes_no', 'multiple_choice', 'short_answer'];
+    const VALID_TYPES = SUPPORTED_QUESTION_TYPES;
     const createdQuestions = [];
     const errors = [];
 
@@ -265,7 +272,12 @@ router.post('/bulk', authMiddleware, async (req, res) => {
       }
 
       if (!VALID_TYPES.includes(q.questionType)) {
-        errors.push({ index, error: `Question ${index}: Invalid type. Must be: ${VALID_TYPES.join(', ')}` });
+        errors.push({
+          index,
+          error: q.questionType === 'short_answer'
+            ? `Question ${index}: Short Answer is no longer supported. Use Yes / No or Multiple Choice.`
+            : `Question ${index}: Invalid type. Must be: ${VALID_TYPES.join(', ')}`,
+        });
         continue;
       }
 
@@ -346,9 +358,13 @@ router.post('/', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Question text and type are required.' });
     }
 
-    const VALID_TYPES = ['yes_no', 'multiple_choice', 'short_answer'];
+    const VALID_TYPES = SUPPORTED_QUESTION_TYPES;
     if (!VALID_TYPES.includes(questionType)) {
-      return res.status(400).json({ error: `Type must be: ${VALID_TYPES.join(', ')}` });
+      return res.status(400).json({
+        error: questionType === 'short_answer'
+          ? 'Short Answer questions are no longer supported. Use Yes / No or Multiple Choice.'
+          : `Type must be: ${VALID_TYPES.join(', ')}`,
+      });
     }
 
     const cleanOptions = Array.isArray(options)
@@ -409,6 +425,26 @@ router.put('/:id', authMiddleware, async (req, res) => {
     }
 
     const { questionText, questionType, options, domain, ageMin, ageMax, isActive } = req.body;
+
+    if (questionType !== undefined && !SUPPORTED_QUESTION_TYPES.includes(questionType)) {
+      return res.status(400).json({
+        error: questionType === 'short_answer'
+          ? 'Short Answer questions are no longer supported. Set this question to Yes / No or Multiple Choice.'
+          : `Type must be: ${SUPPORTED_QUESTION_TYPES.join(', ')}`,
+      });
+    }
+
+    // A legacy 'short_answer' record stays readable, but it cannot be saved
+    // again as short_answer. An edit must move it onto a supported type; the
+    // only exception is an isActive-only toggle, so a pediatrician can still
+    // deactivate an old short_answer question without rewriting it.
+    const isActiveOnlyToggle = Object.keys(req.body).length === 1 && isActive !== undefined;
+    if (doc.questionType === 'short_answer' && questionType === undefined && !isActiveOnlyToggle) {
+      return res.status(400).json({
+        error: 'This is a legacy Short Answer question, which is no longer supported. '
+          + 'Set its type to Yes / No or Multiple Choice to save changes.',
+      });
+    }
 
     if (questionText !== undefined) doc.questionText = String(questionText).trim();
     if (questionType !== undefined) doc.questionType = questionType;

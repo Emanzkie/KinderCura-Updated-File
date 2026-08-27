@@ -21,6 +21,12 @@ const pediaCustomQuestionSchema = new mongoose.Schema(
     questionText: { type: String, required: true, trim: true },
     questionType: {
       type: String,
+      // 'short_answer' is retired: free-text answers don't fit the yes/no
+      // scoring scale. It stays in this enum ONLY so historical documents that
+      // already hold the value keep loading and re-saving without a validation
+      // error (e.g. the domain-normalization migration). New creation and
+      // editing are blocked at the route layer — see SUPPORTED_QUESTION_TYPES
+      // in routes/custom-questions.js.
       enum: ['yes_no', 'multiple_choice', 'short_answer'],
       required: true,
     },

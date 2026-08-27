@@ -1123,12 +1123,14 @@ async function hydrateAppointment(appointmentDoc) {
 
   const paymentDisplayStatus = derivePaymentDisplayStatus(appointmentDoc, payment);
   const isPaid = paymentDisplayStatus === 'Paid';
-  // 'GCash' / 'Maya' when PayMongo told us which wallet; a neutral fallback
-  // only once the money is actually in; '—' while still unpaid.
+  // The exact wallet PayMongo reported ('GCash' / 'Maya'); 'Pay at Clinic' for
+  // counter payments; 'E-Wallet' only when the money is in but the wallet is
+  // genuinely unknown (legacy record). Never a "GCash / Maya" guess. '—' while
+  // still unpaid.
   const paymentMethodLabel = isPaid
     ? ewalletBrandLabel(
       payment?.paymongoSourceType,
-      payment?.paymentMethod === 'pay_at_clinic' ? 'Pay at Clinic' : 'GCash / Maya'
+      payment?.paymentMethod === 'pay_at_clinic' ? 'Pay at Clinic' : 'E-Wallet'
     )
     : '—';
 

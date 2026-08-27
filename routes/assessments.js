@@ -514,7 +514,10 @@ function serializePendingCustomQuestion(a) {
   return {
     assignmentId: a.id,
     questionText: q.questionText || '',
-    questionType: q.questionType || 'short_answer',
+    // questionType is required on the model; the fallback only guards a
+    // malformed/partial populate. Defaults to 'yes_no' (a scored type) now
+    // that free-text 'short_answer' is retired.
+    questionType: q.questionType || 'yes_no',
     options: Array.isArray(q.options) ? q.options : [],
     domain: normalizeDomain(q.domain),
     pediatricianName: ped.firstName ? `${ped.firstName} ${ped.lastName || ''}`.trim() : 'Pediatrician',
