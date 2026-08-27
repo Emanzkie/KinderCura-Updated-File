@@ -5,6 +5,11 @@ let allChildren = [];
 let activeChild = null;
 let activeAssessment = null;
 let latestReview = null;
+// One entry per domain card (Communication / Social Skills / Cognitive / Motor
+// Skills). Each holds a `present` state and, when a previous completed
+// assessment exists, a `previous` state. Drives the per-card Previous/Present
+// switch — see renderDomainCard / switchDomainView.
+let domainViewModels = [];
 
 // Small HTML escape helper so diagnosis/recommendation text is safe in the page.
 function escapeHtml(value) {
@@ -128,16 +133,62 @@ function toggleDomainDetails(button) {
 }
 window.toggleDomainDetails = toggleDomainDetails;
 
-function renderDomainCard(domain, details, index) {
-    const st = getStatusLabel(domain.score);
-    const panelId = `domainDetails-${index}`;
+// ---------------------------------------------------------------------------
+// Domain result cards with an in-place Previous / Present switch.
+//
+// Each card carries its OWN view state (data-view on the <article>) — toggling
+// one card never touches the other three. `domainViewModels` (built in
+// loadResults) holds, per domain, a `present` state (from
+// GET /assessments/:id/results) and, when a previous completed assessment
+// exists, a `previous` state (from the SAME endpoint for the previous
+// assessment id supplied by /compare). Neither result is recomputed here, and
+// a missing previous field falls back to the plain-score view — never to the
+// present value (adviser rules J/K).
+// ---------------------------------------------------------------------------
+
+// One domain's numbers + evidence, read straight from a /results payload.
+function domainStateFromResults(label, scoreField, res) {
+    if (!res) return null;
+    const dd = (res.domainDetails && typeof res.domainDetails === 'object') ? res.domainDetails : {};
+    return {
+        score: Math.round(res[scoreField] || 0),
+        details: dd[label] || null,
+        date: res.generatedAt || null,
+    };
+}
+
+function domainChipMarkup(score) {
+    const st = getStatusLabel(score);
+    return {
+        toneClass: `tone-${BAND_TONE[st.band] || 'neutral'}`,
+        label: st.label,
+        color: st.color,
+    };
+}
+
+// Score row + bar + date + evidence — the region that is swapped on toggle.
+function renderDomainCardInner(vm, index, view) {
+    const hasPrevious = Boolean(vm.previous);
+    const state = (view === 'previous' && hasPrevious) ? vm.previous : vm.present;
+    const score = state ? state.score : 0;
+    const st = getStatusLabel(score);
+    const details = state ? state.details : null;
     const hasDetails = Boolean(details) && Number(details.totalItems) > 0;
+    const panelId = `domainDetails-${index}-${view}`;
 
     const countsRow = hasDetails ? `
         <p class="domain-counts">
             <span class="domain-count count-yes">${details.achievedItems} Yes</span>
             <span class="domain-count count-sometimes">${details.developingItems} Sometimes</span>
             <span class="domain-count count-no">${details.concernItems} No</span>
+        </p>` : '';
+
+    const dateRaw = (state && state.date)
+        || (view === 'previous' ? vm.previousDateFallback : vm.presentDateFallback);
+    const dateLine = hasPrevious ? `
+        <p class="domain-assessment-date">
+            <span class="domain-assessment-date-label">${view === 'previous' ? 'Previous' : 'Present'} Assessment</span>
+            <span class="domain-assessment-date-value">${escapeHtml(dateRaw ? fmtDate(dateRaw) : 'Date not recorded')}</span>
         </p>` : '';
 
     const body = hasDetails ? `
@@ -149,25 +200,102 @@ function renderDomainCard(domain, details, index) {
         ${renderDomainBullets('Developing', details.developing, 'developing')}
         ${renderDomainBullets('Needs Support', details.needsSupport, 'support')}
         ${renderDomainDetailsPanel(panelId, details.items)}`
-        : `<p class="domain-fallback">Detailed assessment information is not available for this result.</p>`;
+        : `<p class="domain-fallback">Detailed assessment information is not available for this ${hasPrevious ? (view === 'previous' ? 'previous ' : 'present ') : ''}result.</p>`;
 
     return `
-        <article class="domain-card" style="--domain-color:${st.color};">
+        <div class="domain-score-row">
+            <span class="domain-score-value" style="color:${st.color};">${score}%</span>
+            ${countsRow}
+        </div>
+        <div class="domain-progress" role="img"
+             aria-label="${escapeHtml(vm.label)} ${view === 'previous' ? 'previous' : 'present'} score ${score} percent">
+            <div class="domain-progress-fill" style="width:${score}%;"></div>
+        </div>
+        ${dateLine}
+        ${body}`;
+}
+
+function renderDomainCard(vm, index) {
+    const hasPrevious = Boolean(vm.previous);
+    const view = 'present';
+    const chip = domainChipMarkup(vm.present ? vm.present.score : 0);
+
+    const controls = hasPrevious ? `
+        <div class="domain-view-controls">
+            <div class="domain-view-switch" role="group" aria-label="${escapeHtml(vm.label)} assessment record">
+                <button type="button" id="domainViewTab-${index}-previous"
+                        class="domain-view-btn" aria-pressed="false"
+                        onclick="switchDomainView(${index},'previous')">Previous</button>
+                <button type="button" id="domainViewTab-${index}-present"
+                        class="domain-view-btn is-active" aria-pressed="true"
+                        onclick="switchDomainView(${index},'present')">Present</button>
+            </div>
+            <span class="domain-view-dots" id="domainViewDots-${index}" aria-hidden="true">
+                <span class="domain-view-dot"></span>
+                <span class="domain-view-dot is-active"></span>
+            </span>
+        </div>` : '';
+
+    return `
+        <article class="domain-card" id="domainCard-${index}" data-view="${view}"
+                 style="--domain-color:${chip.color};">
             <header class="domain-card-head">
-                <h3 class="domain-card-title">${domain.icon} ${escapeHtml(domain.label)}</h3>
-                <span class="domain-status-chip tone-${escapeHtml(BAND_TONE[st.band] || 'neutral')}">${escapeHtml(st.label)}</span>
+                <h3 class="domain-card-title">${vm.icon} ${escapeHtml(vm.label)}</h3>
+                <span class="domain-status-chip ${chip.toneClass}" id="domainChip-${index}">${escapeHtml(chip.label)}</span>
             </header>
-            <div class="domain-score-row">
-                <span class="domain-score-value">${domain.score}%</span>
-                ${countsRow}
+            ${controls}
+            <div class="domain-card-inner" id="domainCardInner-${index}">
+                ${renderDomainCardInner(vm, index, view)}
             </div>
-            <div class="domain-progress" role="img"
-                 aria-label="${escapeHtml(domain.label)} score ${domain.score} percent">
-                <div class="domain-progress-fill" style="width:${domain.score}%;"></div>
-            </div>
-            ${body}
         </article>`;
 }
+
+// In-place swap between the two assessment records for ONE card. Fades the
+// swappable region (~170ms), re-renders it, and updates the badge, tabs, dots,
+// and accent colour to match the selected assessment. Independent per card.
+function switchDomainView(index, view) {
+    const vm = domainViewModels[index];
+    const card = document.getElementById(`domainCard-${index}`);
+    const inner = document.getElementById(`domainCardInner-${index}`);
+    if (!vm || !card || !inner) return;
+    if (view === 'previous' && !vm.previous) return;
+    if (card.dataset.view === view) return;
+
+    const state = view === 'previous' ? vm.previous : vm.present;
+    const chip = domainChipMarkup(state ? state.score : 0);
+
+    inner.style.opacity = '0';
+    window.setTimeout(() => {
+        inner.innerHTML = renderDomainCardInner(vm, index, view);
+        card.dataset.view = view;
+        card.style.setProperty('--domain-color', chip.color);
+
+        const chipEl = document.getElementById(`domainChip-${index}`);
+        if (chipEl) {
+            chipEl.className = `domain-status-chip ${chip.toneClass}`;
+            chipEl.textContent = chip.label;
+        }
+
+        for (const v of ['previous', 'present']) {
+            const tab = document.getElementById(`domainViewTab-${index}-${v}`);
+            if (tab) {
+                tab.classList.toggle('is-active', v === view);
+                tab.setAttribute('aria-pressed', v === view ? 'true' : 'false');
+            }
+        }
+        const dots = document.getElementById(`domainViewDots-${index}`);
+        if (dots) {
+            const dotEls = dots.querySelectorAll('.domain-view-dot');
+            if (dotEls[0]) dotEls[0].classList.toggle('is-active', view === 'previous');
+            if (dotEls[1]) dotEls[1].classList.toggle('is-active', view === 'present');
+        }
+
+        inner.style.opacity = '1';
+        const activeTab = document.getElementById(`domainViewTab-${index}-${view}`);
+        if (activeTab) activeTab.focus();
+    }, 170);
+}
+window.switchDomainView = switchDomainView;
 
 function getRequestedChildId() {
     try { return new URLSearchParams(window.location.search).get('childId') || localStorage.getItem('kc_childId') || localStorage.getItem('kc_viewChildId'); } 
@@ -531,6 +659,22 @@ async function loadResults() {
             compareData = null;
         }
 
+        // Full domain data for the previous completed assessment, for the
+        // per-card Previous/Present switch. Same read-only endpoint as the
+        // present result; the previous assessment id comes from /compare, which
+        // already confirmed it belongs to this child. Best-effort — a failure
+        // just means the cards render Present-only.
+        let previousResults = null;
+        const previousAssessmentId = compareData?.hasPrevious ? compareData?.previous?.assessmentId : null;
+        if (previousAssessmentId) {
+            try {
+                const pv = await apiFetch(`/assessments/${previousAssessmentId}/results`);
+                previousResults = pv?.results || null;
+            } catch (_) {
+                previousResults = null;
+            }
+        }
+
         activeAssessment = { id: r.assessmentId, ...r };
         latestReview = {
             diagnosis: r.diagnosis || '',
@@ -546,18 +690,32 @@ async function loadResults() {
         const dateStr = r.generatedAt ? fmtDate(r.generatedAt) : 'Recent';
         document.getElementById('resultsMeta').textContent = `${escapeHtml(activeChild.firstName)} ${escapeHtml(activeChild.lastName)} • Assessment Date: ${dateStr}`;
 
-        const domains = [
-            { label:'Communication', icon:'<img src="/icons/communication.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">', score: Math.round(r.communicationScore || 0) },
-            { label:'Social Skills', icon:'<img src="/icons/social.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">', score: Math.round(r.socialScore || 0) },
-            { label:'Cognitive', icon:'<img src="/icons/cognitive.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">', score: Math.round(r.cognitiveScore || 0) },
-            { label:'Motor Skills', icon:'<img src="/icons/motor.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">', score: Math.round(r.motorScore || 0) }
+        const DOMAIN_DEFS = [
+            { label:'Communication', field:'communicationScore', icon:'<img src="/icons/communication.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">' },
+            { label:'Social Skills', field:'socialScore', icon:'<img src="/icons/social.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">' },
+            { label:'Cognitive', field:'cognitiveScore', icon:'<img src="/icons/cognitive.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">' },
+            { label:'Motor Skills', field:'motorScore', icon:'<img src="/icons/motor.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">' }
         ];
+        const domains = DOMAIN_DEFS.map((d) => ({ label: d.label, icon: d.icon, score: Math.round(r[d.field] || 0) }));
         const riskFlags = r.riskFlags || [];
 
         // Additive field — absent on assessments saved before this existed.
         // Keyed by the same domain names as the labels above.
         const domainDetails = (r.domainDetails && typeof r.domainDetails === 'object') ? r.domainDetails : {};
         const hasAnyDomainDetails = domains.some((d) => Number(domainDetails[d.label]?.totalItems) > 0);
+
+        // Per-card view models: present always; previous only when a previous
+        // completed assessment exists. A missing previous domain-detail block
+        // is left null (safe fallback view) — never copied from present.
+        const hasPreviousAssessment = Boolean(previousResults);
+        domainViewModels = DOMAIN_DEFS.map((def) => ({
+            label: def.label,
+            icon: def.icon,
+            present: domainStateFromResults(def.label, def.field, r),
+            previous: hasPreviousAssessment ? domainStateFromResults(def.label, def.field, previousResults) : null,
+            presentDateFallback: (compareData && compareData.current && compareData.current.date) || r.generatedAt || null,
+            previousDateFallback: (compareData && compareData.previous && compareData.previous.date) || (previousResults && previousResults.generatedAt) || null,
+        }));
 
         // Smaller banner card instead of the large review block.
         // We show the banner whenever a diagnosis/recommendation exists, even if
@@ -618,7 +776,7 @@ async function loadResults() {
             ${renderCarePlanCard(r.developmentalBand, r.prediction)}
 
             <div class="domain-cards-grid">
-                ${domains.map((d, i) => renderDomainCard(d, domainDetails[d.label], i)).join('')}
+                ${domainViewModels.map((vm, i) => renderDomainCard(vm, i)).join('')}
             </div>
 
             ${renderComparisonSection(compareData)}
