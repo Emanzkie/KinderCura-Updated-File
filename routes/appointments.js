@@ -124,7 +124,9 @@ async function nextNotificationId() {
 }
 
 // Important: notification problems must never block booking / approval / reschedule.
-async function pushNotification(userId, title, message, type = 'appointment') {
+// `extra` optionally carries { relatedPage, relatedId } so the bell UI can deep-link
+// straight to the relevant page/appointment without parsing the message text.
+async function pushNotification(userId, title, message, type = 'appointment', extra = {}) {
   const notificationModel = resolveNotificationModel();
   const payload = {
     userId: new mongoose.Types.ObjectId(String(userId)),
@@ -133,6 +135,8 @@ async function pushNotification(userId, title, message, type = 'appointment') {
     type,
     isRead: false,
   };
+  if (extra && extra.relatedPage) payload.relatedPage = String(extra.relatedPage);
+  if (extra && extra.relatedId != null) payload.relatedId = String(extra.relatedId);
 
   try {
     if (notificationModel) {
@@ -1659,38 +1663,74 @@ router.post('/:appointmentId/cancel', authMiddleware, async (req, res) => {
 });
 
 // POST /api/appointments/:appointmentId/reschedule
-// Important: both the pediatrician and their linked secretary can reschedule.
-router.post('/:appointmentId/reschedule', authMiddleware, secretaryOrPediatrician, async (req, res) => {
+// One endpoint, role-aware:
+//   • pediatrician / linked secretary — reschedule an appointment they own
+//     (unchanged behaviour; the new slot is confirmed, status -> approved)
+//   • parent / permitted guardian — reschedule their own child's active
+//     appointment. RESCHEDULE IS NOT CANCEL: only the schedule (and optional
+//     note) is written here. No payment field is read or modified, so a Paid
+//     appointment stays Paid with the same amount / method / reference /
+//     receipt, and no new payment record is created.
+router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
   try {
     const { newDate, newTime, reason, note } = req.body;
     if (!newDate || !newTime) {
       return res.status(400).json({ error: 'New date and time are required.' });
     }
 
-    // Secretary acts on behalf of their linked pediatrician
-    const pedId = req.user.role === 'secretary'
-      ? req.user.linkedPediatricianId
-      : req.user.userId;
-
-    if (!pedId) {
-      return res.status(403).json({ error: 'Assistant/Secretary account is not linked to a pediatrician yet.' });
+    const role = req.user.role;
+    const isParent = ['parent', 'legal_guardian', 'foster_parent', 'court_appointed'].includes(role);
+    const isClinic = role === 'pediatrician' || role === 'secretary';
+    if (!isParent && !isClinic) {
+      return res.status(403).json({ error: 'You are not allowed to reschedule appointments.' });
     }
 
-    // Important: check that the secretary has permission to manage bookings or approve schedules.
-    // The pediatrician controls these permissions from their Settings > Staff Access tab.
-    if (req.user.role === 'secretary') {
-      const secUser = await User.findById(req.user.userId).select('secretaryPermissions').lean();
-      const perms = secUser?.secretaryPermissions || {};
-      if (!perms.manageBookings && !perms.approveSchedules) {
-        return res.status(403).json({ error: 'You do not have permission to update appointment status.' });
+    let appt;
+    let pedId;
+
+    if (isClinic) {
+      // Secretary acts on behalf of their linked pediatrician
+      pedId = role === 'secretary' ? req.user.linkedPediatricianId : req.user.userId;
+      if (!pedId) {
+        return res.status(403).json({ error: 'Assistant/Secretary account is not linked to a pediatrician yet.' });
       }
-    }
 
-    const appt = await Appointment.findOne({ id: Number(req.params.appointmentId), pediatricianId: pedId });
-    if (!appt) return res.status(404).json({ error: 'Appointment not found.' });
+      // Important: check that the secretary has permission to manage bookings or approve schedules.
+      // The pediatrician controls these permissions from their Settings > Staff Access tab.
+      if (role === 'secretary') {
+        const secUser = await User.findById(req.user.userId).select('secretaryPermissions').lean();
+        const perms = secUser?.secretaryPermissions || {};
+        if (!perms.manageBookings && !perms.approveSchedules) {
+          return res.status(403).json({ error: 'You do not have permission to update appointment status.' });
+        }
+      }
+
+      appt = await Appointment.findOne({ id: Number(req.params.appointmentId), pediatricianId: pedId });
+      if (!appt) return res.status(404).json({ error: 'Appointment not found.' });
+    } else {
+      // Parent path — same ownership check the cancel route already uses, so a
+      // parent cannot touch another parent's appointment by changing the id.
+      appt = await Appointment.findOne({ id: Number(req.params.appointmentId) });
+      if (!appt) return res.status(404).json({ error: 'Appointment not found.' });
+
+      const owns = String(appt.parentId) === String(req.user.userId)
+        || await hasPermission(req.user.userId, appt.childId, 'manageAppointments');
+      if (!owns) return res.status(403).json({ error: 'Access denied.' });
+
+      // Only a live appointment can be rescheduled — never a cancelled,
+      // rejected, or completed one.
+      if (!['pending', 'approved'].includes(appt.status)) {
+        return res.status(400).json({ error: `A ${appt.status} appointment cannot be rescheduled.` });
+      }
+      pedId = appt.pediatricianId;
+    }
 
     const pediatrician = await User.findOne({ _id: pedId, role: 'pediatrician', status: 'active' });
     if (!pediatrician) return res.status(404).json({ error: 'Linked pediatrician not found.' });
+
+    // Remember the "from" schedule for the notification message.
+    const prevDateStr = fmtDate(appt.appointmentDate);
+    const prevTimeStr = fmtTime(appt.appointmentTime);
 
     const availability = await evaluateAvailability({
       pediatrician,
@@ -1704,20 +1744,67 @@ router.post('/:appointmentId/reschedule', authMiddleware, secretaryOrPediatricia
 
     appt.appointmentDate = normalizeUtcDate(newDate);
     appt.appointmentTime = availability.requestedTime || normalizeTimeString(newTime) || newTime;
-    appt.status = 'approved';
+    // A clinic reschedule confirms the new slot (status -> approved). A parent
+    // reschedule keeps the current status: a pending request stays pending
+    // (still needs clinic approval), an approved appointment stays approved.
+    if (isClinic) appt.status = 'approved';
     if (note && String(note).trim()) appt.notes = String(note).trim();
     await appt.save();
 
     const hydrated = await hydrateAppointment(appt.toObject());
     const newDateStr = fmtDate(appt.appointmentDate);
     const newTimeStr = fmtTime(appt.appointmentTime);
+    const apptLink = { relatedId: String(appt.id) };
 
-    // Always notify the parent that the appointment was rescheduled.
+    if (isParent) {
+      const parentName = hydrated.parentName && hydrated.parentName.trim() ? hydrated.parentName.trim() : 'The parent';
+
+      // Parent confirmation.
+      await pushNotification(
+        hydrated.parentId,
+        'Appointment Rescheduled',
+        `Your appointment for ${hydrated.childName} has been rescheduled to ${newDateStr} at ${newTimeStr}.`,
+        'appointment',
+        { ...apptLink, relatedPage: '/parent/appointments.html' }
+      );
+
+      // Pediatrician notice.
+      if (hydrated.pediatricianId) {
+        await pushNotification(
+          hydrated.pediatricianId,
+          'Appointment Rescheduled',
+          `${parentName} rescheduled the appointment for ${hydrated.childName} from ${prevDateStr} at ${prevTimeStr} to ${newDateStr} at ${newTimeStr}.`,
+          'appointment',
+          { ...apptLink, relatedPage: '/pedia/pediatrician-appointments.html' }
+        );
+      }
+
+      await sendEmail(
+        hydrated.parentEmail,
+        'Appointment Rescheduled — KinderCura',
+        `<h2>Appointment Rescheduled</h2>
+         <p>Hello ${hydrated.parentFirstName || 'Parent'},</p>
+         <p>Your appointment has been rescheduled. Your existing payment is unchanged.</p>
+         <div style="background:white;border-left:4px solid #6B8E6F;padding:16px;border-radius:6px;margin:16px 0;">
+           <p><strong>Patient:</strong> ${hydrated.childName}</p>
+           <p><strong>Previous:</strong> ${prevDateStr} at ${prevTimeStr}</p>
+           <p><strong>New Date:</strong> ${newDateStr}</p>
+           <p><strong>New Time:</strong> ${newTimeStr}</p>
+           ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+           ${note ? `<p><strong>Note:</strong> ${note}</p>` : ''}
+         </div>`
+      );
+
+      return res.json({ success: true });
+    }
+
+    // ── Clinic-initiated reschedule notifications (unchanged behaviour) ──────
     await pushNotification(
       hydrated.parentId,
       'Appointment Rescheduled',
       `Your appointment for ${hydrated.childName} was moved to ${newDateStr} at ${newTimeStr}.`,
-      'appointment'
+      'appointment',
+      { ...apptLink, relatedPage: '/parent/appointments.html' }
     );
 
     await sendEmail(
@@ -1736,7 +1823,7 @@ router.post('/:appointmentId/reschedule', authMiddleware, secretaryOrPediatricia
 
     // Important: if a secretary performed the reschedule, also notify the pediatrician.
     // This ensures the pedia can see what was rescheduled on their behalf and review if needed.
-    if (req.user.role === 'secretary') {
+    if (role === 'secretary') {
       // Load the secretary's name for a readable notification message.
       const secUser = await User.findById(req.user.userId).select('firstName lastName').lean();
       const secName = secUser
@@ -1746,7 +1833,8 @@ router.post('/:appointmentId/reschedule', authMiddleware, secretaryOrPediatricia
         pedId,
         'Secretary Rescheduled an Appointment',
         `Secretary ${secName} rescheduled an appointment for ${hydrated.childName} to ${newDateStr} at ${newTimeStr}.`,
-        'appointment'
+        'appointment',
+        { ...apptLink, relatedPage: '/pedia/pediatrician-appointments.html' }
       );
     }
 

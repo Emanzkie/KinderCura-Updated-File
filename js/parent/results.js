@@ -238,7 +238,7 @@ function comparisonRow(d, bold) {
             <td style="padding:.5rem .25rem;text-align:left;">${escapeHtml(d.label)}</td>
             <td style="padding:.5rem .25rem;text-align:center;">${d.previous != null ? d.previous + '%' : '—'}</td>
             <td style="padding:.5rem .25rem;text-align:center;">${d.current != null ? d.current + '%' : '—'}</td>
-            <td style="padding:.5rem .25rem;text-align:center;color:${diffColor(d.difference)};font-weight:700;">${diffText(d.difference)}${d.difference != null ? '%' : ''}</td>
+            <td style="padding:.5rem .25rem;text-align:center;color:${diffColor(d.difference)};font-weight:700;">${diffText(d.difference)}${d.difference != null ? '&nbsp;pts' : ''}</td>
         </tr>`;
 }
 
@@ -255,7 +255,7 @@ function renderCareStageColumn(heading, side) {
         <div>
             <p style="margin:0 0 .5rem;font-weight:700;color:var(--text-dark);">${escapeHtml(heading)}</p>
             <p style="margin:0 0 .3rem;font-size:.85rem;">Developmental Band: <strong>${escapeHtml(CP.developmentalBandLabel(side.developmentalBand))}</strong></p>
-            <p style="margin:0 0 .3rem;font-size:.85rem;">Risk Category: <strong>${escapeHtml(CP.riskCategoryLabel(side.riskCategory))}</strong></p>
+            <p style="margin:0 0 .3rem;font-size:.85rem;">Developmental Risk Category: <strong>${escapeHtml(CP.riskCategoryLabel(side.riskCategory))}</strong></p>
             <p style="margin:0;font-size:.85rem;">Care Stage: <strong>${escapeHtml(CP.careStageLabel(side.careStageLabel))}</strong></p>
         </div>`;
 }
@@ -300,7 +300,7 @@ function renderComparisonSection(compare) {
                             <th style="text-align:left;padding:.25rem;">Domain</th>
                             <th style="padding:.25rem;">Previous</th>
                             <th style="padding:.25rem;">Current</th>
-                            <th style="padding:.25rem;">Change</th>
+                            <th style="padding:.25rem;">Progress</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -312,6 +312,9 @@ function renderComparisonSection(compare) {
                     </tbody>
                 </table>
             </div>
+            <p style="margin:.7rem 0 0;font-size:.75rem;color:var(--text-light);">
+                Progress shows how each domain's score moved since the previous assessment, in percentage points (pts) &mdash; a positive value means the score went up. The <strong>Progress</strong> badge above reflects the change in overall care stage, not these point totals.
+            </p>
         </div>`;
 }
 

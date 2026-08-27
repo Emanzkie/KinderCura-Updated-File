@@ -6,6 +6,11 @@ let activeChild = null;
 let allPediatricians = [];
 let suggestionContext = null;
 let latestAvailability = null;
+// Appointments currently shown in the "Active" list — the only ones a parent
+// may reschedule. Keyed lookups use this so the modal never trusts the DOM.
+let activeAppointments = [];
+let rescheduleTarget = null;
+let rescheduleAvailability = null;
 let appointmentSlotSettings = { enforceThirtyMinuteSlots: true, slotMinutes: 60 };
 let availabilityBlocksBooking = false;
 
@@ -629,7 +634,8 @@ async function loadAppointments() {
     try {
         const data = await apiFetch(`/appointments/${user.id}`);
         const all = (data.appointments || []).sort((a, b) => (b.id || 0) - (a.id || 0));
-        renderActive(all.filter((a) => ['pending', 'approved'].includes(a.status)));
+        activeAppointments = all.filter((a) => ['pending', 'approved'].includes(a.status));
+        renderActive(activeAppointments);
         renderPast(all.filter((a) => ['completed', 'cancelled', 'rejected'].includes(a.status)));
     } catch {
         document.getElementById('activeList').innerHTML = '<p style="color:var(--text-light);text-align:center;">Could not load appointments.</p>';
@@ -715,6 +721,173 @@ function closeReceiptModal() {
     if (modal) modal.style.display = 'none';
 }
 
+// ── Parent-initiated reschedule ──────────────────────────────────────────────
+// Reuses POST /appointments/:id/reschedule (now role-aware) and the same
+// /appointments/availability/check rules the booking form already uses. Only
+// date/time/reason/note are sent — the backend never touches payment.
+
+function rescheduleErr(message) {
+    const el = document.getElementById('rescheduleError');
+    if (!el) return;
+    el.textContent = message || '';
+    el.style.display = message ? 'block' : 'none';
+}
+
+function closeRescheduleModal() {
+    const modal = document.getElementById('rescheduleModal');
+    if (modal) modal.style.display = 'none';
+    rescheduleTarget = null;
+    rescheduleAvailability = null;
+}
+
+function openReschedule(appointmentId) {
+    const appt = activeAppointments.find((a) => String(a.id) === String(appointmentId));
+    if (!appt) return;
+    // Belt and braces — the button is only rendered for these statuses.
+    if (!['pending', 'approved'].includes(appt.status)) {
+        alert('Only an active appointment can be rescheduled.');
+        return;
+    }
+    if (!appt.pediatricianId) {
+        alert('This appointment has no assigned pediatrician yet, so it cannot be rescheduled.');
+        return;
+    }
+
+    rescheduleTarget = appt;
+    rescheduleAvailability = null;
+
+    document.getElementById('rescheduleCurrent').innerHTML = `
+        <strong>Current schedule</strong><br>
+        Child: ${escapeHtml(appt.childName || '—')}<br>
+        Pediatrician: ${appt.pediatricianName ? 'Dr. ' + escapeHtml(appt.pediatricianName) : '—'}<br>
+        Date: ${escapeHtml(fmtDate(appt.appointmentDate))}<br>
+        Time: ${escapeHtml(fmtTime(appt.appointmentTime))}<br>
+        Status: ${escapeHtml((appt.status || '').charAt(0).toUpperCase() + (appt.status || '').slice(1))}
+        ${appt.paymentStatus ? `<br>Payment: ${escapeHtml(appt.paymentStatus)} (unchanged by rescheduling)` : ''}`;
+
+    const dateInput = document.getElementById('rNewDate');
+    dateInput.value = '';
+    dateInput.min = new Date().toISOString().split('T')[0];
+    dateInput.onchange = loadRescheduleAvailability;
+
+    renderRescheduleTimeField();
+    document.getElementById('rReason').value = '';
+    document.getElementById('rNote').value = '';
+    document.getElementById('rescheduleAvailability').innerHTML = '';
+    rescheduleErr('');
+
+    document.getElementById('rescheduleModal').style.display = 'flex';
+}
+
+// Slot-mode select vs. manual time input, matching the admin slot setting.
+function renderRescheduleTimeField() {
+    const wrap = document.getElementById('rNewTimeField');
+    const help = document.getElementById('rNewTimeHelp');
+    if (useStartTimeSlots()) {
+        wrap.innerHTML = `<select id="rNewTime" class="form-input" disabled><option value="">Select a date first</option></select>`;
+        help.textContent = "Pick a date to load the pediatrician's open start times.";
+    } else {
+        wrap.innerHTML = `<input type="time" id="rNewTime" class="form-input" step="60">`;
+        help.textContent = 'Manual time selection is currently allowed by the clinic setting.';
+    }
+    const field = document.getElementById('rNewTime');
+    if (field) field.addEventListener('change', loadRescheduleAvailability);
+}
+
+async function loadRescheduleAvailability() {
+    if (!rescheduleTarget) return;
+    const date = document.getElementById('rNewDate').value;
+    const timeField = document.getElementById('rNewTime');
+    const time = timeField ? timeField.value : '';
+
+    if (!date) {
+        rescheduleAvailability = null;
+        if (timeField && timeField.tagName === 'SELECT') {
+            timeField.innerHTML = '<option value="">Select a date first</option>';
+            timeField.disabled = true;
+        }
+        document.getElementById('rescheduleAvailability').innerHTML = '';
+        return;
+    }
+
+    try {
+        const params = new URLSearchParams({ pediatricianId: rescheduleTarget.pediatricianId, date });
+        if (time) params.set('time', time);
+        const data = await apiFetch(`/appointments/availability/check?${params.toString()}`);
+        const info = data.availability || null;
+        rescheduleAvailability = info;
+        populateRescheduleTimeOptions(info);
+        renderRescheduleAvailabilityPanel(info);
+    } catch (e) {
+        rescheduleAvailability = null;
+        document.getElementById('rescheduleAvailability').innerHTML =
+            `<p class="mini" style="color:var(--status-attention-fg);margin:0;">${escapeHtml(e.message || 'Could not check availability.')}</p>`;
+    }
+}
+
+function populateRescheduleTimeOptions(info) {
+    const field = document.getElementById('rNewTime');
+    if (!field || field.tagName !== 'SELECT') return;
+    const slots = Array.isArray(info?.availableSlots) ? info.availableSlots : [];
+    const previous = field.value;
+    field.innerHTML = `<option value="">${slots.length ? 'Select a start time' : 'No open start times for this date'}</option>`
+        + slots.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(fmtTime(s))}</option>`).join('');
+    field.disabled = !slots.length;
+    if (slots.includes(previous)) field.value = previous;
+}
+
+function renderRescheduleAvailabilityPanel(info) {
+    const panel = document.getElementById('rescheduleAvailability');
+    if (!info) { panel.innerHTML = ''; return; }
+    const cls = info.available ? 'green' : 'red';
+    const label = info.available ? 'Available'
+        : (info.isTimeTaken ? 'Slot Taken' : (info.isFull ? 'Day Full' : 'Unavailable'));
+    panel.innerHTML = `
+        <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;">
+            <p class="mini" style="margin:0;">${escapeHtml(info.message || '')}</p>
+            <span class="pill ${cls}">${label}</span>
+        </div>
+        ${Array.isArray(info.bookedTimes) && info.bookedTimes.length ? `
+            <div style="margin-top:.5rem;"><p class="mini" style="margin:0 0 .3rem;">Already booked this date</p>
+            <div class="slot-chips">${info.bookedTimes.map((s) => `<span class="slot-chip taken">${escapeHtml(fmtTime(s))}</span>`).join('')}</div></div>` : ''}`;
+}
+
+async function confirmReschedule() {
+    if (!rescheduleTarget) return;
+    rescheduleErr('');
+
+    const newDate = document.getElementById('rNewDate').value;
+    const timeField = document.getElementById('rNewTime');
+    const newTime = timeField ? timeField.value : '';
+    const reason = document.getElementById('rReason').value;
+    const note = document.getElementById('rNote').value.trim();
+
+    if (!newDate) return rescheduleErr('Please choose a new date.');
+    if (!newTime) return rescheduleErr('Please choose a new start time.');
+    if (!reason) return rescheduleErr('Please choose a reason for rescheduling.');
+    if (rescheduleAvailability && rescheduleAvailability.available === false) {
+        return rescheduleErr(rescheduleAvailability.message || 'That date/time is not available. Please choose another slot.');
+    }
+
+    const btn = document.getElementById('rConfirmBtn');
+    btn.disabled = true;
+    btn.textContent = 'Rescheduling…';
+    try {
+        await apiFetch(`/appointments/${rescheduleTarget.id}/reschedule`, {
+            method: 'POST',
+            body: JSON.stringify({ newDate, newTime, reason, note }),
+        });
+        closeRescheduleModal();
+        await loadAppointments();
+        if (typeof loadNotificationCount === 'function') { try { await loadNotificationCount(); } catch {} }
+    } catch (e) {
+        rescheduleErr(e.message || 'Could not reschedule. Please try again.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Confirm Reschedule';
+    }
+}
+
 function renderActive(list) {
     const el = document.getElementById('activeList');
     if (!list.length) {
@@ -737,7 +910,10 @@ function renderActive(list) {
             ${a.status === 'pending' ? '<p style="font-size:0.82rem;color:var(--status-caution-fg);margin:0;">⏳ Your request is being reviewed by the clinic staff.</p>' : ''}
             ${a.status === 'approved' ? `<p style="font-size:0.82rem;color:var(--status-positive-fg);margin:0;">✅ Confirmed by clinic staff on behalf of Dr. ${escapeHtml(a.pediatricianName || 'Pediatrician')}</p>` : ''}
             ${renderPaymentSummary(a)}
-            ${['approved', 'completed'].includes(a.status) ? `<button onclick="window.location.href='/parent/chat.html?appointmentId=${a.id}'" style="margin-top:.7rem;background:var(--primary);color:white;border:none;padding:.45rem 1.1rem;border-radius:20px;font-size:.8rem;cursor:pointer;"><img src="/icons/chat.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Chat with Dr. ${escapeHtml(a.pediatricianName || 'Pediatrician')}</button>` : ''}
+            <div style="margin-top:.7rem;display:flex;gap:.5rem;flex-wrap:wrap;">
+                ${['pending', 'approved'].includes(a.status) ? `<button type="button" onclick="openReschedule(${a.id})" style="background:var(--surface-muted,#eef2ee);color:var(--text-dark);border:1px solid var(--border,#d8e0d8);padding:.45rem 1.1rem;border-radius:20px;font-size:.8rem;cursor:pointer;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reschedule</button>` : ''}
+                ${['approved', 'completed'].includes(a.status) ? `<button type="button" onclick="window.location.href='/parent/chat.html?appointmentId=${a.id}'" style="background:var(--primary);color:white;border:none;padding:.45rem 1.1rem;border-radius:20px;font-size:.8rem;cursor:pointer;"><img src="/icons/chat.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Chat with Dr. ${escapeHtml(a.pediatricianName || 'Pediatrician')}</button>` : ''}
+            </div>
         </div>`).join('');
 }
 

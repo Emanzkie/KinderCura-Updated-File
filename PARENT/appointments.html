@@ -137,6 +137,63 @@
     </div>
 </div>
 
+<!-- Parent-initiated reschedule. Only opened from an existing appointment card. -->
+<div class="kc-modal-backdrop" id="rescheduleModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="rescheduleModalTitle">
+    <div class="kc-modal" role="document">
+        <div class="kc-modal__header">
+            <h3 id="rescheduleModalTitle">Reschedule Appointment</h3>
+            <button type="button" class="kc-modal__close" onclick="closeRescheduleModal()" aria-label="Close reschedule">&times;</button>
+        </div>
+        <div class="kc-modal__body">
+            <div class="payment-notice" style="background:var(--surface-tint);border-left:4px solid #6B8E6F;border-radius:6px;padding:0.75rem 1rem;margin-bottom:1rem;font-size:.85rem;">
+                Only the date and time change. Your payment, receipt, and appointment stay exactly as they are.
+            </div>
+
+            <div id="rescheduleCurrent" class="mini" style="background:var(--surface-muted,#FAFAF6);border-radius:8px;padding:.75rem .9rem;margin-bottom:1rem;line-height:1.6;"></div>
+
+            <div id="rescheduleError" class="error-msg" style="margin-bottom:.75rem;"></div>
+
+            <div class="form-group">
+                <label class="form-label">New Date</label>
+                <input type="date" id="rNewDate" class="form-input">
+            </div>
+            <div class="form-group">
+                <label class="form-label">New Start Time</label>
+                <div id="rNewTimeField">
+                    <select id="rNewTime" class="form-input" disabled>
+                        <option value="">Select a date first</option>
+                    </select>
+                </div>
+                <p id="rNewTimeHelp" class="mini" style="margin:.4rem 0 0;">Pick a date to load the pediatrician's open start times.</p>
+            </div>
+
+            <div id="rescheduleAvailability" class="availability-panel" style="margin-bottom:1rem;"></div>
+
+            <div class="form-group">
+                <label class="form-label">Reason for Rescheduling</label>
+                <select id="rReason" class="form-input">
+                    <option value="">Select a reason…</option>
+                    <option value="Family emergency">Family emergency</option>
+                    <option value="Child is unwell">Child is unwell</option>
+                    <option value="Schedule conflict">Schedule conflict</option>
+                    <option value="Travel / away">Travel / away</option>
+                    <option value="Prefer a different time">Prefer a different time</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Note (optional)</label>
+                <textarea id="rNote" class="form-input" style="resize:vertical;min-height:70px;line-height:1.4;" placeholder="Anything the clinic should know…"></textarea>
+            </div>
+
+            <div style="display:flex;gap:.7rem;margin-top:.5rem;">
+                <button type="button" class="btn btn-primary" style="flex:1;padding:.8rem;" id="rConfirmBtn" onclick="confirmReschedule()">Confirm Reschedule</button>
+                <button type="button" class="btn btn-secondary" style="flex:1;padding:.8rem;" onclick="closeRescheduleModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="notification-modal notifications-modal" id="notificationsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle">
     <div class="notification-modal-content notifications-content" role="document">
         <div class="notification-modal-header notifications-header">
