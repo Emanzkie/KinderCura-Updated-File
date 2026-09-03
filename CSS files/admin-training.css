@@ -186,3 +186,237 @@
     margin-left: 0;
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * Model dataset & training status panel
+ *
+ * A field with no underlying value renders as an em dash in .mps-v, not
+ * as 0 — an absent metric must never look like a measured one.
+ * ------------------------------------------------------------------ */
+
+.mps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.9rem;
+}
+
+.mps-stat {
+  background: var(--bg-primary, #f7f7f9);
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+}
+
+.mps-stat .mps-k {
+  display: block;
+  font-size: 0.74rem;
+  color: var(--text-light);
+  margin-bottom: 0.25rem;
+}
+
+.mps-stat .mps-v {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--primary-dark);
+}
+
+.mps-stat .mps-v.is-empty {
+  color: var(--text-light);
+  font-weight: 500;
+}
+
+.mps-section {
+  margin-top: 1.3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.mps-section h4 {
+  margin: 0 0 0.2rem;
+  font-size: 0.95rem;
+  color: var(--primary);
+}
+
+.mps-sub {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-light);
+  line-height: 1.55;
+}
+
+.mps-note {
+  margin-top: 0.9rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  background: var(--bg-primary, #f7f7f9);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--text-dark);
+}
+
+.mps-empty {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.15rem;
+  color: var(--text-light);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------------------------ *
+ * Active model banner + activation confirmation modal
+ *
+ * The banner answers one question at a glance: which model is serving
+ * live predictions right now. "None" is a legitimate, safe answer (the
+ * rule-based fallback), so it is styled as neutral information, not as
+ * an error.
+ * ------------------------------------------------------------------ */
+
+.active-model-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.9rem 1.1rem;
+  border-radius: 10px;
+  margin-bottom: 1.1rem;
+  border-left: 4px solid var(--border);
+  background: var(--bg-primary, #f7f7f9);
+}
+
+.active-model-banner.is-active {
+  border-left-color: var(--primary);
+  background: rgba(168, 196, 157, 0.16);
+}
+
+.active-model-banner.is-fallback {
+  border-left-color: var(--status-caution-fg, #b8860b);
+  background: #fffdf5;
+}
+
+.active-model-banner.is-loading { opacity: 0.7; }
+
+.active-model-banner .amb-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.active-model-banner .amb-detail {
+  margin: 0.3rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text-light);
+}
+
+.active-model-banner .amb-actions { flex-shrink: 0; }
+
+/* Compatibility column */
+.compat-chip {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.compat-chip--yes { background: rgba(168, 196, 157, 0.28); color: var(--primary-dark); }
+.compat-chip--no { background: #fde8e8; color: var(--danger); }
+.compat-chip--na { background: var(--bg-primary, #f0f0f2); color: var(--text-light); }
+
+.compat-reason {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--text-light);
+  max-width: 230px;
+}
+
+/* Activation confirmation modal */
+.activation-modal { align-items: center; justify-content: center; }
+
+.activation-content {
+  max-width: 620px;
+  width: min(620px, 94vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.activation-body {
+  padding: 1rem 1.2rem;
+  overflow-y: auto;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--text-dark);
+}
+
+.activation-body h4 {
+  margin: 1.1rem 0 0.4rem;
+  font-size: 0.88rem;
+  color: var(--primary);
+}
+.activation-body h4:first-child { margin-top: 0; }
+
+.activation-body ul { margin: 0.35rem 0 0; padding-left: 1.15rem; }
+.activation-body li { margin-bottom: 0.25rem; }
+
+.act-summary {
+  background: var(--bg-primary, #f7f7f9);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.82rem;
+}
+.act-summary div { margin-bottom: 0.2rem; }
+.act-summary div:last-child { margin-bottom: 0; }
+
+/* Data-provenance warning. Loud on purpose: promoting a model trained on
+   fabricated labels is the mistake this panel most needs to prevent. */
+.act-warning {
+  border: 2px solid var(--danger);
+  border-radius: 8px;
+  background: #fde8e8;
+  color: #8a1f1f;
+  padding: 0.8rem 1rem;
+  margin: 1rem 0 0;
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+.act-warning strong { color: #8a1f1f; }
+
+.act-note {
+  border-left: 3px solid var(--primary);
+  background: rgba(168, 196, 157, 0.14);
+  border-radius: 0 8px 8px 0;
+  padding: 0.7rem 0.9rem;
+  margin-top: 1rem;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+/* Smoke-test check list */
+.act-checks { list-style: none; margin: 0.4rem 0 0; padding: 0; }
+.act-checks li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  padding: 0.3rem 0;
+  font-size: 0.82rem;
+}
+.act-check-icon { flex-shrink: 0; font-weight: 700; }
+.act-check-icon.ok { color: var(--primary-dark); }
+.act-check-icon.bad { color: var(--danger); }
+.act-check-pending { color: var(--text-light); font-style: italic; }
+
+.activation-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.7rem;
+  padding: 0.9rem 1.2rem;
+  border-top: 1px solid var(--border);
+}
+
+.activation-actions .btn[disabled] { opacity: 0.6; cursor: not-allowed; }

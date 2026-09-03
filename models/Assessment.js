@@ -2,6 +2,7 @@
 // One document per screening session.
 // Connection note: mongoose model only; DB connection comes from db.js.
 const mongoose = require('mongoose');
+const { SYNTHETIC_FIELDS } = require('../constants/syntheticData');
 
 const assessmentSchema = new mongoose.Schema(
   {
@@ -123,6 +124,15 @@ const assessmentSchema = new mongoose.Schema(
       default: 'unreviewed',
       index: true,
     },
+
+    // ── Synthetic/demo marker (additive) ────────────────────────────────────
+    // false/null on every real screening. Note what this deliberately does NOT
+    // do: a synthetic assessment is still created with mlReviewStatus
+    // 'unreviewed' and mlLabel null, so it can never be exported as reviewed
+    // training data by GET /training/reviewed-assessments/export. Demo data
+    // populates analytics; it never becomes a clinical label.
+    // See constants/syntheticData.js.
+    ...SYNTHETIC_FIELDS,
   },
   { timestamps: true, collection: 'assessments' }
 );

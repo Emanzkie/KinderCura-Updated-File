@@ -63,7 +63,12 @@ async function run() {
     let updateManyFilter = null;
     let updateManyUpdate = null;
     const origUpdateMany = TrainedModel.updateMany;
+    const origCountDocuments = TrainedModel.countDocuments;
     TrainedModel.updateMany = async (filter, update) => { updateManyFilter = filter; updateManyUpdate = update; return { modifiedCount: 1 }; };
+    // performModelActivation now VERIFIES its own invariant with a
+    // countDocuments call after writing, so a single active model has to be
+    // simulated here for the unit test to exercise the success path.
+    TrainedModel.countDocuments = async () => 1;
 
     const candidate = {
       _id: 'candidate-id',
@@ -79,6 +84,7 @@ async function run() {
 
     await performModelActivation(candidate);
     TrainedModel.updateMany = origUpdateMany;
+    TrainedModel.countDocuments = origCountDocuments;
 
     assert.strictEqual(candidate.isActive, true, 'candidate becomes active');
     assert.strictEqual(candidate.saved, true, 'candidate is saved');

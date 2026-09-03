@@ -8,7 +8,7 @@
 
 const mongoose = require('mongoose');
 const Counter = require('./Counter');
-const { DATA_ORIGIN, DATA_ORIGIN_VALUES } = require('../constants/dataOrigin');
+const { DATA_ORIGIN } = require('../constants/dataOrigin');
 const { ASSESSMENT_DOMAINS, FALLBACK_DOMAIN, normalizeDomain } = require('../constants/assessmentDomains');
 
 // Schema definition for one custom question
@@ -45,9 +45,13 @@ const pediaCustomQuestionSchema = new mongoose.Schema(
     // pediatrician (they carry pediatricianId), so origin is always PEDIA_ENTRY.
     // Stored anyway so the admin data-origin queries can filter both
     // collections the same way.
+    // Enum deliberately allows only PEDIA_ENTRY. Every row here has an AUTHOR
+    // (pediatricianId), which is what makes it a pediatrician entry — it can
+    // never be core_bank or dataset_question, both of which are
+    // system-provided and live in core_bank_questions.
     origin: {
       type: String,
-      enum: DATA_ORIGIN_VALUES,
+      enum: [DATA_ORIGIN.PEDIA_ENTRY],
       default: DATA_ORIGIN.PEDIA_ENTRY,
       index: true,
     },

@@ -35,7 +35,15 @@ async function getCoreBankIds() {
   if (coreBankCache.ids && now - coreBankCache.loadedAt < CORE_BANK_TTL_MS) {
     return coreBankCache.ids;
   }
-  const rows = await CoreBankQuestion.find({}).select('questionId').lean();
+  // Scoped to core_bank on purpose. core_bank_questions also holds
+  // dataset_question rows, which are a different origin and are not part of
+  // the parent screening flow. Including them here would let a dataset
+  // question's id resolve into sourceQuestionRef on an answer stamped
+  // origin=core_bank — a mislabelled answer. See constants/dataOrigin.js.
+  // Written as "not dataset_question" rather than "== core_bank" so a legacy
+  // row with no origin still resolves, matching the schema default.
+  const rows = await CoreBankQuestion.find({ origin: { $ne: DATA_ORIGIN.DATASET_QUESTION } })
+    .select('questionId').lean();
   coreBankCache = { ids: new Set(rows.map((r) => r.questionId)), loadedAt: now };
   return coreBankCache.ids;
 }

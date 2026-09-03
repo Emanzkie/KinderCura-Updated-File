@@ -371,6 +371,15 @@ router.get('/models', authMiddleware, adminOnly, async (req, res) => {
           isActive: m.isActive,
           compatible,
           lifecycleState: modelLifecycleState(m, compatible),
+          // The SERVER's reason this model cannot be activated, or null when
+          // it can. Sent so the admin UI shows the actual rule that would
+          // reject it rather than a second copy of the rules that could drift
+          // out of sync with getModelActivationBlocker(). Note this is the
+          // cheap document-level check only — the artifact/prediction smoke
+          // test runs on demand via POST /models/:modelId/smoke-test, because
+          // it spawns Python and must not run once per row on every page load.
+          activationBlocker: m.isActive ? null : getModelActivationBlocker(m),
+          canActivate: !m.isActive && getModelActivationBlocker(m) === null,
           trainedBy: m.trainedBy
             ? `${m.trainedBy.firstName} ${m.trainedBy.lastName}`
             : 'Admin',
@@ -414,19 +423,168 @@ function getModelActivationBlocker(model) {
   return null;
 }
 
-// Safe order: activate the requested model FIRST, then deactivate every
-// other model. Every read path (routes/ml.js /predict, services/
-// assessmentProgress.js) already checks isModelCompatible() before trusting
-// whichever active model it finds, so a brief moment with two active
-// documents is harmless — it can only ever result in a correct prediction
-// or a safe rule-based fallback, never a crash or a silently wrong one.
-// Doing it in the other order would risk a brief window with NO active
-// model, which is unnecessary here.
+/**
+ * Full pre-activation gate: the cheap document rules, then a REAL prediction.
+ *
+ * getModelActivationBlocker() can only see what MongoDB says. It cannot tell
+ * that the .joblib is missing, unreadable, or trained on different columns
+ * than the document claims — all of which produce a model that activates
+ * cleanly and then fails on every live prediction. modelManager.smokeTestModel
+ * closes that gap by loading the artifact and predicting once through the same
+ * code path live predictions use.
+ *
+ * Read-only: writes nothing and never changes which model is active.
+ *
+ * @returns {Promise<{ok: boolean, blocker: string|null, smokeTest: object|null}>}
+ */
+async function runActivationPreflight(model) {
+  const blocker = getModelActivationBlocker(model);
+  if (blocker) return { ok: false, blocker, smokeTest: null };
+
+  const smokeTest = await modelManager.smokeTestModel(model);
+  if (!smokeTest.ok) {
+    return {
+      ok: false,
+      blocker: `Pre-activation smoke test failed: ${smokeTest.error}`,
+      smokeTest,
+    };
+  }
+  return { ok: true, blocker: null, smokeTest };
+}
+
+/**
+ * Promote one model to active.
+ *
+ * ORDER: deactivate every other model FIRST, then activate the requested one.
+ *
+ * This is the opposite of the original order, which activated first so there
+ * was never a moment with no active model. The tradeoff was a brief window
+ * with TWO active documents, during which findOne({isActive:true}) could
+ * return either one — so a prediction in that window might silently use the
+ * OLD model. The invariant "at most one model is active" is the more valuable
+ * one to hold absolutely, and the cost of the other window is nil: with no
+ * active model, services/assessmentProgress.js getMLCareStage() returns null
+ * and the existing rule-based fallback runs, which is a documented, safe,
+ * already-exercised path (it is what the system does today).
+ *
+ * Verified rather than assumed: the write is followed by a count, and a
+ * violated invariant is repaired and reported instead of passing silently.
+ * MongoDB gives no cross-document atomicity without a transaction, so this
+ * check is what makes the invariant real.
+ *
+ * Never deletes anything. A deactivated model keeps its document, its metrics
+ * and its .joblib artifact, which is what makes rollback possible.
+ */
 async function performModelActivation(model) {
+  await TrainedModel.updateMany({ _id: { $ne: model._id }, isActive: true }, { $set: { isActive: false } });
   model.isActive = true;
   await model.save();
-  await TrainedModel.updateMany({ _id: { $ne: model._id }, isActive: true }, { $set: { isActive: false } });
+
+  const activeCount = await TrainedModel.countDocuments({ isActive: true });
+  if (activeCount !== 1) {
+    // Self-heal: re-run the deactivation, then re-check. If it still fails the
+    // caller is told, because silently reporting success here would leave the
+    // system in the exact state this function exists to prevent.
+    await TrainedModel.updateMany({ _id: { $ne: model._id }, isActive: true }, { $set: { isActive: false } });
+    const repaired = await TrainedModel.countDocuments({ isActive: true });
+    if (repaired !== 1) {
+      throw new Error(
+        `Model activation left ${repaired} active model(s) instead of exactly 1. ` +
+        'The active model may be ambiguous — check the Trained Models panel before relying on ML predictions.'
+      );
+    }
+  }
+  return { activeCount: 1 };
 }
+
+/**
+ * Turn ML off entirely: no model active, every prediction rule-based.
+ *
+ * The counterpart to activation, and the only way back to the rule-based-only
+ * behaviour the system had before any model was promoted. Deliberately a
+ * separate action from switching models, because "use a different model" and
+ * "stop using ML" are different decisions.
+ *
+ * Deactivation is a FLAG CHANGE ONLY. No document is deleted, no .joblib is
+ * removed, no metrics are cleared — every deactivated model stays fully
+ * intact and can be re-activated later (subject to the same preflight).
+ *
+ * @returns {Promise<{deactivated: number, previous: Array}>}
+ */
+async function performModelDeactivation() {
+  const previouslyActive = await TrainedModel.find({ isActive: true }).select('version modelPath').lean();
+  const res = await TrainedModel.updateMany({ isActive: true }, { $set: { isActive: false } });
+  return {
+    deactivated: res.modifiedCount || 0,
+    previous: previouslyActive.map((m) => ({ version: m.version, modelPath: m.modelPath })),
+  };
+}
+
+/**
+ * POST /api/ml/models/:modelId/smoke-test
+ *
+ * Run the pre-activation checks WITHOUT activating anything. This is what the
+ * admin UI calls before showing its confirmation dialog, so the admin sees a
+ * real "this model can produce a prediction" result before deciding, rather
+ * than discovering a broken artifact after the switch.
+ *
+ * Always 200 for a model that exists — a FAILED smoke test is a valid result
+ * to report, not a request error. Read the `ok` field.
+ */
+router.post('/models/:modelId/smoke-test', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const model = await TrainedModel.findById(req.params.modelId).lean();
+    if (!model) return res.status(404).json({ error: 'Model not found.' });
+
+    const preflight = await runActivationPreflight(model);
+    res.json({
+      success: true,
+      modelId: String(model._id),
+      version: model.version,
+      ok: preflight.ok,
+      blocker: preflight.blocker,
+      smokeTest: preflight.smokeTest,
+      probe: modelManager.buildSmokeTestProbe(model),
+    });
+  } catch (err) {
+    console.error('Model smoke test error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/ml/models/deactivate
+ *
+ * Deactivate whatever model is currently active and fall back to rule-based
+ * predictions. Nothing is deleted — see performModelDeactivation.
+ *
+ * Declared BEFORE the '/models/:modelId/activate' route below only for
+ * readability; Express matches on the full path, and 'deactivate' has no
+ * second segment, so the two can never shadow each other.
+ */
+router.post('/models/deactivate', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const result = await performModelDeactivation();
+
+    sse.broadcast('analytics:update', {
+      type: 'ml',
+      action: 'model_deactivated',
+      deactivated: result.deactivated,
+    });
+
+    res.json({
+      success: true,
+      deactivated: result.deactivated,
+      previous: result.previous,
+      message: result.deactivated
+        ? `Deactivated model v${result.previous.map((p) => p.version).join(', v')}. New predictions will use the rule-based fallback. No model or model file was deleted.`
+        : 'No model was active. New predictions were already using the rule-based fallback.',
+    });
+  } catch (err) {
+    console.error('Model deactivation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.post('/models/:modelId/activate', authMiddleware, adminOnly, async (req, res) => {
   try {
@@ -435,10 +593,18 @@ router.post('/models/:modelId/activate', authMiddleware, adminOnly, async (req, 
       return res.status(404).json({ error: 'Model not found.' });
     }
 
-    const blocker = getModelActivationBlocker(model);
-    if (blocker) {
-      return res.status(409).json({ error: blocker });
+    // Document rules AND a real test prediction. A model that cannot predict
+    // never becomes the model live predictions depend on.
+    const preflight = await runActivationPreflight(model);
+    if (!preflight.ok) {
+      return res.status(409).json({ error: preflight.blocker, smokeTest: preflight.smokeTest });
     }
+
+    // Recorded so the response can name what was rolled back FROM, which is
+    // what the admin needs in order to roll back TO it again later.
+    const previouslyActive = await TrainedModel.find({ isActive: true, _id: { $ne: model._id } })
+      .select('version')
+      .lean();
 
     await performModelActivation(model);
 
@@ -451,6 +617,10 @@ router.post('/models/:modelId/activate', authMiddleware, adminOnly, async (req, 
 
     res.json({
       success: true,
+      // Deactivated, never deleted: these documents and their .joblib files
+      // are untouched and remain activatable.
+      deactivated: previouslyActive.map((m) => ({ version: m.version })),
+      smokeTest: preflight.smokeTest,
       model: {
         id: String(model._id),
         version: model.version,
@@ -475,4 +645,10 @@ module.exports = router;
 // Exposed for tests only (see tests/unit/model-activation.test.js). Attaching
 // to the router function is inert for Express — app.use() only ever calls it
 // as a request handler, so this does not affect routing.
-router.__testables = { modelLifecycleState, getModelActivationBlocker, performModelActivation };
+router.__testables = {
+  modelLifecycleState,
+  getModelActivationBlocker,
+  performModelActivation,
+  performModelDeactivation,
+  runActivationPreflight,
+};

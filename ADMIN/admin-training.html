@@ -50,6 +50,30 @@
             <div class="overview-card"><h3>Last Updated</h3><p id="sumLastUpdated" class="summary-date">No activity</p></div>
         </div>
 
+        <!-- ================================================================ -->
+        <!-- Model dataset & training status.                                  -->
+        <!-- Reports the CURRENT synthetic model dataset and the model trained  -->
+        <!-- from it. Every value is read from MongoDB or from the stored       -->
+        <!-- pipeline report; a field with no underlying value renders "—"      -->
+        <!-- rather than a zero, so an absent metric is never mistaken for a    -->
+        <!-- measured one. Generating a dataset happens on the Data Sources     -->
+        <!-- page; this panel is the status/metrics view of the same run.       -->
+        <!-- ================================================================ -->
+        <div class="card" id="modelPipelineStatus" style="margin-bottom:2rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+                <h3><img src="/icons/cognitive.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Model Dataset &amp; Training Status</h3>
+                <button class="btn btn-secondary" onclick="loadPipelineSummary()">Refresh</button>
+            </div>
+            <p style="color:var(--text-light);margin:0.6rem 0 1rem;font-size:0.9rem;">
+                The synthetic dataset the classifier was last trained on, and the metrics that training run actually produced.
+                Generate a new dataset on the <a href="/admin/admin-data-sources.html">Question Origin / Data Sources</a> page.
+                Metrics come from <code>ml/trainer.py</code>'s held-out test split &mdash; nothing on this panel is a placeholder value.
+            </p>
+            <div id="pipelineSummaryBody">
+                <p style="color:var(--text-light);">Loading&hellip;</p>
+            </div>
+        </div>
+
         <div class="card" style="margin-bottom:2rem;">
             <h3><img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Upload Dataset</h3>
             <p style="color:var(--text-light);margin:0.4rem 0 0.6rem;">Add a CSV or JSON dataset for assessment data.</p>
@@ -156,6 +180,14 @@
             <p style="color:var(--text-light);margin:0.6rem 0 1rem;font-size:0.9rem;">
                 Training a dataset produces a <strong>candidate</strong> model only — it never changes which model live assessments use. A candidate must be explicitly activated below before it affects predictions. "Completed" means training finished without error, not that a model is approved for production.
             </p>
+
+            <!-- Which model is serving live predictions right now. Rendered from
+                 GET /ml/models, so it always reflects the database rather than
+                 whatever the page last did. -->
+            <div id="activeModelBanner" class="active-model-banner is-loading">
+                <p class="amb-title">Loading active model&hellip;</p>
+            </div>
+
             <div id="modelListWrap" style="overflow-x:auto;">
                 <table class="dataset-table">
                     <thead>
@@ -163,18 +195,44 @@
                             <th>Version</th>
                             <th>Dataset</th>
                             <th>Status</th>
+                            <th>Compatibility</th>
                             <th>Metrics</th>
                             <th>Feature Columns</th>
                             <th style="text-align:center;">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="modelRows">
-                        <tr><td colspan="6" class="empty-cell">Loading models...</td></tr>
+                        <tr><td colspan="7" class="empty-cell">Loading models...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
+
+<!-- ==================================================================== -->
+<!-- Model activation confirmation.                                        -->
+<!-- A custom modal rather than confirm(): the admin needs to see the      -->
+<!-- smoke-test result, the data provenance warning and what stays         -->
+<!-- unchanged before deciding, and a browser confirm() cannot show that.  -->
+<!-- The Confirm button stays disabled until the smoke test passes.        -->
+<!-- ==================================================================== -->
+<div class="notification-modal activation-modal" id="activationModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="activationModalTitle">
+    <div class="notification-modal-content activation-content" role="document">
+        <div class="notification-modal-header">
+            <h3 id="activationModalTitle">Activate model</h3>
+            <button type="button" class="notif-close close-btn" onclick="closeActivationModal()" aria-label="Close">&times;</button>
+        </div>
+        <div class="activation-body" id="activationBody">
+            <p>Loading&hellip;</p>
+        </div>
+        <div class="activation-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeActivationModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" id="activationConfirmBtn" onclick="confirmActivation()" disabled>
+                Running safety checks&hellip;
+            </button>
+        </div>
+    </div>
+</div>
 
 <div class="notification-modal notifications-modal" id="notificationsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle">
     <div class="notification-modal-content notifications-content" role="document">

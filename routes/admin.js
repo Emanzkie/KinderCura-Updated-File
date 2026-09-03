@@ -24,11 +24,60 @@ const Notification = require('../models/Notification');
 const SystemSetting = require('../models/SystemSetting');
 const paymentService = require('../services/paymentService');
 const fileStorage = require('../services/fileStorage');
+// Requirement B — synthetic MODEL dataset pipeline (generate + clean only;
+// training stays with POST /training/:id/train). See services/datasetPipeline.js.
+const datasetPipeline = require('../services/datasetPipeline');
 const AssessmentAnswer = require('../models/AssessmentAnswer');
 const CoreBankQuestion = require('../models/CoreBankQuestion');
 const PediaCustomQuestion = require('../models/PediaCustomQuestion');
 const PediaCustomQuestionAssignment = require('../models/PediaCustomQuestionAssignment');
-const { DATA_ORIGIN, DATA_ORIGIN_LABELS, DATA_ORIGIN_VALUES } = require('../constants/dataOrigin');
+const {
+  DATA_ORIGIN,
+  DATA_ORIGIN_LABELS,
+  DATA_ORIGIN_VALUES,
+  DATA_ORIGIN_SOURCE_KIND,
+  APPROVAL_STATUS,
+  approvalStatusLabel,
+  generationMethodLabel,
+} = require('../constants/dataOrigin');
+// The completed reviewer round on the Dataset Question catalogue. Static
+// catalogue data (no DB read) — surfaced so the admin page can show the
+// REVIEWER decision as a fact distinct from PEDIATRICIAN approval. A reviewer
+// "approve" never implies a pediatrician sign-off and never activates anything.
+const { DATASET_REVIEW, DATASET_QUESTIONS } = require('../constants/datasetQuestions');
+// approve | revise | reject → the label the admin page shows for the reviewer's
+// wording decision. Kept separate from APPROVAL_STATUS_LABELS, which is the
+// pediatrician lifecycle.
+const REVIEWER_DECISION_LABELS = Object.freeze({
+  approve: 'Approved',
+  revise: 'Revision requested',
+  reject: 'Rejected',
+});
+// DATASET_REVIEW.openMappingItems is the REVIEWER round's static record of
+// which questions were approved on wording only, with a clinical question
+// still open for a pediatrician to rule on (see constants/datasetQuestions.js
+// — DQ09 today). Reviewer approval never closes that flag; only a pediatrician
+// actually ruling on the question does, per docs/dataset-questions-open-issues.md
+// and the DQ09 comment in constants/datasetQuestions.js ("approval of the
+// wording did not settle the number"). So the flag is open only until the
+// SAME question's live approvalStatus becomes APPROVED — computed here, never
+// by editing the reviewer round's historical record.
+function isMappingQuestionOpen(questionId, approvalStatus) {
+  return DATASET_REVIEW.openMappingItems.includes(questionId) && approvalStatus !== APPROVAL_STATUS.APPROVED;
+}
+
+function datasetReviewerSummary(stillOpenMappingItems) {
+  return {
+    round: DATASET_REVIEW.round,
+    decidedOn: DATASET_REVIEW.decidedOn,
+    decision: DATASET_REVIEW.decision,
+    decisionLabel: REVIEWER_DECISION_LABELS[DATASET_REVIEW.decision] || DATASET_REVIEW.decision,
+    tally: DATASET_REVIEW.tally,
+    openMappingItems: stillOpenMappingItems || DATASET_REVIEW.openMappingItems,
+    caveat: DATASET_REVIEW.caveat,
+    catalogueCount: DATASET_QUESTIONS.length,
+  };
+}
 const sse = require('../sse');
 
 function fmtDate(d) {
@@ -1271,8 +1320,16 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
       version: nextVersion,
     });
 
-    // Run training in the background (async, no await in request handler)
-    modelManager.trainModel(datasetPath, dataset._id, { featureSet, datasetContent }).then(async (metrics) => {
+    // Run training in the background (async, no await in request handler).
+    //
+    // ownsModelDoc:false — this route already created `modelDoc` above and
+    // fills in its metrics below. Without it, trainModel() creates a SECOND
+    // TrainedModel for the same run: two 'completed' documents, consecutive
+    // versions, identical modelPath and identical metrics, which made the
+    // current model version impossible to report. (trained_models still holds
+    // one such pair from before this fix — v2 and v3, same artifact, same
+    // second.) Every other caller of trainModel() keeps the old behaviour.
+    modelManager.trainModel(datasetPath, dataset._id, { featureSet, datasetContent, ownsModelDoc: false }).then(async (metrics) => {
       // Step 7: a successfully trained model is a CANDIDATE only. It does
       // NOT become active and the currently active model is left untouched
       // — an admin must explicitly activate it via the Trained Models panel
@@ -1284,6 +1341,20 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
       modelDoc.precision = metrics.precision;
       modelDoc.recall = metrics.recall;
       modelDoc.f1Score = metrics.f1;
+      // Structured mirror of the four flat fields above. Populated here too
+      // because consumers read one or the other and, until now, this path left
+      // the sub-document at its zero defaults while the flat fields held the
+      // real numbers — a model could report 65% accuracy and 0% accuracy at
+      // the same time depending on which field was read.
+      modelDoc.metrics = {
+        accuracy: metrics.accuracy,
+        precision: metrics.precision,
+        recall: metrics.recall,
+        f1_score: metrics.f1,
+      };
+      // When the run actually finished. Left null by this path before, which
+      // is why the admin pages had no "last trained" timestamp to show.
+      modelDoc.trainedAt = new Date();
       modelDoc.featureImportances = metrics.feature_importances;
       modelDoc.perClassMetrics = metrics.per_class_metrics || {};
       modelDoc.confusionMatrix = metrics.confusion_matrix || null;
@@ -1316,16 +1387,233 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
       sse.broadcast('analytics:update', { type: 'ml', action: 'training_completed', datasetId: String(dataset._id), accuracy: metrics.accuracy });
     }).catch(async (trainErr) => {
       console.error('ML training failed:', trainErr.message);
-      modelDoc.status = 'failed';
-      modelDoc.errorMessage = trainErr.message;
-      await modelDoc.save();
+      // The failure handler must not be able to fail. Both writes below talk
+      // to MongoDB, and a training run long enough to outlive a connection —
+      // which a 50,000-row dataset is — will land here with a dead socket.
+      // Before this guard, that second failure was an unhandled rejection, and
+      // server.js's unhandledRejection handler shut the whole process down: a
+      // transient Atlas blip during training took the entire app offline.
+      // The dataset/model are left in 'training' when this happens, which the
+      // admin pages already render as an in-progress run.
+      try {
+        modelDoc.status = 'failed';
+        modelDoc.errorMessage = trainErr.message;
+        await modelDoc.save();
 
-      dataset.status = 'failed';
-      dataset.errorMessage = trainErr.message;
-      dataset.trainingSummary = `Training failed: ${trainErr.message}`;
-      await dataset.save();
+        dataset.status = 'failed';
+        dataset.errorMessage = trainErr.message;
+        dataset.trainingSummary = `Training failed: ${trainErr.message}`;
+        await dataset.save();
 
-      sse.broadcast('analytics:update', { type: 'ml', action: 'training_failed', datasetId: String(dataset._id), error: trainErr.message });
+        sse.broadcast('analytics:update', { type: 'ml', action: 'training_failed', datasetId: String(dataset._id), error: trainErr.message });
+      } catch (persistErr) {
+        console.error('Could not persist the training failure state:', persistErr.message);
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// SYNTHETIC MODEL DATASET PIPELINE  (Requirement B)
+//
+// Generate -> validate -> clean -> register, exposed to the admin Data Sources
+// page. Training is NOT here: the registered dataset is sent to the model
+// through the EXISTING POST /training/:id/train above, so there is exactly one
+// training implementation and the synthetic dataset goes through the same
+// candidate/active model lifecycle as any hand-uploaded one.
+//
+// This pipeline is completely separate from the synthetic SYSTEM data
+// (Requirement A, scripts/generate-system-demo-data.js). It creates no users,
+// no children and no assessments — only a TrainingDataset document and a CSV.
+// ────────────────────────────────────────────────────────────────────────────
+
+// GET /api/admin/dataset-pipeline/status
+// Everything the admin pages need to report the CURRENT state of the model
+// dataset and the model trained from it. Every number is read from MongoDB or
+// from a stored pipeline report — none is computed for display.
+router.get('/dataset-pipeline/status', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const TrainedModelRef = require('../models/TrainedModel');
+
+    // The most recent dataset this pipeline produced. Identified by the
+    // presence of a syntheticPipeline report, not by name or filename.
+    const dataset = await TrainingDataset.findOne({ syntheticPipeline: { $ne: null } })
+      .sort({ createdAt: -1 })
+      .populate('uploadedBy', 'firstName lastName')
+      .lean();
+
+    let model = null;
+    if (dataset) {
+      // The latest COMPLETED model trained from this dataset. A run that is
+      // still going, or failed, is reported separately below rather than being
+      // presented as if it had produced metrics.
+      model = await TrainedModelRef.findOne({ datasetId: dataset._id })
+        .sort({ createdAt: -1 })
+        .lean();
+    }
+
+    const [pipelineDatasetCount, environment] = await Promise.all([
+      TrainingDataset.countDocuments({ syntheticPipeline: { $ne: null } }),
+      datasetPipeline.checkPipelineEnvironment(),
+    ]);
+
+    res.json({
+      success: true,
+      environment: { ready: environment.ok, error: environment.ok ? null : environment.error },
+      limits: {
+        minRows: datasetPipeline.MIN_ROWS,
+        maxRows: datasetPipeline.MAX_ROWS,
+        defaultRows: datasetPipeline.DEFAULT_ROWS,
+        defaultSeed: datasetPipeline.DEFAULT_SEED,
+        defaultDefectRate: datasetPipeline.DEFAULT_DEFECT_RATE,
+      },
+      pipelineDatasetCount,
+      dataset: dataset
+        ? {
+            id: String(dataset._id),
+            name: dataset.name,
+            status: dataset.status,
+            rowCount: dataset.rowCount,
+            columnCount: dataset.columnCount,
+            fileSize: dataset.fileSize,
+            filePath: dataset.filePath,
+            uploadedAt: dataset.createdAt,
+            trainedAt: dataset.trainedAt,
+            uploadedByName: dataset.uploadedBy
+              ? `${dataset.uploadedBy.firstName} ${dataset.uploadedBy.lastName}`
+              : 'Admin',
+            provenance: dataset.provenance || null,
+            errorMessage: dataset.errorMessage || null,
+            pipeline: dataset.syntheticPipeline,
+          }
+        : null,
+      model: model
+        ? {
+            id: String(model._id),
+            version: model.version,
+            status: model.status,
+            isActive: Boolean(model.isActive),
+            featureSetType: model.featureSetType,
+            trainedAt: model.trainedAt,
+            // Metrics are echoed exactly as ml/trainer.py produced them.
+            accuracy: model.accuracy,
+            precision: model.precision,
+            recall: model.recall,
+            f1Score: model.f1Score,
+            trainingSamples: model.trainingSamples,
+            testSamples: model.testSamples,
+            totalRows: model.totalRows,
+            rowsDropped: model.rowsDropped,
+            classNames: model.classNames || [],
+            classDistribution: model.classDistribution || null,
+            featuresUsed: model.featuresUsed || [],
+            errorMessage: model.errorMessage || null,
+          }
+        : null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/dataset-pipeline/generate
+// Body: { rows, seed, defectRate, normalize }
+// Runs ml/pipeline.py's generate + clean stages and registers the CLEANED file
+// as a TrainingDataset. Deliberately does not train — the response carries the
+// new datasetId so the caller can hand it to POST /training/:id/train.
+router.post('/dataset-pipeline/generate', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { dataset, report } = await datasetPipeline.generateDataset({
+      rows: req.body?.rows,
+      seed: req.body?.seed,
+      defectRate: req.body?.defectRate,
+      normalize: Boolean(req.body?.normalize),
+      userId: req.user.userId,
+    });
+
+    sse.broadcast('analytics:update', {
+      type: 'dataset',
+      action: 'pipeline_generated',
+      datasetId: String(dataset._id),
+    });
+
+    res.status(201).json({
+      success: true,
+      datasetId: String(dataset._id),
+      datasetVersion: report.dataset_version,
+      rowCount: dataset.rowCount,
+      pipeline: dataset.syntheticPipeline,
+    });
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/demo-data/summary
+// Verification view for Requirement A: how many records in each collection are
+// synthetic versus real. Read-only — this endpoint never generates or deletes
+// anything; that is scripts/generate-system-demo-data.js's job, deliberately
+// kept off the web surface so 1,500 accounts can never be created by a stray
+// click. Counts come from countDocuments over the live collections.
+router.get('/demo-data/summary', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const SYNTHETIC = { isSynthetic: true };
+    const models = [
+      ['users', User],
+      ['children', Child],
+      ['assessments', Assessment],
+      ['results', AssessmentResult],
+      ['answers', AssessmentAnswer],
+      ['appointments', Appointment],
+    ];
+
+    const collections = {};
+    await Promise.all(models.map(async ([key, Model]) => {
+      const [total, synthetic] = await Promise.all([
+        Model.countDocuments({}),
+        Model.countDocuments(SYNTHETIC),
+      ]);
+      collections[key] = { total, synthetic, real: total - synthetic };
+    }));
+
+    const roleRows = await User.aggregate([
+      {
+        $group: {
+          _id: { role: '$role', synthetic: { $ifNull: ['$isSynthetic', false] } },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+    const roles = {};
+    roleRows.forEach((r) => {
+      const role = r._id.role || 'unknown';
+      roles[role] = roles[role] || { synthetic: 0, real: 0 };
+      if (r._id.synthetic === true) roles[role].synthetic += r.count;
+      else roles[role].real += r.count;
+    });
+
+    const batchRows = await User.aggregate([
+      { $match: SYNTHETIC },
+      { $group: { _id: '$syntheticBatch', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]);
+
+    res.json({
+      success: true,
+      collections,
+      roles,
+      batches: batchRows.map((b) => ({ batch: b._id || 'unlabelled', users: b.count })),
+      // The adviser's threshold, evaluated against the live count rather than
+      // asserted. `met` is false whenever the database says it is false.
+      requirement: {
+        label: 'More than 1,000 system user records',
+        threshold: 1000,
+        actual: collections.users.total,
+        met: collections.users.total > 1000,
+      },
+      generatorCommand: 'node scripts/generate-system-demo-data.js --users=1500',
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1845,8 +2133,12 @@ router.get('/data-origin/summary', authMiddleware, adminOnly, async (req, res) =
     const pediaQ = splitKnownAndOther(pediaQuestionOrigins);
 
     const coreBankQuestions = coreQ.known[DATA_ORIGIN.CORE_BANK] || 0;
+    // Dataset Questions share the core_bank_questions collection but are a
+    // separate origin — counted from `origin`, never from a citation filter.
+    const datasetOriginQuestions = coreQ.known[DATA_ORIGIN.DATASET_QUESTION] || 0;
     const pediaEntryQuestions = pediaQ.known[DATA_ORIGIN.PEDIA_ENTRY] || 0;
     const coreBankAnswers = answers.known[DATA_ORIGIN.CORE_BANK] || 0;
+    const datasetQuestionAnswers = answers.known[DATA_ORIGIN.DATASET_QUESTION] || 0;
 
     // Questions carrying no origin, or an origin this build does not know about.
     const unclassifiedQuestions = coreQ.unset + pediaQ.unset;
@@ -1869,15 +2161,25 @@ router.get('/data-origin/summary', authMiddleware, adminOnly, async (req, res) =
     const otherAnswerTotal = answers.other.reduce((sum, o) => sum + o.count, 0);
     const otherQuestionTotal = otherQuestions.reduce((sum, o) => sum + o.count, 0);
 
-    // ── Dataset provenance ──────────────────────────────────────────────────
-    // A question counts as dataset-derived ONLY if it carries a real, checkable
-    // sourceCitation. sourcedFrom is a free-text attribution and is deliberately
-    // NOT sufficient — all 34 core-bank rows carry a legacy schema default that
-    // no act of sourcing produced (see models/CoreBankQuestion.js). If nothing
-    // has a citation this block reports zero, and that is the correct answer.
+    // ── Dataset Questions ───────────────────────────────────────────────────
+    // A DISTINCT ORIGIN, not core-bank rows with a citation. These are
+    // questions whose text came from an actual external dataset. The schema
+    // refuses to store one without a checkable sourceCitation (see
+    // models/CoreBankQuestion.js), so every row here has a real source. None
+    // exist yet, and reporting zero is the correct answer.
     const datasetQuestionDocs = await CoreBankQuestion.find({
-      sourceCitation: { $nin: [null, ''] },
-    }).select('questionId sourceCitation sourceVersion importedAt importBatchId').lean();
+      origin: DATA_ORIGIN.DATASET_QUESTION,
+    }).select('questionId sourceCitation sourceVersion importedAt importBatchId '
+      + 'approvalStatus generationMethod isActive').lean();
+
+    // Review lifecycle counts. `active` is reported separately from `approved`
+    // because approval permits activation, it is not activation.
+    const datasetApproval = {
+      pending: datasetQuestionDocs.filter((d) => d.approvalStatus === APPROVAL_STATUS.PENDING).length,
+      approved: datasetQuestionDocs.filter((d) => d.approvalStatus === APPROVAL_STATUS.APPROVED).length,
+      rejected: datasetQuestionDocs.filter((d) => d.approvalStatus === APPROVAL_STATUS.REJECTED).length,
+      active: datasetQuestionDocs.filter((d) => d.isActive === true).length,
+    };
 
     const datasetQuestionIds = datasetQuestionDocs.map((d) => d.questionId);
 
@@ -1922,12 +2224,46 @@ router.get('/data-origin/summary', authMiddleware, adminOnly, async (req, res) =
     });
 
     res.json({
-      dataset: {
-        label: 'Dataset',
-        // Zero here means no question carries a checkable external source.
-        questions: datasetQuestionDocs.length,
+      // ── Question origin 2 of 3: Dataset Question ───────────────────────────
+      // Questions whose text came from an actual external dataset. A DISTINCT
+      // ORIGIN from Core Question Bank, not a badge on it. NOT an ML training
+      // dataset either — those live in the TrainingDataset collection and are
+      // served by /admin/training/*. Zero here means no dataset question has
+      // been imported yet.
+      datasetQuestion: {
+        label: DATA_ORIGIN_LABELS[DATA_ORIGIN.DATASET_QUESTION],
+        sourceKind: DATA_ORIGIN_SOURCE_KIND[DATA_ORIGIN.DATASET_QUESTION],
+        questions: datasetOriginQuestions,
         questionsAnswered: datasetAnswered,
-        answers: datasetAnswers,
+        answers: datasetQuestionAnswers,
+        sources: [...bySource.values()].map((e) => ({
+          citation: e.citation,
+          version: e.version,
+          items: e.items,
+          lastImportedAt: e.lastImportedAt,
+          batchCount: e.batchIds.size,
+        })),
+        hasExternalDataset: datasetOriginQuestions > 0,
+        // Pediatrician review lifecycle. Nothing here is usable in an
+        // assessment until it is BOTH approved and active.
+        approval: datasetApproval,
+        // The REVIEWER round (wording only). Static catalogue data, present
+        // even before any question is seeded. Distinct from `approval` above,
+        // which is the PEDIATRICIAN lifecycle — a reviewer "Approved" is not a
+        // pediatrician sign-off and does not activate anything.
+        reviewerDecision: datasetReviewerSummary(
+          DATASET_REVIEW.openMappingItems.filter((id) => {
+            const doc = datasetQuestionDocs.find((d) => d.questionId === id);
+            return isMappingQuestionOpen(id, doc ? doc.approvalStatus : null);
+          })
+        ),
+      },
+      // Deprecated alias of datasetQuestion (kept for one release).
+      dataset: {
+        label: DATA_ORIGIN_LABELS[DATA_ORIGIN.DATASET_QUESTION],
+        questions: datasetOriginQuestions,
+        questionsAnswered: datasetAnswered,
+        answers: datasetQuestionAnswers,
         sources: [...bySource.values()].map((e) => ({
           citation: e.citation,
           version: e.version,
@@ -1943,13 +2279,19 @@ router.get('/data-origin/summary', authMiddleware, adminOnly, async (req, res) =
         questionsAnswered: coreAnsweredRefs.filter(Boolean).length,
         answers: coreBankAnswers,
       },
+      // ── Question origin 1 of 3: Core Question Bank ────────────────────────
+      // Source = our consultant pediatrician's interview.
       coreBank: {
         label: DATA_ORIGIN_LABELS[DATA_ORIGIN.CORE_BANK],
+        sourceKind: DATA_ORIGIN_SOURCE_KIND[DATA_ORIGIN.CORE_BANK],
         questions: coreBankQuestions,
         answers: coreBankAnswers,
       },
+      // ── Question origin 3 of 3: Pediatrician Entry ────────────────────────
+      // Author = a pediatrician working inside KinderCura.
       pediaEntry: {
         label: DATA_ORIGIN_LABELS[DATA_ORIGIN.PEDIA_ENTRY],
+        sourceKind: DATA_ORIGIN_SOURCE_KIND[DATA_ORIGIN.PEDIA_ENTRY],
         questions: pediaEntryQuestions,
         answers: pediaAnswered,
         assignmentsTotal: pediaAssignmentsTotal,
@@ -1967,8 +2309,10 @@ router.get('/data-origin/summary', authMiddleware, adminOnly, async (req, res) =
         values: [...answers.other.map((o) => ({ ...o, scope: 'answers' })), ...otherQuestions.map((o) => ({ ...o, scope: 'questions' }))],
       },
       total: {
-        questions: coreBankQuestions + pediaEntryQuestions + unclassifiedQuestions + otherQuestionTotal,
-        answers: coreBankAnswers + pediaAnswered + answers.unset + otherAnswerTotal,
+        questions: coreBankQuestions + datasetOriginQuestions + pediaEntryQuestions
+          + unclassifiedQuestions + otherQuestionTotal,
+        answers: coreBankAnswers + datasetQuestionAnswers + pediaAnswered
+          + answers.unset + otherAnswerTotal,
       },
       warnings,
     });
@@ -1985,65 +2329,127 @@ router.get('/data-origin/list', authMiddleware, adminOnly, async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
 
-    // 'dataset' is a PROVENANCE view, not a storage origin — it re-filters
-    // core-bank rows by whether they carry a checkable sourceCitation. It is
-    // deliberately not a DATA_ORIGIN value; see constants/dataOrigin.js, which
-    // reserves ml_dataset without admitting it to the enum.
-    const DATASET_VIEW = 'dataset';
-    if (
-      originFilter !== 'all' &&
-      originFilter !== DATASET_VIEW &&
-      !DATA_ORIGIN_VALUES.includes(originFilter)
-    ) {
+    // Filtering is by REAL ORIGIN. 'dataset_question' is a first-class origin,
+    // not a citation sub-filter on the core bank: a question either came from
+    // an external dataset or it did not. The older 'external_source'/'dataset'
+    // spellings are accepted as deprecated aliases and now resolve to that
+    // origin, so a stale bookmark cannot silently mean "core bank".
+    const LEGACY_DATASET_ALIASES = ['external_source', 'dataset'];
+    const resolvedFilter = LEGACY_DATASET_ALIASES.includes(originFilter)
+      ? DATA_ORIGIN.DATASET_QUESTION
+      : originFilter;
+
+    if (resolvedFilter !== 'all' && !DATA_ORIGIN_VALUES.includes(resolvedFilter)) {
       return res.status(400).json({
-        error: `origin must be one of: all, ${DATASET_VIEW}, ${DATA_ORIGIN_VALUES.join(', ')}`,
+        error: `origin must be one of: all, ${DATA_ORIGIN_VALUES.join(', ')}`,
       });
     }
 
-    const wantDatasetOnly = originFilter === DATASET_VIEW;
-    const wantCore = originFilter === 'all' || originFilter === DATA_ORIGIN.CORE_BANK || wantDatasetOnly;
-    const wantPedia = originFilter === 'all' || originFilter === DATA_ORIGIN.PEDIA_ENTRY;
+    // core_bank_questions holds both system-provided origins, so it is read for
+    // 'all', for core_bank, and for dataset_question — then narrowed by origin.
+    const wantDatasetOnly = resolvedFilter === DATA_ORIGIN.DATASET_QUESTION;
+    const wantCore = resolvedFilter === 'all'
+      || resolvedFilter === DATA_ORIGIN.CORE_BANK
+      || wantDatasetOnly;
+    const wantPedia = resolvedFilter === 'all' || resolvedFilter === DATA_ORIGIN.PEDIA_ENTRY;
 
     const rows = [];
 
     if (wantCore) {
+      // Both system-provided origins live here; each row keeps its own.
       const [questions, answerCounts] = await Promise.all([
         CoreBankQuestion.find({}).lean(),
-        // One grouped pass instead of a count per question.
+        // One grouped pass instead of a count per question. Covers both
+        // system-provided origins so a dataset question's answers are counted.
         AssessmentAnswer.aggregate([
-          { $match: { sourceQuestionRef: { $nin: [null, ''] }, origin: DATA_ORIGIN.CORE_BANK } },
+          {
+            $match: {
+              sourceQuestionRef: { $nin: [null, ''] },
+              origin: { $in: [DATA_ORIGIN.CORE_BANK, DATA_ORIGIN.DATASET_QUESTION] },
+            },
+          },
           { $group: { _id: '$sourceQuestionRef', count: { $sum: 1 } } },
         ]),
       ]);
       const answersByRef = new Map(answerCounts.map((a) => [a._id, a.count]));
 
       for (const q of questions) {
+        // Read the STORED origin. A legacy row with no origin set is treated
+        // as core bank, matching the schema default — never as a dataset
+        // question, which must be an explicit, citation-backed claim.
+        const rowOrigin = q.origin === DATA_ORIGIN.DATASET_QUESTION
+          ? DATA_ORIGIN.DATASET_QUESTION
+          : DATA_ORIGIN.CORE_BANK;
+        const isDatasetQuestion = rowOrigin === DATA_ORIGIN.DATASET_QUESTION;
+
         rows.push({
           id: String(q._id),
           questionId: q.questionId,
           questionText: q.text,
           domain: q.domain,
           displayDomain: q.displayDomain || '',
-          origin: DATA_ORIGIN.CORE_BANK,
-          originLabel: DATA_ORIGIN_LABELS[DATA_ORIGIN.CORE_BANK],
-          // Mechanism label only. Provenance now lives in the fields below and
-          // must not be inferred from this one.
-          createdBy: q.sourcedFrom || 'Core Question Bank',
+          origin: rowOrigin,
+          originLabel: DATA_ORIGIN_LABELS[rowOrigin],
+          sourceKind: DATA_ORIGIN_SOURCE_KIND[rowOrigin],
+          // Neither system-provided origin has an author. The legacy
+          // `sourcedFrom` attribution is NOT used here — it is an unverified
+          // string (see models/CoreBankQuestion.js) and belongs in the
+          // provenance fields below, not in a "Created By" column.
+          createdBy: isDatasetQuestion
+            ? 'External dataset (system-managed)'
+            : 'Core Question Bank (system-managed)',
           isSystemManaged: q.isSystemManaged !== false,
           createdAt: q.createdAt,
           timesAnswered: answersByRef.get(q.questionId) || 0,
 
           // ── Provenance (null means genuinely unrecorded) ─────────────────
-          // isDataset gates the Dataset tab: a question is dataset-derived
-          // only with a checkable citation, never on attribution alone.
-          isDataset: Boolean(q.sourceCitation && String(q.sourceCitation).trim()),
+          // Only a dataset question can carry a citation — the schema refuses
+          // to save one without it, and refuses to put one on a core-bank row.
+          hasExternalSource: isDatasetQuestion,
+          // Deprecated mirror of hasExternalSource, kept for one release so a
+          // cached admin page keeps rendering. Never means "ML dataset".
+          isDataset: isDatasetQuestion,
           sourceCitation: q.sourceCitation || null,
           sourceVersion: q.sourceVersion || null,
           importedAt: q.importedAt || null,
           importBatchId: q.importBatchId || null,
           // Surfaced separately so the UI can mark it unverified. All 34
-          // existing rows carry this from a removed schema default.
+          // existing core-bank rows carry this from a removed schema default.
           sourcedFrom: q.sourcedFrom || null,
+
+          // ── Review lifecycle (dataset questions only) ────────────────────
+          // null on a core-bank row means "outside this workflow", which the
+          // UI must render as "—", never as approved. `isActive` is included
+          // because for a dataset question it is the activation gate: the
+          // model refuses true unless approvalStatus is 'approved'.
+          approvalStatus: q.approvalStatus || null,
+          approvalStatusLabel: approvalStatusLabel(q.approvalStatus),
+          generationMethod: q.generationMethod || null,
+          generationMethodLabel: generationMethodLabel(q.generationMethod),
+          approvedAt: q.approvedAt || null,
+          isActive: q.isActive !== false,
+          // True only when a pediatrician has actually approved it. A pending
+          // question is never usable in an assessment.
+          isUsableInAssessment: isDatasetQuestion
+            ? (q.approvalStatus === APPROVAL_STATUS.APPROVED && q.isActive === true)
+            : q.isActive !== false,
+
+          // ── Reviewer decision (wording) — a SEPARATE axis from approval ───
+          // Static catalogue fact joined by questionId. Only a reviewer round
+          // decision; NOT the pediatrician sign-off in approvalStatus above.
+          // The page shows all three side by side so they cannot be conflated:
+          //   Reviewer decision  → this
+          //   Pediatrician approval → approvalStatusLabel
+          //   Active              → isActive
+          reviewerDecision: isDatasetQuestion ? DATASET_REVIEW.decision : null,
+          reviewerDecisionLabel: isDatasetQuestion
+            ? (REVIEWER_DECISION_LABELS[DATASET_REVIEW.decision] || DATASET_REVIEW.decision)
+            : null,
+          reviewerDecisionRound: isDatasetQuestion
+            ? `${DATASET_REVIEW.round} · ${DATASET_REVIEW.decidedOn}`
+            : null,
+          hasOpenMappingQuestion: isDatasetQuestion
+            && isMappingQuestionOpen(q.questionId, q.approvalStatus || null),
         });
       }
     }
@@ -2074,17 +2480,40 @@ router.get('/data-origin/list', authMiddleware, adminOnly, async (req, res) => {
           displayDomain: '',
           origin: DATA_ORIGIN.PEDIA_ENTRY,
           originLabel: DATA_ORIGIN_LABELS[DATA_ORIGIN.PEDIA_ENTRY],
+          sourceKind: DATA_ORIGIN_SOURCE_KIND[DATA_ORIGIN.PEDIA_ENTRY],
           createdBy: nameById.get(String(q.pediatricianId)) || 'Unknown Pediatrician',
           isSystemManaged: false,
           createdAt: q.createdAt,
           timesAnswered: answersByQuestion.get(String(q._id)) || 0,
+          // A pediatrician-entered question has an AUTHOR, not an external
+          // source. Never inherits core-bank provenance.
+          hasExternalSource: false,
+          isDataset: false,
+          sourceCitation: null,
+          sourceVersion: null,
+          importedAt: null,
+          importBatchId: null,
+          sourcedFrom: null,
+          // A pediatrician wrote it, so there is nobody else to approve it —
+          // it is outside the dataset-question review workflow entirely.
+          approvalStatus: null,
+          approvalStatusLabel: null,
+          generationMethod: null,
+          generationMethodLabel: null,
+          approvedAt: null,
+          isActive: q.isActive !== false,
+          isUsableInAssessment: q.isActive !== false,
         });
       }
     }
 
-    // Dataset view: keep only rows with a real citation. With no external
-    // dataset imported this yields an empty list, which is the honest result.
-    const visibleRows = wantDatasetOnly ? rows.filter((r) => r.isDataset) : rows;
+    // core_bank_questions holds BOTH system-provided origins, so a single-origin
+    // filter must narrow the merged rows by their stored origin. Without this,
+    // origin=core_bank would also return Dataset Questions and vice versa.
+    // With no dataset question imported, that view is empty — the honest result.
+    const visibleRows = resolvedFilter === 'all'
+      ? rows
+      : rows.filter((r) => r.origin === resolvedFilter);
 
     // Newest first, with a stable tiebreak so pagination cannot repeat or skip
     // rows when several share a timestamp.
@@ -2102,6 +2531,9 @@ router.get('/data-origin/list', authMiddleware, adminOnly, async (req, res) => {
 
     res.json({
       // Lets the UI render an accurate empty state instead of a bare "no rows".
+      datasetQuestionView: wantDatasetOnly,
+      // Deprecated aliases of datasetQuestionView (kept for one release).
+      externalSourceView: wantDatasetOnly,
       datasetView: wantDatasetOnly,
       rows: visibleRows.slice(start, start + limit),
       pagination: {

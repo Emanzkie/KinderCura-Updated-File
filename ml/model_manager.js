@@ -40,6 +40,145 @@ function isModelCompatible(trainedModelDoc) {
   return !features.some((f) => UNSUPPORTED_FEATURES.includes(f));
 }
 
+// ── Activation smoke test ───────────────────────────────────────────────
+// A model document can look perfectly activatable in MongoDB while its
+// .joblib artifact is missing, corrupt, or trained on different columns than
+// the document claims. isModelCompatible() cannot see any of that — it only
+// reads featuresUsed. The smoke test below actually loads the artifact and
+// runs one prediction through the SAME code path live predictions use, so a
+// model is only ever promoted after it has demonstrably produced a result.
+//
+// This is a read-only probe: it writes nothing, touches no assessment, and
+// never changes which model is active.
+
+// Values used to build the probe. Deliberately mid-range and unremarkable —
+// this checks that the pipeline RUNS, not that it produces any particular
+// answer, so the numbers must never be read as an expected output.
+const SMOKE_TEST_SCORE = 70;
+const SMOKE_TEST_AGE_MONTHS = 60;
+const SMOKE_TEST_ANSWER = 2; // 'yes' under routes/assessments.js scoreAnswer()
+
+const SCORE_FEATURE_COLUMNS = [
+  'communication_score', 'social_score', 'cognitive_score', 'motor_score', 'overall_score',
+];
+const QUESTION_FEATURE_PATTERN = /^Q\d{2}$/;
+
+/**
+ * Build one synthetic prediction input for *model*.
+ *
+ * Derived from the document's own featuresUsed when it has one, which makes
+ * the probe do double duty: it verifies the artifact predicts AND that the
+ * artifact's stored feature_columns actually agree with what the database
+ * says the model was trained on. If they have drifted apart, ml/predict.py
+ * fails with "Missing required feature: X" and the smoke test catches it.
+ *
+ * Falls back to a superset probe (both known feature sets) for older
+ * documents that never recorded featuresUsed — there the artifact is the only
+ * source of truth, so the probe simply supplies everything it might ask for.
+ */
+function buildSmokeTestProbe(model) {
+  const features = Array.isArray(model?.featuresUsed) ? model.featuresUsed : [];
+
+  if (!features.length) {
+    const probe = { age_months: SMOKE_TEST_AGE_MONTHS };
+    SCORE_FEATURE_COLUMNS.forEach((c) => { probe[c] = SMOKE_TEST_SCORE; });
+    for (let n = 1; n <= 34; n += 1) probe[`Q${String(n).padStart(2, '0')}`] = SMOKE_TEST_ANSWER;
+    return probe;
+  }
+
+  const probe = {};
+  for (const feature of features) {
+    if (feature === 'age_months') probe[feature] = SMOKE_TEST_AGE_MONTHS;
+    else if (QUESTION_FEATURE_PATTERN.test(feature)) probe[feature] = SMOKE_TEST_ANSWER;
+    else probe[feature] = SMOKE_TEST_SCORE; // every remaining supported feature is a 0-100 score
+  }
+  return probe;
+}
+
+/** True when the model's .joblib artifact can actually be read back. */
+async function modelArtifactExists(modelPath) {
+  if (!modelPath) return false;
+  if (resolveModelPath(modelPath)) return true;
+  // Blob-backed deployments keep no local copy; readStored is the real check.
+  const buffer = await loadModelBuffer(modelPath);
+  return Boolean(buffer && buffer.length);
+}
+
+/**
+ * Run the pre-activation smoke test for *model*.
+ *
+ * Three checks, in the order that fails most cheaply first:
+ *   1. artifact_present  — the .joblib is readable on disk or in blob storage
+ *   2. features_supported — no feature the current predict.py cannot handle
+ *   3. test_prediction   — one real prediction through getPrediction()
+ *
+ * NEVER throws: a failure is reported as { ok: false } with the reason, so a
+ * caller can render it rather than handling an exception. Returns the full
+ * check list either way so the admin UI can show what passed as well as what
+ * failed.
+ */
+async function smokeTestModel(model) {
+  const startedAt = Date.now();
+  const checks = [];
+  const finish = (ok, error, prediction) => ({
+    ok,
+    checks,
+    prediction: prediction || null,
+    error: error || null,
+    durationMs: Date.now() - startedAt,
+  });
+
+  // 1. Artifact present
+  let artifactOk = false;
+  try {
+    artifactOk = await modelArtifactExists(model?.modelPath);
+  } catch (err) {
+    checks.push({ name: 'artifact_present', ok: false, detail: `Could not read the model file: ${err.message}` });
+    return finish(false, `Could not read the model file: ${err.message}`);
+  }
+  checks.push({
+    name: 'artifact_present',
+    ok: artifactOk,
+    detail: artifactOk
+      ? `Model file found (${model.modelPath}).`
+      : `Model file not found: ${model?.modelPath || '(no path recorded)'}`,
+  });
+  if (!artifactOk) return finish(false, `Model file not found: ${model?.modelPath || '(no path recorded)'}`);
+
+  // 2. Features supported
+  const compatible = isModelCompatible(model);
+  const unsupported = (Array.isArray(model?.featuresUsed) ? model.featuresUsed : [])
+    .filter((f) => UNSUPPORTED_FEATURES.includes(f));
+  checks.push({
+    name: 'features_supported',
+    ok: compatible,
+    detail: compatible
+      ? `All ${(model.featuresUsed || []).length} feature column(s) are supported by the current prediction pipeline.`
+      : `Unsupported feature column(s): ${unsupported.join(', ')}.`,
+  });
+  if (!compatible) return finish(false, `Unsupported feature column(s): ${unsupported.join(', ')}.`);
+
+  // 3. One real prediction
+  const probe = buildSmokeTestProbe(model);
+  try {
+    const prediction = await getPrediction(model.modelPath, probe);
+    const category = prediction && prediction.risk_category;
+    if (!category) {
+      checks.push({ name: 'test_prediction', ok: false, detail: 'The prediction returned no risk_category.' });
+      return finish(false, 'The test prediction returned no risk_category.');
+    }
+    checks.push({
+      name: 'test_prediction',
+      ok: true,
+      detail: `Test prediction succeeded (returned "${category}").`,
+    });
+    return finish(true, null, prediction);
+  } catch (err) {
+    checks.push({ name: 'test_prediction', ok: false, detail: `Test prediction failed: ${err.message}` });
+    return finish(false, `Test prediction failed: ${err.message}`);
+  }
+}
+
 // ── Mode & URL Helpers ──────────────────────────────────────────────────
 
 /**
@@ -204,19 +343,35 @@ async function checkPythonEnvironment() {
  *
  * Trains a candidate model, persists the .joblib artifact, and saves metrics
  * to the TrainedModel MongoDB collection with isActive: false.
+ *
+ * options.ownsModelDoc — set to FALSE when the CALLER has already created the
+ * TrainedModel document for this run and will fill in the metrics itself.
+ *
+ * Why that option exists: routes/admin.js POST /training/:id/train creates a
+ * placeholder TrainedModel (so the UI can show "training" immediately and hold
+ * the version number), then calls this function, which used to unconditionally
+ * create a SECOND document for the same run. The result was two 'completed'
+ * models per training run, consecutive versions, identical modelPath and
+ * identical metrics — which made "current model version" unreportable. The
+ * live database still contains such a pair (v2 and v3, same artifact, same
+ * second). Defaults to true so every other caller — routes/ml.js
+ * POST /train-model, ml/tests, any direct call — behaves exactly as before.
  */
 async function trainModel(datasetPath, datasetId, options = {}) {
   const outputDir = ensureModelDir();
   const featureSet = typeof options === 'string'
     ? options
     : (options?.featureSet || 'score_based');
+  const ownsModelDoc = typeof options === 'object' && options !== null && options.ownsModelDoc === false
+    ? false
+    : true;
 
   // Determine next model version
   const lastModel = await TrainedModel.findOne().sort({ version: -1 }).lean();
   const nextVersion = (lastModel?.version || 0) + 1;
 
   let modelDoc;
-  if (datasetId) {
+  if (datasetId && ownsModelDoc) {
     modelDoc = await TrainedModel.create({
       datasetId,
       version: nextVersion,
@@ -521,9 +676,15 @@ module.exports = {
   loadDatasetContent,
   ensureModelDir,
   isModelCompatible,
+  // Pre-activation safety probe — see the "Activation smoke test" block above.
+  smokeTestModel,
+  buildSmokeTestProbe,
+  modelArtifactExists,
+  resolveModelPath,
   isRemoteML,
   getMLServiceUrl,
   getMLSecret,
   MODEL_DIR,
+  UNSUPPORTED_FEATURES,
 };
 

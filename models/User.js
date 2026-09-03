@@ -1,6 +1,7 @@
 // models/User.js
 // Stores all account types and the pediatrician schedule/settings in MongoDB.
 const mongoose = require('mongoose');
+const { SYNTHETIC_FIELDS } = require('../constants/syntheticData');
 
 const availabilitySchema = new mongoose.Schema(
   {
@@ -144,6 +145,18 @@ const userSchema = new mongoose.Schema(
       // pediatrician, not something a new secretary account gets automatically.
       managePayments: { type: Boolean, default: false },
     },
+
+    // ── Synthetic/demo marker (additive) ────────────────────────────────────
+    // false/null on every real account, including every account created before
+    // this field existed. Set to true ONLY by
+    // scripts/generate-system-demo-data.js, and it is the ONLY thing that makes
+    // an account eligible for that script's purge path — a real account can
+    // never be reached by it. Nothing in the app reads this to change
+    // behaviour: synthetic accounts are ordinary users to every route,
+    // including Admin Analytics, which is the entire point (the analytics
+    // numbers must come from real aggregation over real documents).
+    // See constants/syntheticData.js.
+    ...SYNTHETIC_FIELDS,
   },
   { timestamps: true }
 );

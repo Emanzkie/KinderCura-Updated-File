@@ -3,6 +3,7 @@
 // Connection note: models do not store the connection string.
 // They attach to the mongoose connection that db.js already opened.
 const mongoose = require('mongoose');
+const { SYNTHETIC_FIELDS } = require('../constants/syntheticData');
 const Counter = require('./Counter');
 
 const appointmentSchema = new mongoose.Schema(
@@ -64,6 +65,14 @@ const appointmentSchema = new mongoose.Schema(
       index: true,
     },
     hasVideo: { type: Boolean, default: false },
+
+    // ── Synthetic/demo marker (additive) ────────────────────────────────────
+    // false/null on every real booking. Synthetic appointments take their
+    // numeric `id` from the reserved block in constants/syntheticData.js
+    // (SYNTHETIC_APPOINTMENT_ID_BASE) rather than the shared `counters`
+    // document, so generating demo data never advances the real booking
+    // sequence and re-running the generator addresses the same rows again.
+    ...SYNTHETIC_FIELDS,
   },
   { timestamps: true, collection: 'appointments' }
 );

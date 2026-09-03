@@ -338,6 +338,9 @@ function pollDatasetStatus() {
             clearInterval(_pollTimer);
             _pollTimer = null;
             await loadModels(); // training just finished — surface the new candidate
+            // …and the metrics it produced, so the status panel above is not
+            // left showing "Not trained" after a run that has just completed.
+            if (typeof loadPipelineSummary === 'function') await loadPipelineSummary();
         }
     }, 4000);
 }
@@ -425,8 +428,15 @@ async function loadModels() {
         const models = Array.isArray(data.models) ? data.models : [];
         const rowsEl = document.getElementById('modelRows');
 
+        // Drives both the banner and the per-row action label: with a model
+        // already live, activating another is a SWITCH, and saying so is what
+        // makes rollback discoverable.
+        const activeModel = models.find((m) => m.isActive) || null;
+        const hasActiveModel = Boolean(activeModel);
+        renderActiveModelBanner(activeModel, false);
+
         if (!models.length) {
-            rowsEl.innerHTML = '<tr><td colspan="6" class="empty-cell">No trained models yet. Process a dataset above to train one.</td></tr>';
+            rowsEl.innerHTML = '<tr><td colspan="7" class="empty-cell">No trained models yet. Process a dataset above to train one.</td></tr>';
             return;
         }
 
@@ -451,13 +461,30 @@ async function loadModels() {
                 ? escapeHtml(m.featuresUsed.join(', '))
                 : '—';
 
+            // Compatibility is reported by the SERVER (routes/ml.js /models),
+            // so this column can never disagree with the rule that would
+            // actually accept or reject the activation.
+            let compatCell;
+            if (m.status !== 'completed') {
+                compatCell = '<span class="compat-chip compat-chip--na">Not applicable</span>';
+            } else if (m.compatible) {
+                compatCell = '<span class="compat-chip compat-chip--yes">Compatible</span>';
+            } else {
+                compatCell = '<span class="compat-chip compat-chip--no">Incompatible</span>'
+                    + `<span class="compat-reason">${escapeHtml(m.activationBlocker || 'Uses features the current prediction pipeline no longer supports.')}</span>`;
+            }
+
+            // The active model gets a rollback affordance (switch away by
+            // activating another row) plus an explicit "turn ML off" action.
             let actionCell;
             if (m.lifecycleState === 'active') {
-                actionCell = '<button class="btn btn-secondary dataset-action" disabled>Active</button>';
+                actionCell = '<button class="btn btn-secondary dataset-action" disabled>Active</button>'
+                    + `<button class="btn btn-secondary dataset-action delete-action" onclick="deactivateModel(${m.version})" title="Stop using ML for new predictions and fall back to the rule-based path. Nothing is deleted.">Deactivate</button>`;
             } else if (m.lifecycleState === 'candidate') {
-                actionCell = `<button class="btn btn-primary dataset-action" onclick="activateModel('${escapeHtml(m.id)}', ${m.version})">Activate</button>`;
+                const label = hasActiveModel ? 'Switch to This' : 'Activate';
+                actionCell = `<button class="btn btn-primary dataset-action" onclick="openActivationModal('${escapeHtml(m.id)}', ${m.version})">${label}</button>`;
             } else if (m.lifecycleState === 'incompatible') {
-                actionCell = '<button class="btn btn-secondary dataset-action" disabled title="Uses a feature set the current prediction pipeline no longer supports (e.g. gender).">Cannot Activate</button>';
+                actionCell = `<button class="btn btn-secondary dataset-action" disabled title="${escapeHtml(m.activationBlocker || 'Incompatible with the current prediction pipeline.')}">Cannot Activate</button>`;
             } else {
                 actionCell = '<button class="btn btn-secondary dataset-action" disabled>—</button>';
             }
@@ -470,6 +497,7 @@ async function loadModels() {
                         ${sourceLabel}
                     </td>
                     <td data-label="Status">${modelStateChip(m.lifecycleState)}</td>
+                    <td data-label="Compatibility">${compatCell}</td>
                     <td data-label="Metrics">${metrics}</td>
                     <td data-label="Feature Columns"><div class="dataset-fields">${featureSetBadge}${features}</div></td>
                     <td class="dataset-actions" data-label="Actions">${actionCell}</td>
@@ -477,19 +505,222 @@ async function loadModels() {
         }).join('');
     } catch (err) {
         document.getElementById('modelRows').innerHTML =
-            `<tr><td colspan="6" class="empty-cell error-cell">${escapeHtml(err.message)}</td></tr>`;
+            `<tr><td colspan="7" class="empty-cell error-cell">${escapeHtml(err.message)}</td></tr>`;
+        renderActiveModelBanner(null, true);
     }
 }
 
-async function activateModel(modelId, version) {
-    if (!confirm(`Activate model v${version} for new assessment predictions? This replaces the model currently used for live ML predictions.`)) return;
-    try {
-        await apiFetch(`/ml/models/${modelId}/activate`, { method: 'POST' });
-        await loadModels();
-    } catch (err) {
-        alert('Could not activate model: ' + err.message);
-        await loadModels();
+// ── Active model banner ─────────────────────────────────────────────────────
+// "No active model" is a SAFE, supported state (the rule-based fallback), so
+// it is presented as information rather than as a fault.
+function renderActiveModelBanner(active, errored) {
+    const el = document.getElementById('activeModelBanner');
+    if (!el) return;
+
+    if (errored) {
+        el.className = 'active-model-banner';
+        el.innerHTML = '<p class="amb-title">Could not determine the active model.</p>';
+        return;
     }
+
+    if (!active) {
+        el.className = 'active-model-banner is-fallback';
+        el.innerHTML = `
+            <div>
+                <p class="amb-title">No active ML model — using the rule-based fallback</p>
+                <p class="amb-detail">
+                    New assessments are scored by the rule-based path in <code>constants/scoring.js</code> /
+                    <code>constants/developmental-staging.js</code>. This is a supported, safe state.
+                    Activate a compatible model below to enable ML predictions.
+                </p>
+            </div>`;
+        return;
+    }
+
+    const acc = typeof active.accuracy === 'number' ? `${(active.accuracy * 100).toFixed(1)}%` : '—';
+    const synthetic = active.sourceType === 'synthetic'
+        ? ' <strong style="color:var(--danger);">Trained on synthetic data — not clinically validated.</strong>'
+        : '';
+    el.className = 'active-model-banner is-active';
+    el.innerHTML = `
+        <div>
+            <p class="amb-title">Active model: v${active.version} — serving new ML predictions</p>
+            <p class="amb-detail">
+                ${escapeHtml(active.datasetName || 'Unknown dataset')} ·
+                ${escapeHtml(active.featureSetType || 'score_based')} ·
+                accuracy ${acc}.${synthetic}
+                Already-completed assessments keep the result they were saved with.
+            </p>
+        </div>
+        <div class="amb-actions">
+            <button class="btn btn-secondary" onclick="deactivateModel(${active.version})">Deactivate (use rule-based)</button>
+        </div>`;
+}
+
+// ── Activation confirmation flow ────────────────────────────────────────────
+// Opening the modal runs the server-side smoke test FIRST (artifact present,
+// features supported, one real test prediction). The confirm button stays
+// disabled until that passes, so an admin cannot promote a model that has not
+// demonstrably produced a prediction.
+
+let pendingActivation = null;
+
+function closeActivationModal() {
+    const modal = document.getElementById('activationModal');
+    if (modal) modal.style.display = 'none';
+    pendingActivation = null;
+}
+
+function renderSmokeChecks(checks) {
+    if (!Array.isArray(checks) || !checks.length) return '';
+    const label = {
+        artifact_present: 'Model file exists and is readable',
+        features_supported: 'Feature columns supported by the prediction pipeline',
+        test_prediction: 'Test prediction ran successfully',
+    };
+    return '<ul class="act-checks">' + checks.map((c) => `
+        <li>
+            <span class="act-check-icon ${c.ok ? 'ok' : 'bad'}">${c.ok ? '✓' : '✕'}</span>
+            <span><strong>${escapeHtml(label[c.name] || c.name)}</strong><br>
+            <span style="color:var(--text-light);">${escapeHtml(c.detail || '')}</span></span>
+        </li>`).join('') + '</ul>';
+}
+
+async function openActivationModal(modelId, version) {
+    const modal = document.getElementById('activationModal');
+    const body = document.getElementById('activationBody');
+    const confirmBtn = document.getElementById('activationConfirmBtn');
+    if (!modal || !body || !confirmBtn) return;
+
+    pendingActivation = { modelId, version };
+    modal.style.display = 'flex';
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Running safety checks…';
+
+    // Pull this model's row detail so the dialog can state exactly what is
+    // being promoted, including where its training data came from.
+    let model = null;
+    let currentActive = null;
+    try {
+        const data = await apiFetch('/ml/models');
+        const models = Array.isArray(data.models) ? data.models : [];
+        model = models.find((m) => m.id === modelId) || null;
+        currentActive = models.find((m) => m.isActive) || null;
+    } catch { /* the smoke test below is the authoritative gate either way */ }
+
+    body.innerHTML = `
+        <h4>Safety checks</h4>
+        <p class="act-check-pending">Verifying the model file and running one test prediction…</p>`;
+
+    let result;
+    try {
+        result = await apiFetch(`/ml/models/${modelId}/smoke-test`, { method: 'POST' });
+    } catch (err) {
+        body.innerHTML = `<div class="act-warning"><strong>Safety checks could not run.</strong><br>${escapeHtml(err.message)}</div>`;
+        confirmBtn.textContent = 'Cannot activate';
+        return;
+    }
+
+    const smoke = result.smokeTest;
+    const passed = result.ok === true;
+    const predicted = smoke && smoke.prediction ? smoke.prediction.risk_category : null;
+
+    const summary = model ? `
+        <div class="act-summary">
+            <div><strong>Model:</strong> v${model.version} (${escapeHtml(model.featureSetType || 'score_based')}, ${model.featureCount || 0} feature columns)</div>
+            <div><strong>Dataset:</strong> ${escapeHtml(model.datasetName || 'Unknown')}</div>
+            <div><strong>Metrics:</strong> Acc ${formatMetric(model.accuracy)} · Prec ${formatMetric(model.precision)} · Rec ${formatMetric(model.recall)} · F1 ${formatMetric(model.f1Score)}</div>
+            <div><strong>Trained on:</strong> ${model.trainingSamples ?? '—'} rows (tested on ${model.testSamples ?? '—'})</div>
+        </div>` : '';
+
+    const syntheticWarning = model && model.sourceType === 'synthetic' ? `
+        <div class="act-warning">
+            <strong>This model was trained on synthetic data.</strong>
+            Its <code>risk_category</code> labels were generated for testing, not taken from real
+            pediatrician-reviewed outcomes. Its accuracy figure measures how well it learned a
+            simulated pattern — it is <strong>not evidence of clinical validity</strong> and must not be
+            presented as such. Activating it is appropriate for a demo or thesis defence; it should not
+            be used to inform real clinical decisions.
+        </div>` : (model && model.sourceType !== 'reviewed_assessment' ? `
+        <div class="act-warning">
+            <strong>This model's data source was not recorded.</strong>
+            Its training data provenance is unknown, so its accuracy cannot be interpreted.
+        </div>` : '');
+
+    const switchLine = currentActive && currentActive.id !== modelId
+        ? `<li>Model <strong>v${currentActive.version}</strong> will be <strong>deactivated</strong> — not deleted. Its metrics and model file are kept, and you can switch back to it at any time.</li>`
+        : '<li>No model is currently active, so this is the first model to serve ML predictions.</li>';
+
+    body.innerHTML = `
+        ${summary}
+
+        <h4>Safety checks</h4>
+        ${renderSmokeChecks(smoke && smoke.checks)}
+        ${passed
+            ? `<p style="color:var(--primary-dark);margin:0.5rem 0 0;"><strong>All checks passed.</strong>${predicted ? ` The test prediction returned "${escapeHtml(predicted)}".` : ''}</p>`
+            : `<div class="act-warning"><strong>Activation is blocked.</strong><br>${escapeHtml(result.blocker || 'The safety checks did not pass.')}</div>`}
+
+        <h4>What activating this model does</h4>
+        <ul>
+            <li>Model <strong>v${version}</strong> becomes the model used for <strong>new</strong> ML predictions when an assessment is submitted.</li>
+            ${switchLine}
+            <li>Exactly one model is active at a time — this is verified after the change, not assumed.</li>
+        </ul>
+
+        ${syntheticWarning}
+
+        <div class="act-note">
+            <strong>Existing results are not recalculated.</strong>
+            Every completed assessment keeps the prediction stored at the moment it was submitted
+            (<code>AssessmentResult.prediction</code>), so past results, reports and comparisons are unchanged.
+            Only assessments submitted <em>after</em> this change use the new model.
+            If the model ever becomes unavailable or incompatible, the system falls back to the rule-based
+            path automatically.
+        </div>`;
+
+    confirmBtn.disabled = !passed;
+    confirmBtn.textContent = passed ? `Activate v${version}` : 'Cannot activate';
+}
+
+async function confirmActivation() {
+    if (!pendingActivation) return;
+    const { modelId, version } = pendingActivation;
+    const confirmBtn = document.getElementById('activationConfirmBtn');
+    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Activating…'; }
+
+    try {
+        const res = await apiFetch(`/ml/models/${modelId}/activate`, { method: 'POST' });
+        closeActivationModal();
+        const deactivated = Array.isArray(res.deactivated) && res.deactivated.length
+            ? ` Model v${res.deactivated.map((d) => d.version).join(', v')} was deactivated (not deleted) and can be re-activated at any time.`
+            : '';
+        alert(`Model v${version} is now active for new predictions.${deactivated}`);
+    } catch (err) {
+        // The server re-runs the same preflight, so this is the authoritative
+        // rejection even if the UI thought the model was fine.
+        alert('Could not activate model: ' + err.message);
+        closeActivationModal();
+    }
+    await loadModels();
+    if (typeof loadPipelineSummary === 'function') await loadPipelineSummary();
+}
+
+async function deactivateModel(version) {
+    const message = `Deactivate model v${version}?\n\n`
+        + 'New assessments will use the rule-based fallback instead of ML.\n'
+        + 'Nothing is deleted — the model, its metrics and its model file are kept, '
+        + 'and you can re-activate it at any time.\n\n'
+        + 'Already-completed assessments are not affected.';
+    if (!confirm(message)) return;
+
+    try {
+        const res = await apiFetch('/ml/models/deactivate', { method: 'POST' });
+        alert(res.message || 'Model deactivated.');
+    } catch (err) {
+        alert('Could not deactivate model: ' + err.message);
+    }
+    await loadModels();
+    if (typeof loadPipelineSummary === 'function') await loadPipelineSummary();
 }
 
 // ── Reviewed Assessment Data (Step 10) ──────────────────────────────────────
@@ -583,10 +814,120 @@ async function exportReviewedAssessments() {
     }
 }
 
+// ── Model dataset & training status ─────────────────────────────────────────
+// Reads GET /admin/dataset-pipeline/status and reports the current synthetic
+// model dataset plus the metrics its training run actually produced.
+//
+// The rule this panel follows: a value that does not exist renders as an em
+// dash, never as 0 or a default. "Accuracy 0%" and "no model has been trained"
+// are completely different facts and must not look the same.
+
+function mpsNumber(value) {
+    return Number.isFinite(Number(value)) ? Number(value).toLocaleString('en-US') : null;
+}
+
+function mpsStat(label, value, suffix) {
+    const empty = value === null || value === undefined;
+    const shown = empty ? '—' : escapeHtml(String(value)) + (suffix || '');
+    return `<div class="mps-stat"><span class="mps-k">${escapeHtml(label)}</span><span class="mps-v${empty ? ' is-empty' : ''}">${shown}</span></div>`;
+}
+
+function mpsPercent(value) {
+    return Number.isFinite(Number(value)) ? (Number(value) * 100).toFixed(2) + '%' : null;
+}
+
+async function loadPipelineSummary() {
+    const body = document.getElementById('pipelineSummaryBody');
+    if (!body) return;
+
+    try {
+        const data = await apiFetch('/admin/dataset-pipeline/status');
+        const dataset = data.dataset;
+        const model = data.model;
+
+        if (!dataset) {
+            body.innerHTML = `
+                <div class="mps-empty">
+                    No synthetic model dataset has been generated yet, so there is nothing to report here.
+                    Generate one on the <a href="/admin/admin-data-sources.html">Question Origin / Data Sources</a> page,
+                    or upload your own dataset using the form below.
+                </div>`;
+            return;
+        }
+
+        const pipeline = dataset.pipeline || {};
+        const cleaning = pipeline.cleaning || {};
+        const generator = pipeline.generator || {};
+
+        const trainingStatus = model
+            ? (model.status === 'completed' ? 'Completed' : model.status.charAt(0).toUpperCase() + model.status.slice(1))
+            : 'Not trained';
+
+        const metricsBlock = model && model.status === 'completed'
+            ? `
+                <div class="mps-grid">
+                    ${mpsStat('Accuracy', mpsPercent(model.accuracy))}
+                    ${mpsStat('Precision', mpsPercent(model.precision))}
+                    ${mpsStat('Recall', mpsPercent(model.recall))}
+                    ${mpsStat('F1 score', mpsPercent(model.f1Score))}
+                    ${mpsStat('Training rows', mpsNumber(model.trainingSamples))}
+                    ${mpsStat('Test rows', mpsNumber(model.testSamples))}
+                </div>
+                <p class="mps-sub" style="margin-top:0.85rem;">
+                    Measured by <code>ml/trainer.py</code> on its held-out test split (weighted averages).
+                    Classes: ${(model.classNames || []).map(escapeHtml).join(', ') || '—'}.
+                    Features: ${escapeHtml(model.featureSetType || '—')} (${mpsNumber((model.featuresUsed || []).length) || 0} columns).
+                    ${model.rowsDropped ? `${mpsNumber(model.rowsDropped)} row(s) dropped by the trainer's own validation.` : ''}
+                </p>`
+            : `<p class="mps-sub" style="margin-top:0.85rem;">${model && model.errorMessage
+                    ? 'Last run failed: ' + escapeHtml(model.errorMessage)
+                    : 'No metrics exist yet — they are written only when a training run completes.'}</p>`;
+
+        body.innerHTML = `
+            <div class="mps-grid">
+                ${mpsStat('Dataset records generated', mpsNumber(cleaning.originalRecords))}
+                ${mpsStat('Cleaned / training-ready', mpsNumber(cleaning.finalRecords))}
+                ${mpsStat('Training status', trainingStatus)}
+                ${mpsStat('Last training time', model && model.trainedAt ? formatDateTime(model.trainedAt) : null)}
+                ${mpsStat('Model version', model ? 'v' + model.version : null)}
+            </div>
+
+            <div class="mps-section">
+                <h4>Dataset</h4>
+                <p class="mps-sub">
+                    Version <code>${escapeHtml(pipeline.datasetVersion || '—')}</code> ·
+                    seed <code>${escapeHtml(String(generator.seed ?? '—'))}</code> ·
+                    generated ${escapeHtml(formatDateTime(dataset.uploadedAt))} ·
+                    provenance ${escapeHtml((dataset.provenance && dataset.provenance.sourceType) || 'unknown')} ·
+                    status ${escapeHtml(dataset.status)}
+                </p>
+                <div class="mps-note">
+                    <code>${escapeHtml(String(mpsNumber(cleaning.originalRecords) || '—'))} generated
+                    − ${escapeHtml(String(mpsNumber(cleaning.duplicatesRemoved) || '0'))} duplicates
+                    − ${escapeHtml(String(mpsNumber(cleaning.invalidRecords) || '0'))} invalid
+                    = ${escapeHtml(String(mpsNumber(cleaning.finalRecords) || '—'))} training-ready</code>
+                    <br>Cleaning counts come from the actual <code>ml/preprocess.py</code> run recorded with this dataset.
+                    Full breakdown on the <a href="/admin/admin-data-sources.html#modelDatasetPipeline">Data Sources</a> page.
+                </div>
+            </div>
+
+            <div class="mps-section">
+                <h4>Model ${model ? 'v' + escapeHtml(String(model.version)) : ''}
+                    ${model && model.isActive ? '<span class="dataset-status status-processed">Active</span>' : (model && model.status === 'completed' ? '<span class="dataset-status status-ready">Candidate</span>' : '')}
+                </h4>
+                <p class="mps-sub">A completed model is a candidate; it does not affect live predictions until it is activated in Trained Models below.</p>
+                ${metricsBlock}
+            </div>`;
+    } catch (err) {
+        body.innerHTML = `<p style="color:var(--danger);">Could not load model dataset status: ${escapeHtml(err.message)}</p>`;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     loadDatasets();
     loadModels();
     loadReviewedSummary();
+    loadPipelineSummary();
     if (typeof loadNotificationCount === 'function') loadNotificationCount();
     setInterval(() => {
         if (typeof loadNotificationCount === 'function') loadNotificationCount();
