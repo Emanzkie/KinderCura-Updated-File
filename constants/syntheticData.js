@@ -166,9 +166,24 @@ function syntheticEmail(index, batch = DEFAULT_SYNTHETIC_BATCH) {
   return `${syntheticUsername(index, batch)}@${SYNTHETIC_EMAIL_DOMAIN}`;
 }
 
-/** True when an email address belongs to the reserved synthetic namespace. */
+/**
+ * True when an email address belongs to a reserved synthetic namespace.
+ *
+ * Accepts BOTH namespaces: the original `@synthetic.kindercura.test` and the
+ * realistic `@kindercura.test` that constants/syntheticIdentity.js now issues.
+ * Both are under the RFC 2606 `.test` TLD and therefore unresolvable, so
+ * neither can reach a real mailbox. Recognising both matters because a batch
+ * may be part-way through scripts/improve-synthetic-user-profiles.js.
+ *
+ * This is a namespace check, NOT the synthetic marker. `isSynthetic: true` is
+ * the only thing that makes a record purgeable or excludable — never infer
+ * that from an address.
+ */
 function isSyntheticEmail(email) {
-  return String(email || '').toLowerCase().endsWith(`@${SYNTHETIC_EMAIL_DOMAIN}`);
+  // Required lazily: syntheticIdentity requires nothing from this module, but
+  // keeping the import here documents that the domain list lives over there.
+  const { isSyntheticEmailAddress } = require('./syntheticIdentity');
+  return isSyntheticEmailAddress(email);
 }
 
 /**

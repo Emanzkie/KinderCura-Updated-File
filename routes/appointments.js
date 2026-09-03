@@ -602,11 +602,26 @@ function scorePediatricianForContext(pediatrician, context) {
   };
 }
 
-async function buildSuggestedPediatricians({ childId = null } = {}) {
+/**
+ * @param {object}  options
+ * @param {string}  [options.childId]
+ * @param {boolean} [options.includeSynthetic=false]
+ *   Whether demo/synthetic pediatricians may appear. Defaults to FALSE because
+ *   this list is what a parent picks a doctor from, and a synthetic account has
+ *   no usable password — nobody would ever answer a booking made against one.
+ *   Admin callers pass true so the demo data stays visible where it is meant to
+ *   be (admin views, analytics, testing).
+ */
+async function buildSuggestedPediatricians({ childId = null, includeSynthetic = false } = {}) {
   const latest = childId ? await getLatestAssessmentResultForChild(childId) : null;
   const context = buildAssessmentContext(latest?.result || null);
 
-  const pediatricians = await User.find({ role: 'pediatrician', status: 'active' })
+  const pediatricianFilter = { role: 'pediatrician', status: 'active' };
+  // $ne:true, not false — real accounts created before the field existed have
+  // no isSynthetic property at all, and must still be listed.
+  if (!includeSynthetic) pediatricianFilter.isSynthetic = { $ne: true };
+
+  const pediatricians = await User.find(pediatricianFilter)
     .select('firstName lastName specialization institution clinicName clinicAddress phoneNumber consultationFee profileIcon availability bio availableDays availabilityDays daysAvailable startTime endTime maxPatientsPerDay dailyPatientLimit schedule scheduleAvailability clinicStartTime clinicEndTime availableFrom availableUntil')
     .sort({ firstName: 1, lastName: 1 })
     .lean();
@@ -1231,7 +1246,12 @@ router.get('/pediatricians/list', authMiddleware, async (req, res) => {
       if (!allowed) return res.status(404).json({ error: 'Child not found for this account.' });
     }
 
-    const built = await buildSuggestedPediatricians({ childId });
+    // Admins keep seeing demo pediatricians (this endpoint is also how the
+    // admin side inspects the booking list); parents never do.
+    const built = await buildSuggestedPediatricians({
+      childId,
+      includeSynthetic: req.user.role === 'admin',
+    });
     const slotSettings = await getAppointmentSlotSettings();
     res.json({ success: true, ...built, slotSettings });
   } catch (err) {

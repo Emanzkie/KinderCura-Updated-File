@@ -315,6 +315,61 @@ function run() {
     assert.ok(user.passwordHash, 'every synthetic account must carry a password hash (the field is required)');
   }
 
+  // ── Realistic identities ──────────────────────────────────────────────
+  // The accounts have to LOOK like ordinary records without BEING reachable,
+  // impersonable, or mistakable for real people.
+  {
+    const identity = require('../../constants/syntheticIdentity');
+    const ids = identity.buildSyntheticIdentities('demo-2026', 400);
+
+    assert.strictEqual(ids.length, 400);
+    assert.strictEqual(new Set(ids.map((i) => i.username)).size, 400, 'usernames must be unique — the field is unique-indexed');
+    assert.strictEqual(new Set(ids.map((i) => i.email)).size, 400, 'emails must be unique — the field is unique-indexed');
+
+    // Deterministic: the improvement script must be re-runnable as a no-op.
+    assert.deepStrictEqual(ids, identity.buildSyntheticIdentities('demo-2026', 400), 'same batch+count must give the same identities');
+    assert.notDeepStrictEqual(ids, identity.buildSyntheticIdentities('other-batch', 400), 'a different batch must give different identities');
+
+    for (const i of ids) {
+      // Unresolvable by design (RFC 2606) — cannot reach a real mailbox.
+      assert.ok(i.email.endsWith('@kindercura.test'), `email must sit on the reserved .test domain, got ${i.email}`);
+      assert.ok(!/kc_demo|synthetic|dummy|test-user|user\d{3}/i.test(i.username), `username must not read as a dummy id, got ${i.username}`);
+      assert.ok(/^[a-z]+\.[a-z]+\d*$/.test(i.username), `username must be first.last[N], got ${i.username}`);
+      // 555 fictional-subscriber block: a fully random 09XXXXXXXXX can land on
+      // a live subscriber, which is exactly what this replaced.
+      assert.ok(/^09\d{2}555\d{4}$/.test(i.phoneNumber), `phone must use the 555 fictional block, got ${i.phoneNumber}`);
+      assert.strictEqual(i.phoneNumber.length, 11, 'PH mobile numbers are 11 digits');
+      assert.ok(i.firstName && i.lastName, 'both name parts must be present');
+    }
+
+    // Name variety: the previous 30x30 pool repeated heavily at volume.
+    const distinctNames = new Set(ids.map((i) => `${i.firstName} ${i.lastName}`)).size;
+    assert.ok(distinctNames > 350, `expected varied names, got only ${distinctNames} distinct of 400`);
+
+    // Both namespaces are recognised, and a real address never is.
+    assert.ok(identity.isSyntheticEmailAddress('a.b12@kindercura.test'));
+    assert.ok(identity.isSyntheticEmailAddress('kc_demo_00001@synthetic.kindercura.test'), 'legacy addresses must still be recognised');
+    assert.ok(!identity.isSyntheticEmailAddress('someone@gmail.com'), 'a real address must never read as synthetic');
+    assert.ok(!identity.isSyntheticEmailAddress('admin@kindercura.com'), 'the real .com domain must never read as synthetic');
+
+    // A pediatrician bio is either a natural sentence or null — never dummy text.
+    for (let i = 0; i < 60; i += 1) {
+      const bio = identity.syntheticPediatricianBio('demo-2026', i);
+      if (bio !== null) {
+        assert.ok(!/synthetic|demo|dummy|test/i.test(bio), `bio must not announce itself as demo data, got: ${bio}`);
+      }
+    }
+
+    // The generator must issue these same identities, or a regeneration would
+    // silently revert an improved batch.
+    const planned = buildSmallPlan(4242, 50);
+    for (const user of planned.users) {
+      assert.ok(user.email.endsWith('@kindercura.test'), 'generated accounts must use the realistic domain');
+      assert.ok(/^09\d{2}555\d{4}$/.test(user.phoneNumber), 'generated accounts must use the 555 phone block');
+      assert.strictEqual(user.middleName, null, 'middleName stays null — every real account has it null');
+    }
+  }
+
   // ── CLI parsing ───────────────────────────────────────────────────────
   const args = generator.parseArgs(['node', 'script', '--users=1500', '--seed=7', '--purge', '--yes']);
   assert.strictEqual(args.users, 1500);

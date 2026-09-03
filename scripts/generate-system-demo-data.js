@@ -99,12 +99,14 @@ const {
   DEFAULT_SYNTHETIC_BATCH,
   syntheticOnlyFilter,
   syntheticObjectId,
-  syntheticUsername,
-  syntheticEmail,
   assertNoRealCollisions,
   syntheticAppointmentId,
   assertAppointmentIdsAvailable,
 } = require('../constants/syntheticData');
+const {
+  buildSyntheticIdentities,
+  syntheticPediatricianBio,
+} = require('../constants/syntheticIdentity');
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
@@ -470,27 +472,36 @@ function buildPlan({ seed, users: userCount, months, batch, questionBank, passwo
     [roleQuota[i], roleQuota[j]] = [roleQuota[j], roleQuota[i]];
   }
 
+  // Realistic identities come from constants/syntheticIdentity.js — the SAME
+  // module scripts/improve-synthetic-user-profiles.js uses. Sharing it is what
+  // stops a regenerated batch from reverting improved accounts back to
+  // kc_demo_00001, and guarantees both paths resolve name collisions
+  // identically. Deterministic for a given (batch, count).
+  const identities = buildSyntheticIdentities(batch, userCount);
+
   for (let i = 0; i < userCount; i += 1) {
     const role = roleQuota[i];
-    const isFemale = rng.chance(0.55);
-    const firstName = rng.pick(isFemale ? FIRST_NAMES_F : FIRST_NAMES_M);
-    const lastName = rng.pick(LAST_NAMES);
+    const identity = identities[i];
     const createdAt = pickSignupDate(rng, now, months);
     const status = rng.weighted(STATUS_MIX);
 
     const doc = {
       _id: syntheticObjectId(batch, `user:${i}`),
-      firstName,
+      firstName: identity.firstName,
+      // Left null: every real KinderCura account has a null middleName, so
+      // populating it would make synthetic rows stand out, not blend in.
       middleName: null,
-      lastName,
-      username: syntheticUsername(i, batch),
-      email: syntheticEmail(i, batch),
+      lastName: identity.lastName,
+      username: identity.username,
+      email: identity.email,
       passwordHash,
       role,
       status,
       emailVerified: status === 'active' ? rng.chance(0.92) : rng.chance(0.35),
       profileIcon: `avatar${rng.int(1, 6)}`,
-      phoneNumber: `09${rng.int(100000000, 999999999)}`,
+      // 555 fictional-subscriber block inside a real-looking PH prefix — a
+      // fully random 09XXXXXXXXX can land on a live subscriber number.
+      phoneNumber: identity.phoneNumber,
       createdAt,
       updatedAt: createdAt,
       ...mark,
@@ -501,11 +512,15 @@ function buildPlan({ seed, users: userCount, months, batch, questionBank, passwo
       doc.licenseNumber = `PRC-${rng.int(1000000, 9999999)}`;
       doc.prcLicenseNumber = doc.licenseNumber;
       doc.specialization = rng.pick(SPECIALIZATIONS);
-      doc.clinicName = `${lastName} ${rng.pick(CLINIC_SUFFIX)}`;
+      doc.clinicName = `${identity.lastName} ${rng.pick(CLINIC_SUFFIX)}`;
       doc.clinicAddress = `${rng.int(1, 400)} ${rng.pick(LAST_NAMES)} St., ${city}`;
       doc.institution = `${city} Medical Center`;
       doc.consultationFee = rng.int(6, 30) * 50; // PHP 300 - 1500
-      doc.bio = `Synthetic demo pediatrician account for KinderCura analytics testing.`;
+      // A natural short practice description, or null (the real pediatrician
+      // record leaves this blank). Never dummy text: this field is shown to
+      // parents, so "Synthetic demo account..." used to leak straight into the
+      // booking UI.
+      doc.bio = syntheticPediatricianBio(batch, i);
       doc.prcVerificationStatus = rng.weighted(PRC_STATUS_MIX);
       doc.prcSubmittedAt = createdAt;
       doc.prcVerifiedAt = doc.prcVerificationStatus === 'verified'
