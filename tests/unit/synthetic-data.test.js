@@ -370,7 +370,111 @@ function run() {
     }
   }
 
+  // ── PRNG STREAM REPRODUCIBILITY ───────────────────────────────────────
+  // buildPlan() walks ONE sequential PRNG, so adding or removing a draw
+  // anywhere shifts every value after it. That is not hypothetical: moving
+  // user identities into constants/syntheticIdentity.js silently removed four
+  // draws per user, which changed signup dates, child counts and every score —
+  // while the _ids stayed put, so a re-run would have UPSERT-ed the same
+  // documents with different data.
+  //
+  // The GOLDEN VECTOR below pins the stream to concrete values. If a future
+  // change shifts it, these assertions fail loudly instead of the damage only
+  // showing up as a quietly-rewritten batch. Regenerate the numbers ONLY when
+  // a stream change is deliberate and the stored batches are being reissued.
+  {
+    const NOW = new Date('2026-09-03T12:00:00.000Z');
+    const golden = generator.buildPlan({
+      seed: 4242, users: 300, months: 12, batch: 'unit-test',
+      questionBank: BANK, passwordHash: 'not-a-real-hash', now: NOW,
+    });
+
+    assert.deepStrictEqual(
+      {
+        users: golden.users.length, children: golden.children.length,
+        assessments: golden.assessments.length, results: golden.results.length,
+        appointments: golden.appointments.length,
+      },
+      { users: 300, children: 290, assessments: 306, results: 204, appointments: 183 },
+      'PRNG STREAM SHIFTED: document counts changed. See the STREAM COMPATIBILITY note in the generator.'
+    );
+
+    assert.strictEqual(golden.users[0].role, 'parent', 'stream shifted: user 0 role');
+    assert.strictEqual(golden.users[0].status, 'active', 'stream shifted: user 0 status');
+    assert.strictEqual(golden.users[0].profileIcon, 'avatar3', 'stream shifted: user 0 profileIcon');
+    assert.strictEqual(
+      new Date(golden.users[0].createdAt).toISOString(), '2026-05-01T06:13:18.000Z',
+      'PRNG STREAM SHIFTED: signup dates changed — a re-run would rewrite Monthly Signups.'
+    );
+    assert.strictEqual(
+      new Date(golden.users[299].createdAt).toISOString(), '2025-10-21T01:44:11.000Z',
+      'stream shifted: the LAST user drifted, so the shift is cumulative across the run'
+    );
+
+    const r0 = golden.results[0];
+    assert.deepStrictEqual(
+      { c: r0.communicationScore, s: r0.socialScore, g: r0.cognitiveScore, m: r0.motorScore, o: r0.overallScore },
+      { c: 38, s: 22, g: 50, m: 38, o: 37 },
+      'PRNG STREAM SHIFTED: simulated scores changed — a re-run would rewrite stored results.'
+    );
+    const rN = golden.results[golden.results.length - 1];
+    assert.deepStrictEqual(
+      { c: rN.communicationScore, s: rN.socialScore, g: rN.cognitiveScore, m: rN.motorScore, o: rN.overallScore },
+      { c: 57, s: 94, g: 100, m: 79, o: 83 },
+      'stream shifted: the last result drifted'
+    );
+    assert.strictEqual(golden.appointments[0].id, 71600000, 'stream shifted: appointment id block');
+
+    // The stream must be driven ONLY by the seed — never by Math.random or any
+    // other global source, or two runs on the same machine could differ.
+    const realRandom = Math.random;
+    Math.random = () => { throw new Error('buildPlan must never call Math.random'); };
+    try {
+      const noGlobal = generator.buildPlan({
+        seed: 4242, users: 300, months: 12, batch: 'unit-test',
+        questionBank: BANK, passwordHash: 'not-a-real-hash', now: NOW,
+      });
+      assert.strictEqual(JSON.stringify(noGlobal), JSON.stringify(golden),
+        'buildPlan must not depend on any randomness outside its own seeded Rng');
+    } finally {
+      Math.random = realRandom;
+    }
+
+    // `now` is part of the reproducibility contract, not incidental: signup
+    // dates are placed relative to it. This is why the CLI has --now.
+    const laterNow = generator.buildPlan({
+      seed: 4242, users: 300, months: 12, batch: 'unit-test',
+      questionBank: BANK, passwordHash: 'not-a-real-hash', now: new Date('2027-02-01T00:00:00.000Z'),
+    });
+    assert.notStrictEqual(
+      new Date(laterNow.users[0].createdAt).toISOString(),
+      new Date(golden.users[0].createdAt).toISOString(),
+      'a different `now` must move signup dates — otherwise --now would be pointless'
+    );
+
+    // Byte-equivalence across repeated runs, at every level.
+    const again = generator.buildPlan({
+      seed: 4242, users: 300, months: 12, batch: 'unit-test',
+      questionBank: BANK, passwordHash: 'not-a-real-hash', now: NOW,
+    });
+    for (const key of ['users', 'children', 'assessments', 'results', 'appointments']) {
+      assert.strictEqual(JSON.stringify(again[key]), JSON.stringify(golden[key]),
+        `${key} must be byte-identical across runs with identical inputs`);
+    }
+  }
+
   // ── CLI parsing ───────────────────────────────────────────────────────
+  // --now must parse, and must reject nonsense rather than silently using
+  // the wall clock (which would defeat reproducing an existing batch).
+  assert.strictEqual(generator.parseArgs(['n', 's']).now, null, '--now defaults to null (use the real clock)');
+  assert.strictEqual(
+    generator.parseArgs(['n', 's', '--now=2026-09-03T01:49:44.495Z']).now.toISOString(),
+    '2026-09-03T01:49:44.495Z',
+    '--now must parse an ISO timestamp'
+  );
+  assert.throws(() => generator.parseArgs(['n', 's', '--now=not-a-date']), /not a valid date/,
+    'an unparseable --now must fail loudly, never fall back to the wall clock');
+
   const args = generator.parseArgs(['node', 'script', '--users=1500', '--seed=7', '--purge', '--yes']);
   assert.strictEqual(args.users, 1500);
   assert.strictEqual(args.seed, 7);

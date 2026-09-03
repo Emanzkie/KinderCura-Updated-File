@@ -58,6 +58,11 @@
 //   --months=N          spread signups over the last N months (default 12)
 //   --with-answers      also write per-question AssessmentAnswer rows (see below)
 //   --demo-password=PW  make the synthetic accounts loginable with PW
+//   --now=ISO           pin the clock signup dates are placed relative to.
+//                       Required to reproduce an EXISTING batch byte-for-byte;
+//                       omit it when generating a fresh one.
+//                       The live demo-2026 batch was generated at
+//                       --now=2026-09-03T01:49:44.495Z
 //   --dry-run           plan and report, write nothing
 //   --verify            report synthetic vs real counts, write nothing
 //   --purge             delete synthetic documents (requires --yes). Removes
@@ -293,6 +298,17 @@ function parseArgs(argv) {
     // `--purge --yes` left other batches behind while reporting success.
     batchExplicit: Object.prototype.hasOwnProperty.call(opts, 'batch'),
     demoPassword: opts['demo-password'] || null,
+    // Pins the clock buildPlan() places signups relative to. Omitted, it is
+    // new Date() — fine for a fresh batch, but it means "same seed" alone does
+    // NOT reproduce a historical batch's createdAt values (pickSignupDate
+    // anchors months on `now`, and clamps future dates to `now - k hours`).
+    // Pass --now to reproduce an existing batch exactly.
+    now: (() => {
+      if (!opts.now) return null;
+      const d = new Date(opts.now);
+      if (Number.isNaN(d.getTime())) throw new Error(`--now="${opts.now}" is not a valid date.`);
+      return d;
+    })(),
     withAnswers: flags.has('with-answers'),
     dryRun: flags.has('dry-run'),
     verify: flags.has('verify'),
@@ -439,11 +455,60 @@ function buildRuleBasedPrediction(overallScore, generatedAt) {
 
 // ── Plan builder ────────────────────────────────────────────────────────────
 
+// ────────────────────────────────────────────────────────────────────────────
+// STREAM COMPATIBILITY — read before touching anything that draws from `rng`
+// ────────────────────────────────────────────────────────────────────────────
+// buildPlan() walks ONE sequential PRNG. Every value it produces depends on
+// its position in that stream, so ADDING OR REMOVING A DRAW ANYWHERE SHIFTS
+// EVERY VALUE AFTER IT — including ones in unrelated sections further down.
+//
+// That is not hypothetical. When user identities moved to
+// constants/syntheticIdentity.js, four draws per user disappeared from the
+// loop below (isFemale, firstName, lastName, phoneNumber). The _ids are
+// derived from (batch, index) and so did not move, but everything drawn
+// afterwards did: signup dates, how many children each guardian got, the
+// simulated answers, and therefore the scores. A re-run of `demo-2026` would
+// have UPSERT-ed the same 1,500 _ids with different dates and different
+// scores — silently rewriting a batch the team had already verified, and
+// changing the Monthly Signups chart with it.
+//
+// The two helpers below re-consume exactly those four draws and throw the
+// values away, which pins the stream back to where it was. They look like
+// dead code and are not: deleting either one re-breaks reproducibility for
+// the stored batch. tests/unit/synthetic-data.test.js pins concrete expected
+// values so any future shift fails loudly instead of silently.
+//
+// Adding a NEW draw is fine as long as it goes after everything that already
+// exists, or is given its own seeded stream the way syntheticIdentity.js does.
+
+/**
+ * Consume the three draws the user loop used to make for a name, and discard
+ * them. Must be called at the TOP of the loop body, before pickSignupDate().
+ */
+function reserveLegacyNameDraws(rng) {
+  const legacyIsFemale = rng.chance(0.55);                          // was: isFemale
+  rng.pick(legacyIsFemale ? FIRST_NAMES_F : FIRST_NAMES_M);         // was: firstName
+  rng.pick(LAST_NAMES);                                             // was: lastName
+}
+
+/**
+ * Consume the single draw the user object literal used to make for a phone
+ * number, and discard it. Must be called immediately AFTER that literal.
+ */
+function reserveLegacyPhoneDraw(rng) {
+  rng.int(100000000, 999999999);                                    // was: phoneNumber
+}
+
 /**
  * Build the complete set of documents to write. PURE with respect to the
  * database: given the same seed, counts, question bank and `now`, it produces
  * the same plan every time. Nothing here touches MongoDB, which is what makes
  * --dry-run a genuine preview of what a real run would write.
+ *
+ * `now` is part of that contract, not an incidental argument: pickSignupDate()
+ * places signups relative to it, so two runs with the same seed but different
+ * `now` produce different createdAt values. The CLI passes new Date(), which
+ * is why --now exists for reproducing a specific historical batch.
  */
 function buildPlan({ seed, users: userCount, months, batch, questionBank, passwordHash, now }) {
   const rng = new Rng(seed);
@@ -476,12 +541,17 @@ function buildPlan({ seed, users: userCount, months, batch, questionBank, passwo
   // module scripts/improve-synthetic-user-profiles.js uses. Sharing it is what
   // stops a regenerated batch from reverting improved accounts back to
   // kc_demo_00001, and guarantees both paths resolve name collisions
-  // identically. Deterministic for a given (batch, count).
+  // identically. Deterministic for a given (batch, count), and — importantly —
+  // it draws from its OWN seeded streams, not from `rng` below.
   const identities = buildSyntheticIdentities(batch, userCount);
 
   for (let i = 0; i < userCount; i += 1) {
     const role = roleQuota[i];
     const identity = identities[i];
+    // See STREAM COMPATIBILITY above reserveLegacyNameDraws(). These two calls
+    // hold the position of draws this loop used to make, and must stay exactly
+    // where they are, on either side of the fields between them.
+    reserveLegacyNameDraws(rng);
     const createdAt = pickSignupDate(rng, now, months);
     const status = rng.weighted(STATUS_MIX);
 
@@ -506,6 +576,12 @@ function buildPlan({ seed, users: userCount, months, batch, questionBank, passwo
       updatedAt: createdAt,
       ...mark,
     };
+
+    // Holds the position of the phone draw the object literal above used to
+    // make. It was the LAST draw in that literal, so consuming it here — after
+    // the literal, before the pediatrician block — lands on exactly the same
+    // stream position. See STREAM COMPATIBILITY.
+    reserveLegacyPhoneDraw(rng);
 
     if (role === 'pediatrician') {
       const city = rng.pick(CITIES);
@@ -890,7 +966,11 @@ async function loadQuestionBank() {
 }
 
 async function runGenerate(args) {
-  const now = new Date();
+  // args.now when the caller pinned it (reproducing an existing batch),
+  // otherwise the real clock (generating a fresh one).
+  const now = args.now || new Date();
+  if (args.now) console.log(`
+Clock pinned to ${now.toISOString()} (--now) — signup dates will reproduce exactly.`);
   const questionBank = await loadQuestionBank();
   console.log(`\nQuestion bank: ${questionBank.length} active core-bank questions (age gates ${Math.min(...questionBank.map((q) => q.minAgeMonths))}-${Math.max(...questionBank.map((q) => q.minAgeMonths))} months).`);
 
