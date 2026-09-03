@@ -153,6 +153,16 @@
                 <h3><img src="/icons/cognitive.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Your Datasets</h3>
                 <button class="btn btn-secondary" onclick="loadDatasets()">Refresh</button>
             </div>
+            <!-- ============================================================ -->
+            <!-- Dataset pipeline summary.                                     -->
+            <!-- Answers, at a glance: how many records were generated, how     -->
+            <!-- many survived cleaning, and which model was trained on them.   -->
+            <!-- Every figure is read from the stored pipeline report and the   -->
+            <!-- trained_models collection — nothing here is hardcoded, and the -->
+            <!-- whole block hides when no pipeline dataset exists.             -->
+            <!-- ============================================================ -->
+            <div id="datasetPipelineSummary" hidden></div>
+
             <div id="datasetListWrap" style="margin-top:1rem;overflow-x:auto;">
                 <table class="dataset-table">
                     <thead>

@@ -1109,6 +1109,21 @@ function computeDatasetProvenance(d) {
 router.get('/training/datasets', authMiddleware, adminOnly, async (req, res) => {
   try {
     const docs = await TrainingDataset.find().sort({ createdAt: -1 }).populate('uploadedBy', 'firstName lastName').populate('trainedBy', 'firstName lastName').lean();
+
+    // ── Model linkage (read-only) ────────────────────────────────────────
+    // Resolves each dataset's modelId to the actual TrainedModel so the admin
+    // page can say "used to train Model v4" instead of leaving the reader to
+    // correlate two tables by hand. Purely additive to the RESPONSE — no
+    // document is written, and nothing about training or activation changes.
+    const TrainedModelRefForLink = require('../models/TrainedModel');
+    const linkedModelIds = docs.map((d) => d.modelId).filter(Boolean);
+    const linkedModels = linkedModelIds.length
+      ? await TrainedModelRefForLink.find({ _id: { $in: linkedModelIds } })
+          .select('version status isActive accuracy trainedAt totalRows trainingSamples testSamples')
+          .lean()
+      : [];
+    const modelById = new Map(linkedModels.map((m) => [String(m._id), m]));
+
     const datasets = docs.map((d) => ({
       id: String(d._id),
       name: d.name,
@@ -1140,6 +1155,33 @@ router.get('/training/datasets', authMiddleware, adminOnly, async (req, res) => 
       // datasets uploaded before that field existed (provenance.sourceType
       // is 'unknown'/unset) — never overrides an explicitly recorded value.
       provenance: computeDatasetProvenance(d),
+
+      // ── Additive display metadata (no stored field is changed) ─────────
+      // The generation + cleaning report this dataset was produced with, when
+      // it came from the synthetic pipeline (services/datasetPipeline.js).
+      // null for every hand-uploaded dataset. This is what lets the admin page
+      // show real cleaning counts instead of a hardcoded figure.
+      syntheticPipeline: d.syntheticPipeline || null,
+      isPipelineDataset: Boolean(d.syntheticPipeline),
+
+      // The model this dataset actually produced, resolved from modelId.
+      trainedModel: (() => {
+        const m = d.modelId ? modelById.get(String(d.modelId)) : null;
+        if (!m) return null;
+        return {
+          id: String(m._id),
+          version: m.version,
+          status: m.status,
+          isActive: Boolean(m.isActive),
+          accuracy: m.accuracy,
+          trainedAt: m.trainedAt,
+          // Rows the trainer actually fitted on, straight from the training
+          // run — this is the number that proves which records were used.
+          totalRows: m.totalRows,
+          trainingSamples: m.trainingSamples,
+          testSamples: m.testSamples,
+        };
+      })(),
     }));
 
     // "Models trained" MUST come from the trained_models collection — a model
@@ -1148,10 +1190,16 @@ router.get('/training/datasets', authMiddleware, adminOnly, async (req, res) => 
     // trainingSummary text: "…were registered by the admin page"), so counting
     // that flag reported 3 models while trained_models held 0 documents.
     const TrainedModelRef = require('../models/TrainedModel');
-    const [modelsCompleted, modelsActive, modelsTotal] = await Promise.all([
+    const [modelsCompleted, modelsActive, modelsTotal, activeModelDoc] = await Promise.all([
       TrainedModelRef.countDocuments({ status: 'completed' }),
       TrainedModelRef.countDocuments({ isActive: true, status: 'completed' }),
       TrainedModelRef.countDocuments({}),
+      // The model currently serving live predictions. Read here so the admin
+      // page's summary reports the ACTIVE model rather than "the newest one",
+      // which are not always the same after a rollback.
+      TrainedModelRef.findOne({ isActive: true, status: 'completed' })
+        .select('version datasetId accuracy trainedAt totalRows trainingSamples testSamples featureSetType')
+        .lean(),
     ]);
 
     const datasetsFlaggedTrained = datasets.filter((d) => d.status === 'trained').length;
@@ -1182,6 +1230,21 @@ router.get('/training/datasets', authMiddleware, adminOnly, async (req, res) => 
       // True when datasets claim training that produced no model artifact.
       flagMismatch: datasetsFlaggedTrained > 0 && modelsCompleted === 0,
       lastUpdated: latestUpdatedDataset,
+
+      // The model live predictions currently use, or null when none is active
+      // (the rule-based fallback). Drives the "Current Model" tile.
+      activeModel: activeModelDoc
+        ? {
+            version: activeModelDoc.version,
+            datasetId: activeModelDoc.datasetId ? String(activeModelDoc.datasetId) : null,
+            accuracy: activeModelDoc.accuracy,
+            trainedAt: activeModelDoc.trainedAt,
+            totalRows: activeModelDoc.totalRows,
+            trainingSamples: activeModelDoc.trainingSamples,
+            testSamples: activeModelDoc.testSamples,
+            featureSetType: activeModelDoc.featureSetType || 'score_based',
+          }
+        : null,
     };
 
     res.json({ success: true, summary, datasets });

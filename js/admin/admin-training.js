@@ -167,15 +167,30 @@ function hasProcessedDataset(dataset) {
     return dataset.status === 'trained' && Boolean(dataset.modelId);
 }
 
+// True when this dataset's training run actually produced a COMPLETED model.
+// Stronger than hasProcessedDataset(): "processed" means the run finished,
+// "used for training" means a model artifact exists that was fitted on these
+// records. Derived from the resolved trainedModel, never assumed from status.
+function isUsedForTraining(dataset) {
+    return Boolean(dataset.trainedModel && dataset.trainedModel.status === 'completed');
+}
+
 function statusChip(dataset) {
     const status = dataset.status;
     let chip = { className: 'status-ready', text: 'Ready' };
 
     if (status === 'training') chip = { className: 'status-processing', text: 'Processing' };
-    else if (status === 'failed') chip = { className: 'status-review', text: 'Needs Review' };
+    else if (status === 'failed') chip = { className: 'status-review', text: 'Failed' };
     else if (hasProcessedDataset(dataset)) chip = { className: 'status-processed', text: 'Processed' };
 
-    return `<span class="dataset-status ${chip.className}">${chip.text}</span>`;
+    let chips = `<span class="dataset-status ${chip.className}">${chip.text}</span>`;
+
+    // Second, separate chip: a dataset can be "Processed" without a model
+    // (a run that finished but produced nothing), so these are never merged.
+    if (isUsedForTraining(dataset)) {
+        chips += `<span class="dataset-status status-training-used" title="A trained model was produced from these records.">Used for Training</span>`;
+    }
+    return chips;
 }
 
 function categoryLabel(value) {
@@ -203,10 +218,132 @@ function latestDatasetDate(datasets, summary) {
 }
 
 function displayDatasetName(dataset, index) {
+    // A dataset produced by the synthetic pipeline gets a specific, honest
+    // name. This is DISPLAY ONLY — the stored `name` field is untouched.
+    //
+    // It is exempt from the genericising rule below for a reason that matters:
+    // that rule exists so a synthetic file cannot borrow authority from a
+    // filename that gestures at a real instrument. This name does the
+    // opposite — it says "Synthetic" in the label itself, and the dataset
+    // carries a machine-checkable pipeline report proving what it is.
+    if (dataset.isPipelineDataset) return 'KinderCura Synthetic Model Training Dataset';
+
+    // Other synthetic datasets stay generically numbered, so an uploaded file
+    // called e.g. "ecdi2030_export.csv" cannot imply it holds ECDI2030 data.
     if (dataset.provenance?.isSynthetic) return `Assessment Dataset ${index + 1}`;
+
     const raw = String(dataset.name || dataset.originalName || '').replace(/\.[^.]+$/, '');
     const cleaned = raw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
     return cleaned || `Assessment Dataset ${index + 1}`;
+}
+
+// ── Dataset pipeline summary strip ──────────────────────────────────────────
+// Rendered above the table. Every number comes from the dataset's own stored
+// pipeline report (TrainingDataset.syntheticPipeline, written by an actual
+// ml/preprocess.py run) or from the trained_models collection. Nothing is
+// hardcoded: with no pipeline dataset present the whole block stays hidden and
+// the table renders exactly as before.
+
+function fmtCount(value) {
+    return Number.isFinite(Number(value)) ? Number(value).toLocaleString('en-US') : '—';
+}
+
+function renderDatasetPipelineSummary(datasets, summary) {
+    const el = document.getElementById('datasetPipelineSummary');
+    if (!el) return;
+
+    // The most recent pipeline-generated dataset, identified by the presence
+    // of its report rather than by name.
+    const pipelineDataset = datasets.find((d) => d.isPipelineDataset);
+    const cleaning = pipelineDataset && pipelineDataset.syntheticPipeline
+        ? pipelineDataset.syntheticPipeline.cleaning
+        : null;
+
+    if (!pipelineDataset || !cleaning) {
+        el.hidden = true;
+        el.innerHTML = '';
+        return;
+    }
+
+    const generated = Number(cleaning.originalRecords);
+    const finalRecords = Number(cleaning.finalRecords);
+    const duplicates = Number(cleaning.duplicatesRemoved) || 0;
+    const invalid = Number(cleaning.invalidRecords) || 0;
+    // Derived, never stored twice: the two rejection buckets are what
+    // "removed during cleaning" means, so it always reconciles with the chain.
+    const removed = duplicates + invalid;
+
+    const activeModel = summary.activeModel || null;
+    // The model trained FROM this dataset — which may not be the active one.
+    const datasetModel = pipelineDataset.trainedModel || null;
+
+    const currentModelValue = activeModel ? `v${activeModel.version}` : 'None';
+    const currentModelNote = activeModel
+        ? (activeModel.datasetId && pipelineDataset.id === activeModel.datasetId
+            ? 'Trained on this dataset'
+            : 'Trained on a different dataset')
+        : 'Rule-based fallback in use';
+
+    // Reconciliation: generated − removed must equal training-ready. Shown as
+    // a warning when it does not, rather than quietly displaying numbers that
+    // do not add up.
+    const reconciles = generated - removed === finalRecords;
+
+    const usedForTraining = datasetModel && datasetModel.status === 'completed'
+        ? `<div class="dp-used">
+               <strong>${fmtCount(datasetModel.totalRows)}</strong> records were used to train
+               <strong>Model v${datasetModel.version}</strong>${datasetModel.isActive ? ' <span class="dp-active-tag">active</span>' : ''}
+               — ${fmtCount(datasetModel.trainingSamples)} train / ${fmtCount(datasetModel.testSamples)} test.
+           </div>`
+        : '<div class="dp-used dp-used--none">These records have not been used to train a model yet.</div>';
+
+    el.hidden = false;
+    el.innerHTML = `
+        <div class="dp-summary">
+            <div class="dp-tiles">
+                <div class="dp-tile">
+                    <span class="dp-k">Generated Records</span>
+                    <span class="dp-v">${fmtCount(generated)}</span>
+                </div>
+                <div class="dp-tile">
+                    <span class="dp-k">Training-Ready Records</span>
+                    <span class="dp-v dp-v--good">${fmtCount(finalRecords)}</span>
+                </div>
+                <div class="dp-tile">
+                    <span class="dp-k">Removed During Cleaning</span>
+                    <span class="dp-v dp-v--muted">${fmtCount(removed)}</span>
+                    <span class="dp-sub">${fmtCount(duplicates)} duplicates · ${fmtCount(invalid)} invalid</span>
+                </div>
+                <div class="dp-tile">
+                    <span class="dp-k">Current Model</span>
+                    <span class="dp-v">${escapeHtml(currentModelValue)}</span>
+                    <span class="dp-sub">${escapeHtml(currentModelNote)}</span>
+                </div>
+            </div>
+
+            <div class="dp-chain" aria-label="Dataset cleaning pipeline">
+                <span class="dp-step"><strong>${fmtCount(generated)}</strong> generated</span>
+                <span class="dp-arrow" aria-hidden="true">→</span>
+                <span class="dp-step dp-step--drop"><strong>${fmtCount(duplicates)}</strong> duplicates removed</span>
+                <span class="dp-arrow" aria-hidden="true">→</span>
+                <span class="dp-step dp-step--drop"><strong>${fmtCount(invalid)}</strong> invalid rejected</span>
+                <span class="dp-arrow" aria-hidden="true">→</span>
+                <span class="dp-step dp-step--keep"><strong>${fmtCount(finalRecords)}</strong> training-ready</span>
+                ${datasetModel ? `<span class="dp-arrow" aria-hidden="true">→</span>
+                <span class="dp-step dp-step--model"><strong>Model v${datasetModel.version}</strong></span>` : ''}
+            </div>
+
+            ${reconciles ? '' : `<p class="dp-warn">These counts do not reconcile
+                (${fmtCount(generated)} − ${fmtCount(removed)} ≠ ${fmtCount(finalRecords)}) — investigate before citing them.</p>`}
+
+            ${usedForTraining}
+
+            <p class="dp-note">
+                <strong>Synthetic data — for testing/training only — not clinically validated.</strong>
+                Counts come from the recorded <code>ml/preprocess.py</code> run for dataset version
+                <code>${escapeHtml((pipelineDataset.syntheticPipeline && pipelineDataset.syntheticPipeline.datasetVersion) || '—')}</code>.
+            </p>
+        </div>`;
 }
 
 async function loadDatasets() {
@@ -221,6 +358,8 @@ async function loadDatasets() {
         document.getElementById('sumTotal').textContent = summary.total ?? datasets.length;
         document.getElementById('sumReady').textContent = readyCount;
         document.getElementById('sumLastUpdated').textContent = formatSummaryDate(latestDatasetDate(datasets, summary));
+
+        renderDatasetPipelineSummary(datasets, summary);
 
         const rowsEl = document.getElementById('datasetRows');
         if (!datasets.length) {
@@ -240,15 +379,35 @@ async function loadDatasets() {
                 ? `<button class="btn btn-primary dataset-action" onclick="processDataset('${escapeHtml(dataset.id)}')">${actionLabel}</button>`
                 : `<button class="btn btn-primary dataset-action" disabled>${dataset.status === 'training' ? 'Processing' : 'Processed'}</button>`;
 
+            // Synthetic warning, shown on every synthetic dataset row so it
+            // travels with the data rather than living only in the summary.
+            const syntheticWarning = dataset.provenance?.isSynthetic
+                ? '<div class="dataset-synthetic-warning">Synthetic data — for testing/training only — not clinically validated</div>'
+                : '';
+
+            // "Used to train Model vN" — stated on the row that actually
+            // produced it, using the model's own recorded row count.
+            const trainedLink = isUsedForTraining(dataset)
+                ? `<div class="dataset-trained-link">Used to train <strong>Model v${dataset.trainedModel.version}</strong>${dataset.trainedModel.isActive ? ' <span class="dp-active-tag">active</span>' : ''}</div>`
+                : '';
+
+            // For a pipeline dataset the row count IS the training-ready count,
+            // so say so rather than leaving the reader to infer it.
+            const recordsMeta = dataset.isPipelineDataset && dataset.syntheticPipeline?.cleaning
+                ? `<div class="dataset-meta">training-ready<br>of ${fmtCount(dataset.syntheticPipeline.cleaning.originalRecords)} generated</div>`
+                : `<div class="dataset-meta">${dataset.columnCount || 0} fields</div>`;
+
             return `
-                <tr>
+                <tr${dataset.isPipelineDataset ? ' class="dataset-row--primary"' : ''}>
                     <td data-label="Dataset">
                         <div class="dataset-name">${escapeHtml(displayName)}</div>
                         <div class="dataset-meta">${escapeHtml(dataset.fileType || 'File')} - ${fileSizeText(dataset.fileSize)}</div>
+                        ${trainedLink}
+                        ${syntheticWarning}
                         ${sampleFields}
                     </td>
                     <td data-label="Type">${categoryLabel(dataset.targetModule)}<div class="dataset-meta">${escapeHtml(dataset.fileType || '')}</div></td>
-                    <td data-label="Records">${dataset.rowCount || 0}<div class="dataset-meta">${dataset.columnCount || 0} fields</div></td>
+                    <td data-label="Records">${fmtCount(dataset.rowCount || 0)}${recordsMeta}</td>
                     <td data-label="Status">${statusChip(dataset)}</td>
                     <td data-label="Date">
                         <div>${formatDateTime(updatedAt)}</div>
