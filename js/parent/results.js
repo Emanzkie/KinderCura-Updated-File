@@ -413,7 +413,7 @@ function renderComparisonSection(compare) {
             <p style="margin:0 0 1.2rem;color:var(--text-light);font-size:.85rem;">
                 Previous: ${escapeHtml(fmtDate(compare.previous?.date))} &nbsp;→&nbsp; Current: ${escapeHtml(fmtDate(compare.current?.date))}
             </p>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1rem;">
+            <div class="compare-stage-grid">
                 ${renderCareStageColumn('Previous', compare.previous)}
                 ${renderCareStageColumn('Current', compare.current)}
             </div>

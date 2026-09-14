@@ -223,7 +223,11 @@ function scorePediatricianForContext(pediatrician, context) {
 
 async function buildSuggestedPediatricians(resultDoc) {
   const context = buildAssessmentContext(resultDoc);
-  const pediatricians = await User.find({ role: 'pediatrician', status: 'active' })
+  // Parent-facing suggestion list — demo/synthetic pediatricians are excluded
+  // for the same reason as the booking list in routes/appointments.js: a
+  // synthetic account has no usable password and could never answer a booking.
+  // $ne:true rather than false, so real accounts predating the field still show.
+  const pediatricians = await User.find({ role: 'pediatrician', status: 'active', isSynthetic: { $ne: true } })
     .select('firstName lastName specialization institution clinicName clinicAddress phoneNumber consultationFee profileIcon availability bio')
     .sort({ firstName: 1, lastName: 1 })
     .lean();

@@ -1,6 +1,7 @@
 // Child model
 // Each child document belongs to one parent user through parentId
 const mongoose = require('mongoose');
+const { SYNTHETIC_FIELDS } = require('../constants/syntheticData');
 
 const childSchema = new mongoose.Schema(
     {
@@ -23,6 +24,11 @@ const childSchema = new mongoose.Schema(
         profileIcon: { type: String, default: 'child1' },
         // Additive: references to GuardianLink documents for multi-guardian support.
         guardianLinks: [{ type: mongoose.Schema.Types.ObjectId, ref: 'GuardianLink' }],
+
+        // Synthetic/demo marker — false/null on every real child record.
+        // Only scripts/generate-system-demo-data.js ever sets it, and it is the
+        // only key its purge path matches on. See constants/syntheticData.js.
+        ...SYNTHETIC_FIELDS,
     },
     // timestamps: true automatically creates createdAt and updatedAt
     { timestamps: true }

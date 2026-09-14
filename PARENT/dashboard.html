@@ -24,9 +24,10 @@
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="/notifications-card-ui.css">
+    <link rel="stylesheet" href="/css/parent-responsive.css">
 </head>
 <body>
-<header class="top-nav">
+<header class="top-nav has-mobile-nav">
     <div class="nav-container">
         <a href="/parent/dashboard.html" class="logo">
             <img src="/icons/logo.png" alt="KinderCura Logo" class="logo-img">
@@ -48,6 +49,9 @@
             </button>
             <button class="icon-btn profile-btn" onclick="toggleProfileMenu()">
                 <img src="/icons/profile.png" class="profile-icon" id="navProfilePic">
+            </button>
+            <button type="button" class="nav-toggle" aria-label="Open menu" aria-expanded="false">
+                <span class="nav-toggle-bars" aria-hidden="true"></span>
             </button>
             <div class="profile-menu" id="profileMenu" style="display:none;">
                 <div class="menu-header"><p id="navWelcome">Welcome</p></div>
@@ -143,6 +147,7 @@
 
 <!-- Shared helpers: auth, notifications, logout, API fetch -->
     <script src="/api.js"></script>
+<script src="/js/shared/mobile-nav.js"></script>
 <script src="/notifications-card-ui.js"></script>
 <script src="/js/parent/dashboard.js"></script>
 </body>

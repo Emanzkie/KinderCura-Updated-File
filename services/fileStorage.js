@@ -2,60 +2,153 @@
 // Purpose:
 // - give every upload route one place to decide where a file physically lives
 // - keep local development byte-for-byte identical to how it worked before
-// - make uploads survive on Vercel, whose filesystem is read-only outside /tmp
+// - make uploads survive on hosts with an ephemeral filesystem (Render Free,
+//   Vercel, Fly, …) by pushing them to object storage instead of local disk
 //
-// Locally, uploads keep going to the same folders under the project root and
-// multer keeps using diskStorage, so nothing about the dev workflow changes.
-// On Vercel, multer buffers the file in memory and this module pushes it to
-// Vercel Blob under the *same* relative path (e.g. `uploads/profiles/x.jpg`).
-// Because the stored path is unchanged, existing DB records and existing
-// frontend <img src="/uploads/..."> URLs keep working with no migration.
+// Locally (default), uploads keep going to the same folders under the project
+// root and multer keeps using diskStorage, so nothing about the dev workflow
+// changes. When object storage is enabled, multer buffers the file in memory
+// and this module pushes it to the configured backend under the *same* relative
+// path (e.g. `uploads/profiles/x.jpg`). Because the stored path is unchanged,
+// existing DB records and existing frontend <img src="/uploads/..."> URLs keep
+// working with no migration.
 //
-// The blob store is private (see BLOB_ACCESS below), so no uploaded file is
-// reachable by URL. Everything is read back through this module, and the
-// routes apply their own auth checks first — PRC ID cards, e-wallet payment
-// proofs and ML training datasets are only ever streamed to an admin. Profile
-// photos and videos are served the same way, proxied through Express rather
-// than fetched from a CDN.
+// The store is PRIVATE, so no uploaded file is reachable by a bucket URL.
+// Everything is read back through this module, and the routes apply their own
+// auth checks first — PRC ID cards, e-wallet payment proofs and ML training
+// datasets are only ever streamed to an admin. Profile photos and videos are
+// served the same way, proxied through Express rather than fetched from a CDN.
+//
+// ── Enabling object storage (host-independent) ─────────────────────────────
+// Set USE_BLOB=true and configure ONE backend:
+//   • Cloudflare R2 (recommended, works anywhere): R2_ENDPOINT (or R2_ACCOUNT_ID)
+//     + R2_BUCKET + R2_ACCESS_KEY_ID + R2_SECRET_ACCESS_KEY  — see services/objectStore.js
+//   • Vercel Blob (legacy): BLOB_READ_WRITE_TOKEN
+// The switch deliberately does NOT look at process.env.VERCEL, so Render (and
+// any other host) can turn object storage on. A Vercel deployment that already
+// set VERCEL + BLOB_READ_WRITE_TOKEN keeps working without USE_BLOB for
+// backward compatibility.
 
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const { Readable } = require('stream');
+const r2 = require('./objectStore'); // pure module: no network / no throw on require
 
 const PROJECT_ROOT = path.join(__dirname, '..');
 
-// Vercel Blob is used only when the app is actually running on Vercel *and* a
-// token exists. Without the token we fall back to disk so a misconfigured
-// deployment fails loudly at write time instead of silently losing files.
-const ON_VERCEL = !!(process.env.VERCEL || process.env.NOW_REGION);
-const HAS_BLOB_TOKEN = !!process.env.BLOB_READ_WRITE_TOKEN;
-const USE_BLOB = ON_VERCEL && HAS_BLOB_TOKEN;
+// ── Backend selection ─────────────────────────────────────────────────────
+const STORAGE_MODE_ON = /^(1|true|yes|on)$/i.test(String(process.env.USE_BLOB || '').trim());
+const HAS_R2 = r2.isConfigured();
+const HAS_VERCEL_BLOB = !!process.env.BLOB_READ_WRITE_TOKEN;
+// Backward compatibility: an existing Vercel deployment that relied on
+// `VERCEL` + a Blob token keeps object storage on without setting USE_BLOB.
+const LEGACY_VERCEL_BLOB = !!(process.env.VERCEL || process.env.NOW_REGION) && HAS_VERCEL_BLOB;
 
-if (ON_VERCEL && !HAS_BLOB_TOKEN) {
+const BACKEND =
+    (STORAGE_MODE_ON && HAS_R2) ? 'r2'
+    : ((STORAGE_MODE_ON || LEGACY_VERCEL_BLOB) && HAS_VERCEL_BLOB) ? 'vercel'
+    : null;
+
+// Exported truthy/falsy flag. Callers use it to decide whether to try the
+// object store before falling back to bundled-on-disk copies.
+const USE_BLOB = BACKEND !== null;
+
+if (STORAGE_MODE_ON && !USE_BLOB) {
     console.error(
-        '[fileStorage] Running on Vercel without BLOB_READ_WRITE_TOKEN. ' +
-        'Uploads will fail because the deployment filesystem is read-only. ' +
-        'Add a Blob store to the project and redeploy.'
+        '[fileStorage] USE_BLOB is set but no object-storage backend is configured. ' +
+        'Configure Cloudflare R2 (R2_ENDPOINT/R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY_ID, ' +
+        'R2_SECRET_ACCESS_KEY) or Vercel Blob (BLOB_READ_WRITE_TOKEN). ' +
+        'Until then, uploads are written to the LOCAL FILESYSTEM and will NOT survive ' +
+        'a restart, redeploy or spin-down on an ephemeral host.'
     );
+} else if (!USE_BLOB && (process.env.RENDER || process.env.FLY_APP_NAME)) {
+    console.warn(
+        '[fileStorage] Object storage is OFF on an ephemeral host. Uploaded files ' +
+        '(profile photos, PRC documents, payment proofs, ML datasets) will be lost on ' +
+        'the next restart/redeploy. Set USE_BLOB=true and configure Cloudflare R2.'
+    );
+} else if (BACKEND === 'r2') {
+    console.log(`[fileStorage] Object storage backend: Cloudflare R2. ${r2.describe()}`);
+} else if (BACKEND === 'vercel') {
+    console.log('[fileStorage] Object storage backend: Vercel Blob.');
 }
 
-// A Vercel Blob store has ONE access level covering every object inside it,
-// so the per-call `access` hint the routes pass is a statement of intent, not
-// something the SDK can vary per file. KinderCura's store is PRIVATE: PRC ID
-// cards, e-wallet payment proofs and ML training data must never be reachable
-// by URL, and the files that do get shown in the browser (profile photos,
-// videos) are already proxied through Express by staticFallback below — so
-// nothing in the app needs a directly public blob URL.
-// Set BLOB_STORE_ACCESS=public only if the store is ever recreated as public.
+// The store is PRIVATE. The per-call `access` hint the routes pass is a
+// statement of intent, not something a single-bucket backend can vary per file.
 const BLOB_ACCESS = process.env.BLOB_STORE_ACCESS === 'public' ? 'public' : 'private';
 
-// `@vercel/blob` is only require()d when it will be used, so local development
-// and local tests never need the package resolved at startup.
-function blob() {
+// `@vercel/blob` is only require()d when that backend is actually selected, so
+// local development and local tests never need the package resolved at startup.
+function vercelBlob() {
     // eslint-disable-next-line global-require
     return require('@vercel/blob');
 }
+
+// ── Normalized object-storage interface ───────────────────────────────────
+// Both backends expose the same operations so the rest of this file has
+// exactly one code path for "object storage":
+//   put(key, buffer, contentType) -> { url }
+//   head(key)                     -> { size, contentType } | null   (null = absent)
+//   getBuffer(key)                -> { buffer, contentType, size } | null
+//   getStream(key)                -> { stream, contentType, size } | null   (no buffering)
+//   del(key)                      -> void   (best effort; missing object is ok)
+function makeVercelAdapter() {
+    return {
+        async put(key, buffer, contentType) {
+            const { put } = vercelBlob();
+            const result = await put(key, buffer, {
+                access: BLOB_ACCESS,
+                contentType,
+                addRandomSuffix: false,
+                allowOverwrite: true,
+            });
+            return { url: result.url };
+        },
+        async head(key) {
+            try {
+                const { head } = vercelBlob();
+                const info = await head(key, { access: BLOB_ACCESS });
+                return { size: info?.size || 0, contentType: info?.contentType || null };
+            } catch {
+                return null;
+            }
+        },
+        async getStream(key) {
+            try {
+                const { get } = vercelBlob();
+                const result = await get(key, { access: BLOB_ACCESS });
+                if (!result || !result.stream) return null;
+                return {
+                    stream: Readable.fromWeb(result.stream),
+                    contentType: result.blob?.contentType || null,
+                    size: result.blob?.size || null,
+                };
+            } catch {
+                return null;
+            }
+        },
+        async getBuffer(key) {
+            const got = await this.getStream(key);
+            if (!got) return null;
+            const chunks = [];
+            for await (const chunk of got.stream) chunks.push(chunk);
+            const buffer = Buffer.concat(chunks);
+            return { buffer, contentType: got.contentType, size: got.size || buffer.length };
+        },
+        async del(key) {
+            try {
+                const { del } = vercelBlob();
+                await del(key, { access: BLOB_ACCESS });
+            } catch { /* ignore */ }
+        },
+    };
+}
+
+const store =
+    BACKEND === 'r2' ? r2.client()
+    : BACKEND === 'vercel' ? makeVercelAdapter()
+    : null;
 
 /** Absolute on-disk directory for a project-relative upload folder. */
 function localDir(relDir) {
@@ -116,18 +209,12 @@ function finalizeUploads(relDir, filenameFn, { access = 'public' } = {}) {
         if (!files.length) return next();
 
         try {
-            const { put } = blob();
             for (const file of files) {
                 const name = await new Promise((resolve, reject) => {
                     filenameFn(req, file, (err, generated) => (err ? reject(err) : resolve(generated)));
                 });
                 const key = blobKey(relDir, name);
-                const result = await put(key, file.buffer, {
-                    access: BLOB_ACCESS,
-                    contentType: file.mimetype,
-                    addRandomSuffix: false,
-                    allowOverwrite: true,
-                });
+                const result = await store.put(key, file.buffer, file.mimetype);
                 // Shape the object like a diskStorage result so routes that read
                 // `file.filename` / `file.path` keep working untouched.
                 file.filename = path.basename(name);
@@ -159,13 +246,7 @@ async function storeFile(relDir, filename, file, { access = 'public' } = {}) {
 
     if (USE_BLOB) {
         if (!file.buffer) throw new Error(`No buffered data for upload ${safeName}`);
-        const { put } = blob();
-        const result = await put(blobKey(relDir, safeName), file.buffer, {
-            access: BLOB_ACCESS,
-            contentType: file.mimetype,
-            addRandomSuffix: false,
-            allowOverwrite: true,
-        });
+        const result = await store.put(blobKey(relDir, safeName), file.buffer, file.mimetype);
         file.filename = safeName;
         file.path = `/${stored}`;
         file.blobUrl = result.url;
@@ -189,9 +270,8 @@ async function storeFile(relDir, filename, file, { access = 'public' } = {}) {
 async function existsStored(relDir, filename, { access = 'public' } = {}) {
     if (!USE_BLOB) return fs.existsSync(path.join(PROJECT_ROOT, relDir, path.basename(filename)));
     try {
-        const { head } = blob();
-        await head(blobKey(relDir, filename), { access: BLOB_ACCESS });
-        return true;
+        const info = await store.head(blobKey(relDir, filename));
+        return info !== null;
     } catch {
         return false;
     }
@@ -204,12 +284,8 @@ async function readStored(relDir, filename, { access = 'public' } = {}) {
         return fs.existsSync(abs) ? fs.readFileSync(abs) : null;
     }
     try {
-        const { get } = blob();
-        const result = await get(blobKey(relDir, filename), { access: BLOB_ACCESS });
-        if (!result || !result.stream) return null;
-        const chunks = [];
-        for await (const chunk of Readable.fromWeb(result.stream)) chunks.push(chunk);
-        return Buffer.concat(chunks);
+        const obj = await store.getBuffer(blobKey(relDir, filename));
+        return obj ? obj.buffer : null;
     } catch {
         return null;
     }
@@ -231,16 +307,22 @@ async function serveStored(res, relDir, filename, { access = 'public' } = {}) {
     }
 
     try {
-        const { get } = blob();
-        const result = await get(blobKey(relDir, safeName), { access: BLOB_ACCESS });
-        if (result && result.stream) {
-            if (result.blob?.contentType) res.setHeader('Content-Type', result.blob.contentType);
-            if (result.blob?.size) res.setHeader('Content-Length', result.blob.size);
-            Readable.fromWeb(result.stream).pipe(res);
+        const obj = await store.getStream(blobKey(relDir, safeName));
+        if (obj && obj.stream) {
+            if (obj.contentType) res.setHeader('Content-Type', obj.contentType);
+            if (obj.size) res.setHeader('Content-Length', obj.size);
+            // If the client goes away mid-download, stop pulling from the store.
+            res.on('close', () => obj.stream.destroy());
+            obj.stream.on('error', (streamErr) => {
+                console.warn('[fileStorage] object-store stream error for', blobKey(relDir, safeName), streamErr?.message || streamErr);
+                if (!res.headersSent) res.status(502);
+                res.end();
+            });
+            obj.stream.pipe(res);
             return true;
         }
     } catch (err) {
-        console.warn('[fileStorage] blob read failed for', blobKey(relDir, safeName), err?.message || err);
+        console.warn('[fileStorage] object-store read failed for', blobKey(relDir, safeName), err?.message || err);
     }
 
     // Pre-existing files shipped inside the deployment bundle.
@@ -260,8 +342,7 @@ async function deleteStored(relDir, filename, { access = 'public' } = {}) {
         return;
     }
     try {
-        const { del } = blob();
-        await del(blobKey(relDir, safeName), { access: BLOB_ACCESS });
+        await store.del(blobKey(relDir, safeName));
     } catch { /* ignore */ }
 }
 

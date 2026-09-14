@@ -61,9 +61,10 @@
         .back-link:hover { text-decoration: underline; }
         .loading-placeholder { text-align: center; color: var(--text-light, #888); padding: 2rem 0; }
     </style>
+    <link rel="stylesheet" href="/css/parent-responsive.css">
 </head>
 <body>
-<header class="top-nav">
+<header class="top-nav has-mobile-nav">
     <div class="nav-container">
         <a href="/parent/dashboard.html" class="logo">
             <img src="/icons/logo.png" class="logo-img">
@@ -86,6 +87,9 @@
             <button class="icon-btn profile-btn" onclick="toggleProfileMenu()">
                 <img src="/icons/profile.png" id="navProfilePic" class="profile-icon" style="width:36px;height:36px;border-radius:50%;object-fit:cover;display:block;">
             </button>
+            <button type="button" class="nav-toggle" aria-label="Open menu" aria-expanded="false">
+                <span class="nav-toggle-bars" aria-hidden="true"></span>
+            </button>
             <div class="profile-menu" id="profileMenu" style="display:none;">
                 <div class="menu-header"><p id="navWelcome">Welcome</p></div>
                 <a href="/parent/profile.html" class="menu-item"><img src="/icons/profile_icon.png" class="menu-icon">Profile</a>
@@ -99,12 +103,12 @@
 
 <div class="dashboard-container">
     <div class="payment-page-wrap">
-        <div style="background:white;padding:2rem;border-radius:15px;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+        <div class="parent-card" style="background:white;border-radius:15px;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
             <h1 style="margin-bottom:0.3rem;">Select Payment Method</h1>
             <p style="color:var(--text-light);">Choose how you would like to pay for your appointment</p>
         </div>
 
-        <div style="background:white;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+        <div class="parent-card" style="background:white;border-radius:15px;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
 
             <!-- Appointment summary -->
             <div id="apptSummary" class="appt-summary-card">
@@ -225,6 +229,7 @@
 </div>
 
 <script src="/api.js"></script>
+<script src="/js/shared/mobile-nav.js"></script>
 <script src="/notifications-card-ui.js"></script>
 <script src="/js/parent/payment.js"></script>
 </body>

@@ -82,3 +82,17 @@ public/dist/
 # These contain real patient records (childId + screening scores) and must
 # never be committed. Keep them locally; they are the rollback path.
 backups/
+
+# Generated ML pipeline artifacts (ml/pipeline.py).
+# A 50,000-row dataset is ~6 MB and is fully reproducible from its seed —
+# `npm run dataset:generate` recreates it — so the files do not belong in git.
+# The canonical 60-row ml/datasets/kindercura_assessment_dataset.csv IS
+# committed and is deliberately not matched by this rule.
+ml/datasets/generated/
+
+# Dataset files registered through the admin Training page or the pipeline.
+public/uploads/datasets/*.csv
+public/uploads/datasets/*.json
+
+# Trained model artifacts (.joblib) produced by ml/trainer.py
+uploads/models/

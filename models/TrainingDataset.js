@@ -56,6 +56,28 @@ const trainingDatasetSchema = new mongoose.Schema(
     modelId: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainedModel', default: null },
     trainingMetrics: { type: mongoose.Schema.Types.Mixed, default: null },
     errorMessage: { type: String, default: null },
+
+    // ── Synthetic generation + preprocessing provenance ──────────────────
+    // Populated ONLY for datasets produced by the in-app synthetic dataset
+    // pipeline (services/datasetPipeline.js -> ml/pipeline.py). null for every
+    // hand-uploaded dataset, including every dataset that predates this field.
+    //
+    // Holds the ACTUAL numbers a pipeline run produced — never targets, never
+    // estimates. Shape:
+    //   {
+    //     datasetVersion: 'syn-<seed>-<rows>-<yyyymmddhhmmss>',
+    //     generator:  { script, seed, requestedRows, generatedRows, featureSet },
+    //     cleaning:   { originalRecords, schemaValid, invalidRecords,
+    //                   duplicatesRemoved, missingValuesFilled, finalRecords,
+    //                   rejectionsByReason: {…}, classDistribution: {…} },
+    //     files:      { rawPath, cleanPath, reportPath },
+    //     generatedAt: ISO string
+    //   }
+    // Read back by GET /api/admin/dataset-pipeline/status so the admin pages
+    // can show cleaning counts that came from a real run rather than from a
+    // hardcoded literal. Mixed because the report is written by the Python
+    // side and must be storable verbatim.
+    syntheticPipeline: { type: mongoose.Schema.Types.Mixed, default: null },
   },
   { timestamps: true, collection: 'training_datasets' }
 );

@@ -46,13 +46,27 @@
   border: 2px solid var(--status-positive-fg);
 }
 
-/* Dataset — SOLID PURPLE. Deliberately distinct from both storage origins
-   because it answers a different question: not "how did this enter the
-   system" but "does this trace to a checkable external source". */
+/* Dataset Question — SOLID PURPLE. A third, first-class question origin:
+   the question's text came from an actual external dataset. Deliberately
+   distinct from Core Question Bank (pediatrician interview) and Pediatrician
+   Entry (authored in KinderCura). It never denotes an ML training dataset —
+   those live under Admin > Training. `.origin-dataset` is the legacy class
+   name, kept so a cached page still renders. */
+.origin-badge.origin-dataset_question,
 .origin-badge.origin-dataset {
   background: var(--primary-dark);
   color: #ffffff;
   border: 2px solid var(--primary-dark);
+}
+
+/* Inline provenance remark under the origin badge. Rendered only when a real
+   sourceCitation is stored — never as a placeholder. */
+.prov-inline {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-light);
+  max-width: 22rem;
 }
 
 /* Anything unrecognised or unset — dashed, so it never looks deliberate. */
@@ -294,3 +308,301 @@
   color: var(--status-caution-fg);
   font-style: normal;
 }
+
+/* ------------------------------------------------------------------ *
+ * Source column + pediatrician review lifecycle
+ *
+ * The Source cell shows a real citation only. It is deliberately styled
+ * quieter than the origin badge: the badge is what the question IS, the
+ * citation is only where its developmental concept came from.
+ * ------------------------------------------------------------------ */
+
+.src-cell { max-width: 22rem; }
+
+/* WHICH source. Carried above the reference so the eye lands on the source's
+   identity first and the long citation reads as its supporting detail. */
+.src-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text, #22222a);
+  margin-bottom: 0.15rem;
+}
+
+.src-citation {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-light, var(--text-light));
+  /* Citations are long. Clamp rather than truncate to one line so the
+     journal/checklist is still identifiable at a glance; the full string
+     is on the title attribute and in the expanded provenance row. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* How the WORDING was produced. Kept visually attached to the citation so
+   the two are read together: an adaptation is never the source's own text. */
+.src-generation {
+  margin-top: 0.25rem;
+  font-size: 0.7rem;
+  font-style: italic;
+  color: var(--text-light, var(--text-light));
+}
+
+.approval-badge {
+  display: inline-block;
+  padding: 0.12rem 0.5rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Caution amber, not green. A pending question has NOT been reviewed, and
+   the colour must not suggest otherwise. */
+.approval-pending_pediatrician_approval {
+  background: #fff6e0;
+  color: #5c4600;
+  border: 1px solid var(--status-caution-fg);
+}
+
+.approval-approved {
+  background: #e8f6ec;
+  color: var(--status-positive-fg);
+  border: 1px solid var(--status-positive-fg);
+}
+
+.approval-rejected {
+  background: #fdecec;
+  color: var(--status-attention-fg);
+  border: 1px solid var(--status-attention-fg);
+}
+
+/* States plainly whether the question reaches an assessment, so the tab is
+   never read as a list of live questions. */
+.approval-note {
+  margin-top: 0.22rem;
+  font-size: 0.68rem;
+  color: var(--text-light, var(--text-light));
+}
+
+.dataset-review-note {
+  margin: 0.9rem 0 0;
+  padding: 0.7rem 0.9rem;
+  border-left: 3px solid var(--status-caution-fg);
+  background: #fffdf5;
+  border-radius: 0 8px 8px 0;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: #5c4600;
+}
+
+/* ── Reviewer decision vs pediatrician approval ────────────────────────────
+   Three distinct facts for every Dataset Question — the wording review round,
+   the pediatrician sign-off, and whether it is active. Stacked and separately
+   labelled in the approval cell so a reviewer "Approved" is never read as a
+   pediatrician sign-off or as activation. */
+.reviewer-decision {
+  font-size: 0.72rem;
+  color: var(--text-light);
+  margin-bottom: 0.28rem;
+}
+.reviewer-decision strong { color: var(--text-dark); }
+.reviewer-decision .rd-scope { color: var(--text-light); font-style: italic; }
+
+.pedia-approval {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  color: var(--text-light);
+}
+
+.approval-note--open {
+  color: #5c4600;
+  font-weight: 600;
+}
+
+/* The Dataset Question set as a whole, on the sources card. */
+.dq-review-status {
+  margin: 0.9rem 0 0;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-tint, #fafaf7);
+}
+.dqrs-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.dqrs-row:last-of-type { border-bottom: 0; }
+.dqrs-k {
+  flex: 0 0 13rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-dark);
+}
+.dqrs-v {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+.dqrs-v--ok { color: var(--status-positive-fg); }
+.dqrs-v--hold { color: #5c4600; }
+.dqrs-note { font-size: 0.72rem; color: var(--text-light); }
+.dqrs-caveat {
+  margin: 0.6rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--text-light);
+}
+
+/* ------------------------------------------------------------------ *
+ * Model dataset pipeline + system demo data panels
+ *
+ * Both panels report SYNTHETIC data, so they share one visual language
+ * (the .pipeline-tag chip) that marks them apart from the question
+ * provenance tables above — a reader should never have to work out
+ * which numbers describe real usage and which describe demo data.
+ * ------------------------------------------------------------------ */
+
+.pipeline-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+
+.pipeline-tag {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  background: #fff4d6;
+  color: #5c4600;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.pipeline-intro {
+  margin: 0 0 1rem;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--text-light);
+}
+
+.pipeline-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.pipeline-form .form-group { margin-bottom: 0; }
+.pipeline-form label { display: block; margin-bottom: 0.3rem; font-size: 0.82rem; font-weight: 600; }
+.pipeline-form .hint { font-weight: 400; color: var(--text-light); }
+
+.pipeline-form input {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.pipeline-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.pipeline-busy {
+  font-size: 0.82rem;
+  color: var(--text-light);
+  animation: pipelinePulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pipelinePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+.pipeline-message {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+.pipeline-message.is-error { background: #fde8e8; color: var(--status-attention-fg); }
+.pipeline-message.is-success { background: #dff5e3; color: #1e6f3f; }
+.pipeline-message.is-info { background: var(--surface-tint, #f2f5f2); color: var(--text-dark); }
+
+.pipeline-section {
+  margin-top: 1.4rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.pipeline-section h4 {
+  margin: 0 0 0.2rem;
+  font-size: 0.95rem;
+  color: var(--primary);
+}
+
+.pipeline-section .sub {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--text-light);
+}
+
+/* Reconciliation line: original - duplicates - invalid = final. Shown so the
+   cleaning counts can be checked rather than taken on trust. */
+.pipeline-equation {
+  margin-top: 0.85rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  background: var(--bg-primary, #f7f7f9);
+  font-size: 0.8rem;
+  color: var(--text-dark);
+  line-height: 1.6;
+}
+.pipeline-equation code { font-size: 0.78rem; }
+
+.pipeline-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.85rem;
+  font-size: 0.82rem;
+}
+.pipeline-table th,
+.pipeline-table td {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+.pipeline-table th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-light); }
+.pipeline-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.pipeline-chip {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.pipeline-chip--ok { background: #dff5e3; color: #1e6f3f; }
+.pipeline-chip--warn { background: #fff4d6; color: #5c4600; }
+.pipeline-chip--bad { background: #fde8e8; color: var(--status-attention-fg); }
+.pipeline-chip--idle { background: var(--bg-primary, #f0f0f2); color: var(--text-light); }

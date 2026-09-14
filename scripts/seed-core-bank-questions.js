@@ -212,7 +212,12 @@ async function verifyAgainstSource(bank) {
   console.log('PARITY VERIFICATION — DB vs DOCTOR_QUESTION_BANK');
   console.log('='.repeat(62));
 
-  const docs = await CoreBankQuestion.find({}).lean();
+  // core_bank rows only. Dataset questions share this collection but come from
+  // an external dataset, not from DOCTOR_QUESTION_BANK, so checking them
+  // against the frontend bank would report false parity failures.
+  const docs = await CoreBankQuestion.find({
+    origin: { $ne: DATA_ORIGIN.DATASET_QUESTION },
+  }).lean();
   const byId = new Map(docs.map((d) => [d.questionId, d]));
   const failures = [];
   const ok = (cond) => (cond ? '✓' : '✗ FAIL');
@@ -379,7 +384,14 @@ async function run() {
   const inDb = await CoreBankQuestion.countDocuments();
   console.log(`  total in core_bank_questions : ${inDb}`);
 
-  const extra = await CoreBankQuestion.find({ questionId: { $nin: bank.map((q) => q.id) } })
+  // Scoped to core_bank rows on purpose. core_bank_questions also holds
+  // dataset_question rows (questions imported from an external dataset), which
+  // are not part of the frontend bank and must not be reported as strays or
+  // removed. See constants/dataOrigin.js.
+  const extra = await CoreBankQuestion.find({
+    questionId: { $nin: bank.map((q) => q.id) },
+    origin: { $ne: DATA_ORIGIN.DATASET_QUESTION },
+  })
     .select('questionId')
     .lean();
   if (extra.length) {

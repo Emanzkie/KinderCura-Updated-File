@@ -2,6 +2,7 @@
 // Stores the calculated scores after a screening is submitted.
 // Connection note: this collection is used after screening submission calculates scores.
 const mongoose = require('mongoose');
+const { SYNTHETIC_FIELDS } = require('../constants/syntheticData');
 
 const assessmentResultSchema = new mongoose.Schema(
   {
@@ -71,6 +72,13 @@ const assessmentResultSchema = new mongoose.Schema(
     },
 
     generatedAt: { type: Date, default: Date.now },
+
+    // Synthetic/demo marker — false/null on every real result. The scores on a
+    // synthetic result are computed with the SAME formula and the same
+    // constants/scoring.js bands as routes/assessments.js POST /submit, so the
+    // averages Admin Analytics reports stay a true aggregate of the documents
+    // present. See constants/syntheticData.js.
+    ...SYNTHETIC_FIELDS,
   },
   { timestamps: false, collection: 'results' }
 );

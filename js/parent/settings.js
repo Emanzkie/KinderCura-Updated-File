@@ -96,7 +96,9 @@ function switchTab(tab) {
                     list.innerHTML = '<p style="color: var(--text-light);">No linked family members for this child.</p>';
                     return;
                 }
-                list.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:0.9rem;">' +
+                // .table-scroll keeps a wide guardian table scrolling inside
+                // its own box on a phone instead of widening the page.
+                list.innerHTML = '<div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:0.9rem;">' +
                     '<thead><tr style="background:var(--bg-primary);">' +
                     '<th style="padding:8px;text-align:left;">Name</th>' +
                     '<th style="padding:8px;text-align:left;">Email</th>' +
@@ -113,7 +115,7 @@ function switchTab(tab) {
                             '<td style="padding:8px;"><span style="padding:2px 8px;border-radius:12px;font-size:0.8rem;background:' + (g.status === 'active' ? '#e8f5e9' : '#ffebee') + ';color:' + statusColor + ';">' + g.status + '</span></td>' +
                             '</tr>';
                     }).join('') +
-                    '</tbody></table>';
+                    '</tbody></table></div>';
             } catch (err) {
                 list.innerHTML = '<p style="color: var(--text-light);">Failed to load family members.</p>';
                 console.error('loadFamilyMembers error:', err);

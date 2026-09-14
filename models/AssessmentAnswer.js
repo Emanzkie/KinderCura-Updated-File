@@ -2,6 +2,7 @@
 // Stores one answer per question for one assessment.
 // Connection note: DB connection string is in .env as MONGODB_URI.
 const mongoose = require('mongoose');
+const { SYNTHETIC_FIELDS } = require('../constants/syntheticData');
 const { DATA_ORIGIN, DATA_ORIGIN_VALUES } = require('../constants/dataOrigin');
 
 const assessmentAnswerSchema = new mongoose.Schema(
@@ -27,6 +28,13 @@ const assessmentAnswerSchema = new mongoose.Schema(
     // - pedia_entry answers → the PediaCustomQuestion _id as a string
     // Kept separate from questionId so the existing questionId meaning is unchanged.
     sourceQuestionRef: { type: String, default: '' },
+
+    // Synthetic/demo marker — false/null on every real answer. Generating
+    // these is OPT-IN (`--with-answers`) precisely because the Question Origin
+    // page counts answers per question: writing tens of thousands of synthetic
+    // answers would distort a page that reports real usage. See
+    // constants/syntheticData.js and scripts/generate-system-demo-data.js.
+    ...SYNTHETIC_FIELDS,
   },
   { timestamps: true, collection: 'assessment_answers' }
 );
