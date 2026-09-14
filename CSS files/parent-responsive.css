@@ -1,0 +1,569 @@
+/* parent-responsive.css — Parent-side responsive layer
+   ---------------------------------------------------------------------------
+   Loaded LAST on every PARENT page, after dashboard-new-styles.css and the
+   page stylesheet. Everything here is either
+
+     (a) a hook class that replaces a hard-coded inline style in the markup, or
+     (b) a media-query override that only takes effect on tablet / phone.
+
+   Nothing here changes the desktop layout: the base rules reproduce the values
+   the markup used inline, and every adaptation lives inside a media query.
+   The shared stylesheets are deliberately untouched, so the PEDIA, ADMIN and
+   SECRETARY pages keep the layout they have today.
+
+   Breakpoints, chosen from the layouts actually in use:
+     <= 1024px  tablet landscape  — nav collapses, 2-col page shells go 1-col
+     <=  900px  tablet portrait   — sidebar shells go 1-col
+     <=  768px  phone             — cards stack, controls go full width
+     <=  600px  narrow phone      — side-by-side card internals stack
+     <=  480px  small phone       — padding and type tighten
+   =========================================================================== */
+
+/* ==========================================================================
+   1. Overflow guards
+   These fix the actual causes of horizontal scrolling rather than clipping
+   the page with overflow-x: hidden.
+   ========================================================================== */
+
+/* Media never forces a container wider than the screen. */
+img,
+video,
+canvas,
+iframe {
+    max-width: 100%;
+}
+
+/* Long e-mail addresses, reference codes and URLs are the usual overflow
+   culprits on a 375px screen; break them instead of widening the card. */
+.dashboard-container,
+.kc-modal,
+.notifications-content,
+.diagnosis-modal-box {
+    overflow-wrap: break-word;
+}
+
+/* Grid and flex children default to min-width: auto, which lets their content
+   push a track wider than the viewport. */
+.dashboard-container > *,
+.split > *,
+.overview-grid > *,
+.profile-grid > *,
+.chat-layout > *,
+.settings-layout > * {
+    min-width: 0;
+}
+
+/* Card internals laid out as "text block + badge / action" rows. */
+.appt-card > div > div,
+.ped-card > div,
+.notification-card > div {
+    min-width: 0;
+}
+
+/* A table that is genuinely wider than a phone scrolls inside its own
+   container, never the page. .kc-table-wrap already exists in the shared
+   stylesheet; .table-scroll is the same contract for plain tables. */
+.table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.table-scroll > table {
+    width: 100%;
+}
+
+/* ==========================================================================
+   2. Hook classes that replace inline styles in the parent markup
+   Base values are identical to the inline values they replaced, so desktop
+   renders exactly as before.
+   ========================================================================== */
+
+/* White surface cards on appointments / payment / results / settings. */
+.parent-card {
+    padding: 2rem;
+}
+
+/* Settings: menu column + content column. */
+.settings-layout {
+    display: grid;
+    grid-template-columns: 250px 1fr;
+    gap: 2rem;
+}
+
+/* Settings: paired form fields (First/Last name, Relationship/Permission). */
+.settings-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+/* Results: the "Previous vs Current" care-stage columns. auto-fit collapses
+   empty tracks, so with two items this renders exactly like the 1fr 1fr it
+   replaced on desktop, and stacks by itself once the columns no longer fit. */
+.compare-stage-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+/* Modal footer button pairs. */
+.modal-actions {
+    display: flex;
+    gap: 0.7rem;
+    margin-top: 0.5rem;
+}
+
+/* ==========================================================================
+   3. Mobile navigation
+   Desktop keeps the existing horizontal bar. Below 1024px the links move into
+   a dropdown panel opened by a hamburger button, so the sticky header stays
+   one row high instead of growing into a seven-line stack.
+
+   Every rule is scoped to .top-nav.has-mobile-nav, the class the parent pages
+   set alongside their toggle button, so a page without the button keeps the
+   behaviour it has today.
+   ========================================================================== */
+
+.nav-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    flex: 0 0 auto;
+    padding: 0;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-btn);
+    background: var(--surface);
+    color: var(--primary-dark);
+    cursor: pointer;
+}
+
+.nav-toggle:hover {
+    border-color: var(--primary-light);
+    background: var(--surface-tint);
+}
+
+.nav-toggle-bars,
+.nav-toggle-bars::before,
+.nav-toggle-bars::after {
+    display: block;
+    width: 20px;
+    height: 2px;
+    border-radius: 2px;
+    background: currentColor;
+    transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.nav-toggle-bars {
+    position: relative;
+}
+
+.nav-toggle-bars::before {
+    content: "";
+    position: absolute;
+    top: -6px;
+}
+
+.nav-toggle-bars::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+}
+
+.top-nav.nav-open .nav-toggle-bars {
+    background: transparent;
+}
+
+.top-nav.nav-open .nav-toggle-bars::before {
+    transform: translateY(6px) rotate(45deg);
+}
+
+.top-nav.nav-open .nav-toggle-bars::after {
+    transform: translateY(-6px) rotate(-45deg);
+}
+
+/* Narrow desktop. The seven links plus the logo and the icon cluster need
+   1119px to sit on one line; between 1024px and there the bar used to squeeze
+   the logo and spill toward the icon cluster. Tightening the gap and the link
+   size buys back ~190px, which clears the breakpoint with room to spare.
+   Wider than 1180px the bar is untouched.
+
+   The lower bound overlaps the mobile breakpoint by a pixel on purpose: an
+   exact 1025px floor left a sub-pixel gap where neither band applied. The
+   collapsed-nav block below therefore comes AFTER this one, so on the shared
+   pixel its rules win the tie. */
+@media (min-width: 1024px) and (max-width: 1180px) {
+    .top-nav.has-mobile-nav .nav-container {
+        gap: 1rem;
+    }
+
+    .top-nav.has-mobile-nav .main-nav {
+        gap: 1rem;
+    }
+
+    .top-nav.has-mobile-nav .nav-link {
+        font-size: 0.875rem;
+    }
+}
+
+@media (max-width: 1024px) {
+    .top-nav.has-mobile-nav .nav-toggle {
+        display: inline-flex;
+    }
+
+    /* The header stays a single row: logo on the left, bell / avatar /
+       hamburger on the right. */
+    .top-nav.has-mobile-nav .nav-container {
+        flex-wrap: nowrap;
+        gap: 1rem;
+    }
+
+    .top-nav.has-mobile-nav .logo {
+        min-width: 0;
+    }
+
+    .top-nav.has-mobile-nav .logo-text {
+        overflow: hidden;
+    }
+
+    /* .top-nav is position: sticky, so it is the containing block here. */
+    .top-nav.has-mobile-nav .main-nav {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        flex: none;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: 0;
+        max-height: 70vh;
+        overflow-y: auto;
+        padding: 0.25rem 1rem 0.75rem;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        box-shadow: var(--shadow-raised);
+    }
+
+    .top-nav.has-mobile-nav.nav-open .main-nav {
+        display: flex;
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-link {
+        display: flex;
+        align-items: center;
+        min-height: 48px;
+        padding: 0.35rem 0.25rem;
+        font-size: 1rem;
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-link + .nav-link {
+        border-top: 1px solid var(--border);
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-link.active,
+    .top-nav.has-mobile-nav .main-nav .nav-link[aria-current="page"] {
+        padding-left: 0.75rem;
+        border-left: 3px solid var(--accent-red);
+        background: var(--surface-tint);
+    }
+
+    /* Guardian Management pins the bar to 96px for its desktop hero spacing;
+       on a phone that is dead space above the fold. */
+    .top-nav.has-mobile-nav {
+        height: auto;
+    }
+}
+
+@media (max-width: 768px) {
+    .top-nav.has-mobile-nav .nav-container {
+        gap: 0.6rem;
+    }
+
+    .top-nav.has-mobile-nav .nav-right {
+        gap: 0.9rem;
+    }
+}
+
+@media (max-width: 380px) {
+    .top-nav.has-mobile-nav .logo {
+        font-size: 1.25rem;
+    }
+
+    .top-nav.has-mobile-nav .nav-right {
+        gap: 0.7rem;
+    }
+}
+
+/* ==========================================================================
+   4. Tablet — up to 1024px
+   ========================================================================== */
+
+@media (max-width: 1024px) {
+    .split,
+    .appointment-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ==========================================================================
+   5. Tablet portrait — up to 900px
+   ========================================================================== */
+
+@media (max-width: 900px) {
+    .settings-layout {
+        grid-template-columns: 1fr;
+        gap: 1.25rem;
+    }
+
+    /* chat.css drops the fixed viewport height at this width; give the panels
+       a workable height so the message list keeps its own scroll and the
+       composer stays reachable instead of sitting below a long page. */
+    .chat-layout {
+        gap: 1rem;
+    }
+
+    .threads-panel {
+        max-height: 260px;
+    }
+
+    .chat-panel {
+        min-height: 60vh;
+    }
+}
+
+/* ==========================================================================
+   6. Phone — up to 768px
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    /* -- Page shell -- */
+    .parent-card {
+        padding: 1.5rem;
+    }
+
+    /* -- Child switcher and pickers -- */
+    #childSwitchWrap {
+        width: 100%;
+    }
+
+    .child-select,
+    .child-picker {
+        width: 100%;
+        min-width: 0;
+    }
+
+    /* -- Dashboard child card action row --
+       The shared stylesheet forces .btn to width: 100% at this width, so the
+       row has to wrap or the three actions squeeze into thirds. */
+    .child-card .flex-row {
+        flex-wrap: wrap;
+        width: 100%;
+    }
+
+    .child-card .flex-row > * {
+        flex: 1 1 100%;
+    }
+
+    /* -- Touch targets -- */
+    .btn,
+    .kc-btn,
+    .choice-btn,
+    .settings-tab,
+    .followup-action,
+    .follow-up-action,
+    .diagnosis-btn,
+    .gm-btn-primary,
+    .gm-btn-secondary {
+        min-height: 44px;
+    }
+
+    .actions-buttons,
+    .gm-action-group,
+    .top-actions {
+        gap: 0.75rem;
+    }
+
+    /* -- Modals -- */
+    .kc-modal {
+        width: min(640px, 94vw);
+        max-height: 90vh;
+    }
+
+    .kc-modal__header,
+    .kc-modal__footer {
+        padding: var(--space-md) 1.25rem;
+    }
+
+    .kc-modal__body {
+        padding: 1.25rem;
+    }
+
+    .kc-modal__footer {
+        flex-wrap: wrap;
+    }
+
+    /* -- Guardian management -- */
+    .gm-card {
+        padding: 20px;
+    }
+
+    /* -- Custom questions -- */
+    .page-card {
+        padding: 1.5rem;
+    }
+
+    .top-actions {
+        width: 100%;
+    }
+
+    .top-actions .btn {
+        flex: 1 1 100%;
+    }
+
+    /* -- Accept invitation toast -- */
+    #aiToastRoot {
+        left: 18px;
+        max-width: calc(100vw - 36px);
+    }
+}
+
+/* ==========================================================================
+   7. Narrow phone — up to 600px
+   ========================================================================== */
+
+@media (max-width: 600px) {
+    /* Suggested pediatrician card: photo and details above, actions below. */
+    .ped-card {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    /* Receipt totals: three columns will not fit a phone. */
+    .receipt-summary {
+        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    }
+
+    .receipt-payment-row {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .settings-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .slot-chips {
+        gap: 0.35rem;
+    }
+}
+
+/* ==========================================================================
+   8. Small phone — up to 480px
+   ========================================================================== */
+
+@media (max-width: 480px) {
+    /* -- Card padding, matching the .card / .page-header value the shared
+          stylesheet already applies at this width. -- */
+    .parent-card,
+    .page-card,
+    .profile-card,
+    .profile-header,
+    .report-header,
+    .report-card,
+    .report-state,
+    .overview-card,
+    .actions-card,
+    .parent-chart-card,
+    .empty-state {
+        padding: 1rem;
+    }
+
+    .gm-card {
+        padding: 16px;
+    }
+
+    /* -- Forms: below 16px, iOS Safari zooms the page on focus and leaves the
+          layout scrolled sideways. -- */
+    input,
+    select,
+    textarea {
+        font-size: 16px;
+    }
+
+    .form-input,
+    .child-select,
+    .child-picker,
+    .chat-textarea,
+    .kc-input,
+    .kc-select,
+    .kc-textarea {
+        font-size: 16px;
+    }
+
+    /* -- Modals -- */
+    .kc-modal {
+        width: 100%;
+        max-height: 92vh;
+    }
+
+    .kc-modal-backdrop {
+        padding: 0.75rem;
+    }
+
+    .kc-modal__header,
+    .kc-modal__footer,
+    .kc-modal__body {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .modal-actions {
+        flex-direction: column;
+    }
+
+    .diagnosis-modal {
+        padding: 0.75rem;
+    }
+
+    /* -- Typography: only the largest headings scale; body copy stays put. -- */
+    .child-info h1,
+    .report-header h1,
+    .profile-header h1 {
+        font-size: 1.5rem;
+    }
+
+    .gm-header-left h1 {
+        font-size: 28px;
+    }
+
+    .gm-header-left p {
+        font-size: 16px;
+    }
+
+    .gm-header {
+        padding: 24px 18px;
+    }
+
+    /* -- Chat -- */
+    .chat-messages {
+        padding: 1rem;
+    }
+
+    .chat-input-area {
+        padding: 0.75rem 0.9rem;
+    }
+
+    .msg-body {
+        max-width: 85%;
+    }
+
+    /* -- Payment QR panel -- */
+    #clinicQrImage {
+        width: 200px;
+    }
+}

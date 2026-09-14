@@ -8,11 +8,12 @@
     <link rel="stylesheet" href="/css/notifications-styles.css">
     <link rel="stylesheet" href="/css/profile.css">
     <link rel="stylesheet" href="/notifications-card-ui.css">
+    <link rel="stylesheet" href="/css/parent-responsive.css">
 </head>
 <body>
     <!-- Parent profile page -->
     <!-- This page loads parent data, child data, and handles profile photo uploads -->
-<header class="top-nav">
+<header class="top-nav has-mobile-nav">
         <div class="nav-container">
             <a href="/parent/dashboard.html" class="logo">
                 <img src="/icons/logo.png" class="logo-img">
@@ -36,6 +37,9 @@
                 </button>
                 <button class="icon-btn profile-btn" onclick="toggleProfileMenu()">
                     <img src="/icons/profile.png" id="navProfilePic" class="profile-icon" style="width:36px;height:36px;border-radius:50%;object-fit:cover;display:block;">
+                </button>
+                <button type="button" class="nav-toggle" aria-label="Open menu" aria-expanded="false">
+                    <span class="nav-toggle-bars" aria-hidden="true"></span>
                 </button>
                 <div class="profile-menu" id="profileMenu" style="display:none;">
                     <div class="menu-header"><p>Welcome, User</p></div>
@@ -144,6 +148,7 @@
 <!-- Shared session/nav/avatar/notification helpers. Must load BEFORE this
      page's own script so the page keeps its existing local overrides. -->
 <script src="/api.js"></script>
+<script src="/js/shared/mobile-nav.js"></script>
 <script src="/notifications-card-ui.js"></script>
 <script src="/js/parent/profile.js"></script>
 </body>

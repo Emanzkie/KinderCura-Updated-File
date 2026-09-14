@@ -8,9 +8,10 @@
     <link rel="stylesheet" href="/css/recommendations-styles.css">
     <link rel="stylesheet" href="/css/notifications-styles.css">
     <link rel="stylesheet" href="/notifications-card-ui.css">
+    <link rel="stylesheet" href="/css/parent-responsive.css">
 </head>
 <body>
-    <header class="top-nav">
+    <header class="top-nav has-mobile-nav">
         <div class="nav-container">
             <a href="/parent/dashboard.html" class="logo"><img src="/icons/logo.png" class="logo-img"><span class="logo-text"><span class="logo-kinder">Kinder</span><span class="logo-cura">Cura</span></span></a>
             <nav class="main-nav">
@@ -25,6 +26,9 @@
             <div class="nav-right">
                 <button class="icon-btn notification-btn" onclick="openNotifications()"><img src="/icons/notif_bell.png" class="notification-icon" style="width:24px;height:24px;object-fit:contain;display:block;"><span class="notification-badge">0</span></button>
                 <button class="icon-btn profile-btn" onclick="toggleProfileMenu()"><img src="/icons/profile.png" id="navProfilePic" class="profile-icon" style="width:36px;height:36px;border-radius:50%;object-fit:cover;display:block;"></button>
+                <button type="button" class="nav-toggle" aria-label="Open menu" aria-expanded="false">
+                    <span class="nav-toggle-bars" aria-hidden="true"></span>
+                </button>
                 <div class="profile-menu" id="profileMenu" style="display:none;">
                     <div class="menu-header"><p id="navWelcome">Welcome</p></div>
                     <a href="/parent/profile.html" class="menu-item"><img src="/icons/profile_icon.png" class="menu-icon">Profile</a>
@@ -37,7 +41,7 @@
     </header>
 
     <div class="dashboard-container">
-        <div style="background:white;padding:2rem;border-radius:15px;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+        <div class="parent-card" style="background:white;border-radius:15px;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
             <div>
                 <h1 style="margin-bottom:0.5rem;">Personalized Recommendations</h1>
                 <p style="color:var(--text-light);" id="recMeta">Based on your child's latest assessment</p>
@@ -67,6 +71,7 @@
 </div>
 
     <script src="/api.js"></script>
+<script src="/js/shared/mobile-nav.js"></script>
 <script src="/notifications-card-ui.js"></script>
 <!-- Must load before recommendations.js — provides window.KCCarePlan (care-plan label formatting). -->
 <script src="/js/shared/care-plan-labels.js"></script>

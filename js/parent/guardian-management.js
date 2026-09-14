@@ -498,7 +498,7 @@ function GuardianManagement() {
         {pendingInvitations.length === 0 ? (
           <p className="gm-empty-text">No pending invitations.</p>
         ) : (
-          <table className="gm-table">
+          <div className="table-scroll"><table className="gm-table">
             <thead>
               <tr>
                 <th className="text-left">Email</th>
@@ -534,7 +534,7 @@ function GuardianManagement() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
 
@@ -546,7 +546,7 @@ function GuardianManagement() {
             : 'Linked Guardians'}
         </h3>
         {linkedGuardians.length === 0 ? <p className="gm-empty-text">No linked guardians for this child.</p> :
-          <table className="gm-table">
+          <div className="table-scroll"><table className="gm-table">
             <thead>
               <tr>
                 <th className="text-left">Name</th>
@@ -588,7 +588,7 @@ function GuardianManagement() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         }
       </div>
 
