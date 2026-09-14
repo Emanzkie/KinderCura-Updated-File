@@ -1463,7 +1463,16 @@ router.post('/create', authMiddleware, async (req, res) => {
       );
     }
 
-    await sendEmail(
+    // Fire-and-forget: this is a live SMTP call to Gmail (connect+TLS+AUTH+send),
+    // whose default timeouts run up to 2 minutes on a slow/throttled relay. It
+    // was previously `await`-ed here, which blocked the parent's redirect to
+    // payment-mode selection on that entire round trip. The pediatrician's
+    // in-app notification (pushNotification above) already informs them
+    // immediately; this email is a courtesy copy and doesn't need to gate the
+    // booking response. sendEmail() already catches and logs its own errors
+    // internally, so a failed/slow send here can never crash the request or
+    // surface as an unhandled rejection.
+    sendEmail(
       pediatrician.email,
       `New Appointment Request — ${childName}`,
       `<h2>New Appointment Request</h2>
@@ -1478,7 +1487,7 @@ router.post('/create', authMiddleware, async (req, res) => {
          ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
        </div>
        <p>Log in to KinderCura to approve or decline this request.</p>`
-    );
+    ).catch((err) => console.error('Appointment email error (non-blocking):', err.message));
 
     res.status(201).json({
       success: true,
