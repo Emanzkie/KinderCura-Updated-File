@@ -378,15 +378,22 @@ function renderSuggestionBanner() {
         <div class="mini" style="margin-top:.45rem;">Focus areas: ${escapeHtml(focus)}</div>`;
 }
 
-// Shows every eligible pediatrician as a compact summary card. Full details
-// (fee, hours, capacity, etc.) are deliberately left out here — they render
-// separately in #clinicPanel only after the parent picks one, via
-// choosePediatrician() -> renderSelectedPediatrician(). No extra API calls:
-// this reuses the same allPediatricians array loadPediatricians() already
-// fetched in one request.
+// Shows exactly the top 3 recommended pediatricians as compact summary
+// cards. The backend (buildSuggestedPediatricians in routes/appointments.js)
+// already sorts allPediatricians by matchScore desc (weakest-assessment-
+// domain match first, then other focus areas, then general relevance/profile
+// completeness) with a stable name tie-break, and always includes every
+// eligible pediatrician — so slicing the first 3 here is both "the 3 best
+// matches" and a safe fallback to "3 eligible pediatricians" when there is
+// no assessment or no keyword match at all. Full details (fee, hours,
+// capacity, etc.) are deliberately left out here — they render separately in
+// #clinicPanel only after the parent picks one, via choosePediatrician() ->
+// renderSelectedPediatrician(). No extra API calls: this reuses the same
+// allPediatricians array loadPediatricians() already fetched in one request.
 function renderRecommendedPediatricians() {
     const listEl = document.getElementById('recommendedList');
-    if (!Array.isArray(allPediatricians) || !allPediatricians.length) {
+    const topThree = Array.isArray(allPediatricians) ? allPediatricians.slice(0, 3) : [];
+    if (!topThree.length) {
         listEl.innerHTML = '';
         return;
     }
@@ -394,8 +401,8 @@ function renderRecommendedPediatricians() {
     listEl.innerHTML = `
         <div style="margin:1rem 0 1.2rem;">
             <h3 style="color:var(--primary);margin-bottom:.8rem;">Suggested Pediatricians / Clinics</h3>
-            ${allPediatricians.map((p) => `
-                <div class="ped-card${p.isSuggested ? ' suggested' : ''}">
+            ${topThree.map((p) => `
+                <div class="ped-card suggested">
                     <div style="min-width:0;">
                         <p style="font-weight:700;margin:0 0 .2rem;color:var(--text-dark);">Dr. ${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</p>
                         <p class="mini" style="margin:0 0 .2rem;">${escapeHtml(p.specialization || 'Pediatrician')}</p>

@@ -537,6 +537,18 @@ async function getLatestAssessmentResultForChild(childId) {
   return { assessment: latestAssessment, result };
 }
 
+// The four screening domains, in a fixed order used only to break an exact
+// score tie when picking the single weakest one below — never for anything
+// clinical. Keyword lists say which pediatrician specializations are
+// relevant to each domain; see the PHASE1 audit examples this mirrors
+// (developmental/behavioral/communication -> communication, etc.).
+const ASSESSMENT_DOMAINS = [
+  { key: 'communication', label: 'Communication', keywords: ['communication', 'speech', 'language', 'behavior', 'development'] },
+  { key: 'social', label: 'Social Skills', keywords: ['social', 'behavior', 'interaction', 'development'] },
+  { key: 'cognitive', label: 'Cognitive', keywords: ['cognitive', 'development', 'behavior', 'learning', 'neuro'] },
+  { key: 'motor', label: 'Motor Skills', keywords: ['motor', 'occupational', 'physical', 'development', 'movement'] },
+];
+
 function buildAssessmentContext(resultDoc) {
   if (!resultDoc) {
     return {
@@ -544,21 +556,28 @@ function buildAssessmentContext(resultDoc) {
       consultationNeeded: false,
       urgent: false,
       focusAreas: [],
+      weakestDomain: null,
       summary: 'You can still choose any active pediatrician for your child.',
     };
   }
 
-  const domains = [
-    { key: 'communication', label: 'Communication', score: Number(resultDoc.communicationScore || 0), keywords: ['communication', 'speech', 'language', 'behavior', 'development'] },
-    { key: 'social', label: 'Social Skills', score: Number(resultDoc.socialScore || 0), keywords: ['social', 'behavior', 'interaction', 'development'] },
-    { key: 'cognitive', label: 'Cognitive', score: Number(resultDoc.cognitiveScore || 0), keywords: ['cognitive', 'development', 'behavior', 'learning', 'neuro'] },
-    { key: 'motor', label: 'Motor Skills', score: Number(resultDoc.motorScore || 0), keywords: ['motor', 'occupational', 'physical', 'development', 'movement'] },
-  ];
+  const scoresByKey = {
+    communication: Number(resultDoc.communicationScore || 0),
+    social: Number(resultDoc.socialScore || 0),
+    cognitive: Number(resultDoc.cognitiveScore || 0),
+    motor: Number(resultDoc.motorScore || 0),
+  };
+  const domains = ASSESSMENT_DOMAINS.map((d) => ({ ...d, score: scoresByKey[d.key] }));
 
   // A focus area is any domain not in the top band. See constants/scoring.js.
   const focusAreas = domains
     .filter((d) => scoring.bandFor(d.score) !== scoring.BAND.ON_TRACK)
     .sort((a, b) => a.score - b.score);
+
+  // The single weakest domain — the main recommendation signal. Ties (equal
+  // scores) resolve to the first domain in ASSESSMENT_DOMAINS order, so the
+  // pick stays deterministic across requests for the same result document.
+  const weakestDomain = domains.reduce((min, d) => (d.score < min.score ? d : min), domains[0]);
 
   const urgent = focusAreas.some((d) => scoring.isRiskFlagged(d.score));
   const consultationNeeded = focusAreas.length > 0;
@@ -571,24 +590,56 @@ function buildAssessmentContext(resultDoc) {
       : `A follow-up consultation may help support ${names}.`;
   }
 
-  return { hasAssessment: true, consultationNeeded, urgent, focusAreas, summary };
+  return { hasAssessment: true, consultationNeeded, urgent, focusAreas, weakestDomain, summary };
 }
 
+// Ranking priority (highest weight first):
+//   1. Specialization/clinic text matches the child's single WEAKEST domain
+//      from their latest assessment — the main recommendation signal.
+//   2. Specialization/clinic text matches another (non-weakest) focus area.
+//   3. General pediatric/child-development relevance + profile completeness
+//      (clinic name, address, fee) — this is also the fallback signal used
+//      when there is no assessment, no focus area, or no specialization
+//      match at all, so ranking (and therefore "top 3") stays meaningful
+//      and deterministic even in that case.
+//   4. Stable alphabetical tie-break, applied by the caller's sort.
+// Active-status and "valid profile" eligibility are already enforced by the
+// DB query in buildSuggestedPediatricians() before this function ever runs.
 function scorePediatricianForContext(pediatrician, context) {
-  const hay = `${safeText(pediatrician.specialization)} ${safeText(pediatrician.clinicName)} ${safeText(pediatrician.institution)} ${safeText(pediatrician.bio)}`.toLowerCase();
+  // Domain-specific matching deliberately excludes `bio`: of the 63 active
+  // pediatricians in production, 33 have a bio and 31 of those mention
+  // "developmental" as generic filler text regardless of actual
+  // specialization (only 10 pediatricians have a genuinely development-
+  // relevant SPECIALIZATION). Including bio here was measured to inflate
+  // "motor" domain matches from 10 pediatricians to 38 — mostly false
+  // positives that drowned out real specialization relevance behind
+  // alphabetical tie-breaking. Structured fields (specialization, clinic
+  // name, institution) are what a pediatrician actually chose to represent
+  // their practice as; bio stays part of the general-relevance haystack
+  // below, where its noise only adds a small flat bonus instead of
+  // pretending to be a specific domain match.
+  const specHay = `${safeText(pediatrician.specialization)} ${safeText(pediatrician.clinicName)} ${safeText(pediatrician.institution)}`.toLowerCase();
+  const generalHay = `${specHay} ${safeText(pediatrician.bio)}`.toLowerCase();
   let score = 0;
   const reasons = [];
 
+  const weakest = context.weakestDomain;
+  if (weakest && weakest.keywords.some((kw) => specHay.includes(kw))) {
+    score += scoring.isRiskFlagged(weakest.score) ? 12 : 8;
+    reasons.push(`${weakest.label} support match`);
+  }
+
   if (context.consultationNeeded) {
     for (const area of context.focusAreas) {
-      if (area.keywords.some((kw) => hay.includes(kw))) {
-        score += scoring.isRiskFlagged(area.score) ? 8 : 5;
+      if (area.key === weakest?.key) continue; // already scored above at higher weight
+      if (area.keywords.some((kw) => specHay.includes(kw))) {
+        score += scoring.isRiskFlagged(area.score) ? 4 : 2;
         reasons.push(`${area.label} support match`);
       }
     }
   }
 
-  if (/pediatric|development|child/.test(hay)) {
+  if (/pediatric|development|child/.test(generalHay)) {
     score += 2;
     reasons.push('pediatric development care');
   }
