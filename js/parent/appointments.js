@@ -378,6 +378,12 @@ function renderSuggestionBanner() {
         <div class="mini" style="margin-top:.45rem;">Focus areas: ${escapeHtml(focus)}</div>`;
 }
 
+// Shows every eligible pediatrician as a compact summary card. Full details
+// (fee, hours, capacity, etc.) are deliberately left out here — they render
+// separately in #clinicPanel only after the parent picks one, via
+// choosePediatrician() -> renderSelectedPediatrician(). No extra API calls:
+// this reuses the same allPediatricians array loadPediatricians() already
+// fetched in one request.
 function renderRecommendedPediatricians() {
     const listEl = document.getElementById('recommendedList');
     if (!Array.isArray(allPediatricians) || !allPediatricians.length) {
@@ -385,33 +391,18 @@ function renderRecommendedPediatricians() {
         return;
     }
 
-    const suggested = allPediatricians.filter((p) => p.isSuggested).slice(0, 3);
-    if (!suggested.length) {
-        listEl.innerHTML = '';
-        return;
-    }
-
     listEl.innerHTML = `
         <div style="margin:1rem 0 1.2rem;">
             <h3 style="color:var(--primary);margin-bottom:.8rem;">Suggested Pediatricians / Clinics</h3>
-            ${suggested.map((p) => `
-                <div class="ped-card suggested">
-                    <div style="display:flex;gap:1rem;flex:1;min-width:0;">
-                        <img src="${escapeHtml(p.profileIcon && p.profileIcon.startsWith('/uploads/') ? p.profileIcon : '/icons/profile.png')}" style="width:54px;height:54px;border-radius:50%;object-fit:cover;border:2px solid #e6efe6;">
-                        <div style="min-width:0;">
-                            <p style="font-weight:700;margin:0 0 .2rem;color:var(--text-dark);">Dr. ${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</p>
-                            <p class="mini" style="margin:0 0 .2rem;">${escapeHtml(p.specialization || 'Pediatrician')}</p>
-                            <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(p.clinicName || p.institution || 'Clinic not set')}</p>
-                            <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(p.clinicAddress || 'Clinic address not available')}</p>
-                            <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(availabilitySummary(p).days)}</p>
-                            <p class="mini" style="margin:0 0 .2rem;">⏰ ${escapeHtml(availabilitySummary(p).hours)}</p>
-                            <p class="mini" style="margin:0;">Why suggested: ${escapeHtml(p.suggestedReason || 'Good match for follow-up')}</p>
-                        </div>
+            ${allPediatricians.map((p) => `
+                <div class="ped-card${p.isSuggested ? ' suggested' : ''}">
+                    <div style="min-width:0;">
+                        <p style="font-weight:700;margin:0 0 .2rem;color:var(--text-dark);">Dr. ${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</p>
+                        <p class="mini" style="margin:0 0 .2rem;">${escapeHtml(p.specialization || 'Pediatrician')}</p>
+                        <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(p.clinicName || p.institution || 'Clinic not set')}</p>
+                        <p class="mini" style="margin:0;"><img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(p.clinicAddress || 'Clinic address not available')}</p>
                     </div>
-                    <div style="display:flex;flex-direction:column;gap:.6rem;align-items:flex-end;">
-                        <span class="pill green">Suggested</span>
-                        <button class="btn btn-secondary" onclick="choosePediatrician('${p.id}')">Choose This</button>
-                    </div>
+                    <button class="btn btn-secondary" onclick="choosePediatrician('${p.id}')">Choose This</button>
                 </div>`).join('')}
         </div>`;
 }

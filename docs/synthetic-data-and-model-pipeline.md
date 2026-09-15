@@ -378,28 +378,20 @@ current feature set, which is what the blocker message says.
 
 ## Known limitations
 
-- **Synthetic pediatricians appear in the parent booking list.** This is the
-  one place demo data is visible to a non-admin. `GET
-  /api/appointments/pediatricians/list` now returns 63 synthetic pediatricians
-  alongside the real one, so a parent choosing a doctor would see them — and
-  those accounts have no usable password, so nobody would ever respond to the
-  booking.
+- **Synthetic pediatricians are excluded from the real parent booking list by
+  default.** `GET /api/appointments/pediatricians/list` filters
+  `isSynthetic: { $ne: true }` for parent callers (`buildSuggestedPediatricians()`
+  in `routes/appointments.js`), because those 62+ demo accounts share one
+  discarded bcrypt hash and cannot log in — a real parent booking against one
+  would be a dead end nobody can ever answer. With only one real pediatrician
+  account in the database, this also means the parent-facing list normally
+  shows just that one doctor.
 
-  This is an unavoidable consequence of the requirement itself: the demo
-  records have to live in the real collections for Admin Analytics to
-  aggregate them. Whether that is acceptable is a product decision, so it has
-  been left as-is rather than changed unilaterally. **If you want real-only
-  booking**, add one condition to `buildSuggestedPediatricians()` in
-  `routes/appointments.js`:
-
-  ```js
-  // exclude demo accounts from the parent-facing booking list
-  isSynthetic: { $ne: true },
-  ```
-
-  Analytics is unaffected either way — it counts documents, not booking
-  eligibility. The alternative is to generate fewer pediatricians
-  (`ROLE_MIX` in the generator), which reduces but does not remove the effect.
+  For local development/testing of the pediatrician-selection UI against the
+  full synthetic pool, set `SHOW_SYNTHETIC_PEDIATRICIANS_TO_PARENTS=true` in
+  your local `.env` (git-ignored, never deployed). Leave it unset in
+  production. Analytics is unaffected either way — it counts documents, not
+  booking eligibility.
 
 - **`GET /api/admin/users` is unpaginated.** It returns all 1,506 users in one
   response (~2.2s, 1,506 rendered rows). It works, but the Users page is

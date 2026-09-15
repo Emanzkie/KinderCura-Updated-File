@@ -602,6 +602,17 @@ function scorePediatricianForContext(pediatrician, context) {
   };
 }
 
+// Opt-in escape hatch for local development/testing ONLY. Unset (or anything
+// other than the literal string 'true') keeps the original, safer behaviour.
+// This must never be set in the production Vercel environment: synthetic
+// pediatrician accounts share one discarded bcrypt hash and cannot log in, so
+// a real parent booking against one in production would be a dead end nobody
+// can ever answer. .env is git-ignored and never deployed, so setting this
+// locally cannot leak into production. See buildSuggestedPediatricians below.
+function devShowSyntheticPediatriciansToParents() {
+  return process.env.SHOW_SYNTHETIC_PEDIATRICIANS_TO_PARENTS === 'true';
+}
+
 /**
  * @param {object}  options
  * @param {string}  [options.childId]
@@ -610,7 +621,9 @@ function scorePediatricianForContext(pediatrician, context) {
  *   this list is what a parent picks a doctor from, and a synthetic account has
  *   no usable password — nobody would ever answer a booking made against one.
  *   Admin callers pass true so the demo data stays visible where it is meant to
- *   be (admin views, analytics, testing).
+ *   be (admin views, analytics, testing). Parent callers may also pass true
+ *   when devShowSyntheticPediatriciansToParents() is on, for local dev/testing
+ *   against the large synthetic pediatrician pool.
  */
 async function buildSuggestedPediatricians({ childId = null, includeSynthetic = false } = {}) {
   const latest = childId ? await getLatestAssessmentResultForChild(childId) : null;
@@ -1247,10 +1260,11 @@ router.get('/pediatricians/list', authMiddleware, async (req, res) => {
     }
 
     // Admins keep seeing demo pediatricians (this endpoint is also how the
-    // admin side inspects the booking list); parents never do.
+    // admin side inspects the booking list); parents only do when the
+    // SHOW_SYNTHETIC_PEDIATRICIANS_TO_PARENTS dev flag is explicitly on.
     const built = await buildSuggestedPediatricians({
       childId,
-      includeSynthetic: req.user.role === 'admin',
+      includeSynthetic: req.user.role === 'admin' || devShowSyntheticPediatriciansToParents(),
     });
     const slotSettings = await getAppointmentSlotSettings();
     res.json({ success: true, ...built, slotSettings });
