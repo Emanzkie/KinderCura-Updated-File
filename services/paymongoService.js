@@ -173,6 +173,21 @@ async function retrieveCheckoutSession(sessionId) {
 }
 
 /**
+ * Pull the actual billing contact PayMongo recorded for a payment, preferring
+ * the specific payment sub-resource (what the payer actually submitted at
+ * checkout) over the checkout session's own `billing` (only ever our pre-fill
+ * request). Returns { billingEmail, billingPhone }, each null when absent —
+ * PayMongo returns `""` for an unset phone, which is normalized to null here
+ * too so callers never mistake "not provided" for a real value.
+ */
+function pickBilling(attrs, paid) {
+  const billing = paid?.attributes?.billing || attrs?.billing || null;
+  const email = String(billing?.email || '').trim();
+  const phone = String(billing?.phone || '').trim();
+  return { billingEmail: email || null, billingPhone: phone || null };
+}
+
+/**
  * Pull the paid/unpaid verdict out of a Checkout Session payload.
  * Used by the reconcile path, which asks PayMongo directly rather than
  * believing the browser that landed on our success URL.
@@ -198,6 +213,9 @@ function readSessionOutcome(sessionJson) {
     sourceType: paid?.attributes?.source?.type
       || paid?.attributes?.payment_method_used
       || null,
+    // The billing email/phone actually used for this payment — the source of
+    // truth for the receipt destination (see paymentController.reconcileCheckout).
+    ...pickBilling(attrs, paid),
   };
 }
 
@@ -217,6 +235,23 @@ function readSourceTypeFromWebhookResource(resource) {
   const paid = payments.find((p) => (p?.attributes?.status || p?.status) === 'paid') || payments[0] || null;
   const fromSession = paid?.attributes?.source?.type || paid?.attributes?.payment_method_used || null;
   return fromSession ? String(fromSession).toLowerCase() : null;
+}
+
+/**
+ * Best-effort extraction of the billing email/phone actually used for a
+ * payment, from a webhook resource of any shape PayMongo delivers it in:
+ *  - `payment.paid`                    -> resource.attributes.billing
+ *  - `checkout_session.payment.paid`   -> resource.attributes.payments[].attributes.billing
+ *  - `payment_intent.succeeded`        -> resource.attributes.payments[].attributes.billing
+ * Falls back to a top-level `billing` (the checkout session's own pre-fill)
+ * only when no per-payment billing is present. Returns { billingEmail,
+ * billingPhone }, each null when PayMongo did not provide it.
+ */
+function readBillingFromWebhookResource(resource) {
+  const attrs = resource?.attributes || {};
+  const payments = Array.isArray(attrs.payments) ? attrs.payments : [];
+  const paid = payments.find((p) => (p?.attributes?.status || p?.status) === 'paid') || payments[0] || null;
+  return pickBilling(attrs, paid);
 }
 
 /**
@@ -274,6 +309,7 @@ module.exports = {
   retrieveCheckoutSession,
   readSessionOutcome,
   readSourceTypeFromWebhookResource,
+  readBillingFromWebhookResource,
   verifyWebhookSignature,
   toCentavos,
 };

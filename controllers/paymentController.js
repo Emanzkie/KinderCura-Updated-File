@@ -25,47 +25,6 @@ function fullName(user) {
   return `${user.firstName || ''} ${user.lastName || ''}`.trim() || null;
 }
 
-// Same pattern routes/auth.js already validates emails/PH mobile numbers
-// with, reused here so "Pay Online" contact fields accept exactly what
-// registration/profile forms already accept.
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PH_MOBILE_PATTERN = /^(09|\+639)\d{9}$/;
-
-/**
- * Validate + normalize an optional per-transaction receipt email.
- * Returns lowercase/trimmed, or null when nothing was submitted. Throws a
- * 400-tagged error on anything non-empty that isn't a valid address — this
- * never silently falls back, so "Pay Online" cannot start with a broken
- * destination for the receipt.
- */
-function normalizeReceiptEmail(raw) {
-  const trimmed = String(raw || '').trim();
-  if (!trimmed) return null;
-  const lower = trimmed.toLowerCase();
-  if (!EMAIL_PATTERN.test(lower)) {
-    throw Object.assign(new Error('Please enter a valid email address for the receipt.'), { statusCode: 400 });
-  }
-  return lower;
-}
-
-/**
- * Validate + normalize an optional per-transaction contact number to
- * +639XXXXXXXXX. Returns null when nothing was submitted — the field is
- * optional, unlike email, since PayMongo checkout only strictly requires one
- * contact channel and the receipt always has the resolved email to fall back on.
- */
-function normalizeReceiptPhone(raw) {
-  const cleaned = String(raw || '').replace(/[\s\-()]/g, '');
-  if (!cleaned) return null;
-  if (!PH_MOBILE_PATTERN.test(cleaned)) {
-    throw Object.assign(
-      new Error('Please enter a valid Philippine mobile number (e.g., 09123456789).'),
-      { statusCode: 400 }
-    );
-  }
-  return cleaned.startsWith('09') ? `+63${cleaned.slice(1)}` : cleaned;
-}
-
 async function canAccessAppointment(req, appointment) {
   if (!appointment) return false;
   if (req.user.role === 'admin') return true;
@@ -605,23 +564,20 @@ async function startOnlineCheckout(req, res) {
     }
 
     const [parent, child] = await Promise.all([
-      User.findById(appointment.parentId).select('firstName lastName email').lean(),
+      User.findById(appointment.parentId).select('firstName lastName email phoneNumber').lean(),
       Child.findById(appointment.childId).select('firstName lastName').lean(),
     ]);
 
-    // Transaction-specific receipt contact, entered on the "Pay Online" screen.
-    // Validated up front so a bad address never reaches PayMongo or the
-    // Payment row; falls back to the parent's registered email only, never
-    // written back to User.email/phoneNumber.
-    const contactEmail = normalizeReceiptEmail(req.body?.receiptEmail) || parent?.email || null;
-    const contactPhone = normalizeReceiptPhone(req.body?.receiptPhone);
-
+    // Pre-fill only — never a second place for the parent to type contact
+    // info. The registered account's email (and phone, when actually on
+    // file) seed PayMongo's checkout billing fields; the parent may still
+    // edit or replace them entirely inside the PayMongo hosted checkout.
     const payment = await ensureAutomatedPayment({
       appointment,
       method: 'paymongo',
       actor: req.user,
-      parentEmail: contactEmail,
-      receiptPhone: contactPhone,
+      parentEmail: parent?.email || null,
+      receiptPhone: parent?.phoneNumber || null,
     });
 
     // Where PayMongo sends the parent back to. Behind Vercel's proxy
@@ -642,9 +598,9 @@ async function startOnlineCheckout(req, res) {
       lineDescription: `Appointment #${appointment.id} for ${childName}`,
       successUrl: `${origin}/parent/payment?appointmentId=${appointment.id}&ref=${encodeURIComponent(payment.paymentRef)}&result=success`,
       cancelUrl: `${origin}/parent/payment?appointmentId=${appointment.id}&ref=${encodeURIComponent(payment.paymentRef)}&result=cancelled`,
-      customerEmail: payment.receiptEmail || contactEmail,
+      customerEmail: payment.receiptEmail || parent?.email || null,
       customerName: parent ? `${parent.firstName} ${parent.lastName}`.trim() : null,
-      customerPhone: payment.receiptPhone || contactPhone,
+      customerPhone: payment.receiptPhone || parent?.phoneNumber || null,
       paymentMethods: clinic.paymongoMethods?.length ? clinic.paymongoMethods : undefined,
       metadata: {
         kc_appointment_id: String(appointment.id),
@@ -740,6 +696,11 @@ async function reconcileCheckout(req, res) {
       return res.json({ success: true, paid: false, status: payment.status, gatewayStatus: outcome.status });
     }
 
+    console.log(
+      '[reconcile] Resolved billing for', payment.paymentRef,
+      { billingEmail: outcome.billingEmail, billingPhone: outcome.billingPhone, sourceType: outcome.sourceType }
+    );
+
     const result = await receiptService.settlePayment({
       paymentId: payment._id,
       method: 'paymongo',
@@ -748,6 +709,8 @@ async function reconcileCheckout(req, res) {
         paymentIntentId: outcome.paymentIntentId,
         checkoutSessionId: payment.paymongoCheckoutSessionId,
         sourceType: outcome.sourceType,
+        billingEmail: outcome.billingEmail,
+        billingPhone: outcome.billingPhone,
       },
       notes: 'Confirmed by server-side reconciliation with PayMongo.',
     });
@@ -866,6 +829,50 @@ async function findPaymentForWebhookResource(resource) {
   return null;
 }
 
+/**
+ * Resolve the billing email/phone and e-wallet source type PayMongo recorded
+ * for a just-paid transaction, preferring a fresh, authoritative server-side
+ * Checkout Session lookup (via our secret key, same call reconcileCheckout()
+ * already makes) over whatever shape the webhook payload happened to embed.
+ *
+ * Why this matters: a webhook delivery is a "something happened" signal, not
+ * a guaranteed full snapshot of the resource — PayMongo's webhook payload for
+ * `checkout_session.payment.paid` / `payment.paid` may omit or truncate the
+ * nested `billing` object even when a direct `GET` on the same resource
+ * returns it in full. Because most payments settle via the webhook (it
+ * usually beats the browser's own reconcile call), trusting only the
+ * webhook's embedded billing risked silently keeping the pre-fill (the
+ * registered KinderCura email) as the permanent receipt destination even
+ * when the parent changed it on PayMongo's hosted checkout page. Re-fetching
+ * here closes that gap for the webhook path the same way reconcileCheckout()
+ * already closes it for the polling path.
+ *
+ * Never throws: a failed re-fetch just falls back to the webhook's own
+ * embedded data so settlement is never blocked on this secondary lookup.
+ */
+async function resolvePaidBillingAndSource(payment, resource) {
+  let billing = paymongoService.readBillingFromWebhookResource(resource);
+  let sourceType = paymongoService.readSourceTypeFromWebhookResource(resource);
+
+  if (payment.paymongoCheckoutSessionId && paymongoService.isConfigured()) {
+    try {
+      const sessionJson = await paymongoService.retrieveCheckoutSession(payment.paymongoCheckoutSessionId);
+      const outcome = paymongoService.readSessionOutcome(sessionJson);
+      // Prefer the freshly-fetched, authoritative value; keep the
+      // webhook-embedded one only where the re-fetch did not return anything.
+      billing = {
+        billingEmail: outcome.billingEmail || billing.billingEmail,
+        billingPhone: outcome.billingPhone || billing.billingPhone,
+      };
+      if (outcome.sourceType) sourceType = outcome.sourceType;
+    } catch (err) {
+      console.warn('[webhook] Could not re-fetch checkout session for billing:', err.message);
+    }
+  }
+
+  return { billing, sourceType };
+}
+
 // POST /api/payments/webhook/paymongo
 // Public endpoint. Authenticated by signature, never by a session.
 async function handlePaymongoWebhook(req, res) {
@@ -914,6 +921,11 @@ async function handlePaymongoWebhook(req, res) {
 
     if (HANDLED_PAID.includes(eventType)) {
       const attrs = resource?.attributes || {};
+      const { billing, sourceType } = await resolvePaidBillingAndSource(payment, resource);
+      console.log(
+        '[webhook] Resolved billing for', payment.paymentRef, eventType,
+        { billingEmail: billing.billingEmail, billingPhone: billing.billingPhone, sourceType }
+      );
       const result = await receiptService.settlePayment({
         paymentId: payment._id,
         method: 'paymongo',
@@ -922,8 +934,10 @@ async function handlePaymongoWebhook(req, res) {
         paymongo: {
           paymentId: String(resource?.id || '').startsWith('pay_') ? resource.id : null,
           paymentIntentId: attrs.payment_intent_id || attrs.payment_intent?.id || null,
-          checkoutSessionId: String(resource?.id || '').startsWith('cs_') ? resource.id : null,
-          sourceType: paymongoService.readSourceTypeFromWebhookResource(resource),
+          checkoutSessionId: String(resource?.id || '').startsWith('cs_') ? resource.id : (payment.paymongoCheckoutSessionId || null),
+          sourceType,
+          billingEmail: billing.billingEmail,
+          billingPhone: billing.billingPhone,
         },
         notes: `Confirmed by PayMongo webhook (${eventType}).`,
       });

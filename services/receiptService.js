@@ -116,6 +116,30 @@ function ewalletBrandLabel(sourceType, fallback = '—') {
 }
 
 /**
+ * Decide the Payment.receiptEmail / receiptPhone update for a settling
+ * payment, given whatever billing PayMongo actually reported for the
+ * transaction (see paymongoService.readSessionOutcome /
+ * readBillingFromWebhookResource). PayMongo's `billing.email`/`billing.phone`
+ * is the value the payer actually submitted on the hosted checkout page —
+ * NOT the pre-fill KinderCura sent when creating the Checkout Session, which
+ * the payer may have changed before paying.
+ *
+ * Pure and side-effect free so the "never blank a valid value" rule is
+ * directly testable without touching the database: a field is only included
+ * in the returned object when PayMongo actually supplied a non-empty value.
+ * Omitting a field here means "leave whatever is already stored" — it must
+ * never be interpreted as "clear it."
+ */
+function resolveReceiptContact(paymongo) {
+  const updates = {};
+  const email = String(paymongo?.billingEmail || '').trim().toLowerCase();
+  if (email) updates.receiptEmail = email;
+  const phone = String(paymongo?.billingPhone || '').trim();
+  if (phone) updates.receiptPhone = phone;
+  return updates;
+}
+
+/**
  * Mark a payment as settled, allocate its receipt number, sync the appointment,
  * and email the receipt — at most once, no matter how many times this runs.
  *
@@ -124,7 +148,7 @@ function ewalletBrandLabel(sourceType, fallback = '—') {
  * @param {string}  [opts.method]       Overrides paymentMethod on settlement
  * @param {Date}    [opts.paidAt]
  * @param {object}  [opts.actor]        { userId, role } when a human confirmed it
- * @param {object}  [opts.paymongo]     { paymentId, paymentIntentId, checkoutSessionId }
+ * @param {object}  [opts.paymongo]     { paymentId, paymentIntentId, checkoutSessionId, sourceType, billingEmail, billingPhone }
  * @param {string}  [opts.eventId]      Webhook event id, stored for traceability
  * @param {string}  [opts.notes]
  * @returns {Promise<{ payment: object, alreadySettled: boolean, emailed: boolean }>}
@@ -172,6 +196,7 @@ async function settlePayment({
   // paymentMethod itself stays whatever `method` is ('paymongo'), so admin
   // monitoring that keys on 'paymongo' is unaffected.
   if (paymongo?.sourceType) set.paymongoSourceType = String(paymongo.sourceType).toLowerCase();
+  Object.assign(set, resolveReceiptContact(paymongo));
 
   // The `status: { $ne: 'Paid' }` guard is the concurrency control: if two
   // webhook deliveries race, exactly one update matches and the other sees null.
@@ -263,6 +288,7 @@ module.exports = {
   buildReceiptContext,
   paymentMethodLabel,
   ewalletBrandLabel,
+  resolveReceiptContact,
   settlePayment,
   syncAppointmentAfterPayment,
   markPaymentOutcome,

@@ -217,69 +217,18 @@ function backToOptions() {
     showPanel('optionCards');
 }
 
-// ── Receipt Contact (per-transaction, never the account email/phone) ────
-// Pre-filled from the registered account so most parents never have to type
-// anything, but fully editable — only this payment's Payment.receiptEmail /
-// receiptPhone is affected, never User.email / User.phoneNumber.
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PH_MOBILE_PATTERN = /^(09|\+639)\d{9}$/;
-
-function prefillReceiptContact() {
-    const emailInput = document.getElementById('receiptEmailInput');
-    const user = KC.user();
-    if (emailInput && !emailInput.value && user?.email) emailInput.value = user.email;
-}
-
-function showReceiptContactError(msg) {
-    const el = document.getElementById('receiptContactError');
-    if (el) { el.textContent = msg; el.style.display = 'block'; }
-}
-
-function clearReceiptContactError() {
-    const el = document.getElementById('receiptContactError');
-    if (el) el.style.display = 'none';
-}
-
-/**
- * Validate the Receipt Contact fields client-side before ever calling the
- * server, so an obviously bad address never opens a checkout session. The
- * server re-validates independently — this is only for a fast, friendly error.
- * Returns { receiptEmail, receiptPhone } or null (and shows the error) when invalid.
- */
-function readValidatedReceiptContact() {
-    clearReceiptContactError();
-    const emailRaw = document.getElementById('receiptEmailInput')?.value || '';
-    const phoneRaw = document.getElementById('receiptPhoneInput')?.value || '';
-    const email = emailRaw.trim().toLowerCase();
-    const phone = phoneRaw.replace(/[\s\-()]/g, '');
-
-    if (!email || !EMAIL_PATTERN.test(email)) {
-        showReceiptContactError('Please enter a valid email address for this payment’s receipt.');
-        return null;
-    }
-    if (phone && !PH_MOBILE_PATTERN.test(phone)) {
-        showReceiptContactError('Please enter a valid Philippine mobile number (e.g., 09123456789), or leave it blank.');
-        return null;
-    }
-    return { receiptEmail: email, receiptPhone: phone || undefined };
-}
-
 // ── Pay Online (PayMongo hosted checkout) ────────────────────────────────
-// The browser never sees a PayMongo key and never states an amount. It asks
-// the server to open a checkout session and then follows the URL it gets back.
+// The browser never sees a PayMongo key and never states an amount or contact
+// info. It asks the server to open a checkout session and follows the URL it
+// gets back — the parent enters/edits their payment email and phone on
+// PayMongo's own hosted checkout page, not here.
 async function payOnline() {
     clearError();
-    const contact = readValidatedReceiptContact();
-    if (!contact) return; // invalid contact info — do not start checkout
-
     const btn = document.getElementById('payOnlineBtn');
     if (btn) { btn.disabled = true; btn.textContent = 'Opening secure checkout…'; }
 
     try {
-        const data = await apiFetch(`/payments/appointments/${appointmentId}/checkout`, {
-            method: 'POST',
-            body: JSON.stringify(contact),
-        });
+        const data = await apiFetch(`/payments/appointments/${appointmentId}/checkout`, { method: 'POST' });
         if (!data.checkoutUrl) throw new Error('The payment provider did not return a checkout link.');
         // Remember the reference so the page can resume polling if the parent
         // returns without the query string (e.g. by pressing Back).
@@ -378,7 +327,6 @@ async function resolveOnlineResult(result, paymentRef) {
 document.addEventListener('DOMContentLoaded', async () => {
     initNav();
     document.querySelectorAll('a.logout').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); logout(); }));
-    prefillReceiptContact();
     await loadAppointmentSummary();
 
     // PayMongo sends the parent back here with ?result=success|cancelled.

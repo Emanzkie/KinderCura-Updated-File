@@ -35,23 +35,6 @@
         .payment-option-card h3 { margin: 0 0 0.4rem; color: var(--text-dark, #333); font-size: 1rem; }
         .payment-option-card p { margin: 0; font-size: 0.82rem; color: var(--text-light, #888); }
         .payment-option-card .btn { margin-top: 1rem; width: 100%; }
-
-        /* Receipt Contact — per-transaction email/mobile shown before "Pay
-           Online". Pre-filled from the registered account but editable; never
-           touches the account itself, only this payment's receipt. */
-        .receipt-contact-fields { text-align: left; margin-top: 1rem; padding-top: 0.9rem; border-top: 1px dashed var(--border, #e0e0e0); }
-        .receipt-contact-label { font-size: 0.8rem; font-weight: 700; color: var(--primary, #6B8E6F); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.5rem; }
-        .receipt-contact-fields label { display: block; font-size: 0.8rem; color: var(--text-dark, #333); margin: 0.5rem 0 0.25rem; }
-        .receipt-contact-input {
-            width: 100%;
-            padding: 0.6rem 0.7rem;
-            border: 1px solid var(--border, #e0e0e0);
-            border-radius: 8px;
-            font-size: 0.9rem;
-            background: #fff;
-        }
-        .receipt-contact-input:focus { outline: none; border-color: var(--primary, #6B8E6F); }
-        .receipt-contact-help { font-size: 0.76rem; color: var(--text-light, #888); margin-top: 0.4rem; }
         .panel { display: none; }
         .panel.active { display: block; }
         .success-banner {
@@ -196,17 +179,6 @@
                     <div class="option-icon">💳</div>
                     <h3>Pay Online</h3>
                     <p>Pay securely with an e-wallet &mdash; GCash or Maya. Your appointment is confirmed automatically once payment succeeds.</p>
-
-                    <div class="receipt-contact-fields">
-                        <p class="receipt-contact-label">Receipt Contact</p>
-                        <label for="receiptEmailInput">Email address</label>
-                        <input type="email" id="receiptEmailInput" class="receipt-contact-input" placeholder="parent@example.com" autocomplete="email">
-                        <label for="receiptPhoneInput">Mobile number <span style="font-weight:400;color:var(--text-light);">(optional)</span></label>
-                        <input type="tel" id="receiptPhoneInput" class="receipt-contact-input" placeholder="09XXXXXXXXX" autocomplete="tel">
-                        <p class="receipt-contact-help">Use the email or mobile number you want associated with this payment receipt.</p>
-                        <p id="receiptContactError" class="error-msg" style="display:none;margin-top:0.4rem;"></p>
-                    </div>
-
                     <button class="btn btn-primary" style="margin-top:1rem;width:100%;" id="payOnlineBtn" onclick="payOnline()">Pay Online</button>
                 </div>
                 <div class="payment-option-card">
