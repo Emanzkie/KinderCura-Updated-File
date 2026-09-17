@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node --no-deprecation server.js",
     "dev": "nodemon --no-deprecation server.js",
-    "test": "node tests/unit/models.test.js && node tests/unit/dataset-questions.test.js && node tests/unit/synthetic-data.test.js && node tests/unit/model-activation.test.js && node tests/unit/model-rollback.test.js && node tests/unit/file-storage-r2.test.js && node tests/unit/paymongo-billing.test.js",
+    "test": "node tests/unit/models.test.js && node tests/unit/dataset-questions.test.js && node tests/unit/synthetic-data.test.js && node tests/unit/model-activation.test.js && node tests/unit/model-rollback.test.js && node tests/unit/file-storage-r2.test.js && node tests/unit/paymongo-billing.test.js && node tests/unit/report-interpretations.test.js",
     "test:synthetic": "node tests/unit/synthetic-data.test.js",
     "test:model-lifecycle": "node tests/unit/model-activation.test.js && node tests/unit/model-rollback.test.js",
     "migrate:appointment-slots": "node scripts/migrate-appointment-slots.js",

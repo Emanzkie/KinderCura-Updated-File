@@ -86,6 +86,9 @@
 <script src="/notifications-card-ui.js"></script>
 <!-- Must load before reports.js — provides window.KCScoring (band cutoffs). -->
 <script src="/constants/scoring.js"></script>
+<!-- Must load before reports.js — provides window.KCReportInterpretations
+     (the parent-facing sentence builders for each report section). -->
+<script src="/js/parent/report-interpretations.js"></script>
 <script src="/js/parent/reports.js"></script>
 </body>
 </html>

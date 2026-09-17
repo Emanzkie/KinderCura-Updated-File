@@ -111,32 +111,64 @@ function goToScreening() {
 
 // ── Section renderers ───────────────────────────────────────────────────────
 
-// Next follow-up. The report only ever shows a date a pediatrician actually
-// entered. The system stores no recall interval, so when no date is set the
-// page says so plainly rather than estimating one.
-function renderFollowUp(followUp) {
-    if (followUp && followUp.nextAssessmentDate) {
-        const by = followUp.setByPediatricianName
-            ? ` Set by ${escapeHtml(followUp.setByPediatricianName)}.`
-            : '';
+// Pediatrician Review & Next Follow-up. Two related but distinct pieces of
+// stored data, shown together but never conflated:
+//   (1) the INITIAL pediatrician review — the earliest completed assessment
+//       that has actually been reviewed (not simply the latest assessment;
+//       see window.KCReportInterpretations.findInitialReview), described
+//       using only that one assessment's own recorded review fields.
+//   (2) the most recently documented next-follow-up date/reason, which may
+//       have been set at a LATER review than the initial one — this reuses
+//       the server's own `followUp` (routes/parent-reports.js), which already
+//       walks the timeline for the newest documented nextAssessmentDate.
+// Nothing here is invented: every value is a stored Assessment field written
+// by POST /api/assessments/diagnose/:childId, or explicitly says it is missing.
+function renderPediatricianReview(reportData) {
+    const assessments = reportData.assessments || [];
+    const initial = window.KCReportInterpretations.findInitialReview(assessments);
+    const followUp = reportData.followUp;
+
+    if (!initial) {
         return `
-            <div class="followup-banner">
-                <div>
-                    <h3>Next recommended follow-up</h3>
-                    <p><strong>${escapeHtml(fmtScheduledDate(followUp.nextAssessmentDate))}</strong>.${by}</p>
-                    ${followUp.reason ? `<p class="timeline-note">${escapeHtml(followUp.reason)}</p>` : ''}
-                </div>
-                <button class="followup-action" onclick="goToAppointments()">Appointments</button>
+            <div class="report-card">
+                <h2>Pediatrician Review &amp; Next Follow-up</h2>
+                <p class="card-sub">No pediatrician review has been documented yet for this child's completed assessments.</p>
+                <button class="btn btn-primary" onclick="goToAppointments()">Book an appointment</button>
             </div>`;
     }
 
+    const overall = initial.overallScore != null ? Math.round(initial.overallScore) : null;
+    const screeningResult = overall != null
+        ? `${overall}% &mdash; ${escapeHtml(window.KCScoring.parentOverallLabel(overall))}`
+        : 'Not available for this assessment.';
+
+    const followUpFromLaterReview = Boolean(
+        followUp && followUp.fromAssessmentId && followUp.fromAssessmentId !== initial.id
+    );
+
+    const followUpFields = followUp && followUp.nextAssessmentDate
+        ? `
+            <div><dt>Next recommended follow-up</dt><dd>${escapeHtml(fmtScheduledDate(followUp.nextAssessmentDate))}</dd></div>
+            <div class="review-field-wide"><dt>Reason</dt><dd>${followUp.reason ? escapeHtml(followUp.reason) : 'No reason was documented for this follow-up.'}</dd></div>`
+        : `
+            <div class="review-field-wide"><dt>Next recommended follow-up</dt><dd>No follow-up date has been documented by a pediatrician yet.</dd></div>`;
+
     return `
-        <div class="followup-banner followup-none">
-            <div>
-                <h3>Next recommended follow-up</h3>
-                <p>No follow-up date has been scheduled by a pediatrician yet. You can book an appointment any time to discuss these results.</p>
-            </div>
-            <button class="followup-action" onclick="goToAppointments()">Book appointment</button>
+        <div class="report-card">
+            <h2>Pediatrician Review &amp; Next Follow-up</h2>
+            <p class="card-sub">What the pediatrician documented after reviewing this child's assessment results.</p>
+            <dl class="review-fields">
+                <div><dt>Initial assessment</dt><dd>${escapeHtml(fmtDate(initial.completedAt) || 'Date not recorded')}</dd></div>
+                <div><dt>Initial screening result</dt><dd>${screeningResult}</dd></div>
+                <div><dt>Reviewed by</dt><dd>${escapeHtml(initial.review.pediatricianName || 'Pediatrician')}</dd></div>
+                <div><dt>Reviewed on</dt><dd>${escapeHtml(fmtDate(initial.review.reviewedAt) || 'Not recorded')}</dd></div>
+                <div class="review-field-wide"><dt>Pediatrician recommendation</dt><dd>${initial.review.recommendations ? escapeHtml(initial.review.recommendations) : 'No recommendation has been documented for this review.'}</dd></div>
+                ${followUpFields}
+            </dl>
+            ${followUpFromLaterReview
+                ? '<p class="timeline-note">This follow-up date was documented at a later pediatrician review than the initial one shown above.</p>'
+                : ''}
+            <button class="followup-action" onclick="goToAppointments()" style="margin-top:1rem;">Appointments</button>
         </div>`;
 }
 
@@ -164,14 +196,23 @@ function renderTrend(assessments, trendAvailable) {
             </div>`;
     }
 
+    const interpretation = window.KCReportInterpretations.getTrendInterpretation(assessments);
+
     return `
         <div class="report-card">
             <h2>Score over time</h2>
-            <p class="card-sub">
-                Overall assessment score at each completed assessment, oldest to newest.
-                Assessment results can change over time. A single result does not give a complete picture of your child's development.
-            </p>
             <div class="trend-chart-wrap"><canvas id="trendChart"></canvas></div>
+            <div class="interp-block">
+                <p class="interp-label">What this shows</p>
+                <p class="interp-text">
+                    This chart compares your child's overall assessment score across completed
+                    assessments, from the oldest result to the newest result.
+                </p>
+            </div>
+            <div class="interp-block">
+                <p class="interp-label">Interpretation</p>
+                <p class="interp-text">${escapeHtml(interpretation)}</p>
+            </div>
         </div>`;
 }
 
@@ -244,16 +285,24 @@ function renderLatestDomains(latest) {
             </div>`;
     }
 
+    const interp = window.KCReportInterpretations;
     const dateStr = fmtDate(latest.completedAt);
     const overall = Math.round(latest.overallScore ?? 0);
     const overallLabel = window.KCScoring.parentOverallLabel(overall);
+    const overallInterpretation = interp.getAssessmentInterpretation(latest);
 
     const cards = latest.domains.map((d) => {
+        const domainInterpretation = interp.getDomainInterpretation(d, latest.domains, latest.overallScore);
+
         if (d.score == null) {
             return `
                 <div class="domain-card">
                     <div class="domain-card-head"><h3>${escapeHtml(d.label)}</h3></div>
                     <p class="domain-score">Score unavailable for this assessment.</p>
+                    <div class="interp-block domain-interp">
+                        <p class="interp-label">Interpretation</p>
+                        <p class="interp-text">${escapeHtml(domainInterpretation)}</p>
+                    </div>
                 </div>`;
         }
         const score = Math.round(d.score);
@@ -266,6 +315,10 @@ function renderLatestDomains(latest) {
                 </div>
                 <div class="domain-bar"><span style="width:${score}%;background:${st.color};"></span></div>
                 <p class="domain-score">Score: <strong>${score}%</strong></p>
+                <div class="interp-block domain-interp">
+                    <p class="interp-label">Interpretation</p>
+                    <p class="interp-text">${escapeHtml(domainInterpretation)}</p>
+                </div>
             </div>`;
     }).join('');
 
@@ -276,6 +329,10 @@ function renderLatestDomains(latest) {
                 Overall score <strong>${overall}%</strong> (${escapeHtml(overallLabel)}).
                 Each area shows how your child performed in that part of the assessment.
             </p>
+            <div class="interp-block">
+                <p class="interp-label">Interpretation</p>
+                <p class="interp-text">${escapeHtml(overallInterpretation)}</p>
+            </div>
             <div class="domain-grid">${cards}</div>
         </div>`;
 }
@@ -283,11 +340,25 @@ function renderLatestDomains(latest) {
 // A supportive next step when the most recent screening lands in a lower band.
 // No diagnosis, no alarm — the action offered is a conversation with a
 // pediatrician, using the booking flow that already exists.
+//
+// Deliberately suppressed when it would duplicate the Pediatrician Review &
+// Next Follow-up section below: if the LATEST assessment already has a
+// documented pediatrician recommendation, the parent already has the actual
+// professional guidance, and a generic "book an appointment to discuss this"
+// nudge next to it would read as a second, less specific instruction rather
+// than useful information. It still shows for a latest assessment that
+// hasn't been reviewed yet — that's the one case where this really is the
+// only next step on offer.
 function renderDiscussPrompt(latest) {
     if (!latest || !latest.scoresAvailable || latest.overallScore == null) return '';
 
     const band = window.KCScoring.bandFor(latest.overallScore);
     if (band !== window.KCScoring.BAND.AT_RISK && band !== window.KCScoring.BAND.DELAYED) return '';
+
+    const alreadyHasDocumentedRecommendation = Boolean(
+        latest.review && latest.review.pediatricianId && latest.review.recommendations
+    );
+    if (alreadyHasDocumentedRecommendation) return '';
 
     return `
         <div class="report-card">
@@ -303,11 +374,19 @@ function renderDiscussPrompt(latest) {
         </div>`;
 }
 
-// Full history, most recent first.
+// Full history, most recent first. Each entry gets its OWN interpretation,
+// tied to that specific date and compared against the immediately previous
+// completed assessment (chronologically) — never one generic paragraph
+// reused across every date.
 function renderTimeline(assessments) {
     if (!assessments.length) return '';
+    const interp = window.KCReportInterpretations;
 
-    const rows = assessments.slice().reverse().map((a) => {
+    // assessments arrives oldest-first from the API — walk it in that order so
+    // `previous` is always the assessment immediately before `a` in time, then
+    // reverse the finished rows for most-recent-first display.
+    const rows = assessments.map((a, i) => {
+        const previous = i > 0 ? assessments[i - 1] : null;
         const dateStr = fmtDate(a.completedAt);
         const ageStr = fmtAge(a.ageAtAssessmentMonths);
 
@@ -321,7 +400,7 @@ function renderTimeline(assessments) {
                         </div>
                         <div class="timeline-overall" style="color:var(--text-light);">&mdash;</div>
                     </div>
-                    <p class="timeline-note">Scores for this assessment are unavailable.</p>
+                    <p class="timeline-note">${escapeHtml(interp.INCOMPLETE_MESSAGE)}</p>
                 </div>`;
         }
 
@@ -337,6 +416,8 @@ function renderTimeline(assessments) {
                 a.review.reviewedAt ? ` on ${escapeHtml(fmtDate(a.review.reviewedAt) || '')}` : ''}.</p>`
             : '<p class="timeline-pedia">Not yet reviewed by a pediatrician.</p>';
 
+        const historyInterpretation = interp.getHistoryInterpretation(a, previous);
+
         return `
             <div class="timeline-item" style="border-left-color:${st.color};">
                 <div class="timeline-top">
@@ -347,46 +428,25 @@ function renderTimeline(assessments) {
                     <div class="timeline-overall" style="color:${st.color};">${overall}%</div>
                 </div>
                 <div class="timeline-domains">${domainBits}</div>
+                <div class="interp-block">
+                    <p class="interp-label">Interpretation</p>
+                    <p class="interp-text">${escapeHtml(historyInterpretation)}</p>
+                </div>
                 ${a.review.nextAssessmentDate
-                    ? `<p class="timeline-note">Follow-up suggested for ${escapeHtml(fmtScheduledDate(a.review.nextAssessmentDate))}.</p>`
+                    ? `<p class="timeline-note">Follow-up documented for ${escapeHtml(fmtScheduledDate(a.review.nextAssessmentDate))}.</p>`
                     : ''}
                 ${pedia}
             </div>`;
-    }).join('');
+    }).reverse().join('');
 
     return `
         <div class="report-card">
             <h2>Assessment history</h2>
-            <p class="card-sub">Every completed assessment for this child, most recent first.</p>
-            <div class="timeline-list">${rows}</div>
-        </div>`;
-}
-
-// Pediatrician follow-up questions. Kept in their own section and explicitly
-// labelled: these are written by a pediatrician for this child, they are not
-// part of the standard screening question set, and they are not scored.
-function renderCustomQuestions(cq) {
-    if (!cq || !cq.answeredCount) return '';
-
-    const items = cq.items.map((q) => `
-        <div class="custom-q-item">
-            <p class="custom-q-text">${escapeHtml(q.questionText)}</p>
-            <p class="custom-q-answer">Your answer: <strong>${escapeHtml(q.answer)}</strong></p>
-            <p class="custom-q-source">
-                <span class="origin-tag">Pediatrician Question</span>
-                Asked by ${escapeHtml(q.pediatricianName)}${
-                    q.answeredAt ? ` &middot; answered ${escapeHtml(fmtDate(q.answeredAt) || '')}` : ''}
-            </p>
-        </div>`).join('');
-
-    return `
-        <div class="report-card">
-            <h2>Pediatrician follow-up questions</h2>
             <p class="card-sub">
-                These are additional questions from your pediatrician about your child. They are shown separately from the main assessment results.
-                ${cq.pendingCount ? `You have ${cq.pendingCount} unanswered question${cq.pendingCount === 1 ? '' : 's'}.` : ''}
+                Every completed assessment for this child, most recent first. Each entry is
+                interpreted using only that assessment's own recorded scores.
             </p>
-            ${items}
+            <div class="timeline-list">${rows}</div>
         </div>`;
 }
 
@@ -462,12 +522,11 @@ async function loadReport() {
             || assessments[assessments.length - 1];
 
         content.innerHTML = `
-            ${renderFollowUp(reportData.followUp)}
             ${renderTrend(assessments, reportData.trendAvailable)}
             ${renderLatestDomains(latest)}
             ${renderDiscussPrompt(latest)}
             ${renderTimeline(assessments)}
-            ${renderCustomQuestions(reportData.customQuestions)}
+            ${renderPediatricianReview(reportData)}
             ${renderDataNote(reportData.unrenderable)}`;
 
         drawTrendChart(assessments);

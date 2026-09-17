@@ -114,7 +114,7 @@ router.get('/children/:childId/report', authMiddleware, async (req, res) => {
 
     // One query per collection rather than per assessment — the history helper
     // in routes/assessments.js uses the same $in shape.
-    const [results, answerCounts, reviewers] = await Promise.all([
+    const [results, answerCounts, domainAnswerCounts, reviewers] = await Promise.all([
       AssessmentResult.find({ assessmentId: { $in: assessmentIds } }).lean(),
 
       // Provenance is preserved by counting answers per origin rather than
@@ -123,6 +123,19 @@ router.get('/children/:childId/report', authMiddleware, async (req, res) => {
       AssessmentAnswer.aggregate([
         { $match: { assessmentId: { $in: assessmentIds } } },
         { $group: { _id: { assessmentId: '$assessmentId', origin: '$origin' }, count: { $sum: 1 } } },
+      ]),
+
+      // Per-domain answer counts. This is a COUNT, not a score — it exists so
+      // the report can tell "0% because every answer scored 0" apart from
+      // "0% because nothing was ever recorded for this domain", per the
+      // adviser requirement that a 0% must never be presented as a
+      // developmental finding when it is actually a missing-data artifact.
+      // routes/assessments.js POST /submit writes `domain` as one of the same
+      // four full labels used in DOMAINS[].label above, so this counts
+      // straight into that vocabulary with no translation step.
+      AssessmentAnswer.aggregate([
+        { $match: { assessmentId: { $in: assessmentIds } } },
+        { $group: { _id: { assessmentId: '$assessmentId', domain: '$domain' }, count: { $sum: 1 } } },
       ]),
 
       User.find({
@@ -140,6 +153,13 @@ router.get('/children/:childId/report', authMiddleware, async (req, res) => {
       // A legacy answer written before constants/dataOrigin.js existed may have
       // no origin at all. Label it 'unknown' rather than assuming core bank.
       originMap.get(key)[row._id.origin || 'unknown'] = row.count;
+    }
+
+    const domainCountMap = new Map();
+    for (const row of domainAnswerCounts) {
+      const key = String(row._id.assessmentId);
+      if (!domainCountMap.has(key)) domainCountMap.set(key, {});
+      domainCountMap.get(key)[row._id.domain] = row.count;
     }
 
     // Records the report could not fully render, so the caller can see what was
@@ -181,6 +201,10 @@ router.get('/children/:childId/report', authMiddleware, async (req, res) => {
           label: d.label,
           score: r ? (r[d.scoreField] ?? null) : null,
           storedStatus: r ? (r[d.statusField] ?? null) : null,
+          // How many answers this domain actually has on record for this
+          // assessment — lets the client tell a genuine 0% apart from a
+          // domain nothing was ever answered for. Not used for scoring.
+          answeredItemCount: domainCountMap.get(String(a._id))?.[d.label] ?? 0,
         })),
         overallScore: r ? (r.overallScore ?? null) : null,
         riskFlags: r && Array.isArray(r.riskFlags) ? r.riskFlags : [],
@@ -224,14 +248,18 @@ router.get('/children/:childId/report', authMiddleware, async (req, res) => {
 
     // ── Pediatrician follow-up questions ───────────────────────────────────
     // Kept in their OWN section, never folded into the timeline above.
-    // PediaCustomQuestionAssignment has no assessmentId field, so there is no
-    // way to say which screening session a custom answer belongs to. Placing
-    // one on the timeline would be a guess presented as a record.
     //
-    // These answers are also not scored anywhere: the submit handler only
-    // totals rows in assessment_answers. They are shown for completeness, and
-    // labelled as pediatrician-authored so they cannot be mistaken for
-    // standard bank items.
+    // PediaCustomQuestionAssignment.assessmentId is set ONLY when a question
+    // was explicitly folded into a reassessment's submission (see
+    // routes/assessments.js POST /submit, "Custom Question answers" block) —
+    // at that point it was scored under the SAME 2/0 scale as a core-bank
+    // item and is already reflected in that assessment's own AssessmentResult
+    // and, therefore, in the timeline above. Surfacing it again here would
+    // present already-scored assessment content as if it were separate,
+    // unscored pediatrician data — exactly the mixing this section exists to
+    // avoid. Only assignments still unclaimed by any assessment (assessmentId
+    // still null — answered standalone via routes/custom-questions.js, which
+    // never touches Assessment/AssessmentResult) belong here.
     const assignments = await PediaCustomQuestionAssignment.find({ childId: child._id })
       .populate({
         path: 'questionId',
@@ -240,14 +268,22 @@ router.get('/children/:childId/report', authMiddleware, async (req, res) => {
       .sort({ answeredAt: -1, createdAt: -1 })
       .lean();
 
-    const answeredAssignments = assignments.filter(
-      (a) => a.answer != null && String(a.answer).trim() !== ''
-    );
+    const hasMeaningfulAnswer = (a) => a.answer != null && String(a.answer).trim() !== '';
+    const answeredAssignments = assignments.filter((a) => hasMeaningfulAnswer(a) && !a.assessmentId);
+    // Genuinely still open — unanswered AND not already folded into a
+    // reassessment (a folded-but-answered row is neither "pending" here nor
+    // shown above; it already has its own place in the timeline).
+    const pendingAssignments = assignments.filter((a) => !hasMeaningfulAnswer(a) && !a.assessmentId);
+    const scoredElsewhereCount = assignments.filter((a) => Boolean(a.assessmentId)).length;
 
     const customQuestions = {
       origin: DATA_ORIGIN.PEDIA_ENTRY,
       answeredCount: answeredAssignments.length,
-      pendingCount: assignments.length - answeredAssignments.length,
+      pendingCount: pendingAssignments.length,
+      // Answered but already scored as part of a specific completed
+      // assessment (see the comment above) — not shown in `items` below,
+      // surfaced only as a count so this section's totals stay honest.
+      scoredElsewhereCount,
       // Not scored, and not attributable to any single screening session.
       isScored: false,
       items: answeredAssignments.map((a) => ({

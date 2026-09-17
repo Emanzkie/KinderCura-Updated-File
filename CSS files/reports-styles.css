@@ -80,6 +80,74 @@
     line-height: 1.6;
 }
 
+/* ── Interpretation blocks ─────────────────────────────────────────────────
+   Shared by every section that explains stored data ("What this shows" /
+   "Interpretation"). Deliberately plain — a labelled panel, not a callout —
+   so added interpretation text reads as part of the section rather than as
+   a warning or alert. */
+.interp-block {
+    background: var(--bg-primary);
+    border-radius: var(--radius-panel);
+    border-left: 3px solid var(--primary);
+    padding: 0.9rem 1.1rem;
+    margin-top: 1rem;
+}
+
+.interp-label {
+    margin: 0 0 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--primary);
+}
+
+.interp-text {
+    margin: 0;
+    color: var(--text-dark);
+    line-height: 1.6;
+    font-size: 0.92rem;
+}
+
+/* Slightly tighter inside a domain card, which is already compact. */
+.domain-card .interp-block.domain-interp {
+    margin-top: 0.9rem;
+    padding: 0.75rem 0.9rem;
+}
+
+/* ── Pediatrician Review & Next Follow-up ─────────────────────────────────── */
+.review-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.9rem 1.5rem;
+    margin: 1rem 0 0;
+}
+
+.review-fields div {
+    display: flex;
+    flex-direction: column;
+}
+
+.review-fields dt {
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-light);
+    margin-bottom: 0.2rem;
+}
+
+.review-fields dd {
+    margin: 0;
+    font-weight: 600;
+    color: var(--text-dark);
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.review-field-wide {
+    grid-column: 1 / -1;
+}
+
 /* ── Trend chart ───────────────────────────────────────────────────────── */
 .trend-chart-wrap {
     position: relative;
@@ -289,52 +357,6 @@
     background: var(--status-info-bg);
 }
 
-/* ── Pediatrician follow-up questions ──────────────────────────────────── */
-/* Visually distinct from screening items on purpose: these are authored by a
-   pediatrician for one child, are not part of the standard question bank, and
-   are not scored. Nothing here should look like a bank item. */
-.custom-q-item {
-    background: var(--bg-primary);
-    border-radius: var(--radius-panel);
-    padding: 1.1rem 1.3rem;
-    margin-bottom: 0.9rem;
-    border-left: 4px solid var(--accent);
-}
-
-.custom-q-item p {
-    margin: 0;
-    line-height: 1.6;
-}
-
-.custom-q-text {
-    font-weight: 600;
-    color: var(--text-dark);
-    margin-bottom: 0.4rem !important;
-}
-
-.custom-q-answer {
-    color: var(--text-light);
-}
-
-.custom-q-source {
-    font-size: 0.82rem;
-    color: var(--text-light);
-    margin-top: 0.5rem !important;
-}
-
-.origin-tag {
-    display: inline-block;
-    background: rgba(244, 216, 159, 0.35);
-    color: var(--status-caution-fg);
-    border-radius: 6px;
-    padding: 0.12rem 0.45rem;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-    margin-right: 0.4rem;
-}
-
 /* ── Loading / empty / error states ────────────────────────────────────── */
 .report-state {
     background: white;
@@ -397,5 +419,9 @@
         flex-direction: column;
         align-items: flex-start;
         gap: 0.3rem;
+    }
+
+    .review-fields {
+        grid-template-columns: 1fr;
     }
 }
