@@ -35,6 +35,23 @@
         .payment-option-card h3 { margin: 0 0 0.4rem; color: var(--text-dark, #333); font-size: 1rem; }
         .payment-option-card p { margin: 0; font-size: 0.82rem; color: var(--text-light, #888); }
         .payment-option-card .btn { margin-top: 1rem; width: 100%; }
+
+        /* Receipt Contact — per-transaction email/mobile shown before "Pay
+           Online". Pre-filled from the registered account but editable; never
+           touches the account itself, only this payment's receipt. */
+        .receipt-contact-fields { text-align: left; margin-top: 1rem; padding-top: 0.9rem; border-top: 1px dashed var(--border, #e0e0e0); }
+        .receipt-contact-label { font-size: 0.8rem; font-weight: 700; color: var(--primary, #6B8E6F); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.5rem; }
+        .receipt-contact-fields label { display: block; font-size: 0.8rem; color: var(--text-dark, #333); margin: 0.5rem 0 0.25rem; }
+        .receipt-contact-input {
+            width: 100%;
+            padding: 0.6rem 0.7rem;
+            border: 1px solid var(--border, #e0e0e0);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            background: #fff;
+        }
+        .receipt-contact-input:focus { outline: none; border-color: var(--primary, #6B8E6F); }
+        .receipt-contact-help { font-size: 0.76rem; color: var(--text-light, #888); margin-top: 0.4rem; }
         .panel { display: none; }
         .panel.active { display: block; }
         .success-banner {
@@ -60,6 +77,62 @@
         .back-link { display: inline-block; margin-top: 1rem; color: var(--primary, #6B8E6F); text-decoration: none; font-size: 0.9rem; }
         .back-link:hover { text-decoration: underline; }
         .loading-placeholder { text-align: center; color: var(--text-light, #888); padding: 2rem 0; }
+
+        /* Official receipt card — shared shape with the admin/appointments
+           receipt views, expanded into a full printable card here since this
+           is the page a parent lands on right after paying. */
+        .official-receipt {
+            background: #fff;
+            border: 1px solid var(--border, #e0e0e0);
+            border-radius: 12px;
+            padding: 1.4rem 1.5rem;
+            margin: 1rem 0;
+        }
+        .official-receipt__head {
+            text-align: center;
+            border-bottom: 2px dashed var(--border, #e0e0e0);
+            padding-bottom: 0.9rem;
+            margin-bottom: 1rem;
+        }
+        .official-receipt__head h2 { margin: 0; color: var(--primary, #6B8E6F); font-size: 1.15rem; }
+        .official-receipt__head p { margin: 0.2rem 0 0; font-size: 0.85rem; color: var(--text-light, #888); }
+        .official-receipt .receipt-ids {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            background: var(--bg-primary, #FAFAF6);
+            border-radius: 8px;
+            padding: 0.7rem 0.9rem;
+            margin-bottom: 1rem;
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+        .official-receipt dl.receipt-fields {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.6rem 1.2rem;
+            margin: 0 0 1rem;
+        }
+        @media (max-width: 480px) { .official-receipt dl.receipt-fields { grid-template-columns: 1fr; } }
+        .official-receipt dl.receipt-fields div { display: flex; flex-direction: column; }
+        .official-receipt dl.receipt-fields dt { font-size: 0.76rem; color: var(--text-light, #888); text-transform: uppercase; letter-spacing: 0.03em; }
+        .official-receipt dl.receipt-fields dd { margin: 0.1rem 0 0; font-size: 0.95rem; font-weight: 600; color: var(--text-dark, #333); }
+        .official-receipt .receipt-amount-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--status-positive-bg);
+            border-radius: 8px;
+            padding: 0.8rem 1rem;
+            margin-bottom: 0.9rem;
+        }
+        .official-receipt .receipt-amount-row .amt { font-size: 1.4rem; font-weight: 700; color: var(--status-positive-fg); }
+        .official-receipt .receipt-emailed { font-size: 0.85rem; color: var(--text-light, #888); margin: 0 0 0.2rem; }
+        .receipt-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
+        @media print {
+            .top-nav, .payment-options, .receipt-actions, #errorMsg, .notification-modal { display: none !important; }
+        }
     </style>
     <link rel="stylesheet" href="/css/parent-responsive.css">
 </head>
@@ -123,6 +196,17 @@
                     <div class="option-icon">💳</div>
                     <h3>Pay Online</h3>
                     <p>Pay securely with an e-wallet &mdash; GCash or Maya. Your appointment is confirmed automatically once payment succeeds.</p>
+
+                    <div class="receipt-contact-fields">
+                        <p class="receipt-contact-label">Receipt Contact</p>
+                        <label for="receiptEmailInput">Email address</label>
+                        <input type="email" id="receiptEmailInput" class="receipt-contact-input" placeholder="parent@example.com" autocomplete="email">
+                        <label for="receiptPhoneInput">Mobile number <span style="font-weight:400;color:var(--text-light);">(optional)</span></label>
+                        <input type="tel" id="receiptPhoneInput" class="receipt-contact-input" placeholder="09XXXXXXXXX" autocomplete="tel">
+                        <p class="receipt-contact-help">Use the email or mobile number you want associated with this payment receipt.</p>
+                        <p id="receiptContactError" class="error-msg" style="display:none;margin-top:0.4rem;"></p>
+                    </div>
+
                     <button class="btn btn-primary" style="margin-top:1rem;width:100%;" id="payOnlineBtn" onclick="payOnline()">Pay Online</button>
                 </div>
                 <div class="payment-option-card">
@@ -163,16 +247,19 @@
                 <p style="margin-top:0.75rem;font-family:monospace;" id="onlinePendingRef"></p>
             </div>
 
-            <!-- Online payment: success -->
+            <!-- Online payment: success — the real receipt is injected into
+                 #receiptCardContainer once the backend confirms Paid. -->
             <div id="onlineSuccessPanel" class="panel">
                 <div class="success-banner">
                     <h3>&#10003; Payment Successful</h3>
                     <p>Thank you. Your payment has been received and your appointment is confirmed.</p>
-                    <p id="onlineReceiptLine"></p>
-                    <p>A receipt has been emailed to you.</p>
                     <span class="status-badge">Paid</span>
                 </div>
-                <a href="/parent/appointments.html" class="btn btn-primary" style="display:inline-block;margin-top:0.5rem;">Back to Appointments</a>
+                <div id="receiptCardContainer"><p class="loading-placeholder">Loading your receipt…</p></div>
+                <div class="receipt-actions">
+                    <button type="button" class="btn btn-primary" onclick="window.print()">Print Receipt</button>
+                    <a href="/parent/appointments.html" class="btn" style="background:var(--surface-muted);color:var(--text-dark);display:inline-block;">Back to Appointments</a>
+                </div>
             </div>
 
             <!-- Online payment: failed or cancelled -->

@@ -25,6 +25,47 @@ function fullName(user) {
   return `${user.firstName || ''} ${user.lastName || ''}`.trim() || null;
 }
 
+// Same pattern routes/auth.js already validates emails/PH mobile numbers
+// with, reused here so "Pay Online" contact fields accept exactly what
+// registration/profile forms already accept.
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PH_MOBILE_PATTERN = /^(09|\+639)\d{9}$/;
+
+/**
+ * Validate + normalize an optional per-transaction receipt email.
+ * Returns lowercase/trimmed, or null when nothing was submitted. Throws a
+ * 400-tagged error on anything non-empty that isn't a valid address — this
+ * never silently falls back, so "Pay Online" cannot start with a broken
+ * destination for the receipt.
+ */
+function normalizeReceiptEmail(raw) {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return null;
+  const lower = trimmed.toLowerCase();
+  if (!EMAIL_PATTERN.test(lower)) {
+    throw Object.assign(new Error('Please enter a valid email address for the receipt.'), { statusCode: 400 });
+  }
+  return lower;
+}
+
+/**
+ * Validate + normalize an optional per-transaction contact number to
+ * +639XXXXXXXXX. Returns null when nothing was submitted — the field is
+ * optional, unlike email, since PayMongo checkout only strictly requires one
+ * contact channel and the receipt always has the resolved email to fall back on.
+ */
+function normalizeReceiptPhone(raw) {
+  const cleaned = String(raw || '').replace(/[\s\-()]/g, '');
+  if (!cleaned) return null;
+  if (!PH_MOBILE_PATTERN.test(cleaned)) {
+    throw Object.assign(
+      new Error('Please enter a valid Philippine mobile number (e.g., 09123456789).'),
+      { statusCode: 400 }
+    );
+  }
+  return cleaned.startsWith('09') ? `+63${cleaned.slice(1)}` : cleaned;
+}
+
 async function canAccessAppointment(req, appointment) {
   if (!appointment) return false;
   if (req.user.role === 'admin') return true;
@@ -491,7 +532,7 @@ function assertPayable(appointment) {
  * Reusing the row keeps a single KC-PAY reference per appointment attempt
  * instead of minting a new record every time the parent revisits the page.
  */
-async function ensureAutomatedPayment({ appointment, method, actor, parentEmail }) {
+async function ensureAutomatedPayment({ appointment, method, actor, parentEmail, receiptPhone = null }) {
   const total = Number(appointment.totalAmount || 0);
 
   const existing = await Payment.findOne({
@@ -508,6 +549,7 @@ async function ensureAutomatedPayment({ appointment, method, actor, parentEmail 
     existing.failureReason = null;
     if (!existing.paymentRef) existing.paymentRef = await Payment.nextPaymentRef();
     if (parentEmail) existing.receiptEmail = parentEmail;
+    if (receiptPhone) existing.receiptPhone = receiptPhone;
     await existing.save();
     return existing;
   }
@@ -529,6 +571,7 @@ async function ensureAutomatedPayment({ appointment, method, actor, parentEmail 
     paymentRef,
     referenceNumber: paymentRef,
     receiptEmail: parentEmail || null,
+    receiptPhone: receiptPhone || null,
     recordedBy: actor?.userId ? new mongoose.Types.ObjectId(String(actor.userId)) : null,
     recordedByRole: actor?.role || null,
     transactionDate: new Date(),
@@ -566,11 +609,19 @@ async function startOnlineCheckout(req, res) {
       Child.findById(appointment.childId).select('firstName lastName').lean(),
     ]);
 
+    // Transaction-specific receipt contact, entered on the "Pay Online" screen.
+    // Validated up front so a bad address never reaches PayMongo or the
+    // Payment row; falls back to the parent's registered email only, never
+    // written back to User.email/phoneNumber.
+    const contactEmail = normalizeReceiptEmail(req.body?.receiptEmail) || parent?.email || null;
+    const contactPhone = normalizeReceiptPhone(req.body?.receiptPhone);
+
     const payment = await ensureAutomatedPayment({
       appointment,
       method: 'paymongo',
       actor: req.user,
-      parentEmail: parent?.email || null,
+      parentEmail: contactEmail,
+      receiptPhone: contactPhone,
     });
 
     // Where PayMongo sends the parent back to. Behind Vercel's proxy
@@ -591,8 +642,9 @@ async function startOnlineCheckout(req, res) {
       lineDescription: `Appointment #${appointment.id} for ${childName}`,
       successUrl: `${origin}/parent/payment?appointmentId=${appointment.id}&ref=${encodeURIComponent(payment.paymentRef)}&result=success`,
       cancelUrl: `${origin}/parent/payment?appointmentId=${appointment.id}&ref=${encodeURIComponent(payment.paymentRef)}&result=cancelled`,
-      customerEmail: parent?.email || null,
+      customerEmail: payment.receiptEmail || contactEmail,
       customerName: parent ? `${parent.firstName} ${parent.lastName}`.trim() : null,
+      customerPhone: payment.receiptPhone || contactPhone,
       paymentMethods: clinic.paymongoMethods?.length ? clinic.paymongoMethods : undefined,
       metadata: {
         kc_appointment_id: String(appointment.id),
@@ -1257,6 +1309,17 @@ async function getPaymentReceipt(req, res) {
         ? await canAccessAppointment(req, appointment)
         : String(payment.parentId || '') === String(req.user.userId);
       if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+    }
+
+    // An unpaid/pending/failed transaction must never be presented as a
+    // completed receipt, however this endpoint was reached (browser history,
+    // premature poll, a modified client). Only a settled payment has a real
+    // receiptNumber and a final paidAt/amount worth showing.
+    if (payment.status !== 'Paid') {
+      return res.status(409).json({
+        error: 'This payment has not been confirmed yet. A receipt is not available.',
+        status: payment.status,
+      });
     }
 
     const receipt = await receiptService.buildReceiptContext(payment);

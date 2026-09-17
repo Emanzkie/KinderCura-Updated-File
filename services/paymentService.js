@@ -422,7 +422,8 @@ function serializePayment(payment) {
     paymentMethod: payment.paymentMethod,
     nextInstallmentDate: payment.nextInstallmentDate,
     referenceNumber: payment.referenceNumber,
-    receiptNumber: payment.referenceNumber,
+    paymentRef: payment.paymentRef || payment.referenceNumber,
+    receiptNumber: payment.receiptNumber,
     notes: payment.notes,
   };
 }

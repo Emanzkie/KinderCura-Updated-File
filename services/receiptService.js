@@ -47,7 +47,10 @@ async function buildReceiptContext(payment) {
     receiptNumber: payment.receiptNumber,
     paymentRef: payment.paymentRef || payment.referenceNumber,
     parentName: fullName(parent) || 'Parent',
+    // The transaction's own contact info — never re-derived from the parent's
+    // current account, so a later profile change can't alter a past receipt.
     parentEmail: payment.receiptEmail || parent?.email || null,
+    contactPhone: payment.receiptPhone || null,
     childName: fullName(child) || 'Child',
     pediatricianName: fullName(pediatrician) ? `Dr. ${fullName(pediatrician)}` : 'Unassigned',
     appointmentId: appointment?.id ?? payment.appointmentNumericId ?? null,
@@ -55,11 +58,28 @@ async function buildReceiptContext(payment) {
     appointmentTime: appointment?.appointmentTime || null,
     service: appointment?.reason || 'Consultation',
     paymentMethod: payment.paymentMethod,
+    // The one place email and website both read the human-facing method label
+    // from — resolves the actual e-wallet brand (GCash / Maya) when PayMongo
+    // reported it, and never falls back to guessing one it did not report.
+    paymentMethodLabel: resolvePaymentMethodLabel(payment),
     amount: payment.amount,
     currency: payment.currency || 'PHP',
     paidAt: payment.paidAt,
     status: payment.status,
   };
+}
+
+/**
+ * The single place that decides the human-facing "Payment Method" label for a
+ * receipt. For PayMongo payments this shows the actual wallet brand
+ * (GCash / Maya) when PayMongo told us via `paymongoSourceType`; otherwise it
+ * falls back to a safe generic label rather than inventing a brand.
+ */
+function resolvePaymentMethodLabel(payment) {
+  if (payment.paymentMethod === 'paymongo') {
+    return ewalletBrandLabel(payment.paymongoSourceType, 'Paid Online (PayMongo)');
+  }
+  return paymentMethodLabel(payment.paymentMethod);
 }
 
 /** Human label for the receipt's "Payment Method" line. */

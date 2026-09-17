@@ -75,8 +75,13 @@ const paymentSchema = new mongoose.Schema(
     paidAt: { type: Date, default: null, index: true },
 
     // Captured at creation so a later email address change cannot silently
-    // redirect an old receipt.
+    // redirect an old receipt. The parent may override this per-transaction
+    // on the "Pay Online" screen; it never touches User.email.
     receiptEmail: { type: String, trim: true, lowercase: true, default: null },
+    // Optional transaction-specific contact number, normalized to +639XXXXXXXXX.
+    // Passed to PayMongo's checkout billing.phone when present; never written
+    // back to the parent's account.
+    receiptPhone: { type: String, trim: true, default: null },
     // Set the moment the receipt email is dispatched. Guards against a retried
     // webhook sending the parent a second copy of the same receipt.
     receiptSentAt: { type: Date, default: null },

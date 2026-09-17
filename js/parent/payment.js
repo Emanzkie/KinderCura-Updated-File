@@ -44,6 +44,74 @@ function escapeHtml(str) {
     return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function fmtDateTime(value) {
+    if (!value) return '—';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleString(undefined, { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+// ── Receipt card ──────────────────────────────────────────────────────────
+// Renders the SAME confirmed database payment record the email receipt was
+// built from (see receiptService.buildReceiptContext / GET /payments/ref/:ref/receipt),
+// so the values on this page and the ones the parent got by email always match.
+function renderReceiptCard(r) {
+    return `
+        <div class="official-receipt">
+            <div class="official-receipt__head">
+                <h2>${escapeHtml(r.clinic?.clinicName || 'KinderCura')}</h2>
+                <p>Official Payment Receipt</p>
+            </div>
+            <div class="receipt-ids">
+                <span>Receipt No.: <strong>${escapeHtml(r.receiptNumber || '—')}</strong></span>
+                <span>Payment Ref: <strong>${escapeHtml(r.paymentRef || '—')}</strong></span>
+            </div>
+            <dl class="receipt-fields">
+                <div><dt>Parent</dt><dd>${escapeHtml(r.parentName || '—')}</dd></div>
+                <div><dt>Child</dt><dd>${escapeHtml(r.childName || '—')}</dd></div>
+                <div><dt>Pediatrician</dt><dd>${escapeHtml(r.pediatricianName || '—')}</dd></div>
+                <div><dt>Appointment No.</dt><dd>${r.appointmentId != null ? `#${escapeHtml(String(r.appointmentId))}` : '—'}</dd></div>
+                <div><dt>Appointment Date</dt><dd>${fmtDate(r.appointmentDate)}</dd></div>
+                <div><dt>Appointment Time</dt><dd>${fmtTime(r.appointmentTime)}</dd></div>
+                <div><dt>Service</dt><dd>${escapeHtml(r.service || 'Consultation')}</dd></div>
+                <div><dt>Payment Method</dt><dd>${escapeHtml(r.paymentMethodLabel || r.paymentMethod || '—')}</dd></div>
+            </dl>
+            <div class="receipt-amount-row">
+                <span>Amount Paid</span>
+                <span class="amt">${formatMoney(r.amount)}</span>
+            </div>
+            <dl class="receipt-fields">
+                <div><dt>Paid At</dt><dd>${fmtDateTime(r.paidAt)}</dd></div>
+                <div><dt>Status</dt><dd style="color:var(--status-positive-fg);">${escapeHtml(String(r.status || '').toUpperCase())}</dd></div>
+            </dl>
+            <p class="receipt-emailed">Receipt emailed to: <strong>${escapeHtml(r.parentEmail || '—')}</strong></p>
+            ${r.contactPhone ? `<p class="receipt-emailed">Contact mobile: <strong>${escapeHtml(r.contactPhone)}</strong></p>` : ''}
+        </div>`;
+}
+
+/**
+ * Fetch the confirmed receipt for a payment reference and render it into
+ * `containerId`. Never fabricates a receipt: if the backend has not confirmed
+ * the payment as Paid yet (409) or the reference cannot be found/accessed,
+ * this shows an honest message instead of receipt-shaped content.
+ */
+async function loadReceiptInto(containerId, ref) {
+    const el = document.getElementById(containerId);
+    if (!el) return false;
+    if (!ref) {
+        el.innerHTML = '<p class="mini">No receipt is available for this payment yet.</p>';
+        return false;
+    }
+    try {
+        const data = await apiFetch(`/payments/ref/${encodeURIComponent(ref)}/receipt`);
+        el.innerHTML = renderReceiptCard(data.receipt || {});
+        return true;
+    } catch (err) {
+        el.innerHTML = `<p class="mini">${escapeHtml(err.message || 'Could not load your receipt right now.')}</p>`;
+        return false;
+    }
+}
+
 function showError(msg) {
     const el = document.getElementById('errorMsg');
     if (el) { el.textContent = msg; el.style.display = 'block'; }
@@ -77,7 +145,9 @@ async function loadAppointmentSummary() {
 
         appointmentData = appt;
 
-        // If already paid, show a different state
+        // If already paid, let the parent review the actual receipt again —
+        // built from the same confirmed payment record as the email receipt —
+        // rather than only telling them it was paid.
         if (appt.paymentStatus === 'Paid') {
             summaryEl.innerHTML = `
                 <p><strong>Appointment #${appt.id}</strong></p>
@@ -85,9 +155,10 @@ async function loadAppointmentSummary() {
                 <p>Pediatrician: Dr. ${escapeHtml(appt.pediatricianName || '—')}</p>
                 <p>Date: ${fmtDate(appt.appointmentDate)} at ${fmtTime(appt.appointmentTime)}</p>
                 <p class="fee">${formatMoney(appt.totalAmount)} <span style="font-size:0.8rem;font-weight:400;color:var(--status-positive-fg);">— Paid</span></p>`;
-            showPanel(null);
             document.getElementById('optionCards').style.display = 'none';
-            showError('This appointment has already been paid. Your appointment is approved.');
+            showPanel('onlineSuccessPanel');
+            const ref = appt.paymentRef || appt.receiptNumber || null;
+            await loadReceiptInto('receiptCardContainer', ref);
             return;
         }
 
@@ -146,16 +217,69 @@ function backToOptions() {
     showPanel('optionCards');
 }
 
+// ── Receipt Contact (per-transaction, never the account email/phone) ────
+// Pre-filled from the registered account so most parents never have to type
+// anything, but fully editable — only this payment's Payment.receiptEmail /
+// receiptPhone is affected, never User.email / User.phoneNumber.
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PH_MOBILE_PATTERN = /^(09|\+639)\d{9}$/;
+
+function prefillReceiptContact() {
+    const emailInput = document.getElementById('receiptEmailInput');
+    const user = KC.user();
+    if (emailInput && !emailInput.value && user?.email) emailInput.value = user.email;
+}
+
+function showReceiptContactError(msg) {
+    const el = document.getElementById('receiptContactError');
+    if (el) { el.textContent = msg; el.style.display = 'block'; }
+}
+
+function clearReceiptContactError() {
+    const el = document.getElementById('receiptContactError');
+    if (el) el.style.display = 'none';
+}
+
+/**
+ * Validate the Receipt Contact fields client-side before ever calling the
+ * server, so an obviously bad address never opens a checkout session. The
+ * server re-validates independently — this is only for a fast, friendly error.
+ * Returns { receiptEmail, receiptPhone } or null (and shows the error) when invalid.
+ */
+function readValidatedReceiptContact() {
+    clearReceiptContactError();
+    const emailRaw = document.getElementById('receiptEmailInput')?.value || '';
+    const phoneRaw = document.getElementById('receiptPhoneInput')?.value || '';
+    const email = emailRaw.trim().toLowerCase();
+    const phone = phoneRaw.replace(/[\s\-()]/g, '');
+
+    if (!email || !EMAIL_PATTERN.test(email)) {
+        showReceiptContactError('Please enter a valid email address for this payment’s receipt.');
+        return null;
+    }
+    if (phone && !PH_MOBILE_PATTERN.test(phone)) {
+        showReceiptContactError('Please enter a valid Philippine mobile number (e.g., 09123456789), or leave it blank.');
+        return null;
+    }
+    return { receiptEmail: email, receiptPhone: phone || undefined };
+}
+
 // ── Pay Online (PayMongo hosted checkout) ────────────────────────────────
 // The browser never sees a PayMongo key and never states an amount. It asks
 // the server to open a checkout session and then follows the URL it gets back.
 async function payOnline() {
     clearError();
+    const contact = readValidatedReceiptContact();
+    if (!contact) return; // invalid contact info — do not start checkout
+
     const btn = document.getElementById('payOnlineBtn');
     if (btn) { btn.disabled = true; btn.textContent = 'Opening secure checkout…'; }
 
     try {
-        const data = await apiFetch(`/payments/appointments/${appointmentId}/checkout`, { method: 'POST' });
+        const data = await apiFetch(`/payments/appointments/${appointmentId}/checkout`, {
+            method: 'POST',
+            body: JSON.stringify(contact),
+        });
         if (!data.checkoutUrl) throw new Error('The payment provider did not return a checkout link.');
         // Remember the reference so the page can resume polling if the parent
         // returns without the query string (e.g. by pressing Back).
@@ -227,10 +351,11 @@ async function resolveOnlineResult(result, paymentRef) {
         try {
             const status = await apiFetch(`/payments/ref/${encodeURIComponent(paymentRef)}/status`);
             if (status.paid) {
-                const line = document.getElementById('onlineReceiptLine');
-                if (line && status.receiptNumber) line.textContent = `Receipt number: ${status.receiptNumber}`;
                 sessionStorage.removeItem(`kc_pay_ref_${appointmentId}`);
                 showPanel('onlineSuccessPanel');
+                // Load the actual confirmed receipt — the same database record
+                // the email receipt was built from — rather than just a number.
+                await loadReceiptInto('receiptCardContainer', paymentRef);
                 return;
             }
             if (['Failed', 'Expired', 'Cancelled'].includes(status.status)) {
@@ -253,14 +378,18 @@ async function resolveOnlineResult(result, paymentRef) {
 document.addEventListener('DOMContentLoaded', async () => {
     initNav();
     document.querySelectorAll('a.logout').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); logout(); }));
+    prefillReceiptContact();
     await loadAppointmentSummary();
 
     // PayMongo sends the parent back here with ?result=success|cancelled.
     // Treat it purely as a signal to start checking — never as proof of payment.
+    // Skip it entirely if loadAppointmentSummary() already found the payment
+    // confirmed Paid and rendered its receipt — re-running reconcile/poll here
+    // would only flash "Confirming payment…" over a receipt already on screen.
     const params = new URLSearchParams(location.search);
     const result = params.get('result');
     const paymentRef = params.get('ref') || sessionStorage.getItem(`kc_pay_ref_${appointmentId}`);
-    if (result && paymentRef) {
+    if (result && paymentRef && appointmentData?.paymentStatus !== 'Paid') {
         await resolveOnlineResult(result, paymentRef);
     }
 });

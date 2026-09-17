@@ -268,7 +268,7 @@ function renderReceipt(r) {
         <p><strong>Child:</strong> ${escapeHtml(r.childName || '—')}</p>
         <p><strong>Pediatrician:</strong> ${escapeHtml(r.pediatricianName || '—')}</p>
         <p><strong>Appointment:</strong> ${r.appointmentId != null ? `#${escapeHtml(String(r.appointmentId))}` : '—'} — ${escapeHtml(r.service || 'Consultation')}</p>
-        <p><strong>Payment Method:</strong> ${escapeHtml(monMethodLabel(r.paymentMethod))}</p>
+        <p><strong>Payment Method:</strong> ${escapeHtml(r.paymentMethodLabel || monMethodLabel(r.paymentMethod))}</p>
         <p><strong>Payment Status:</strong> <span style="font-weight:700;color:${monStatusColor(r.status)};">${escapeHtml(r.status || '—')}</span></p>
         <p><strong>Paid At:</strong> ${r.paidAt ? escapeHtml(new Date(r.paidAt).toLocaleString('en-PH')) : '—'}</p>`;
 }

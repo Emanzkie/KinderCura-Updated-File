@@ -110,6 +110,7 @@ async function createCheckoutSession({
   cancelUrl,
   customerEmail = null,
   customerName = null,
+  customerPhone = null,
   paymentMethods = [...DEFAULT_ONLINE_METHODS],
   metadata = {},
   sendEmailReceipt = false,
@@ -137,13 +138,15 @@ async function createCheckoutSession({
   };
   if (successUrl) attributes.success_url = successUrl;
   if (cancelUrl) attributes.cancel_url = cancelUrl;
-  // The payer's email travels in `billing`, which is the documented place for
-  // it. A second top-level `customer_email` is not part of the Checkout
-  // Session attribute list and risks a 400 on an otherwise valid request.
-  if (customerName || customerEmail) {
+  // The payer's contact details travel in `billing`, which is the documented
+  // place for them (name / email / phone / address). A second top-level
+  // `customer_email` is not part of the Checkout Session attribute list and
+  // risks a 400 on an otherwise valid request.
+  if (customerName || customerEmail || customerPhone) {
     attributes.billing = {
       name: customerName || undefined,
       email: customerEmail || undefined,
+      phone: customerPhone || undefined,
     };
   }
 

@@ -388,16 +388,19 @@ function formatClockTime(value) {
  */
 async function sendPaymentReceiptEmail(context = {}) {
   const {
-    clinic = {}, receiptNumber, paymentRef, parentName, parentEmail,
+    clinic = {}, receiptNumber, paymentRef, parentName, parentEmail, contactPhone,
     childName, pediatricianName, appointmentId, appointmentDate, appointmentTime,
-    service, paymentMethod, amount, currency = 'PHP', paidAt, status = 'Paid',
+    service, paymentMethod, paymentMethodLabel, amount, currency = 'PHP', paidAt, status = 'Paid',
   } = context;
 
   if (!parentEmail) {
     return { sent: false, message: 'No recipient email supplied.' };
   }
 
-  const methodLabel = {
+  // Prefer the label the caller already resolved (receiptService normalizes
+  // this once so the email and the website never disagree on the wording —
+  // including the actual GCash/Maya brand when PayMongo reported it).
+  const methodLabel = paymentMethodLabel || {
     paymongo: 'Paid Online (PayMongo)',
     pay_at_clinic: 'Paid at Clinic',
     cash: 'Cash at Clinic',
@@ -429,6 +432,7 @@ async function sendPaymentReceiptEmail(context = {}) {
         ${receiptRow('Amount Paid', amountStr)}
         ${receiptRow('Payment Date', formatDateTime(paidAt))}
         ${receiptRow('Payment Status', String(status).toUpperCase())}
+        ${contactPhone ? receiptRow('Contact Mobile', contactPhone) : ''}
       </table>
     </div>
 
@@ -466,7 +470,7 @@ Payment Method:     ${methodLabel}
 Amount Paid:        ${amountStr}
 Payment Date:       ${formatDateTime(paidAt)}
 Payment Status:     ${String(status).toUpperCase()}
-
+${contactPhone ? `Contact Mobile:     ${contactPhone}\n` : ''}
 ${clinic.clinicName || 'KinderCura Clinic'}
 ${clinic.address || ''}
 ${clinic.phoneNumber || ''}
