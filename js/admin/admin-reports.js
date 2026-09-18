@@ -188,7 +188,7 @@ requireAuth();
                 document.getElementById('summaryCards').innerHTML = [
                     summaryCard('Total Users', dashboard.totalUsers ?? 0),
                     summaryCard('Total Children', dashboard.childCount ?? 0),
-                    summaryCard('Completed Screenings', dashboard.completedScreenings ?? 0),
+                    summaryCard('Completed Assessments', dashboard.completedAssessments ?? 0),
                     summaryCard('Active Assessments', dashboard.activeAssessments ?? 0),
                     summaryCard('Total Appointments', totalAppointments),
                     summaryCard('Pending Approvals', pendingCount)

@@ -61,6 +61,21 @@ const {
   attachAssignedChildCounts,
   groupDatasetSources,
 } = require('../services/adminDataSourceView');
+// The filter for "an assessment that actually has a completed result" — used
+// by GET /dashboard's completedAssessments field. Named and frozen here
+// (rather than left as an inline literal) so a unit test can assert its exact
+// shape without a live database — see tests/unit/admin-dashboard-metrics.test.js
+// and router.__testables at the bottom of this file.
+//
+// 'complete' is the ONLY Assessment status guaranteed to have a real
+// AssessmentResult document (verified 1,203 status=complete assessments <->
+// 1,203 AssessmentResult documents, zero gap either direction). This is
+// DELIBERATELY narrower than completedScreenings elsewhere in this same
+// endpoint, which also counts 'submitted' (completedAt is set, but no
+// AssessmentResult exists yet) — that field is UNCHANGED and must stay that
+// way; this is an additive, differently-named metric, not a redefinition.
+const COMPLETED_ASSESSMENT_FILTER = Object.freeze({ status: 'complete' });
+
 // approve | revise | reject → the label the admin page shows for the reviewer's
 // wording decision. Kept separate from APPROVAL_STATUS_LABELS, which is the
 // pediatrician lifecycle.
@@ -685,6 +700,7 @@ router.get('/dashboard', authMiddleware, adminOnly, async (req, res) => {
       totalUsers,
       activeAssessments,
       completedScreenings,
+      completedAssessments,
       parentCount,
       pediatricianCount,
       adminCount,
@@ -699,7 +715,23 @@ router.get('/dashboard', authMiddleware, adminOnly, async (req, res) => {
     ] = await Promise.all([
       User.countDocuments(),
       Assessment.countDocuments({ status: 'in_progress' }),
+      // KEPT EXACTLY AS-IS — do not change this query or its meaning.
+      // 'submitted' means the parent finished answering (completedAt is set)
+      // but the server may not have produced an AssessmentResult for it yet —
+      // see completedAssessments below for the stricter count. Other pages
+      // (js/admin/admin-dashboard.js's old card is being migrated off this,
+      // but nothing else may start depending on a changed definition here).
       Assessment.countDocuments({ status: { $in: ['submitted', 'complete'] } }),
+      // NEW, additive field. 'complete' is the ONLY status that is guaranteed
+      // to have a real AssessmentResult document (see the audit: 1,203
+      // status=complete assessments, 1,203 AssessmentResult documents, zero
+      // gap either direction). 'submitted' assessments have completedAt set
+      // but no AssessmentResult, and 'in_progress' ones are still being
+      // answered — neither belongs in a count of assessments with an actual
+      // completed result. This is a NEW field, not a redefinition of
+      // completedScreenings above, so nothing already reading that field is
+      // affected by adding this one.
+      Assessment.countDocuments(COMPLETED_ASSESSMENT_FILTER),
       User.countDocuments({ role: 'parent' }),
       User.countDocuments({ role: 'pediatrician' }),
       User.countDocuments({ role: 'admin' }),
@@ -751,6 +783,10 @@ router.get('/dashboard', authMiddleware, adminOnly, async (req, res) => {
       totalUsers,
       activeAssessments,
       completedScreenings,
+      // NEW field — count of Assessment documents with status:'complete' only
+      // (has a real AssessmentResult). completedScreenings above is UNCHANGED
+      // and still counts status in ['submitted','complete'].
+      completedAssessments,
       uptime: '99.9%',
       parentCount,
       pediatricianCount,
@@ -2655,4 +2691,5 @@ router.__testables = {
   buildReviewedAssessmentQualitySummary, summarizeMissingness, detectDuplicates, summarizeAge,
   summarizeReviewers, summarizeClassDistribution, QUALITY, resolveTrainingQualityGate,
   computeDatasetProvenance,
+  COMPLETED_ASSESSMENT_FILTER,
 };

@@ -147,7 +147,7 @@
                 const data = await apiFetch('/admin/dashboard');
                 document.getElementById('totalUsers').textContent          = data.totalUsers          ?? 0;
                 document.getElementById('activeAssessments').textContent   = data.activeAssessments   ?? 0;
-                document.getElementById('completedScreenings').textContent = data.completedScreenings ?? 0;
+                document.getElementById('completedAssessments').textContent = data.completedAssessments ?? 0;
                 document.getElementById('uptime').textContent              = data.uptime              || '99.9%';
                 document.getElementById('parentCount').textContent         = data.parentCount         ?? 0;
                 document.getElementById('pediatricianCount').textContent   = data.pediatricianCount   ?? 0;
