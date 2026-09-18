@@ -144,27 +144,33 @@ requireAuth();
         }
 
         // ---- Data Sources state --------------------------------------------
-        let currentFilter = 'all';
+        //
+        // Exactly TWO adviser-facing categories, never a third:
+        //   dataset_question       — system-provided (no pediatrician author).
+        //                            Combines the real origins core_bank
+        //                            (pediatrician interview) and
+        //                            dataset_question (external dataset) —
+        //                            see services/adminDataSourceView.js.
+        //   pediatrician_question  — authored by a pediatrician (pedia_entry),
+        //                            including any follow-up/additional
+        //                            question they add. There is no separate
+        //                            "Follow-up Question" bucket.
+        let currentCategory = 'all';
         let currentPage = 1;
         const PAGE_LIMIT = 15;
         let lastPagination = null;
+        let lastSummary = null;
 
-        // The three canonical question origins. Kept in step with
-        // constants/dataOrigin.js DATA_ORIGIN_LABELS — the server already sends
-        // originLabel, and this is only the fallback when it is absent.
-        //
-        // Never relabel these, and never merge them:
-        //   core_bank        source = our pediatrician interview
-        //   dataset_question source = an actual external dataset
-        //   pedia_entry      author = a pediatrician working in KinderCura
-        //
-        // "Standard" is banned — it implies a validated instrument (ASQ, DDST,
-        // M-CHAT) we cannot claim. "Dataset Question" is a QUESTION origin and
-        // never means ML training data, which lives under Training.
-        const ORIGIN_LABELS = {
-            core_bank: 'Core Question Bank',
+        // Per-category filter state. Reset to these defaults every time the
+        // tab changes (req 21: filters must not leak across tabs).
+        function defaultFilters() {
+            return { source: 'all', version: 'all', pediatricianId: 'all', dateFrom: '', dateTo: '', sort: 'newest' };
+        }
+        let filters = defaultFilters();
+
+        const CATEGORY_LABELS = {
             dataset_question: 'Dataset Question',
-            pedia_entry: 'Pediatrician Entry',
+            pediatrician_question: 'Pediatrician Question',
         };
 
         const ORIGIN_SOURCE_KIND = {
@@ -173,35 +179,35 @@ requireAuth();
             pedia_entry: 'Created by a pediatrician in KinderCura',
         };
 
-        // Badge markup for a question's ORIGIN — always driven by the stored
-        // `origin` field, never inferred from provenance or from an answer.
-        function originBadge(origin, label) {
-            const glyphs = { core_bank: '◆', dataset_question: '▣', pedia_entry: '✚' };
-            const cls = ORIGIN_LABELS[origin] ? `origin-${origin}` : 'origin-unknown';
-            const glyph = glyphs[origin] || '?';
-            const text = label || ORIGIN_LABELS[origin] || origin || 'Unknown';
+        function categoryBadge(category) {
+            const cls = category === 'pediatrician_question' ? 'origin-pedia_entry' : 'origin-dataset_question';
+            const glyph = category === 'pediatrician_question' ? '✚' : '▣';
+            const text = CATEGORY_LABELS[category] || category || 'Unknown';
             return `<span class="origin-badge ${cls}"><span class="origin-glyph" aria-hidden="true">${glyph}</span>${escapeHtml(text)}</span>`;
         }
 
-        // Pediatrician review lifecycle. Applies to Dataset Questions only —
-        // for the other two origins the server sends null, which renders as a
-        // dash. A dash means "outside this workflow", NEVER "approved".
+        // Pediatrician review lifecycle. Applies to the dataset_question
+        // sub-origin only — everything else (core_bank, pedia_entry) sends
+        // approvalStatus:null, rendered here as a plain Active/Inactive state
+        // rather than a misleading "Pending Pediatrician Approval" (req 23).
         const APPROVAL_LABELS = {
             pending_pediatrician_approval: 'Pending Pediatrician Approval',
             approved: 'Approved',
             rejected: 'Rejected',
         };
 
-        // Renders the approval cell. For a Dataset Question this keeps THREE
-        // facts visually separate so they can never be read as one:
+        // Renders the Approval/Status cell. For a row with a real approval
+        // workflow (dataset_question sub-origin) this keeps THREE facts
+        // visually separate so they can never be read as one:
         //   Reviewer decision   — the wording review round only (catalogue)
         //   Pediatrician approval — the sign-off that gates activation
         //   Active              — whether it is live in an assessment
-        // Only a pediatrician "Approved" can make a question eligible to be
-        // active; the reviewer decision never does.
+        // Any other row (core_bank, pedia_entry) has no review workflow, so it
+        // shows a simple Active/Inactive status instead — never a fabricated
+        // approval state (req 23/24).
         function approvalCell(r) {
             if (!r.approvalStatus) {
-                return '<span class="prov-none">—</span>';
+                return `<span class="approval-note" style="margin-top:0;">Active: <strong>${r.isActive ? 'Yes' : 'No'}</strong></span>`;
             }
             const text = r.approvalStatusLabel || APPROVAL_LABELS[r.approvalStatus] || r.approvalStatus;
             const cls = `approval-${r.approvalStatus}`;
@@ -226,18 +232,18 @@ requireAuth();
             if (!rd) return '';
             const ap = dq.approval || {};
             const n = rd.catalogueCount ?? 0;
-            const seeded = (dq.questions ?? 0) > 0;
+            const externalQuestions = dq.breakdown?.externalDataset?.questions ?? 0;
+            const seeded = externalQuestions > 0;
             const pending = ap.pending ?? 0;
             const approvedCount = ap.approved ?? 0;
-            // "Approved" only once every seeded question has actually been
-            // signed off — a partial batch (or none seeded yet) still reads
-            // Pending, matching the per-row cell's own logic in
-            // routes/admin.js (approvalStatus === APPROVED per question).
-            const allApproved = seeded && pending === 0 && approvedCount === dq.questions;
+            // "Approved" only once every seeded EXTERNAL-dataset question has
+            // actually been signed off (the review workflow never applies to
+            // the Core Question Bank sub-origin).
+            const allApproved = seeded && pending === 0 && approvedCount === externalQuestions;
             const pediaLabel = allApproved ? 'Approved' : 'Pending';
             const pediaCls = allApproved ? 'dqrs-v--ok' : 'dqrs-v--hold';
             const pediaTxt = seeded
-                ? `${approvedCount} of ${dq.questions} approved by a pediatrician, ${pending} pending`
+                ? `${approvedCount} of ${externalQuestions} approved by a pediatrician, ${pending} pending`
                 : `all ${n} pending — not yet written to the database`;
             const activeTxt = seeded ? `${ap.active ?? 0} active` : 'none active';
             const openItems = rd.openMappingItems || [];
@@ -272,103 +278,153 @@ requireAuth();
             return Number.isNaN(dt.getTime()) ? String(d) : dt.toLocaleString();
         }
 
-        // ── Core Question Bank usage + Dataset Question sources ─────────────
+        function fmtDateShort(d) {
+            if (!d) return '—';
+            const dt = new Date(d);
+            if (Number.isNaN(dt.getTime())) return '—';
+            return dt.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        }
+
+        // ── Dataset Question sources (external datasets ONLY) ────────────────
+        // Core Question Bank is NOT part of Dataset Question — it belongs to
+        // Pediatrician Question (see services/adminDataSourceView.js). This
+        // card only ever describes the dataset_question origin.
         // "Assessment answers recorded" counts assessment DATA collected with
         // these questions — not a question count, and not an ML dataset.
         function renderDatasetUsage(s) {
             const body = document.getElementById('datasetUsageBody');
             if (!body) return;
 
-            const ds = s.datasetQuestion || s.dataset || {};
-            const usage = s.coreBankUsage || {};
+            const ds = s.datasetQuestion || {};
 
-            if (!ds.hasExternalDataset) {
-                body.innerHTML = `
-                    <div class="dataset-stats">
-                        <div class="dataset-stat"><span class="k">Core Question Bank items</span><span class="v">${escapeHtml(String(usage.questions ?? 0))}</span></div>
-                        <div class="dataset-stat"><span class="k">Answered at least once</span><span class="v">${escapeHtml(String(usage.questionsAnswered ?? 0))}</span></div>
-                        <div class="dataset-stat"><span class="k">Assessment answers recorded</span><span class="v">${escapeHtml(String(usage.answers ?? 0))}</span></div>
-                        <div class="dataset-stat"><span class="k">Dataset Questions</span><span class="v">0</span></div>
-                    </div>
-                    <p style="margin:0.75rem 0 0;font-size:0.8rem;color:var(--text-light);line-height:1.5;">
-                        No Dataset Question has been added yet, so no external source is listed. The Core Question Bank above came from our pediatrician interview &mdash; that is its source, and it is not an external dataset.
-                    </p>
-                    ${reviewerStatusBlock(s)}`;
-                return;
-            }
-
-            // Populated state — when citations exist.
-            const sources = (ds.sources || []).map((src) => `
+            // Sources are already newest-first, by a real stored date (see
+            // groupDatasetSources() in services/adminDataSourceView.js) —
+            // never by array position or a hardcoded "Latest" label.
+            const sourceItems = (ds.sources || []).map((src) => {
+                const versionText = (src.versions || []).length
+                    ? src.versions.map((v) => `${v.version ? escapeHtml(v.version) : '<span class="prov-none">version not recorded</span>'} (${escapeHtml(String(v.items))})`).join(', ')
+                    : '<span class="prov-none">version not recorded</span>';
+                return `
                 <li style="margin-bottom:0.35rem;">
-                    <strong>${escapeHtml(src.citation)}</strong>
-                    ${src.version ? ` — version ${escapeHtml(src.version)}` : ' — <span class="prov-none">version not recorded</span>'}
+                    <strong>${escapeHtml(src.name)}</strong>
                     · ${escapeHtml(String(src.items))} item(s)
-                    · last import ${src.lastImportedAt ? escapeHtml(fmtDate(src.lastImportedAt)) : '<span class="prov-none">not recorded</span>'}
-                </li>`).join('');
+                    · version(s): ${versionText}
+                    · latest ${src.latestDate ? escapeHtml(fmtDate(src.latestDate)) : '<span class="prov-none">not recorded</span>'}
+                </li>`;
+            }).join('');
 
-            // Review lifecycle. "Pending" is stated plainly because a pending
-            // question is a CANDIDATE — it is not part of any assessment, and
-            // the wording is ours, adapted from the source above, not the
-            // source's own item text.
             const ap = ds.approval || {};
             const pending = ap.pending ?? 0;
             const reviewLine = pending > 0
-                ? `<p class="dataset-review-note"><strong>${escapeHtml(String(pending))} question(s) are pending pediatrician approval.</strong>
+                ? `<p class="dataset-review-note"><strong>${escapeHtml(String(pending))} dataset question(s) are pending pediatrician approval.</strong>
                    They are not active and are not shown to any parent. Wording was written for KinderCura
-                   from the developmental concepts in the sources above &mdash; it is not the sources' own
+                   from the developmental concepts in the sources listed above &mdash; it is not the sources' own
                    questionnaire text, and these sources have not reviewed or endorsed it.</p>`
                 : '';
 
             body.innerHTML = `
-                <ul style="margin:0;padding-left:1.15rem;font-size:0.88rem;line-height:1.55;">${sources}</ul>
+                <p style="margin:0 0 0.75rem;font-size:0.82rem;color:var(--text-light);line-height:1.5;">
+                    "Dataset Question" is only the <strong>${escapeHtml(String(ds.questions ?? 0))}</strong> question(s) cited to a real
+                    external dataset, listed below with their real citation. The Core Question Bank (pediatrician-sourced, no external
+                    citation) is a different category &mdash; see <strong>Pediatrician Question</strong>.
+                </p>
+                <ul style="margin:0;padding-left:1.15rem;font-size:0.88rem;line-height:1.55;">${sourceItems || '<li><span class="prov-none">No sources recorded</span></li>'}</ul>
                 <div class="dataset-stats">
-                    <div class="dataset-stat"><span class="k">Dataset Questions</span><span class="v">${escapeHtml(String(ds.questions ?? 0))}</span></div>
+                    <div class="dataset-stat"><span class="k">Dataset Question items</span><span class="v">${escapeHtml(String(ds.questions ?? 0))}</span></div>
+                    <div class="dataset-stat"><span class="k">Sources cited</span><span class="v">${escapeHtml(String((ds.sources || []).length))}</span></div>
                     <div class="dataset-stat"><span class="k">Pending approval</span><span class="v">${escapeHtml(String(pending))}</span></div>
                     <div class="dataset-stat"><span class="k">Approved</span><span class="v">${escapeHtml(String(ap.approved ?? 0))}</span></div>
                     <div class="dataset-stat"><span class="k">Active in assessments</span><span class="v">${escapeHtml(String(ap.active ?? 0))}</span></div>
                     <div class="dataset-stat"><span class="k">Answered at least once</span><span class="v">${escapeHtml(String(ds.questionsAnswered ?? 0))}</span></div>
                     <div class="dataset-stat"><span class="k">Assessment answers attributable</span><span class="v">${escapeHtml(String(ds.answers ?? 0))}</span></div>
-                    <div class="dataset-stat"><span class="k">External sources cited</span><span class="v">${escapeHtml(String((ds.sources || []).length))}</span></div>
                 </div>
                 ${reviewerStatusBlock(s)}
                 ${reviewLine}`;
         }
 
+        // ── Pediatrician Question Summary (req 11) ───────────────────────────
+        // Real pediatrician authors ONLY (from PediaCustomQuestion.pediatricianId)
+        // — the Core Question Bank is never listed here as a row, because it has
+        // no individual owner to summarize. It still contributes to the tab's
+        // total count; see the breakdown line rendered in loadSummary().
+        function renderPediaSummary(s) {
+            const section = document.getElementById('pediaSummarySection');
+            const rowsEl = document.getElementById('pediaSummaryRows');
+            if (!section || !rowsEl) return;
+
+            if (currentCategory !== 'pediatrician_question') {
+                section.hidden = true;
+                return;
+            }
+            section.hidden = false;
+
+            const pq = s.pediatricianQuestion || {};
+            const coreBankQuestions = pq.breakdown?.coreBank?.questions ?? 0;
+            const list = pq.pediatricians || [];
+            const note = `<tr><td colspan="4" style="padding:0.7rem 0;color:var(--text-light);font-size:0.78rem;border-bottom:1px solid var(--border);">
+                Core Question Bank (${escapeHtml(String(coreBankQuestions))} system-wide questions, no individual owner) also
+                counts toward the Pediatrician Question tab total, but is not a pediatrician and is not listed as a row here.
+            </td></tr>`;
+
+            if (!list.length) {
+                rowsEl.innerHTML = note + '<tr><td colspan="4" style="padding:1.2rem;text-align:center;color:var(--text-light);">No pediatrician has entered a question yet.</td></tr>';
+                return;
+            }
+            rowsEl.innerHTML = note + list.map((p) => `
+                <tr>
+                    <td>${escapeHtml(p.name)}</td>
+                    <td style="text-align:right;font-weight:700;">${escapeHtml(String(p.total))}</td>
+                    <td style="text-align:right;">${escapeHtml(String(p.active))}</td>
+                    <td>${fmtDateShort(p.latestCreatedAt)}</td>
+                </tr>`).join('');
+        }
+
         async function loadSummary() {
             try {
                 const s = await apiFetch('/admin/data-origin/summary');
+                lastSummary = s;
 
                 document.getElementById('sumTotal').textContent = s.total?.questions ?? 0;
                 document.getElementById('sumTotalAnswers').textContent = `${s.total?.answers ?? 0} answers`;
-                document.getElementById('sumCore').textContent = s.coreBank?.questions ?? 0;
-                document.getElementById('sumCoreAnswers').textContent = `${s.coreBank?.answers ?? 0} answers`;
-                document.getElementById('sumPedia').textContent = s.pediaEntry?.questions ?? 0;
-                document.getElementById('sumPediaAnswers').textContent = `${s.pediaEntry?.answers ?? 0} answers`;
+
+                const ds = s.datasetQuestion || {};
+                document.getElementById('sumDataset').textContent = ds.questions ?? 0;
+                document.getElementById('sumDatasetAnswers').textContent = `${ds.answers ?? 0} answers`;
+                document.getElementById('sumDatasetBreakdown').textContent =
+                    `${(ds.sources || []).length} external source${(ds.sources || []).length === 1 ? '' : 's'} cited`;
+
+                const pq = s.pediatricianQuestion || {};
+                const pqBreakdown = pq.breakdown || {};
+                document.getElementById('sumPedia').textContent = pq.questions ?? 0;
+                document.getElementById('sumPediaAnswers').textContent = `${pq.answers ?? 0} answers`;
+                document.getElementById('sumPediaBreakdown').textContent =
+                    `${pqBreakdown.coreBank?.questions ?? 0} Core Question Bank + ${pqBreakdown.pediaAuthored?.questions ?? 0} pediatrician-authored`;
+                document.getElementById('sumPediaAuthors').textContent =
+                    `${pq.totalAuthors ?? 0} pediatrician author${(pq.totalAuthors ?? 0) === 1 ? '' : 's'}`;
+
+                const latest = ds.latestSource;
+                document.getElementById('sumLatestSource').textContent = latest ? latest.name : '—';
+                document.getElementById('sumLatestSourceDate').textContent = latest && latest.latestDate
+                    ? `Latest: ${fmtDateShort(latest.latestDate)}`
+                    : 'No source recorded yet';
 
                 const unclassifiedQ = s.unclassified?.questions ?? 0;
                 const unclassifiedA = s.unclassified?.answers ?? 0;
                 const card = document.getElementById('unclassifiedCard');
                 if (unclassifiedQ > 0 || unclassifiedA > 0) {
                     card.classList.remove('is-hidden');
-                    document.getElementById('sumUnclassified').textContent = unclassifiedA;
-                    document.getElementById('sumUnclassifiedAnswers').textContent = 'unspecified origin';
+                    document.getElementById('sumUnclassified').textContent = unclassifiedQ;
                 } else {
                     card.classList.add('is-hidden');
                 }
 
-                // Dataset Questions are their own origin, counted from `origin`
-                // — never core-bank rows that happen to carry a citation.
-                const ds = s.datasetQuestion || s.dataset || {};
-                document.getElementById('sumDataset').textContent = ds.questions ?? 0;
-                document.getElementById('sumDatasetAnswers').textContent = `${ds.answers ?? 0} answers`;
-
-                document.getElementById('tabCountCore').textContent = ` (${s.coreBank?.questions ?? 0})`;
                 document.getElementById('tabCountDataset').textContent = ` (${ds.questions ?? 0})`;
-                document.getElementById('tabCountPedia').textContent = ` (${s.pediaEntry?.questions ?? 0})`;
-                document.getElementById('tabCountAll').textContent =
-                    ` (${(s.coreBank?.questions ?? 0) + (ds.questions ?? 0) + (s.pediaEntry?.questions ?? 0)})`;
+                document.getElementById('tabCountPedia').textContent = ` (${pq.questions ?? 0})`;
+                document.getElementById('tabCountAll').textContent = ` (${(ds.questions ?? 0) + (pq.questions ?? 0)})`;
 
                 renderDatasetUsage(s);
+                renderPediaSummary(s);
+                renderFilters();
                 renderNotice(s);
             } catch (err) {
                 console.error('summary load failed', err);
@@ -381,143 +437,305 @@ requireAuth();
             el.innerHTML = '';
         }
 
+        // ── Filter row — contents depend on the active category (req 20) ────
+        function renderFilters() {
+            const el = document.getElementById('filterRow');
+            if (!el || !lastSummary) return;
+
+            const sortOptions = `
+                <option value="newest" ${filters.sort === 'newest' ? 'selected' : ''}>Newest First</option>
+                <option value="oldest" ${filters.sort === 'oldest' ? 'selected' : ''}>Oldest First</option>`;
+
+            if (currentCategory === 'dataset_question') {
+                const sources = (lastSummary.datasetQuestion && lastSummary.datasetQuestion.sources) || [];
+                const sourceOptions = sources.map((s) => `<option value="${escapeHtml(s.key)}" ${filters.source === s.key ? 'selected' : ''}>${escapeHtml(s.name)} (${s.items})</option>`).join('');
+                const selectedSource = sources.find((s) => s.key === filters.source);
+                const versions = selectedSource ? selectedSource.versions : sources.flatMap((s) => s.versions || []);
+                const versionOptions = versions.filter((v) => v.version).map((v) => `<option value="${escapeHtml(v.version)}" ${filters.version === v.version ? 'selected' : ''}>${escapeHtml(v.version)} (${v.items})</option>`).join('');
+
+                el.innerHTML = `
+                    <div class="filter-group">
+                        <label for="filterSource">Dataset / Source</label>
+                        <select id="filterSource" onchange="onFilterChange('source', this.value)">
+                            <option value="all" ${filters.source === 'all' ? 'selected' : ''}>All Sources</option>
+                            ${sourceOptions}
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterVersion">Version</label>
+                        <select id="filterVersion" onchange="onFilterChange('version', this.value)">
+                            <option value="all" ${filters.version === 'all' ? 'selected' : ''}>All Versions</option>
+                            ${versionOptions}
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterDateFrom">From</label>
+                        <input type="date" id="filterDateFrom" value="${escapeHtml(filters.dateFrom)}" onchange="onFilterChange('dateFrom', this.value)">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterDateTo">To</label>
+                        <input type="date" id="filterDateTo" value="${escapeHtml(filters.dateTo)}" onchange="onFilterChange('dateTo', this.value)">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterSort">Sort</label>
+                        <select id="filterSort" onchange="onFilterChange('sort', this.value)">${sortOptions}</select>
+                    </div>
+                    <button class="btn btn-secondary" type="button" onclick="resetFilters()">Reset</button>`;
+                return;
+            }
+
+            if (currentCategory === 'pediatrician_question') {
+                const pediatricians = (lastSummary.pediatricianQuestion && lastSummary.pediatricianQuestion.pediatricians) || [];
+                const pediaOptions = pediatricians.map((p) => `<option value="${escapeHtml(p.pediatricianId)}" ${filters.pediatricianId === p.pediatricianId ? 'selected' : ''}>${escapeHtml(p.name)} (${p.total})</option>`).join('');
+
+                el.innerHTML = `
+                    <div class="filter-group">
+                        <label for="filterPedia">Pediatrician</label>
+                        <select id="filterPedia" onchange="onFilterChange('pediatricianId', this.value)">
+                            <option value="all" ${filters.pediatricianId === 'all' ? 'selected' : ''}>All Pediatricians</option>
+                            ${pediaOptions}
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterDateFrom">From</label>
+                        <input type="date" id="filterDateFrom" value="${escapeHtml(filters.dateFrom)}" onchange="onFilterChange('dateFrom', this.value)">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterDateTo">To</label>
+                        <input type="date" id="filterDateTo" value="${escapeHtml(filters.dateTo)}" onchange="onFilterChange('dateTo', this.value)">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterSort">Sort</label>
+                        <select id="filterSort" onchange="onFilterChange('sort', this.value)">${sortOptions}</select>
+                    </div>
+                    <button class="btn btn-secondary" type="button" onclick="resetFilters()">Reset</button>`;
+                return;
+            }
+
+            // "All" — categories are mixed, so only a global sort applies.
+            el.innerHTML = `
+                <div class="filter-group">
+                    <label for="filterSort">Sort</label>
+                    <select id="filterSort" onchange="onFilterChange('sort', this.value)">${sortOptions}</select>
+                </div>
+                <button class="btn btn-secondary" type="button" onclick="resetFilters()">Reset</button>`;
+        }
+
+        // A source change invalidates any previously-selected version, since
+        // versions are scoped to one source.
+        function onFilterChange(key, value) {
+            filters[key] = value;
+            if (key === 'source') filters.version = 'all';
+            currentPage = 1;
+            if (key === 'source') renderFilters();
+            loadList();
+        }
+
+        function resetFilters() {
+            filters = defaultFilters();
+            currentPage = 1;
+            renderFilters();
+            loadList();
+        }
+
+        // ── Table head — columns depend on the active category (req 5/12) ───
+        function buildTableHead() {
+            const head = document.getElementById('originTableHead');
+            if (!head) return;
+            if (currentCategory === 'dataset_question') {
+                head.innerHTML = `<tr>
+                    <th>Question</th><th>Domain</th><th>Source / Dataset</th><th>Version</th>
+                    <th>Status</th><th>Created By</th><th>Date Added / Imported</th>
+                    <th style="text-align:right;">Times Answered</th>
+                </tr>`;
+            } else if (currentCategory === 'pediatrician_question') {
+                head.innerHTML = `<tr>
+                    <th>Question</th><th>Domain</th><th>Pediatrician Owner</th>
+                    <th>Created</th><th>Active</th><th style="text-align:right;">Times Answered</th>
+                </tr>`;
+            } else {
+                head.innerHTML = `<tr>
+                    <th>Question</th><th>Domain</th><th>Category</th><th>Source</th><th>Version</th>
+                    <th>Approval / Status</th><th>Created By</th><th>Created</th>
+                    <th style="text-align:right;">Times Answered</th>
+                </tr>`;
+            }
+        }
+
+        function columnCount() {
+            if (currentCategory === 'dataset_question') return 8;
+            if (currentCategory === 'pediatrician_question') return 6;
+            return 9;
+        }
+
+        // Source column shared by the Dataset Question tab and the All tab —
+        // states the REAL sub-origin plainly. A Core Question Bank row is
+        // never given a fabricated external citation (req 6/17/24/25).
+        function sourceCell(r) {
+            if (r.origin === 'core_bank') {
+                return `<div class="src-name">Core Question Bank</div><div class="src-citation">Pediatrician interview &mdash; no external citation</div>`;
+            }
+            if (!r.sourceCitation) return '<span class="prov-none">—</span>';
+            return (r.sourcedFrom ? `<div class="src-name">${escapeHtml(r.sourcedFrom)}</div>` : '')
+                + `<div class="src-citation" title="${escapeHtml(r.sourceCitation)}">${escapeHtml(r.sourceCitation)}</div>`
+                + (r.generationMethodLabel ? `<div class="src-generation">Our wording: ${escapeHtml(r.generationMethodLabel)}</div>` : '');
+        }
+
+        // "Pediatrician Owner" / "Created By" cell for the Pediatrician
+        // Question category. A Core Question Bank row states plainly that it
+        // has NO individual owner — it is never assigned to a real or
+        // invented pediatrician (req: never fake ownership).
+        function pediaOwnerCell(r) {
+            if (r.origin === 'core_bank') {
+                return `<div class="src-name">Core Question Bank</div><div class="prov-inline">System-wide &middot; no individual pediatrician owner</div>`;
+            }
+            return escapeHtml(r.createdBy);
+        }
+
+        function provenanceDetailRow(r, rid, span) {
+            if (r.category === 'pediatrician_question' && r.origin === 'core_bank') {
+                // Core Question Bank sub-origin — system-wide, no individual
+                // owner, no citation, no review workflow. Different shape from
+                // a pediatrician-authored row below; never shows a fake owner.
+                return `
+                <tr class="prov-detail" id="${rid}" hidden>
+                    <td colspan="${span}">
+                        <dl class="prov-grid">
+                            <div><dt>Source</dt><dd>Pediatrician interview &mdash; no external citation</dd></div>
+                            <div><dt>Owner</dt><dd>System-wide &mdash; no individual pediatrician owner</dd></div>
+                            <div><dt>Minimum Age</dt><dd>${provValue(r.minAgeMonths, (v) => `${v} months`)}</dd></div>
+                            <div><dt>Created</dt><dd>${provValue(r.createdAt, fmtDate)}</dd></div>
+                            <div><dt>Active</dt><dd>${r.isActive ? 'Yes' : 'No'}</dd></div>
+                            <div><dt>Times Answered</dt><dd>${escapeHtml(String(r.timesAnswered ?? 0))}</dd></div>
+                        </dl>
+                    </td>
+                </tr>`;
+            }
+            if (r.category === 'pediatrician_question') {
+                const ageRange = (r.ageMin != null && r.ageMax != null) ? `${r.ageMin}–${r.ageMax} months` : null;
+                return `
+                <tr class="prov-detail" id="${rid}" hidden>
+                    <td colspan="${span}">
+                        <dl class="prov-grid">
+                            <div><dt>Question Type</dt><dd>${provValue(r.questionType)}</dd></div>
+                            <div><dt>Age Range</dt><dd>${provValue(ageRange)}</dd></div>
+                            <div><dt>Created</dt><dd>${provValue(r.createdAt, fmtDate)}</dd></div>
+                            <div><dt>Active</dt><dd>${r.isActive ? 'Yes' : 'No'}</dd></div>
+                            <div><dt>Times Answered</dt><dd>${escapeHtml(String(r.timesAnswered ?? 0))}</dd></div>
+                        </dl>
+                    </td>
+                </tr>`;
+            }
+            return `
+                <tr class="prov-detail" id="${rid}" hidden>
+                    <td colspan="${span}">
+                        <dl class="prov-grid">
+                            <div><dt>Source Reference</dt><dd>${provValue(r.sourceCitation)}</dd></div>
+                            <div><dt>Version</dt><dd>${provValue(r.sourceVersion)}</dd></div>
+                            <div><dt>Import Date</dt><dd>${provValue(r.importedAt, fmtDate)}</dd></div>
+                            <div><dt>Batch ID</dt><dd>${provValue(r.importBatchId)}</dd></div>
+                            <div><dt>${r.sourceCitation ? 'External Source' : 'Attribution'}</dt><dd>${provValue(r.sourcedFrom)}</dd></div>
+                            <div><dt>Date Added / Imported</dt><dd>${provValue(r.effectiveDate || r.createdAt, fmtDate)}</dd></div>
+                            <div><dt>How the wording was produced</dt><dd>${provValue(r.generationMethodLabel)}</dd></div>
+                            <div><dt>Reviewer decision (wording)</dt><dd>${r.reviewerDecisionLabel ? escapeHtml(r.reviewerDecisionLabel) + (r.reviewerDecisionRound ? ' — ' + escapeHtml(r.reviewerDecisionRound) : '') : '<span class="prov-none">—</span>'}</dd></div>
+                            <div><dt>Pediatrician approval</dt><dd>${provValue(r.approvalStatusLabel)}</dd></div>
+                            <div><dt>Approved On</dt><dd>${provValue(r.approvedAt, fmtDate)}</dd></div>
+                            <div><dt>Active</dt><dd>${r.isActive ? 'Yes' : 'No'}</dd></div>
+                            <div><dt>Open clinical mapping question</dt><dd>${r.hasOpenMappingQuestion ? 'Yes — pediatrician to rule' : (r.approvalStatus ? 'No' : '<span class="prov-none">—</span>')}</dd></div>
+                            <div><dt>Used in assessments</dt><dd>${r.isUsableInAssessment ? 'Yes' : 'No'}</dd></div>
+                        </dl>
+                    </td>
+                </tr>`;
+        }
+
+        function renderRow(r, i) {
+            const rid = `prov-${i}`;
+            const span = columnCount();
+            const toggle = `<button class="prov-toggle" type="button" aria-expanded="false" aria-controls="${rid}" onclick="toggleProvenance('${rid}', this)" title="Show question details">▸</button>`;
+            const questionCell = `
+                <td style="min-width:260px;">
+                    <div style="font-weight:600;">${toggle}${escapeHtml(r.questionText)}</div>
+                    <div class="q-id">${escapeHtml(r.questionId)}</div>
+                </td>
+                <td>${escapeHtml(r.domain)}${r.displayDomain ? `<div style="font-size:0.75rem;color:var(--text-light);margin-top:0.2rem;">${escapeHtml(r.displayDomain)}</div>` : ''}</td>`;
+
+            // Branch on the ACTIVE TAB, not the row's own category — on the
+            // "All" tab a row from either category must still render exactly
+            // as many <td> as columnCount() says the header has, or every row
+            // after a category boundary would drift out of alignment with its
+            // column headers.
+            let bodyCells;
+            if (currentCategory === 'pediatrician_question') {
+                bodyCells = `
+                    <td>${pediaOwnerCell(r)}</td>
+                    <td>${formatDateTime(r.createdAt)}</td>
+                    <td>${r.isActive ? 'Yes' : 'No'}</td>
+                    <td style="text-align:right;font-weight:700;">${r.timesAnswered ?? 0}</td>`;
+            } else if (currentCategory === 'dataset_question') {
+                bodyCells = `
+                    <td class="src-cell">${sourceCell(r)}</td>
+                    <td>${r.sourceVersion ? escapeHtml(r.sourceVersion) : '<span class="prov-none">—</span>'}</td>
+                    <td>${approvalCell(r)}</td>
+                    <td>${escapeHtml(r.createdBy)}</td>
+                    <td>${formatDateTime(r.effectiveDate || r.createdAt)}</td>
+                    <td style="text-align:right;font-weight:700;">${r.timesAnswered ?? 0}</td>`;
+            } else {
+                // "All" tab — one generic 7-cell body shape for every row,
+                // whichever category it belongs to. A Pediatrician Question row
+                // (Core Question Bank OR pediatrician-authored) shows a dash for
+                // Source/Version when it has none, and "Active: Yes/No" in the
+                // Approval column (approvalCell()'s null-approvalStatus branch
+                // already renders that, never a fabricated "Pending Pediatrician
+                // Approval"). Created By uses pediaOwnerCell() so a Core Question
+                // Bank row states plainly it has no individual owner.
+                bodyCells = `
+                    <td>${categoryBadge(r.category)}<div class="prov-inline">${escapeHtml(ORIGIN_SOURCE_KIND[r.origin] || r.sourceKind || '')}</div></td>
+                    <td class="src-cell">${sourceCell(r)}</td>
+                    <td>${r.sourceVersion ? escapeHtml(r.sourceVersion) : '<span class="prov-none">—</span>'}</td>
+                    <td>${approvalCell(r)}</td>
+                    <td>${pediaOwnerCell(r)}</td>
+                    <td>${formatDateTime(r.effectiveDate || r.createdAt)}</td>
+                    <td style="text-align:right;font-weight:700;">${r.timesAnswered ?? 0}</td>`;
+            }
+
+            return `<tr>${questionCell}${bodyCells}</tr>${provenanceDetailRow(r, rid, span)}`;
+        }
+
         async function loadList() {
             const rowsEl = document.getElementById('originRows');
-            rowsEl.innerHTML = '<tr><td colspan="9" style="padding:2rem;text-align:center;color:var(--text-light);">Loading…</td></tr>';
+            const span = columnCount();
+            rowsEl.innerHTML = `<tr><td colspan="${span}" style="padding:2rem;text-align:center;color:var(--text-light);">Loading…</td></tr>`;
 
             try {
-                const data = await apiFetch(`/admin/data-origin/list?origin=${encodeURIComponent(currentFilter)}&page=${currentPage}&limit=${PAGE_LIMIT}`);
+                const params = new URLSearchParams({ category: currentCategory, page: currentPage, limit: PAGE_LIMIT, sort: filters.sort });
+                if (currentCategory === 'dataset_question') {
+                    if (filters.source !== 'all') params.set('source', filters.source);
+                    if (filters.version !== 'all') params.set('version', filters.version);
+                }
+                if (currentCategory === 'pediatrician_question' && filters.pediatricianId !== 'all') {
+                    params.set('pediatricianId', filters.pediatricianId);
+                }
+                if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+                if (filters.dateTo) params.set('dateTo', filters.dateTo);
+
+                const data = await apiFetch(`/admin/data-origin/list?${params.toString()}`);
                 const rows = data.rows || [];
                 lastPagination = data.pagination || null;
 
                 if (!rows.length) {
-                    const msg = (data.datasetQuestionView ?? data.externalSourceView ?? data.datasetView)
-                        ? '<strong>No Dataset Questions found.</strong><br>' +
-                          '<span style="font-size:0.85rem;">No question from an external dataset has been added yet. Core Question Bank questions came from our pediatrician interview and are a separate origin &mdash; they are not counted here.</span>'
-                        : 'No questions found for this filter.';
-                    rowsEl.innerHTML = `<tr><td colspan="9" style="padding:2rem;text-align:center;color:var(--text-light);line-height:1.6;">${msg}</td></tr>`;
+                    const msg = currentCategory === 'dataset_question'
+                        ? 'No Dataset Question matches this filter.'
+                        : currentCategory === 'pediatrician_question'
+                            ? 'No Pediatrician Question matches this filter.'
+                            : 'No questions found for this filter.';
+                    rowsEl.innerHTML = `<tr><td colspan="${span}" style="padding:2rem;text-align:center;color:var(--text-light);line-height:1.6;">${msg}</td></tr>`;
                 } else {
-                    rowsEl.innerHTML = rows.map((r, i) => {
-                        const rid = `prov-${i}`;
-                        // Origin ALWAYS comes from the stored `origin` field —
-                        // never from a citation, an answer, or an author.
-                        const badge = originBadge(r.origin, r.originLabel);
-                        const kind = r.sourceKind || ORIGIN_SOURCE_KIND[r.origin] || '';
-                        // The Origin cell carries only the relationship kind.
-                        // The citation itself now has its own column, so it is
-                        // not repeated here.
-                        const sourceLine = kind
-                            ? `<div class="prov-inline">${escapeHtml(kind)}</div>`
-                            : '';
-                        // Source column. Only a Dataset Question can carry a
-                        // citation — the schema refuses to store one on a
-                        // core-bank row — so the other origins show a dash
-                        // rather than borrowing their origin's description.
-                        // Three separate facts, deliberately stacked and
-                        // labelled so they can never be read as one claim:
-                        //   name      — WHICH external source
-                        //   reference — the checkable citation
-                        //   wording   — that OUR text is an adaptation of it,
-                        //               not the source's own item text
-                        const sourceCell = r.sourceCitation
-                            ? (r.sourcedFrom ? `<div class="src-name">${escapeHtml(r.sourcedFrom)}</div>` : '')
-                              + `<div class="src-citation" title="${escapeHtml(r.sourceCitation)}">${escapeHtml(r.sourceCitation)}</div>`
-                              + (r.generationMethodLabel
-                                  ? `<div class="src-generation">Our wording: ${escapeHtml(r.generationMethodLabel)}</div>`
-                                  : '')
-                            : '<span class="prov-none">—</span>';
-                        return `
-                        <tr>
-                            <td style="min-width:260px;">
-                                <div style="font-weight:600;">
-                                    <button class="prov-toggle" type="button"
-                                            aria-expanded="false" aria-controls="${rid}"
-                                            onclick="toggleProvenance('${rid}', this)"
-                                            title="Show question details">▸</button>
-                                    ${escapeHtml(r.questionText)}
-                                </div>
-                                <div class="q-id">${escapeHtml(r.questionId)}</div>
-                            </td>
-                            <td>
-                                ${escapeHtml(r.domain)}
-                                ${r.displayDomain ? `<div style="font-size:0.75rem;color:var(--text-light);margin-top:0.2rem;">${escapeHtml(r.displayDomain)}</div>` : ''}
-                            </td>
-                            <td>${badge}${sourceLine}</td>
-                            <td class="src-cell">${sourceCell}</td>
-                            <td>${r.sourceVersion ? escapeHtml(r.sourceVersion) : '<span class="prov-none">—</span>'}</td>
-                            <td>${approvalCell(r)}</td>
-                            <td>${escapeHtml(r.createdBy)}</td>
-                            <td>${formatDateTime(r.createdAt)}</td>
-                            <td style="text-align:right;font-weight:700;">${r.timesAnswered ?? 0}</td>
-                        </tr>
-                        <tr class="prov-detail" id="${rid}" hidden>
-                            <td colspan="9">
-                                <dl class="prov-grid">
-                                    <div>
-                                        <dt>Source Reference</dt>
-                                        <dd>${provValue(r.sourceCitation)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Version</dt>
-                                        <dd>${provValue(r.sourceVersion)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Import Date</dt>
-                                        <dd>${provValue(r.importedAt, fmtDate)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Batch ID</dt>
-                                        <dd>${provValue(r.importBatchId)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>${r.sourceCitation ? 'External Source' : 'Attribution (unverified)'}</dt>
-                                        <dd>${provValue(r.sourcedFrom)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Date Added</dt>
-                                        <dd>${provValue(r.createdAt, fmtDate)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>How the wording was produced</dt>
-                                        <dd>${provValue(r.generationMethodLabel)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Reviewer decision (wording)</dt>
-                                        <dd>${r.reviewerDecisionLabel
-                                            ? escapeHtml(r.reviewerDecisionLabel) + (r.reviewerDecisionRound ? ' — ' + escapeHtml(r.reviewerDecisionRound) : '')
-                                            : '<span class="prov-none">—</span>'}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Pediatrician approval</dt>
-                                        <dd>${provValue(r.approvalStatusLabel)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Approved On</dt>
-                                        <dd>${provValue(r.approvedAt, fmtDate)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Active</dt>
-                                        <dd>${r.isActive ? 'Yes' : 'No'}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Open clinical mapping question</dt>
-                                        <dd>${r.hasOpenMappingQuestion
-                                            ? 'Yes — pediatrician to rule'
-                                            : (r.approvalStatus ? 'No' : '<span class="prov-none">—</span>')}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Used in assessments</dt>
-                                        <dd>${r.isUsableInAssessment ? 'Yes' : 'No'}</dd>
-                                    </div>
-                                </dl>
-                            </td>
-                        </tr>`;
-                    }).join('');
+                    rowsEl.innerHTML = rows.map((r, i) => renderRow(r, i)).join('');
                 }
 
                 renderPagination();
             } catch (err) {
-                rowsEl.innerHTML = `<tr><td colspan="6" style="padding:2rem;text-align:center;color:var(--status-attention-fg);">${escapeHtml(err.message)}</td></tr>`;
+                rowsEl.innerHTML = `<tr><td colspan="${span}" style="padding:2rem;text-align:center;color:var(--status-attention-fg);">${escapeHtml(err.message)}</td></tr>`;
             }
         }
 
@@ -539,19 +757,25 @@ requireAuth();
             next.style.opacity = p.hasNext ? '1' : '0.5';
         }
 
-        // Swaps the table without reloading the page.
-        function setFilter(origin) {
-            if (currentFilter === origin) return;
-            currentFilter = origin;
+        // Swaps the table (and its filters/columns) without reloading the page.
+        // Filters reset on every tab change (req 21) — a Pediatrician filter
+        // must never silently carry over onto the Dataset Question tab.
+        function setCategory(category) {
+            if (currentCategory === category) return;
+            currentCategory = category;
             currentPage = 1;
+            filters = defaultFilters();
             document.querySelectorAll('.origin-tab').forEach((tab) => {
-                tab.classList.toggle('active', tab.dataset.origin === origin);
+                tab.classList.toggle('active', tab.dataset.category === category);
             });
+            buildTableHead();
+            renderFilters();
+            renderPediaSummary(lastSummary || {});
             loadList();
         }
 
         // Expand/collapse the provenance detail row. Kept as a plain global so
-        // the inline onclick in loadList() resolves, matching setFilter/changePage.
+        // the inline onclick in loadList() resolves, matching setCategory/changePage.
         function toggleProvenance(rowId, btn) {
             const row = document.getElementById(rowId);
             if (!row) return;
@@ -573,6 +797,7 @@ requireAuth();
         }
 
         async function loadAll() {
+            buildTableHead();
             await Promise.all([loadSummary(), loadList()]);
         }
 

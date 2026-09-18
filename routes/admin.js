@@ -45,6 +45,20 @@ const {
 // REVIEWER decision as a fact distinct from PEDIATRICIAN approval. A reviewer
 // "approve" never implies a pediatrician sign-off and never activates anything.
 const { DATASET_REVIEW, DATASET_QUESTIONS } = require('../constants/datasetQuestions');
+// Admin-facing TWO-category view (Dataset Question / Pediatrician Question)
+// over the three real origins above. Presentation/aggregation only — see the
+// header comment in services/adminDataSourceView.js for why the real three-
+// origin distinction is never merged at the data layer.
+const {
+  ADMIN_CATEGORY,
+  ADMIN_CATEGORY_VALUES,
+  sortByDate,
+  paginate,
+  filterDatasetRows,
+  filterPediatricianRows,
+  summarizePediatricians,
+  groupDatasetSources,
+} = require('../services/adminDataSourceView');
 // approve | revise | reject → the label the admin page shows for the reviewer's
 // wording decision. Kept separate from APPROVAL_STATUS_LABELS, which is the
 // pediatrician lifecycle.
@@ -2172,6 +2186,20 @@ function splitKnownAndOther(map) {
 }
 
 // GET /api/admin/data-origin/summary
+//
+// Powers the two adviser-facing headline numbers (Dataset Question,
+// Pediatrician Question) plus the supporting cards: dataset/source list
+// (newest first, req 6/7), the pediatrician review lifecycle, and the
+// per-pediatrician summary (req 11).
+//
+// ADVISER-CORRECTED MAPPING (see services/adminDataSourceView.js header):
+//   Dataset Question      ← dataset_question ONLY
+//   Pediatrician Question ← core_bank (the pediatrician-sourced question
+//                           bank, system-wide, no individual owner) AND
+//                           pedia_entry (pediatrician-authored, individually
+//                           owned via pediatricianId)
+// This is a display/aggregation change only — the stored `origin` values are
+// never rewritten.
 router.get('/data-origin/summary', authMiddleware, adminOnly, async (req, res) => {
   try {
     // Important: the two answer counts come from DIFFERENT collections, and
@@ -2196,14 +2224,15 @@ router.get('/data-origin/summary', authMiddleware, adminOnly, async (req, res) =
     const pediaQ = splitKnownAndOther(pediaQuestionOrigins);
 
     const coreBankQuestions = coreQ.known[DATA_ORIGIN.CORE_BANK] || 0;
-    // Dataset Questions share the core_bank_questions collection but are a
-    // separate origin — counted from `origin`, never from a citation filter.
+    // Dataset Question — the real dataset_question origin, ONLY.
     const datasetOriginQuestions = coreQ.known[DATA_ORIGIN.DATASET_QUESTION] || 0;
     const pediaEntryQuestions = pediaQ.known[DATA_ORIGIN.PEDIA_ENTRY] || 0;
     const coreBankAnswers = answers.known[DATA_ORIGIN.CORE_BANK] || 0;
     const datasetQuestionAnswers = answers.known[DATA_ORIGIN.DATASET_QUESTION] || 0;
 
     // Questions carrying no origin, or an origin this build does not know about.
+    // These fall OUTSIDE both adviser categories on purpose — silently folding
+    // them into either category would hide a real data-quality problem.
     const unclassifiedQuestions = coreQ.unset + pediaQ.unset;
     const otherQuestions = [...coreQ.other, ...pediaQ.other];
 
@@ -2224,142 +2253,116 @@ router.get('/data-origin/summary', authMiddleware, adminOnly, async (req, res) =
     const otherAnswerTotal = answers.other.reduce((sum, o) => sum + o.count, 0);
     const otherQuestionTotal = otherQuestions.reduce((sum, o) => sum + o.count, 0);
 
-    // ── Dataset Questions ───────────────────────────────────────────────────
-    // A DISTINCT ORIGIN, not core-bank rows with a citation. These are
-    // questions whose text came from an actual external dataset. The schema
-    // refuses to store one without a checkable sourceCitation (see
-    // models/CoreBankQuestion.js), so every row here has a real source. None
-    // exist yet, and reporting zero is the correct answer.
-    const datasetQuestionDocs = await CoreBankQuestion.find({
+    // ── Admin category 1 of 2: DATASET QUESTION (dataset_question ONLY) ─────
+    const datasetOnlyDocs = await CoreBankQuestion.find({
       origin: DATA_ORIGIN.DATASET_QUESTION,
-    }).select('questionId sourceCitation sourceVersion importedAt importBatchId '
-      + 'approvalStatus generationMethod isActive').lean();
+    }).select('questionId origin sourceCitation sourceVersion sourcedFrom importedAt createdAt '
+      + 'importBatchId approvalStatus generationMethod isActive').lean();
 
-    // Review lifecycle counts. `active` is reported separately from `approved`
-    // because approval permits activation, it is not activation.
     const datasetApproval = {
-      pending: datasetQuestionDocs.filter((d) => d.approvalStatus === APPROVAL_STATUS.PENDING).length,
-      approved: datasetQuestionDocs.filter((d) => d.approvalStatus === APPROVAL_STATUS.APPROVED).length,
-      rejected: datasetQuestionDocs.filter((d) => d.approvalStatus === APPROVAL_STATUS.REJECTED).length,
-      active: datasetQuestionDocs.filter((d) => d.isActive === true).length,
+      pending: datasetOnlyDocs.filter((d) => d.approvalStatus === APPROVAL_STATUS.PENDING).length,
+      approved: datasetOnlyDocs.filter((d) => d.approvalStatus === APPROVAL_STATUS.APPROVED).length,
+      rejected: datasetOnlyDocs.filter((d) => d.approvalStatus === APPROVAL_STATUS.REJECTED).length,
+      active: datasetOnlyDocs.filter((d) => d.isActive === true).length,
     };
 
-    const datasetQuestionIds = datasetQuestionDocs.map((d) => d.questionId);
-
-    // How many dataset-derived questions have actually been answered at least
-    // once, and how many answers they account for.
+    const datasetIds = datasetOnlyDocs.map((d) => d.questionId);
     let datasetAnswered = 0;
-    let datasetAnswers = 0;
-    if (datasetQuestionIds.length) {
+    let datasetAnswersTotal = 0;
+    if (datasetIds.length) {
       const [answeredRefs, answerCount] = await Promise.all([
-        AssessmentAnswer.distinct('sourceQuestionRef', {
-          sourceQuestionRef: { $in: datasetQuestionIds },
-        }),
-        AssessmentAnswer.countDocuments({ sourceQuestionRef: { $in: datasetQuestionIds } }),
+        AssessmentAnswer.distinct('sourceQuestionRef', { sourceQuestionRef: { $in: datasetIds } }),
+        AssessmentAnswer.countDocuments({ sourceQuestionRef: { $in: datasetIds } }),
       ]);
       datasetAnswered = answeredRefs.filter(Boolean).length;
-      datasetAnswers = answerCount;
+      datasetAnswersTotal = answerCount;
     }
 
-    // Group by cited source so the UI can name each one with its version.
-    const bySource = new Map();
-    for (const d of datasetQuestionDocs) {
-      const key = `${d.sourceCitation}||${d.sourceVersion || ''}`;
-      const entry = bySource.get(key) || {
-        citation: d.sourceCitation,
-        version: d.sourceVersion || null,
-        items: 0,
-        lastImportedAt: null,
-        batchIds: new Set(),
-      };
-      entry.items += 1;
-      if (d.importedAt && (!entry.lastImportedAt || d.importedAt > entry.lastImportedAt)) {
-        entry.lastImportedAt = d.importedAt;
-      }
-      if (d.importBatchId) entry.batchIds.add(d.importBatchId);
-      bySource.set(key, entry);
-    }
+    // Grouped by REAL cited source, newest first by a verified stored date.
+    // Core Question Bank is NOT included — it no longer belongs to this
+    // category. See groupDatasetSources() for exactly which timestamp is used.
+    const { sources: datasetSources, latestSource } = groupDatasetSources(datasetOnlyDocs);
 
-    // Core-bank questions answered at least once — the honest denominator for
-    // "how much of the bank is actually exercised".
-    const coreAnsweredRefs = await AssessmentAnswer.distinct('sourceQuestionRef', {
-      origin: DATA_ORIGIN.CORE_BANK,
-    });
+    // ── Admin category 2 of 2: PEDIATRICIAN QUESTION (core_bank + pedia_entry) ─
+    // Core Question Bank contributes its RAW COUNT ONLY here — it has no
+    // pediatricianId and must never be attributed to a real or invented
+    // pediatrician (see summarizePediatricians(), which is called with
+    // PediaCustomQuestion documents only, so Core Question Bank can never
+    // inflate a per-pediatrician total).
+    const pediaDocsForSummary = await PediaCustomQuestion.find({})
+      .select('pediatricianId isActive createdAt').lean();
+    const pediatricianIds = [...new Set(pediaDocsForSummary.map((q) => String(q.pediatricianId)).filter(Boolean))];
+    const pediatricianUsers = pediatricianIds.length
+      ? await User.find({ _id: { $in: pediatricianIds } }).select('firstName lastName').lean()
+      : [];
+    const nameById = new Map(pediatricianUsers.map((u) => [String(u._id), fullName(u) || 'Unknown Pediatrician']));
+    // One question document = one count, no matter how many assignments point
+    // at it (req 14) — see summarizePediatricians().
+    const pediatricianSummary = summarizePediatricians(pediaDocsForSummary, nameById);
 
     res.json({
-      // ── Question origin 2 of 3: Dataset Question ───────────────────────────
-      // Questions whose text came from an actual external dataset. A DISTINCT
-      // ORIGIN from Core Question Bank, not a badge on it. NOT an ML training
-      // dataset either — those live in the TrainingDataset collection and are
-      // served by /admin/training/*. Zero here means no dataset question has
-      // been imported yet.
+      total: {
+        questions: coreBankQuestions + datasetOriginQuestions + pediaEntryQuestions
+          + unclassifiedQuestions + otherQuestionTotal,
+        answers: coreBankAnswers + datasetQuestionAnswers + pediaAnswered
+          + answers.unset + otherAnswerTotal,
+      },
+      // ── The two adviser-required categories — never a third ────────────────
       datasetQuestion: {
-        label: DATA_ORIGIN_LABELS[DATA_ORIGIN.DATASET_QUESTION],
-        sourceKind: DATA_ORIGIN_SOURCE_KIND[DATA_ORIGIN.DATASET_QUESTION],
-        questions: datasetOriginQuestions,
+        label: 'Dataset Question',
+        questions: datasetOnlyDocs.length,
         questionsAnswered: datasetAnswered,
-        answers: datasetQuestionAnswers,
-        sources: [...bySource.values()].map((e) => ({
-          citation: e.citation,
-          version: e.version,
-          items: e.items,
-          lastImportedAt: e.lastImportedAt,
-          batchCount: e.batchIds.size,
-        })),
-        hasExternalDataset: datasetOriginQuestions > 0,
+        answers: datasetAnswersTotal,
+        sources: datasetSources,
+        latestSource,
+        hasExternalDataset: datasetOnlyDocs.length > 0,
         // Pediatrician review lifecycle. Nothing here is usable in an
         // assessment until it is BOTH approved and active.
         approval: datasetApproval,
-        // The REVIEWER round (wording only). Static catalogue data, present
-        // even before any question is seeded. Distinct from `approval` above,
-        // which is the PEDIATRICIAN lifecycle — a reviewer "Approved" is not a
-        // pediatrician sign-off and does not activate anything.
+        // The REVIEWER round (wording only). Distinct from `approval` above —
+        // a reviewer "Approved" is not a pediatrician sign-off and does not
+        // activate anything.
         reviewerDecision: datasetReviewerSummary(
           DATASET_REVIEW.openMappingItems.filter((id) => {
-            const doc = datasetQuestionDocs.find((d) => d.questionId === id);
+            const doc = datasetOnlyDocs.find((d) => d.questionId === id);
             return isMappingQuestionOpen(id, doc ? doc.approvalStatus : null);
           })
         ),
       },
-      // Deprecated alias of datasetQuestion (kept for one release).
-      dataset: {
-        label: DATA_ORIGIN_LABELS[DATA_ORIGIN.DATASET_QUESTION],
-        questions: datasetOriginQuestions,
-        questionsAnswered: datasetAnswered,
-        answers: datasetQuestionAnswers,
-        sources: [...bySource.values()].map((e) => ({
-          citation: e.citation,
-          version: e.version,
-          items: e.items,
-          lastImportedAt: e.lastImportedAt,
-          batchCount: e.batchIds.size,
-        })),
-        // Drives the honest empty state in the admin UI.
-        hasExternalDataset: datasetQuestionDocs.length > 0,
-      },
-      coreBankUsage: {
-        questions: coreBankQuestions,
-        questionsAnswered: coreAnsweredRefs.filter(Boolean).length,
-        answers: coreBankAnswers,
-      },
-      // ── Question origin 1 of 3: Core Question Bank ────────────────────────
-      // Source = our consultant pediatrician's interview.
-      coreBank: {
-        label: DATA_ORIGIN_LABELS[DATA_ORIGIN.CORE_BANK],
-        sourceKind: DATA_ORIGIN_SOURCE_KIND[DATA_ORIGIN.CORE_BANK],
-        questions: coreBankQuestions,
-        answers: coreBankAnswers,
-      },
-      // ── Question origin 3 of 3: Pediatrician Entry ────────────────────────
-      // Author = a pediatrician working inside KinderCura.
-      pediaEntry: {
-        label: DATA_ORIGIN_LABELS[DATA_ORIGIN.PEDIA_ENTRY],
-        sourceKind: DATA_ORIGIN_SOURCE_KIND[DATA_ORIGIN.PEDIA_ENTRY],
-        questions: pediaEntryQuestions,
-        answers: pediaAnswered,
+      pediatricianQuestion: {
+        label: 'Pediatrician Question',
+        questions: coreBankQuestions + pediaEntryQuestions,
+        answers: coreBankAnswers + pediaAnswered,
         assignmentsTotal: pediaAssignmentsTotal,
+        totalAuthors: pediatricianSummary.length,
+        // The REAL sub-origin split. Shown so "Pediatrician Question" is never
+        // read as "every one of these has an individual pediatrician owner" —
+        // Core Question Bank is system-wide and carries no pediatricianId.
+        breakdown: {
+          coreBank: {
+            origin: DATA_ORIGIN.CORE_BANK,
+            label: DATA_ORIGIN_LABELS[DATA_ORIGIN.CORE_BANK],
+            sourceKind: DATA_ORIGIN_SOURCE_KIND[DATA_ORIGIN.CORE_BANK],
+            questions: coreBankQuestions,
+            answers: coreBankAnswers,
+          },
+          pediaAuthored: {
+            origin: DATA_ORIGIN.PEDIA_ENTRY,
+            label: DATA_ORIGIN_LABELS[DATA_ORIGIN.PEDIA_ENTRY],
+            sourceKind: DATA_ORIGIN_SOURCE_KIND[DATA_ORIGIN.PEDIA_ENTRY],
+            questions: pediaEntryQuestions,
+            answers: pediaAnswered,
+          },
+        },
+        // Doubles as the "Pediatrician: [ All Pediatricians ]" dropdown data
+        // AND the Pediatrician Question Summary table (req 10/11) — one
+        // source of truth, keyed by pediatricianId, never a name string.
+        // Contains ONLY real pediatrician authors — Core Question Bank never
+        // appears here as a row, invented or otherwise.
+        pediatricians: pediatricianSummary,
       },
-      // Explicit buckets so nothing can drop out of the totals unnoticed.
+      // Explicit buckets so nothing can drop out of the totals unnoticed. Never
+      // folded into either adviser category — see warnings above.
       unclassified: {
         label: 'Unclassified',
         questions: unclassifiedQuestions,
@@ -2371,12 +2374,6 @@ router.get('/data-origin/summary', authMiddleware, adminOnly, async (req, res) =
         answers: otherAnswerTotal,
         values: [...answers.other.map((o) => ({ ...o, scope: 'answers' })), ...otherQuestions.map((o) => ({ ...o, scope: 'questions' }))],
       },
-      total: {
-        questions: coreBankQuestions + datasetOriginQuestions + pediaEntryQuestions
-          + unclassifiedQuestions + otherQuestionTotal,
-        answers: coreBankAnswers + datasetQuestionAnswers + pediaAnswered
-          + answers.unset + otherAnswerTotal,
-      },
       warnings,
     });
   } catch (error) {
@@ -2385,142 +2382,160 @@ router.get('/data-origin/summary', authMiddleware, adminOnly, async (req, res) =
   }
 });
 
-// GET /api/admin/data-origin/list?origin=core_bank|pedia_entry|all&page=&limit=
+// GET /api/admin/data-origin/list
+//
+// Query params:
+//   category       — all | dataset_question | pediatrician_question (default all)
+//   source         — Dataset Question tab: 'all' | a real sourceCitation
+//                     (Core Question Bank is NOT part of this tab, so there is
+//                     no 'core_bank' source option here anymore)
+//   version        — Dataset Question tab: 'all' | an exact sourceVersion
+//   pediatricianId — Pediatrician Question tab: 'all' | a User _id (never a
+//                     name). Filtering by a specific pediatrician narrows OUT
+//                     Core Question Bank rows, which have no pediatricianId.
+//   dateFrom, dateTo — ISO date strings, inclusive. Filters on the row's real
+//                      imported/created date — never updatedAt.
+//   sort           — newest | oldest (default newest)
+//   page, limit    — pagination; total/pagination always reflect the FILTERED result.
 router.get('/data-origin/list', authMiddleware, adminOnly, async (req, res) => {
   try {
-    const originFilter = String(req.query.origin || 'all');
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
-
-    // Filtering is by REAL ORIGIN. 'dataset_question' is a first-class origin,
-    // not a citation sub-filter on the core bank: a question either came from
-    // an external dataset or it did not. The older 'external_source'/'dataset'
-    // spellings are accepted as deprecated aliases and now resolve to that
-    // origin, so a stale bookmark cannot silently mean "core bank".
-    const LEGACY_DATASET_ALIASES = ['external_source', 'dataset'];
-    const resolvedFilter = LEGACY_DATASET_ALIASES.includes(originFilter)
-      ? DATA_ORIGIN.DATASET_QUESTION
-      : originFilter;
-
-    if (resolvedFilter !== 'all' && !DATA_ORIGIN_VALUES.includes(resolvedFilter)) {
+    const category = String(req.query.category || 'all');
+    if (category !== 'all' && !ADMIN_CATEGORY_VALUES.includes(category)) {
       return res.status(400).json({
-        error: `origin must be one of: all, ${DATA_ORIGIN_VALUES.join(', ')}`,
+        error: `category must be one of: all, ${ADMIN_CATEGORY_VALUES.join(', ')}`,
       });
     }
 
-    // core_bank_questions holds both system-provided origins, so it is read for
-    // 'all', for core_bank, and for dataset_question — then narrowed by origin.
-    const wantDatasetOnly = resolvedFilter === DATA_ORIGIN.DATASET_QUESTION;
-    const wantCore = resolvedFilter === 'all'
-      || resolvedFilter === DATA_ORIGIN.CORE_BANK
-      || wantDatasetOnly;
-    const wantPedia = resolvedFilter === 'all' || resolvedFilter === DATA_ORIGIN.PEDIA_ENTRY;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const sortDirection = req.query.sort === 'oldest' ? 'asc' : 'desc';
 
-    const rows = [];
+    const wantDataset = category === 'all' || category === ADMIN_CATEGORY.DATASET_QUESTION;
+    const wantPedia = category === 'all' || category === ADMIN_CATEGORY.PEDIATRICIAN_QUESTION;
 
-    if (wantCore) {
-      // Both system-provided origins live here; each row keeps its own.
+    let rows = [];
+
+    if (wantDataset) {
+      // Dataset Question now holds ONLY the dataset_question origin.
       const [questions, answerCounts] = await Promise.all([
-        CoreBankQuestion.find({}).lean(),
-        // One grouped pass instead of a count per question. Covers both
-        // system-provided origins so a dataset question's answers are counted.
+        CoreBankQuestion.find({ origin: DATA_ORIGIN.DATASET_QUESTION }).lean(),
         AssessmentAnswer.aggregate([
-          {
-            $match: {
-              sourceQuestionRef: { $nin: [null, ''] },
-              origin: { $in: [DATA_ORIGIN.CORE_BANK, DATA_ORIGIN.DATASET_QUESTION] },
-            },
-          },
+          { $match: { sourceQuestionRef: { $nin: [null, ''] }, origin: DATA_ORIGIN.DATASET_QUESTION } },
           { $group: { _id: '$sourceQuestionRef', count: { $sum: 1 } } },
         ]),
       ]);
       const answersByRef = new Map(answerCounts.map((a) => [a._id, a.count]));
 
-      for (const q of questions) {
-        // Read the STORED origin. A legacy row with no origin set is treated
-        // as core bank, matching the schema default — never as a dataset
-        // question, which must be an explicit, citation-backed claim.
-        const rowOrigin = q.origin === DATA_ORIGIN.DATASET_QUESTION
-          ? DATA_ORIGIN.DATASET_QUESTION
-          : DATA_ORIGIN.CORE_BANK;
-        const isDatasetQuestion = rowOrigin === DATA_ORIGIN.DATASET_QUESTION;
+      let datasetRows = questions.map((q) => {
+        // The real, verified "date added/imported" — importedAt when the row
+        // was actually imported from its source, else createdAt (req 6). Never
+        // array position, an ObjectId, or a hardcoded label.
+        const effectiveDate = q.importedAt || q.createdAt;
 
-        rows.push({
+        return {
           id: String(q._id),
           questionId: q.questionId,
           questionText: q.text,
           domain: q.domain,
           displayDomain: q.displayDomain || '',
-          origin: rowOrigin,
-          originLabel: DATA_ORIGIN_LABELS[rowOrigin],
-          sourceKind: DATA_ORIGIN_SOURCE_KIND[rowOrigin],
-          // Neither system-provided origin has an author. The legacy
-          // `sourcedFrom` attribution is NOT used here — it is an unverified
-          // string (see models/CoreBankQuestion.js) and belongs in the
-          // provenance fields below, not in a "Created By" column.
-          createdBy: isDatasetQuestion
-            ? 'External dataset (system-managed)'
-            : 'Core Question Bank (system-managed)',
+          category: ADMIN_CATEGORY.DATASET_QUESTION,
+          origin: DATA_ORIGIN.DATASET_QUESTION,
+          originLabel: DATA_ORIGIN_LABELS[DATA_ORIGIN.DATASET_QUESTION],
+          sourceKind: DATA_ORIGIN_SOURCE_KIND[DATA_ORIGIN.DATASET_QUESTION],
+          // Exact match key for the Dataset/Source filter — always the row's
+          // real citation (never 'core_bank'; that origin is not in this tab).
+          sourceKey: q.sourceCitation || 'unknown_source',
+          createdBy: q.sourcedFrom || q.sourceCitation || 'External dataset (system-managed)',
           isSystemManaged: q.isSystemManaged !== false,
           createdAt: q.createdAt,
+          importedAt: q.importedAt || null,
+          effectiveDate,
           timesAnswered: answersByRef.get(q.questionId) || 0,
 
-          // ── Provenance (null means genuinely unrecorded) ─────────────────
-          // Only a dataset question can carry a citation — the schema refuses
-          // to save one without it, and refuses to put one on a core-bank row.
-          hasExternalSource: isDatasetQuestion,
-          // Deprecated mirror of hasExternalSource, kept for one release so a
-          // cached admin page keeps rendering. Never means "ML dataset".
-          isDataset: isDatasetQuestion,
+          hasExternalSource: true,
           sourceCitation: q.sourceCitation || null,
           sourceVersion: q.sourceVersion || null,
-          importedAt: q.importedAt || null,
           importBatchId: q.importBatchId || null,
-          // Surfaced separately so the UI can mark it unverified. All 34
-          // existing core-bank rows carry this from a removed schema default.
           sourcedFrom: q.sourcedFrom || null,
 
-          // ── Review lifecycle (dataset questions only) ────────────────────
-          // null on a core-bank row means "outside this workflow", which the
-          // UI must render as "—", never as approved. `isActive` is included
-          // because for a dataset question it is the activation gate: the
-          // model refuses true unless approvalStatus is 'approved'.
           approvalStatus: q.approvalStatus || null,
           approvalStatusLabel: approvalStatusLabel(q.approvalStatus),
           generationMethod: q.generationMethod || null,
           generationMethodLabel: generationMethodLabel(q.generationMethod),
           approvedAt: q.approvedAt || null,
           isActive: q.isActive !== false,
-          // True only when a pediatrician has actually approved it. A pending
-          // question is never usable in an assessment.
-          isUsableInAssessment: isDatasetQuestion
-            ? (q.approvalStatus === APPROVAL_STATUS.APPROVED && q.isActive === true)
-            : q.isActive !== false,
+          isUsableInAssessment: q.approvalStatus === APPROVAL_STATUS.APPROVED && q.isActive === true,
 
-          // ── Reviewer decision (wording) — a SEPARATE axis from approval ───
-          // Static catalogue fact joined by questionId. Only a reviewer round
-          // decision; NOT the pediatrician sign-off in approvalStatus above.
-          // The page shows all three side by side so they cannot be conflated:
-          //   Reviewer decision  → this
-          //   Pediatrician approval → approvalStatusLabel
-          //   Active              → isActive
-          reviewerDecision: isDatasetQuestion ? DATASET_REVIEW.decision : null,
-          reviewerDecisionLabel: isDatasetQuestion
-            ? (REVIEWER_DECISION_LABELS[DATASET_REVIEW.decision] || DATASET_REVIEW.decision)
-            : null,
-          reviewerDecisionRound: isDatasetQuestion
-            ? `${DATASET_REVIEW.round} · ${DATASET_REVIEW.decidedOn}`
-            : null,
-          hasOpenMappingQuestion: isDatasetQuestion
-            && isMappingQuestionOpen(q.questionId, q.approvalStatus || null),
-        });
-      }
+          reviewerDecision: DATASET_REVIEW.decision,
+          reviewerDecisionLabel: REVIEWER_DECISION_LABELS[DATASET_REVIEW.decision] || DATASET_REVIEW.decision,
+          reviewerDecisionRound: `${DATASET_REVIEW.round} · ${DATASET_REVIEW.decidedOn}`,
+          hasOpenMappingQuestion: isMappingQuestionOpen(q.questionId, q.approvalStatus || null),
+        };
+      });
+
+      datasetRows = filterDatasetRows(datasetRows, {
+        source: req.query.source,
+        version: req.query.version,
+        dateFrom: req.query.dateFrom,
+        dateTo: req.query.dateTo,
+      });
+      datasetRows = sortByDate(datasetRows, { dateKey: 'effectiveDate', tiebreakKey: 'id', direction: sortDirection });
+      rows = rows.concat(datasetRows);
     }
 
     if (wantPedia) {
-      const questions = await PediaCustomQuestion.find({}).lean();
-      const pediatricianIds = [...new Set(questions.map((q) => String(q.pediatricianId)).filter(Boolean))];
+      // Pediatrician Question now merges TWO sources: the system-wide Core
+      // Question Bank (origin core_bank, no pediatricianId) and individually
+      // authored questions (origin pedia_entry, real pediatricianId).
+      const [coreBankDocs, pediaQuestions, coreBankAnswerCounts] = await Promise.all([
+        CoreBankQuestion.find({ origin: DATA_ORIGIN.CORE_BANK }).lean(),
+        PediaCustomQuestion.find({}).lean(),
+        AssessmentAnswer.aggregate([
+          { $match: { sourceQuestionRef: { $nin: [null, ''] }, origin: DATA_ORIGIN.CORE_BANK } },
+          { $group: { _id: '$sourceQuestionRef', count: { $sum: 1 } } },
+        ]),
+      ]);
+      const coreBankAnswersByRef = new Map(coreBankAnswerCounts.map((a) => [a._id, a.count]));
 
+      // Core Question Bank sub-rows — system-wide, no individual owner. Never
+      // assigned to a real or invented pediatrician (req: "do not assign core
+      // questions to individual pediatricians").
+      const coreBankRows = coreBankDocs.map((q) => ({
+        id: String(q._id),
+        questionId: q.questionId,
+        questionText: q.text,
+        domain: q.domain,
+        displayDomain: q.displayDomain || '',
+        category: ADMIN_CATEGORY.PEDIATRICIAN_QUESTION,
+        origin: DATA_ORIGIN.CORE_BANK,
+        originLabel: DATA_ORIGIN_LABELS[DATA_ORIGIN.CORE_BANK],
+        sourceKind: DATA_ORIGIN_SOURCE_KIND[DATA_ORIGIN.CORE_BANK],
+        pediatricianId: null,
+        createdBy: 'Core Question Bank (system-wide, no individual owner)',
+        isSystemManaged: q.isSystemManaged !== false,
+        createdAt: q.createdAt,
+        effectiveDate: q.importedAt || q.createdAt,
+        timesAnswered: coreBankAnswersByRef.get(q.questionId) || 0,
+        hasExternalSource: false,
+        sourceCitation: null,
+        sourceVersion: null,
+        importedAt: q.importedAt || null,
+        importBatchId: null,
+        sourcedFrom: q.sourcedFrom || null,
+        approvalStatus: null,
+        approvalStatusLabel: null,
+        generationMethod: null,
+        generationMethodLabel: null,
+        approvedAt: null,
+        isActive: q.isActive !== false,
+        isUsableInAssessment: q.isActive !== false,
+        questionType: null,
+        ageMin: null,
+        ageMax: null,
+        minAgeMonths: Number.isFinite(q.minAgeMonths) ? q.minAgeMonths : null,
+      }));
+
+      const pediatricianIds = [...new Set(pediaQuestions.map((q) => String(q.pediatricianId)).filter(Boolean))];
       const [pediatricians, assignmentCounts] = await Promise.all([
         User.find({ _id: { $in: pediatricianIds } }).select('firstName lastName').lean(),
         // Answered assignments only — an assigned-but-unanswered question has
@@ -2534,80 +2549,75 @@ router.get('/data-origin/list', authMiddleware, adminOnly, async (req, res) => {
       const nameById = new Map(pediatricians.map((u) => [String(u._id), fullName(u) || 'Unknown Pediatrician']));
       const answersByQuestion = new Map(assignmentCounts.map((a) => [String(a._id), a.count]));
 
-      for (const q of questions) {
-        rows.push({
-          id: String(q._id),
-          questionId: q.id != null ? `#${q.id}` : String(q._id),
-          questionText: q.questionText,
-          domain: q.domain || 'Other',
-          displayDomain: '',
-          origin: DATA_ORIGIN.PEDIA_ENTRY,
-          originLabel: DATA_ORIGIN_LABELS[DATA_ORIGIN.PEDIA_ENTRY],
-          sourceKind: DATA_ORIGIN_SOURCE_KIND[DATA_ORIGIN.PEDIA_ENTRY],
-          createdBy: nameById.get(String(q.pediatricianId)) || 'Unknown Pediatrician',
-          isSystemManaged: false,
-          createdAt: q.createdAt,
-          timesAnswered: answersByQuestion.get(String(q._id)) || 0,
-          // A pediatrician-entered question has an AUTHOR, not an external
-          // source. Never inherits core-bank provenance.
-          hasExternalSource: false,
-          isDataset: false,
-          sourceCitation: null,
-          sourceVersion: null,
-          importedAt: null,
-          importBatchId: null,
-          sourcedFrom: null,
-          // A pediatrician wrote it, so there is nobody else to approve it —
-          // it is outside the dataset-question review workflow entirely.
-          approvalStatus: null,
-          approvalStatusLabel: null,
-          generationMethod: null,
-          generationMethodLabel: null,
-          approvedAt: null,
-          isActive: q.isActive !== false,
-          isUsableInAssessment: q.isActive !== false,
-        });
-      }
+      const pediaAuthoredRows = pediaQuestions.map((q) => ({
+        id: String(q._id),
+        questionId: q.id != null ? `#${q.id}` : String(q._id),
+        questionText: q.questionText,
+        domain: q.domain || 'Other',
+        displayDomain: '',
+        category: ADMIN_CATEGORY.PEDIATRICIAN_QUESTION,
+        origin: DATA_ORIGIN.PEDIA_ENTRY,
+        originLabel: DATA_ORIGIN_LABELS[DATA_ORIGIN.PEDIA_ENTRY],
+        sourceKind: DATA_ORIGIN_SOURCE_KIND[DATA_ORIGIN.PEDIA_ENTRY],
+        // The internal source of truth for the owner filter (req 10) — never
+        // matched against the displayed name string.
+        pediatricianId: q.pediatricianId ? String(q.pediatricianId) : null,
+        createdBy: nameById.get(String(q.pediatricianId)) || 'Unknown Pediatrician',
+        isSystemManaged: false,
+        createdAt: q.createdAt,
+        effectiveDate: q.createdAt,
+        timesAnswered: answersByQuestion.get(String(q._id)) || 0,
+        // A pediatrician-entered question has an AUTHOR, not an external
+        // source, and takes no part in the dataset review workflow.
+        hasExternalSource: false,
+        sourceCitation: null,
+        sourceVersion: null,
+        importedAt: null,
+        importBatchId: null,
+        sourcedFrom: null,
+        approvalStatus: null,
+        approvalStatusLabel: null,
+        generationMethod: null,
+        generationMethodLabel: null,
+        approvedAt: null,
+        isActive: q.isActive !== false,
+        isUsableInAssessment: q.isActive !== false,
+        questionType: q.questionType || null,
+        ageMin: Number.isFinite(q.ageMin) ? q.ageMin : null,
+        ageMax: Number.isFinite(q.ageMax) ? q.ageMax : null,
+        minAgeMonths: null,
+      }));
+
+      let pediaRows = coreBankRows.concat(pediaAuthoredRows);
+      // pediatricianId filtering: a specific pediatrician's id never matches a
+      // Core Question Bank row (pediatricianId: null), so selecting one
+      // correctly narrows OUT the system-wide bank — exactly as required.
+      pediaRows = filterPediatricianRows(pediaRows, {
+        pediatricianId: req.query.pediatricianId,
+        dateFrom: req.query.dateFrom,
+        dateTo: req.query.dateTo,
+      });
+      pediaRows = sortByDate(pediaRows, { dateKey: 'createdAt', tiebreakKey: 'id', direction: sortDirection });
+      rows = rows.concat(pediaRows);
     }
 
-    // core_bank_questions holds BOTH system-provided origins, so a single-origin
-    // filter must narrow the merged rows by their stored origin. Without this,
-    // origin=core_bank would also return Dataset Questions and vice versa.
-    // With no dataset question imported, that view is empty — the honest result.
-    const visibleRows = resolvedFilter === 'all'
-      ? rows
-      : rows.filter((r) => r.origin === resolvedFilter);
+    // 'all' merges both categories back into one newest-first list, with the
+    // same stable tiebreak used per-category above.
+    if (category === 'all') {
+      rows = sortByDate(rows, { dateKey: 'effectiveDate', tiebreakKey: 'id', direction: sortDirection });
+    }
 
-    // Newest first, with a stable tiebreak so pagination cannot repeat or skip
-    // rows when several share a timestamp.
-    visibleRows.sort((a, b) => {
-      const diff = new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
-      return diff !== 0 ? diff : String(a.id).localeCompare(String(b.id));
-    });
-
-    // Note: the two sources are merged in memory because the combined row count
-    // is small (34 core-bank + the pediatrician's own questions). If the
-    // pediatrician question count ever grows into the thousands, this needs to
-    // become a proper $unionWith aggregation with database-side paging.
-    const total = visibleRows.length;
-    const start = (page - 1) * limit;
+    // Note: still merged in memory — the combined row count is small (34 core
+    // bank + 16 dataset + the pediatricians' own questions). If pediatrician
+    // question volume grows into the thousands, this needs a proper
+    // $unionWith aggregation with database-side paging (matches the prior
+    // implementation's documented scale assumption).
+    const { rows: pageRows, pagination } = paginate(rows, page, limit);
 
     res.json({
-      // Lets the UI render an accurate empty state instead of a bare "no rows".
-      datasetQuestionView: wantDatasetOnly,
-      // Deprecated aliases of datasetQuestionView (kept for one release).
-      externalSourceView: wantDatasetOnly,
-      datasetView: wantDatasetOnly,
-      rows: visibleRows.slice(start, start + limit),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.max(1, Math.ceil(total / limit)),
-        hasNext: start + limit < total,
-        hasPrev: page > 1,
-      },
-      filter: originFilter,
+      category,
+      rows: pageRows,
+      pagination,
     });
   } catch (error) {
     console.error('data-origin list error:', error);
