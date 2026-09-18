@@ -341,9 +341,30 @@ requireAuth();
             }
         }
 
+        // Fixed DISPLAY order only — never touches counts, percentages, or the
+        // aggregation query. Both tables' backend rows come straight out of a
+        // Mongo $group, whose row order is not guaranteed to stay the same
+        // between requests; this pins the presentation order so the table
+        // doesn't reshuffle on every refresh.
+        const APPOINTMENT_STATUS_ORDER = ['pending', 'approved', 'completed', 'cancelled', 'rejected'];
+        const USER_ROLE_ORDER = ['parent', 'pediatrician', 'secretary', 'legal_guardian', 'foster_parent', 'court_appointed', 'admin'];
+
+        // Sorts `items` by where item[keyField] (normalized to lowercase/trimmed)
+        // falls in `order`. Anything not found in `order` is kept, appended after
+        // every known key, in the order the backend returned it (stable sort) —
+        // so an unexpected/future status or role is never silently dropped.
+        function sortByFixedOrder(items, order, keyField) {
+            const rank = (item) => {
+                const key = String(item[keyField] || '').trim().toLowerCase();
+                const idx = order.indexOf(key);
+                return idx === -1 ? order.length : idx;
+            };
+            return items.slice().sort((a, b) => rank(a) - rank(b));
+        }
+
         function updateAppointmentTable(appointmentStats) {
             const tbody = document.getElementById('appointmentStatusTable');
-            const stats = appointmentStats || [];
+            const stats = sortByFixedOrder(appointmentStats || [], APPOINTMENT_STATUS_ORDER, 'status');
             const total = stats.reduce((sum, a) => sum + (a.count || 0), 0);
             if (!stats.length) {
                 tbody.innerHTML = '<tr><td colspan="3" class="muted">No appointment data available.</td></tr>';
@@ -358,7 +379,7 @@ requireAuth();
 
         function updateRoleTable(roleBreakdown) {
             const tbody = document.getElementById('userRoleTable');
-            const roles = roleBreakdown || [];
+            const roles = sortByFixedOrder(roleBreakdown || [], USER_ROLE_ORDER, 'role');
             const total = roles.reduce((sum, r) => sum + (r.count || 0), 0);
             if (!roles.length) {
                 tbody.innerHTML = '<tr><td colspan="3" class="muted">No role data available.</td></tr>';
