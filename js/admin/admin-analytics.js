@@ -140,7 +140,23 @@ requireAuth();
             if (modal) modal.style.display = 'none';
         }
 
-        let monthlyChart, scoresChart, apptChart, roleChart;
+        let scoreHistogramChart, domainMonitoringChart, domainTrendChart;
+
+        // Existing domain color convention — reused verbatim from the retired
+        // per-domain "Assessment Score Distribution" bar chart so Communication/
+        // Social Skills/Cognitive/Motor Skills keep the same color everywhere on
+        // this page (Developmental Areas chart AND Trends-over-time chart).
+        const DOMAIN_COLORS = { communication: '#6B8E6F', social: '#8BA98D', cognitive: '#F4D89F', motor: '#D4E2D4' };
+        const DOMAIN_KEYS = (window.KCAnalyticsInterpretations && window.KCAnalyticsInterpretations.DOMAIN_KEYS) || ['communication', 'social', 'cognitive', 'motor'];
+        const DOMAIN_LABELS = (window.KCAnalyticsInterpretations && window.KCAnalyticsInterpretations.DOMAIN_LABELS) || { communication: 'Communication', social: 'Social Skills', cognitive: 'Cognitive', motor: 'Motor Skills' };
+
+        // Score-band color for a histogram bin, straight from constants/scoring.js
+        // (window.KCScoring) — the SAME colours used on every other score/result
+        // view. rangeStart is the bin's lower edge (0,10,20,...,90).
+        function histogramBinColor(rangeStart) {
+            if (!window.KCScoring) return '#8BA98D';
+            return window.KCScoring.colorForBand(window.KCScoring.bandFor(rangeStart));
+        }
 
         function initCharts() {
             const chartOptions = {
@@ -149,69 +165,215 @@ requireAuth();
                 plugins: { legend: { display: false } }
             };
 
-            monthlyChart = new Chart(document.getElementById('monthlyChart'), {
-                type: 'line',
-                data: { labels: [], datasets: [{ data: [], borderColor: '#6B8E6F', backgroundColor: 'rgba(107,142,111,0.1)', fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: '#6B8E6F' }] },
-                options: { ...chartOptions, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
-            });
-
-            scoresChart = new Chart(document.getElementById('scoresChart'), {
+            // Assessment Score Distribution — vertical histogram, 10 bins of 10
+            // points each, colour-coded by the existing score band (req 3).
+            scoreHistogramChart = new Chart(document.getElementById('scoreHistogramChart'), {
                 type: 'bar',
-                data: { labels: ['Communication', 'Social', 'Cognitive', 'Motor'], datasets: [{ data: [0,0,0,0], backgroundColor: ['#6B8E6F','#8BA98D','#F4D89F','#D4E2D4'] }] },
-                options: { ...chartOptions, indexAxis: 'y', scales: { x: { beginAtZero: true, max: 100 } } }
+                data: {
+                    labels: [],
+                    datasets: [{ label: 'Assessments', data: [], backgroundColor: [] }],
+                },
+                options: {
+                    ...chartOptions,
+                    scales: {
+                        x: { title: { display: true, text: 'Score range' } },
+                        y: { beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: 'Number of assessments' } },
+                    },
+                },
             });
 
-            apptChart = new Chart(document.getElementById('apptChart'), {
-                type: 'pie',
-                data: { labels: [], datasets: [{ data: [], backgroundColor: ['#F4D89F','#6B8E6F','#8BA98D','#e74c3c'] }] },
-                options: { ...chartOptions, plugins: { legend: { position: 'bottom', display: true } } }
+            // Developmental Areas Requiring Monitoring — one bar per domain,
+            // count of stored results in the at-risk/delayed ("Needs Support")
+            // range (req 4).
+            domainMonitoringChart = new Chart(document.getElementById('domainMonitoringChart'), {
+                type: 'bar',
+                data: {
+                    labels: DOMAIN_KEYS.map((k) => DOMAIN_LABELS[k]),
+                    datasets: [{ label: 'Needs-support cases', data: [0, 0, 0, 0], backgroundColor: DOMAIN_KEYS.map((k) => DOMAIN_COLORS[k]) }],
+                },
+                options: {
+                    ...chartOptions,
+                    scales: {
+                        y: { beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: 'Number of assessments / results' } },
+                    },
+                },
             });
 
-            roleChart = new Chart(document.getElementById('roleChart'), {
-                type: 'doughnut',
-                data: { labels: [], datasets: [{ data: [], backgroundColor: ['#6B8E6F','#8BA98D','#e74c3c','#D4E2D4'] }] },
-                options: { ...chartOptions, plugins: { legend: { position: 'bottom', display: true } } }
+            // Developmental Monitoring Trends Over Time — one line per domain,
+            // month on the X-axis (req 5).
+            domainTrendChart = new Chart(document.getElementById('domainTrendChart'), {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: DOMAIN_KEYS.map((k) => ({
+                        label: DOMAIN_LABELS[k],
+                        data: [],
+                        borderColor: DOMAIN_COLORS[k],
+                        backgroundColor: DOMAIN_COLORS[k],
+                        tension: 0.3,
+                        pointRadius: 3,
+                        fill: false,
+                    })),
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true, position: 'bottom' } },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: 'Needs-support results' } },
+                    },
+                },
             });
         }
 
-        function updateCharts(data) {
-            if (!data) return;
+        function updateScoreHistogram(scoreDistribution) {
+            const bins = (scoreDistribution && scoreDistribution.bins) || [];
+            if (!scoreHistogramChart) return;
+            scoreHistogramChart.data.labels = bins.map((b) => b.range);
+            scoreHistogramChart.data.datasets[0].data = bins.map((b) => b.count || 0);
+            scoreHistogramChart.data.datasets[0].backgroundColor = bins.map((b, i) => histogramBinColor(i * 10));
+            scoreHistogramChart.update();
 
-            // Update monthly signups line chart
-            if (monthlyChart) {
-                const monthly = data.monthlySignups || [];
-                monthlyChart.data.labels = monthly.map(m => m.month);
-                monthlyChart.data.datasets[0].data = monthly.map(m => m.count);
-                monthlyChart.update();
+            const interp = window.KCAnalyticsInterpretations
+                ? window.KCAnalyticsInterpretations.formatHistogramInterpretation(bins, scoreDistribution.total)
+                : '';
+            document.getElementById('histogramInterpretation').textContent = interp;
+        }
+
+        function updateDomainMonitoring(domainNeedsSupport) {
+            const counts = domainNeedsSupport || { communication: 0, social: 0, cognitive: 0, motor: 0, total: 0 };
+            if (domainMonitoringChart) {
+                domainMonitoringChart.data.datasets[0].data = DOMAIN_KEYS.map((k) => counts[k] || 0);
+                domainMonitoringChart.update();
+            }
+            const interp = window.KCAnalyticsInterpretations
+                ? window.KCAnalyticsInterpretations.formatDomainInterpretation(counts)
+                : '';
+            document.getElementById('domainMonitoringInterpretation').textContent = interp;
+        }
+
+        function updateDomainTrend(domainMonthlyTrend) {
+            const rows = domainMonthlyTrend || [];
+            const wrap = document.getElementById('domainTrendChartWrap');
+            const emptyState = document.getElementById('domainTrendEmptyState');
+
+            if (!rows.length) {
+                if (wrap) wrap.style.display = 'none';
+                if (emptyState) emptyState.hidden = false;
+            } else {
+                if (wrap) wrap.style.display = '';
+                if (emptyState) emptyState.hidden = true;
+                if (domainTrendChart) {
+                    domainTrendChart.data.labels = rows.map((r) => r.monthLabel);
+                    DOMAIN_KEYS.forEach((k, i) => {
+                        domainTrendChart.data.datasets[i].data = rows.map((r) => r[k] || 0);
+                    });
+                    domainTrendChart.update();
+                }
             }
 
-            // Update assessment scores bar chart
-            if (scoresChart) {
-                const avg = data.averageScores || {};
-                scoresChart.data.datasets[0].data = [
-                    avg.avgCommunication || 0,
-                    avg.avgSocial || 0,
-                    avg.avgCognitive || 0,
-                    avg.avgMotor || 0
-                ];
-                scoresChart.update();
+            let interp = '';
+            if (window.KCAnalyticsInterpretations) {
+                if (!rows.length) {
+                    interp = 'Not enough completed assessment data is available yet to describe a monitoring trend.';
+                } else {
+                    const summary = window.KCAnalyticsInterpretations.computeMonitoringSummary(rows);
+                    interp = summary.trendText + ' This reflects the distribution of recorded assessment results, not a diagnosis.';
+                }
+            }
+            document.getElementById('domainTrendInterpretation').textContent = interp;
+            return rows;
+        }
+
+        function updateMonitoringSummary(domainMonthlyTrend) {
+            const el = document.getElementById('monitoringSummary');
+            if (!el || !window.KCAnalyticsInterpretations) return;
+            const summary = window.KCAnalyticsInterpretations.computeMonitoringSummary(domainMonthlyTrend || []);
+
+            if (!summary.hasData) {
+                el.innerHTML = `<div class="report-card" style="grid-column:1/-1;"><p class="report-label">Not enough data yet</p><p class="pr-kpi-note" style="margin-top:0.4rem;">${summary.trendText}</p></div>`;
+                return;
             }
 
-            // Update appointment status pie chart
-            if (apptChart) {
-                const appt = data.appointmentStats || [];
-                apptChart.data.labels = appt.map(a => a.status ? (a.status.charAt(0).toUpperCase() + a.status.slice(1)) : 'Unknown');
-                apptChart.data.datasets[0].data = appt.map(a => a.count || 0);
-                apptChart.update();
+            const cards = [
+                ['Current highest monitoring area', summary.latestLeadLabel],
+                ['Latest period', summary.latest.monthLabel],
+                [`Needs-support results (${summary.latestLeadLabel}, latest period)`, summary.latestLeadCount],
+                ['Total needs-support results, all domains (latest period)', summary.latestTotal],
+            ];
+            if (summary.hasComparison) {
+                cards.push(
+                    ['Previous period', summary.previous.monthLabel],
+                    ['Previous highest monitoring area', summary.previousLeadLabel],
+                );
             }
+            el.innerHTML = cards.map(([label, value]) => `
+                <div class="report-card"><p class="report-label">${label}</p><p class="report-value" style="font-size:1.3rem;">${value}</p></div>
+            `).join('') + `<div class="report-card" style="grid-column:1/-1;"><p class="report-label">Trend</p><p class="pr-kpi-note" style="margin-top:0.4rem;font-size:0.85rem;">${summary.trendText}</p></div>`;
+        }
 
-            // Update role distribution doughnut chart
-            if (roleChart) {
-                const roles = data.roleBreakdown || [];
-                roleChart.data.labels = roles.map(r => r.role ? (r.role.charAt(0).toUpperCase() + r.role.slice(1)) : 'Unknown');
-                roleChart.data.datasets[0].data = roles.map(r => r.count || 0);
-                roleChart.update();
+        function updatePediatricianComparison(rows, total, reviewedAssessmentsSystemWide) {
+            const noteEl = document.getElementById('pediatricianComparisonNote');
+            const capEl = document.getElementById('pediatricianComparisonCapNote');
+            const tbody = document.getElementById('pediatricianComparisonTable');
+            if (noteEl && window.KCAnalyticsInterpretations) {
+                noteEl.textContent = window.KCAnalyticsInterpretations.formatPediatricianComparisonNote(reviewedAssessmentsSystemWide);
             }
+            const list = rows || [];
+            if (!list.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="muted">No pediatrician has any assigned appointments yet.</td></tr>';
+            } else {
+                tbody.innerHTML = list.map((p) => `
+                    <tr>
+                        <td>${p.rank}</td>
+                        <td>${escapeHtml(p.name)}</td>
+                        <td>${p.relevantChildren}</td>
+                        <td>${p.completedAssessments}</td>
+                        <td>${p.needsSupportCases}</td>
+                        <td>${p.reviewedAssessments}</td>
+                        <td>${escapeHtml(window.KCAnalyticsInterpretations ? window.KCAnalyticsInterpretations.formatPediatricianRowInterpretation(p) : '')}</td>
+                    </tr>`).join('');
+            }
+            if (capEl) {
+                capEl.textContent = (total || 0) > list.length
+                    ? `Showing the top ${list.length} of ${total} pediatricians with assigned appointments, ranked by needs-support cases.`
+                    : '';
+            }
+        }
+
+        function updateAppointmentTable(appointmentStats) {
+            const tbody = document.getElementById('appointmentStatusTable');
+            const stats = appointmentStats || [];
+            const total = stats.reduce((sum, a) => sum + (a.count || 0), 0);
+            if (!stats.length) {
+                tbody.innerHTML = '<tr><td colspan="3" class="muted">No appointment data available.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = stats.map((a) => {
+                const label = a.status ? (a.status.charAt(0).toUpperCase() + a.status.slice(1)) : 'Unknown';
+                const pct = total > 0 ? Math.round(((a.count || 0) / total) * 100) : 0;
+                return `<tr><td>${escapeHtml(label)}</td><td>${a.count || 0}</td><td>${pct}%</td></tr>`;
+            }).join('');
+        }
+
+        function updateRoleTable(roleBreakdown) {
+            const tbody = document.getElementById('userRoleTable');
+            const roles = roleBreakdown || [];
+            const total = roles.reduce((sum, r) => sum + (r.count || 0), 0);
+            if (!roles.length) {
+                tbody.innerHTML = '<tr><td colspan="3" class="muted">No role data available.</td></tr>';
+                return;
+            }
+            const ROLE_LABELS = {
+                parent: 'Parent', legal_guardian: 'Legal Guardian', foster_parent: 'Foster Parent',
+                court_appointed: 'Court-Appointed Guardian', pediatrician: 'Pediatrician',
+                secretary: 'Secretary', admin: 'Admin',
+            };
+            tbody.innerHTML = roles.map((r) => {
+                const label = ROLE_LABELS[r.role] || (r.role ? (r.role.charAt(0).toUpperCase() + r.role.slice(1)) : 'Unknown');
+                const pct = total > 0 ? Math.round(((r.count || 0) / total) * 100) : 0;
+                return `<tr><td>${escapeHtml(label)}</td><td>${r.count || 0}</td><td>${pct}%</td></tr>`;
+            }).join('');
         }
 
         async function loadAnalytics() {
@@ -231,11 +393,17 @@ requireAuth();
                 const apptStats = response.appointmentStats || [];
                 const roles = response.roleBreakdown || [];
 
-                // Update KPI cards with fallback values
+                // Update KPI cards with fallback values.
+                // "completedScreenings" is the response field NAME (unchanged,
+                // still Assessment.countDocuments({status:'complete'}) — see
+                // routes/admin.js); the CARD label now correctly reads
+                // "Completed Assessments" to match that definition and stay
+                // consistent with Admin Reports.
                 document.getElementById('totalUsers').textContent = summary.totalUsers != null ? summary.totalUsers : 0;
                 document.getElementById('totalChildren').textContent = summary.totalChildren != null ? summary.totalChildren : 0;
                 document.getElementById('activeAppointments').textContent = summary.activeAppointments != null ? summary.activeAppointments : 0;
                 document.getElementById('completedScreenings').textContent = summary.completedScreenings != null ? summary.completedScreenings : 0;
+                document.getElementById('activeAssessments').textContent = summary.inProgressScreenings != null ? summary.inProgressScreenings : 0;
 
                 // Update average scores section
                 const commVal = avg.avgCommunication != null ? avg.avgCommunication : 0;
@@ -244,23 +412,24 @@ requireAuth();
                 const motorVal = avg.avgMotor != null ? avg.avgMotor : 0;
 
                 document.getElementById('avgScores').innerHTML = [
-                    { label:'Communication', val: commVal },
-                    { label:'Social', val: socialVal },
-                    { label:'Cognitive', val: cognVal },
-                    { label:'Motor', val: motorVal }
+                    { label: DOMAIN_LABELS.communication, val: commVal },
+                    { label: DOMAIN_LABELS.social, val: socialVal },
+                    { label: DOMAIN_LABELS.cognitive, val: cognVal },
+                    { label: DOMAIN_LABELS.motor, val: motorVal }
                 ].map(s => `
                     <div style="background:var(--bg-primary);padding:1.2rem;border-radius:8px;text-align:center;">
                         <p style="font-size:0.9rem;color:var(--text-light);margin-bottom:0.5rem;">${s.label}</p>
                         <p style="font-size:2rem;font-weight:700;color:var(--primary);">${s.val}%</p>
                     </div>`).join('');
 
-                // Update charts
-                updateCharts({
-                    averageScores: avg,
-                    monthlySignups: monthly,
-                    appointmentStats: apptStats,
-                    roleBreakdown: roles
-                });
+                // Update the assessment-monitoring sections.
+                updateScoreHistogram(response.scoreDistribution);
+                updateDomainMonitoring(response.domainNeedsSupport);
+                updateDomainTrend(response.domainMonthlyTrend);
+                updateMonitoringSummary(response.domainMonthlyTrend);
+                updatePediatricianComparison(response.pediatricianComparison, response.pediatricianComparisonTotal, response.reviewedAssessmentsSystemWide);
+                updateAppointmentTable(apptStats);
+                updateRoleTable(roles);
 
                 // Calculate growth rate
                 const totalRecent = monthly.reduce((sum, m) => sum + m.count, 0);
@@ -295,6 +464,7 @@ requireAuth();
                 document.getElementById('totalChildren').textContent = '0';
                 document.getElementById('activeAppointments').textContent = '0';
                 document.getElementById('completedScreenings').textContent = '0';
+                document.getElementById('activeAssessments').textContent = '0';
                 document.getElementById('avgScores').innerHTML = '<p style="color:red;text-align:center;">' + errorMsg + '</p>';
                 document.getElementById('lastUpdated').textContent = 'Update failed';
             }

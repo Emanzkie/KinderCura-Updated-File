@@ -24,6 +24,7 @@ const Notification = require('../models/Notification');
 const SystemSetting = require('../models/SystemSetting');
 const paymentService = require('../services/paymentService');
 const fileStorage = require('../services/fileStorage');
+const scoring = require('../constants/scoring');
 // Requirement B — synthetic MODEL dataset pipeline (generate + clean only;
 // training stays with POST /training/:id/train). See services/datasetPipeline.js.
 const datasetPipeline = require('../services/datasetPipeline');
@@ -1003,6 +1004,215 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
       Appointment.countDocuments({ status: { $in: ['pending', 'approved'] } }),
     ]);
 
+    // ── Assessment-monitoring aggregations (Admin Analytics revision) ───────
+    // Additive, in a SEPARATE Promise.all so none of the working queries
+    // above are touched. Every one of these reuses an already-audited
+    // definition instead of inventing a new one:
+    //   - "Needs Support" domain range = constants/scoring.js BAND.AT_RISK +
+    //     BAND.DELAYED — the SAME two bands PARENT_OVERALL_LABELS already
+    //     merges under the single label "Needs Support" for the overall
+    //     score (see docs/SCORING.md §3.1). Read directly off the persisted
+    //     AssessmentResult.*Status fields; every stored result is on
+    //     scoringBandsVersion 'v2-80/60/40' (docs/BACKFILL-REPORT.md), so
+    //     this never recomputes a band or reintroduces a cutoff.
+    //   - Pediatrician -> Child relationship = Appointment.pediatricianId +
+    //     Appointment.childId, the exact relationship routes/admin-patient-
+    //     reports.js already documents and uses for its pediatrician roster.
+    const NEEDS_SUPPORT_BANDS = [scoring.BAND.AT_RISK, scoring.BAND.DELAYED];
+    const RESULTS_COL = AssessmentResult.collection.name;
+    const ASSESSMENTS_COL = Assessment.collection.name;
+    const USERS_COL = User.collection.name;
+
+    const [
+      scoreHistogramResult,
+      domainNeedsSupportResult,
+      domainMonthlyTrendResult,
+      pediatricianComparisonResult,
+    ] = await Promise.all([
+      // Assessment Score Distribution — one bucket per 10-point range, 0-100,
+      // straight off the stored overallScore. Every AssessmentResult document
+      // corresponds 1:1 with a status:'complete' Assessment (see
+      // models/AssessmentResult.js), so this already IS "every completed
+      // assessment with a usable overall score" — no extra join needed.
+      AssessmentResult.aggregate([
+        {
+          $bucket: {
+            groupBy: { $min: [{ $max: ['$overallScore', 0] }, 100] },
+            boundaries: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 101],
+            default: 'out_of_range',
+            output: { count: { $sum: 1 } },
+          },
+        },
+      ]),
+
+      // Developmental Areas Requiring Monitoring — count of stored per-domain
+      // bands that fall in the at-risk/delayed ("Needs Support") range.
+      AssessmentResult.aggregate([
+        {
+          $group: {
+            _id: null,
+            total: { $sum: 1 },
+            communication: { $sum: { $cond: [{ $in: ['$communicationStatus', NEEDS_SUPPORT_BANDS] }, 1, 0] } },
+            social: { $sum: { $cond: [{ $in: ['$socialStatus', NEEDS_SUPPORT_BANDS] }, 1, 0] } },
+            cognitive: { $sum: { $cond: [{ $in: ['$cognitiveStatus', NEEDS_SUPPORT_BANDS] }, 1, 0] } },
+            motor: { $sum: { $cond: [{ $in: ['$motorStatus', NEEDS_SUPPORT_BANDS] }, 1, 0] } },
+          },
+        },
+      ]),
+
+      // Developmental Monitoring Trends Over Time — same per-domain Needs
+      // Support definition, grouped by the month the assessment was
+      // COMPLETED. completedAt only — matching routes/admin-patient-
+      // reports.js's assessmentWindowExpr, never updatedAt/startedAt.
+      Assessment.aggregate([
+        { $match: { status: 'complete', completedAt: { $ne: null } } },
+        {
+          $lookup: {
+            from: RESULTS_COL,
+            localField: '_id',
+            foreignField: 'assessmentId',
+            as: 'result',
+          },
+        },
+        { $unwind: '$result' },
+        { $addFields: { monthKey: { $dateToString: { format: '%Y-%m', date: '$completedAt' } } } },
+        {
+          $group: {
+            _id: '$monthKey',
+            totalAssessments: { $sum: 1 },
+            communication: { $sum: { $cond: [{ $in: ['$result.communicationStatus', NEEDS_SUPPORT_BANDS] }, 1, 0] } },
+            social: { $sum: { $cond: [{ $in: ['$result.socialStatus', NEEDS_SUPPORT_BANDS] }, 1, 0] } },
+            cognitive: { $sum: { $cond: [{ $in: ['$result.cognitiveStatus', NEEDS_SUPPORT_BANDS] }, 1, 0] } },
+            motor: { $sum: { $cond: [{ $in: ['$result.motorStatus', NEEDS_SUPPORT_BANDS] }, 1, 0] } },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+
+      // Pediatrician Assessment Comparison — DESCRIPTIVE metrics only (see
+      // the "not enough repeat-review history" note below the response).
+      // "Relevant children" / "completed assessments" reuse the exact
+      // Appointment.pediatricianId + Appointment.childId shape already
+      // established by routes/admin-patient-reports.js (GET /overview
+      // pediatricianSummary). "Needs-support cases" uses overallScore < 60,
+      // which is mathematically identical to scoring.bandFor(overallScore)
+      // landing in AT_RISK or DELAYED (both sit below the 60 "developing"
+      // floor) — not a new cutoff.
+      Appointment.aggregate([
+        { $match: { pediatricianId: { $ne: null } } },
+        { $group: { _id: { pediatricianId: '$pediatricianId', childId: '$childId' } } },
+        { $group: { _id: '$_id.pediatricianId', childIds: { $addToSet: '$_id.childId' } } },
+        {
+          $lookup: {
+            from: ASSESSMENTS_COL,
+            let: { kids: '$childIds' },
+            pipeline: [
+              { $match: { $expr: { $and: [{ $in: ['$childId', '$$kids'] }, { $eq: ['$status', 'complete'] }] } } },
+              { $project: { _id: 1, reviewedAt: 1 } },
+            ],
+            as: 'assessmentsInRange',
+          },
+        },
+        {
+          $lookup: {
+            from: RESULTS_COL,
+            let: { aids: '$assessmentsInRange._id' },
+            pipeline: [
+              { $match: { $expr: { $in: ['$assessmentId', '$$aids'] } } },
+              { $project: { overallScore: 1 } },
+            ],
+            as: 'resultsInRange',
+          },
+        },
+        {
+          $addFields: {
+            relevantChildren: { $size: '$childIds' },
+            completedAssessments: { $size: '$assessmentsInRange' },
+            reviewedAssessments: {
+              $size: { $filter: { input: '$assessmentsInRange', cond: { $ne: ['$$this.reviewedAt', null] } } },
+            },
+            needsSupportCases: {
+              $size: { $filter: { input: '$resultsInRange', cond: { $lt: ['$$this.overallScore', 60] } } },
+            },
+          },
+        },
+        { $lookup: { from: USERS_COL, localField: '_id', foreignField: '_id', as: 'pedUser' } },
+        // $unwind (non-preserving) drops any pediatricianId that no longer
+        // resolves to a User — matches routes/admin-patient-reports.js.
+        { $unwind: '$pedUser' },
+        {
+          $project: {
+            _id: 0,
+            pediatricianId: { $toString: '$_id' },
+            firstName: '$pedUser.firstName',
+            lastName: '$pedUser.lastName',
+            relevantChildren: 1,
+            completedAssessments: 1,
+            needsSupportCases: 1,
+            reviewedAssessments: 1,
+          },
+        },
+        { $sort: { needsSupportCases: -1, completedAssessments: -1, lastName: 1, firstName: 1 } },
+      ]),
+    ]);
+
+    const BIN_LABELS = ['0-9', '10-19', '20-29', '30-39', '40-49', '50-59', '60-69', '70-79', '80-89', '90-100'];
+    const histogramCounts = new Array(10).fill(0);
+    scoreHistogramResult.forEach((b) => {
+      if (typeof b._id === 'number') {
+        histogramCounts[Math.min(9, Math.floor(b._id / 10))] += b.count;
+      }
+    });
+    const scoreDistribution = {
+      bins: BIN_LABELS.map((range, i) => ({ range, count: histogramCounts[i] })),
+      total: histogramCounts.reduce((a, b) => a + b, 0),
+    };
+
+    const dns = domainNeedsSupportResult[0] || { total: 0, communication: 0, social: 0, cognitive: 0, motor: 0 };
+    const domainNeedsSupport = {
+      total: dns.total,
+      communication: dns.communication,
+      social: dns.social,
+      cognitive: dns.cognitive,
+      motor: dns.motor,
+    };
+
+    const domainMonthlyTrend = domainMonthlyTrendResult.map((m) => {
+      const [y, mo] = m._id.split('-').map(Number);
+      return {
+        month: m._id,
+        monthLabel: new Date(y, mo - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+        totalAssessments: m.totalAssessments,
+        communication: m.communication,
+        social: m.social,
+        cognitive: m.cognitive,
+        motor: m.motor,
+      };
+    });
+
+    // Reviewed assessments, system-wide — surfaced so the UI can explain WHY
+    // pediatricianComparison reports a reviewed-assessment count instead of a
+    // score-change/outcome metric: there is not enough same-pediatrician
+    // repeat-review history yet to compute one.
+    const reviewedAssessmentsSystemWide = await Assessment.countDocuments({ status: 'complete', reviewedAt: { $ne: null } });
+
+    // Capped for display (req 10 — don't overload the page); the table is
+    // already sorted needs-support-cases-first, so this keeps the pediatricians
+    // where monitoring demand is most concentrated, matching the section's
+    // purpose. See ROSTER_CAP in routes/admin-patient-reports.js for the same
+    // pattern.
+    const PEDIATRICIAN_COMPARISON_CAP = 20;
+    const pediatricianComparisonTotal = pediatricianComparisonResult.length;
+    const pediatricianComparison = pediatricianComparisonResult.slice(0, PEDIATRICIAN_COMPARISON_CAP).map((p, idx) => ({
+      rank: idx + 1,
+      pediatricianId: p.pediatricianId,
+      name: fullName(p) || 'Unknown Pediatrician',
+      relevantChildren: p.relevantChildren,
+      completedAssessments: p.completedAssessments,
+      needsSupportCases: p.needsSupportCases,
+      reviewedAssessments: p.reviewedAssessments,
+    }));
+
     const avg = avgScoresResult[0] || {};
     const averageScores = {
       avgCommunication: avg.avgCommunication != null ? Math.round(avg.avgCommunication) : 0,
@@ -1084,6 +1294,12 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
       datasetStats,
       financialSummary,
       summaryTotals,
+      scoreDistribution,
+      domainNeedsSupport,
+      domainMonthlyTrend,
+      pediatricianComparison,
+      pediatricianComparisonTotal,
+      reviewedAssessmentsSystemWide,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

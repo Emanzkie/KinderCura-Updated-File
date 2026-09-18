@@ -8,8 +8,15 @@
     <link rel="stylesheet" href="/css/dashboard-new-styles.css">
     <link rel="stylesheet" href="/css/analytics-styles.css">
     <link rel="stylesheet" href="/css/admin-analytics.css">
+    <!-- Reused for .simple-table / .pr-notice / .pr-kpi-note / .muted — the
+         same table + interpretation-note styles already used on Admin
+         Reports, so the two pages read as one visual system. -->
+    <link rel="stylesheet" href="/css/admin-reports.css">
     <link rel="stylesheet" href="/css/notifications-styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Single source of truth for score bands/labels/colours — must load
+         before admin-analytics.js. See constants/scoring.js header comment. -->
+    <script src="/constants/scoring.js"></script>
     <link rel="stylesheet" href="/notifications-card-ui.css">
 </head>
 <body>
@@ -74,18 +81,27 @@
             <div class="overview-card">
                 <h3><img src="/icons/account.png" alt="" aria-hidden="true" class="icon-inline"> Total Users</h3>
                 <p id="totalUsers" class="kpi-value">—</p>
+                <p class="pr-kpi-note">All registered accounts across every role: parent, legal guardian, foster parent, court-appointed guardian, pediatrician, secretary, and admin.</p>
             </div>
             <div class="overview-card">
                 <h3><img src="/icons/parent.png" alt="" aria-hidden="true" class="icon-inline"> Total Children</h3>
                 <p id="totalChildren" class="kpi-value">—</p>
+                <p class="pr-kpi-note">Distinct child/patient records registered in KinderCura.</p>
+            </div>
+            <div class="overview-card">
+                <h3><img src="/icons/clipboard.png" alt="" aria-hidden="true" class="icon-inline"> Completed Assessments</h3>
+                <p id="completedScreenings" class="kpi-value">—</p>
+                <p class="pr-kpi-note">Assessment records with status = complete, each backed by a stored result.</p>
+            </div>
+            <div class="overview-card">
+                <h3><img src="/icons/cognitive.png" alt="" aria-hidden="true" class="icon-inline"> Active Assessments</h3>
+                <p id="activeAssessments" class="kpi-value">—</p>
+                <p class="pr-kpi-note">Assessment records currently marked in-progress (not yet completed). Counts assessment sessions, not children or appointments.</p>
             </div>
             <div class="overview-card">
                 <h3><img src="/icons/appointment.png" alt="" aria-hidden="true" class="icon-inline"> Active Appointments</h3>
                 <p id="activeAppointments" class="kpi-value">—</p>
-            </div>
-            <div class="overview-card">
-                <h3><img src="/icons/clipboard.png" alt="" aria-hidden="true" class="icon-inline"> Completed Screenings</h3>
-                <p id="completedScreenings" class="kpi-value">—</p>
+                <p class="pr-kpi-note">Appointment records currently pending or approved.</p>
             </div>
         </div>
 
@@ -97,35 +113,97 @@
             </div>
         </div>
 
-        <!-- Charts Row -->
-        <div class="chart-row">
-            <div class="card">
-                <h3><img src="/icons/analytics.png" alt="" aria-hidden="true" class="icon-inline"> Monthly Signups (Last 6 Months)</h3>
-                <div class="chart-container">
-                    <canvas id="monthlyChart"></canvas>
-                </div>
+        <!-- Assessment Score Distribution — vertical histogram over the 10
+             existing score bins (replaces the old horizontal per-domain-average
+             bar chart that used to occupy this slot). Monthly Signups has been
+             removed from this page entirely; the underlying signup data is
+             untouched — see ADMIN/admin-analytics.html's sibling insight card
+             "User Growth" above (still fed by the same data) and
+             ADMIN/admin-insights.html if a chart is needed elsewhere. -->
+        <div class="card mb-2">
+            <h3><img src="/icons/clipboard.png" alt="" aria-hidden="true" class="icon-inline"> Assessment Score Distribution</h3>
+            <div class="chart-container">
+                <canvas id="scoreHistogramChart"></canvas>
             </div>
-            <div class="card">
-                <h3><img src="/icons/clipboard.png" alt="" aria-hidden="true" class="icon-inline"> Assessment Score Distribution</h3>
-                <div class="chart-container">
-                    <canvas id="scoresChart"></canvas>
-                </div>
+            <p class="pr-kpi-note" id="histogramInterpretation" style="margin-top:0.75rem;">Loading…</p>
+        </div>
+
+        <!-- Developmental Areas Requiring Monitoring -->
+        <div class="card mb-2">
+            <h3><img src="/icons/cognitive.png" alt="" aria-hidden="true" class="icon-inline"> Developmental Areas Requiring Monitoring</h3>
+            <div class="chart-container">
+                <canvas id="domainMonitoringChart"></canvas>
+            </div>
+            <p class="pr-kpi-note" id="domainMonitoringInterpretation" style="margin-top:0.75rem;">Loading…</p>
+        </div>
+
+        <!-- Developmental Monitoring Trends Over Time -->
+        <div class="card mb-2">
+            <h3><img src="/icons/analytics.png" alt="" aria-hidden="true" class="icon-inline"> Developmental Monitoring Trends Over Time</h3>
+            <div class="chart-container" id="domainTrendChartWrap">
+                <canvas id="domainTrendChart"></canvas>
+            </div>
+            <p class="muted" id="domainTrendEmptyState" hidden>Not enough completed assessment data is available yet to show a monthly trend.</p>
+            <p class="pr-kpi-note" id="domainTrendInterpretation" style="margin-top:0.75rem;">Loading…</p>
+        </div>
+
+        <!-- Current Monitoring Summary -->
+        <div class="card mb-2">
+            <h3><img src="/icons/logs.png" alt="" aria-hidden="true" class="icon-inline"> Current Monitoring Summary</h3>
+            <div id="monitoringSummary" class="report-grid">
+                <div class="report-card"><p class="report-label">Loading…</p><p class="report-value">—</p></div>
             </div>
         </div>
 
-        <!-- Charts Row 2 -->
+        <!-- Pediatrician Assessment Comparison -->
+        <div class="card mb-2">
+            <h3><img src="/icons/parent.png" alt="" aria-hidden="true" class="icon-inline"> Pediatrician Assessment Comparison</h3>
+            <p class="pr-notice" id="pediatricianComparisonNote">Loading…</p>
+            <div style="overflow-x:auto;">
+                <table class="simple-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th><th>Pediatrician</th><th>Relevant Children</th>
+                            <th>Completed Assessments</th><th>Needs-Support Cases</th>
+                            <th>Reviewed Assessments</th><th>Interpretation</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pediatricianComparisonTable">
+                        <tr><td colspan="7" class="muted">Loading pediatrician comparison…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="muted" id="pediatricianComparisonCapNote" style="margin-top:0.6rem;font-size:0.82rem;"></p>
+        </div>
+
+        <!-- Charts Row 2 — Appointment Status and User Role Distribution are
+             compact tables, not charts, per the adviser's request to stop
+             giving them a large visualization now that the page prioritizes
+             assessment monitoring. Values are the SAME appointmentStats /
+             roleBreakdown fields the old pie/donut charts read. -->
         <div class="chart-row">
             <div class="card">
                 <h3><img src="/icons/appointment.png" alt="" aria-hidden="true" class="icon-inline"> Appointment Status</h3>
-                <div class="chart-container">
-                    <canvas id="apptChart"></canvas>
+                <div style="overflow-x:auto;">
+                    <table class="simple-table">
+                        <thead><tr><th>Status</th><th>Count</th><th>Share</th></tr></thead>
+                        <tbody id="appointmentStatusTable">
+                            <tr><td colspan="3" class="muted">Loading…</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
             <div class="card">
                 <h3><img src="/icons/parent.png" alt="" aria-hidden="true" class="icon-inline"> User Role Distribution</h3>
-                <div class="chart-container">
-                    <canvas id="roleChart"></canvas>
+                <div style="overflow-x:auto;">
+                    <table class="simple-table">
+                        <thead><tr><th>Role</th><th>Count</th><th>Share</th></tr></thead>
+                        <tbody id="userRoleTable">
+                            <tr><td colspan="3" class="muted">Loading…</td></tr>
+                        </tbody>
+                    </table>
                 </div>
+                <p class="pr-kpi-note" style="margin-top:0.6rem;">The total user count includes all registered account roles shown above.</p>
             </div>
         </div>
     </div>
@@ -149,6 +227,7 @@
     <script src="/notifications-card-ui.js"></script>
     <script src="/assets/js/notifications.js"></script>
     <script src="/assets/js/admin-nav.js"></script>
+    <script src="/js/admin/analytics-interpretations.js"></script>
     <script src="/js/admin/admin-analytics.js"></script>
 </body>
 </html>
