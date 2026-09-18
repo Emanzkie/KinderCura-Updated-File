@@ -153,9 +153,34 @@ requireAuth();
             return `<tr><td>${label}</td><td>${value}</td><td>${percentOf(value, total)}</td></tr>`;
         }
 
-        // Builds one summary card at the top of the report page.
-        function summaryCard(label, value) {
-            return `<div class="report-card"><p class="report-label">${label}</p><p class="report-value">${value}</p></div>`;
+        // Human-readable labels for the ACTUAL role values found in the
+        // database (models/User.js role enum) — never invented, only
+        // prettified. 'parent', 'legal_guardian', 'foster_parent' and
+        // 'court_appointed' are all distinct guardian-type roles that can own
+        // a Child record; a technical-looking name like "court_appointed" is
+        // easy to skip when eyeballing the table, which is exactly how the
+        // earlier "Total Users doesn't match Role Breakdown" question arose —
+        // the breakdown was always complete, the row was just easy to miss.
+        const ROLE_LABELS = {
+            parent: 'Parent',
+            legal_guardian: 'Legal Guardian',
+            foster_parent: 'Foster Parent',
+            court_appointed: 'Court-Appointed Guardian',
+            pediatrician: 'Pediatrician',
+            secretary: 'Secretary',
+            admin: 'Admin',
+        };
+
+        function roleRow(role, value, total) {
+            const label = ROLE_LABELS[role] || role;
+            return `<tr><td>${label}</td><td>${value}</td><td>${percentOf(value, total)}</td></tr>`;
+        }
+
+        // Builds one summary card at the top of the report page. `note` is an
+        // optional short interpretation — what is being counted, and what it
+        // should not be read as (req 11) — kept to one line by design.
+        function summaryCard(label, value, note) {
+            return `<div class="report-card"><p class="report-label">${label}</p><p class="report-value">${value}</p>${note ? `<p class="pr-kpi-note">${note}</p>` : ''}</div>`;
         }
 
         async function loadReport() {
@@ -168,10 +193,17 @@ requireAuth();
 
                 const appointmentStats = analytics.appointmentStats || [];
                 const roleBreakdown = analytics.roleBreakdown || [];
-                const monthlySignups = analytics.monthlySignups || [];
                 const averageScores = analytics.averageScores || {};
                 const totalAppointments = appointmentStats.reduce((sum, item) => sum + (item.count || 0), 0);
                 const totalRoles = roleBreakdown.reduce((sum, item) => sum + (item.count || 0), 0);
+                // Audited (see routes/auth.js:617 and the login check in
+                // routes/auth.js): status:'pending' is set by role-agnostic
+                // logic — a real pediatrician sign-up starts pending until
+                // PRC/admin approval, and any OTHER role can also be placed in
+                // this state by an admin, which likewise blocks login. In the
+                // live database today the 100 pending accounts are mostly
+                // parent/guardian roles, not pediatricians — so this must be
+                // labelled generically, never "Pending Pediatrician Approvals".
                 const pendingCount = (pendingUsers.users || []).length;
 
                 reportCache = {
@@ -184,14 +216,23 @@ requireAuth();
 
                 document.getElementById('reportGeneratedAt').textContent = `Generated: ${new Date(reportCache.generatedAt).toLocaleString()}`;
 
-                // Top summary cards for the most important report numbers.
+                // Top summary cards — Total Children leads, as the primary
+                // patient-focused metric (req 2). Every card's note states the
+                // unit being counted and, where it matters, what NOT to read
+                // the number as (req 11).
                 document.getElementById('summaryCards').innerHTML = [
-                    summaryCard('Total Users', dashboard.totalUsers ?? 0),
-                    summaryCard('Total Children', dashboard.childCount ?? 0),
-                    summaryCard('Completed Assessments', dashboard.completedAssessments ?? 0),
-                    summaryCard('Active Assessments', dashboard.activeAssessments ?? 0),
-                    summaryCard('Total Appointments', totalAppointments),
-                    summaryCard('Pending Approvals', pendingCount)
+                    summaryCard('Total Children', dashboard.childCount ?? 0,
+                        'Distinct Child/patient records registered in KinderCura — the primary patient population.'),
+                    summaryCard('Total Users', dashboard.totalUsers ?? 0,
+                        'All registered accounts across every role: parent, legal guardian, foster parent, court-appointed guardian, pediatrician, secretary, and admin. See User Role Breakdown below for the exact split.'),
+                    summaryCard('Completed Assessments', dashboard.completedAssessments ?? 0,
+                        'Assessment records with status = complete, each backed by a stored result. Not the same as active (in-progress) assessments or appointment bookings.'),
+                    summaryCard('Active Assessments', dashboard.activeAssessments ?? 0,
+                        'Assessment records currently marked in-progress (not yet completed). Counts assessment sessions, not distinct children.'),
+                    summaryCard('Total Appointments', totalAppointments,
+                        'Total appointment records across all statuses (pending, approved, completed, cancelled, rejected). One child may have several.'),
+                    summaryCard('Pending Account Approvals', pendingCount,
+                        'User accounts (any role) with status = pending, which blocks sign-in until an admin approves them — includes pediatrician sign-ups awaiting PRC verification as well as other accounts awaiting activation.')
                 ].join('');
 
                 // Snapshot table gives the adviser a quick one-look report summary.
@@ -203,18 +244,6 @@ requireAuth();
                     <tr><td>Pending account approvals</td><td>${pendingCount}</td></tr>
                     <tr><td>Total appointment records</td><td>${totalAppointments}</td></tr>
                 `;
-
-                const maxSignup = Math.max(...monthlySignups.map(item => item.count || 0), 1);
-                document.getElementById('signupBars').innerHTML = monthlySignups.length
-                    ? monthlySignups.map(item => `
-                        <div>
-                            <div style="display:flex;justify-content:space-between;gap:1rem;margin-bottom:0.35rem;">
-                                <strong>${item.month}</strong>
-                                <span class="muted">${item.count} signup${item.count === 1 ? '' : 's'}</span>
-                            </div>
-                            <div class="mini-bar-track"><div class="mini-bar-fill" style="width:${Math.max(8, Math.round(((item.count || 0) / maxSignup) * 100))}%;"></div></div>
-                        </div>`).join('')
-                    : '<p class="muted">No signup data available.</p>';
 
                 const scoreCards = [
                     ['Communication', averageScores.avgCommunication],
@@ -229,8 +258,19 @@ requireAuth();
                     : '<tr><td colspan="3" class="muted">No appointment data available.</td></tr>';
 
                 document.getElementById('roleBreakdownTable').innerHTML = roleBreakdown.length
-                    ? roleBreakdown.map(item => row(item.role, item.count || 0, totalRoles)).join('')
+                    ? roleBreakdown.map(item => roleRow(item.role, item.count || 0, totalRoles)).join('')
                     : '<tr><td colspan="3" class="muted">No role data available.</td></tr>';
+
+                // req 3: the breakdown must visibly reconcile to Total Users,
+                // not leave the reader to add it up (or miss a row) themselves.
+                const reconciliationEl = document.getElementById('roleBreakdownReconciliation');
+                if (reconciliationEl) {
+                    const matches = totalRoles === (dashboard.totalUsers ?? 0);
+                    reconciliationEl.textContent = matches
+                        ? `Total: ${totalRoles} — matches Total Users above.`
+                        : `Total: ${totalRoles} vs Total Users ${dashboard.totalUsers ?? 0} — these should match; investigate if they do not.`;
+                    reconciliationEl.style.color = matches ? '' : 'var(--status-attention-fg, #c0392b)';
+                }
 
                 const activities = dashboard.recentActivity || [];
                 document.getElementById('recentActivityList').innerHTML = activities.length
@@ -596,10 +636,39 @@ requireAuth();
             document.getElementById('patientReportModal').style.display = 'none';
         }
 
+        // req 10: dataset/demo-data volume, kept visibly separate from the
+        // real user/child/assessment totals above. Reuses the EXACT SAME
+        // /admin/demo-data/summary endpoint already shown on the Data Sources
+        // page's "System Demo Data" panel — no new counting logic here.
+        const DEMO_COLLECTION_LABELS = {
+            users: 'Users', children: 'Children', assessments: 'Assessments',
+            results: 'Assessment results', answers: 'Assessment answers', appointments: 'Appointments',
+        };
+
+        async function loadDemoDataVolume() {
+            const tbody = document.getElementById('demoDataVolumeTable');
+            if (!tbody) return;
+            try {
+                const data = await apiFetch('/admin/demo-data/summary');
+                const c = data.collections || {};
+                const rows = Object.keys(DEMO_COLLECTION_LABELS).filter((k) => c[k]).map((k) => `
+                    <tr>
+                        <td>${DEMO_COLLECTION_LABELS[k]}</td>
+                        <td>${c[k].total}</td>
+                        <td>${c[k].synthetic}</td>
+                        <td>${c[k].real}</td>
+                    </tr>`).join('');
+                tbody.innerHTML = rows || '<tr><td colspan="4" class="muted">No demo data recorded.</td></tr>';
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="4" style="color:var(--status-attention-fg, #c0392b);">Could not load demo data volume: ${escapeHtml(err.message)}</td></tr>`;
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             loadReport();
             loadPatientReportsOverview();
             loadPatientReportsList();
+            loadDemoDataVolume();
             if (typeof loadNotificationCount === 'function') loadNotificationCount();
             setInterval(() => {
                 if (typeof loadNotificationCount === 'function') loadNotificationCount();

@@ -33,6 +33,16 @@
     font-size: 0.9rem;
 }
 
+/* req 11: short interpretation line under a KPI value — what is being
+   counted and, where it matters, what NOT to read the number as. Kept to
+   one line by design; not a paragraph. */
+.pr-kpi-note {
+    color: var(--text-light);
+    font-size: 0.74rem;
+    line-height: 1.4;
+    margin-top: 0.5rem !important;
+}
+
 .report-section {
     padding: 1.5rem;
     margin-bottom: 1.5rem;
