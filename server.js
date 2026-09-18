@@ -212,6 +212,12 @@ app.use('/api/pedia-reports', require('./routes/pedia-reports'));
 // demographics, descriptive screening counts, and screening-vs-review
 // concordance — see routes/admin-reports.js header.
 app.use('/api/admin-reports', require('./routes/admin-reports'));
+// Admin-scoped CENTRALIZED PATIENT REPORTS pivot: one place to browse the
+// same stored assessment/review data Parent Reports and Pediatrician Reports
+// already show, filterable by pediatrician/parent/child/date — backs the new
+// section on the existing ADMIN/admin-reports.html page. See
+// routes/admin-patient-reports.js header.
+app.use('/api/admin/patient-reports', require('./routes/admin-patient-reports'));
 // V2 guardian & audit endpoints (non-breaking and additive)
 app.use('/api/v2/guardians', require('./routes/guardians'));
 app.use('/api/v2/audit-logs', require('./routes/audit-logs'));

@@ -63,6 +63,142 @@
             <div class="report-card"><p class="report-label">Loading report...</p><p class="report-value">—</p></div>
         </div>
 
+        <!-- ============================================================== -->
+        <!-- Centralized Patient Reports — the admin pivot over the SAME     -->
+        <!-- stored assessment/report data Parent Reports and Pediatrician   -->
+        <!-- Reports already show. Read-only aggregation; see               -->
+        <!-- routes/admin-patient-reports.js.                                -->
+        <!-- ============================================================== -->
+        <div class="report-section" id="patientReportsSection">
+            <h3><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Centralized Patient Reports</h3>
+            <p class="muted" style="margin-top:-0.5rem;margin-bottom:1rem;">One place to browse patient reports across pediatricians and parents, instead of opening Parent Reports or Pediatrician Reports separately. Pivot with the filters below — nothing here recomputes a score.</p>
+
+            <div class="report-grid" id="systemTotalsCards" style="margin-bottom:1.25rem;">
+                <div class="report-card"><p class="report-label">Loading system totals...</p><p class="report-value">—</p></div>
+            </div>
+
+            <div class="filter-row" id="patientFilterRow">
+                <div class="filter-group">
+                    <label for="prPediatrician">Pediatrician</label>
+                    <select id="prPediatrician" onchange="onPatientFilterChange('pediatricianId', this.value)">
+                        <option value="all">All Pediatricians</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="prParentSearch">Parent</label>
+                    <input type="text" id="prParentSearch" placeholder="Type a parent's name..." autocomplete="off"
+                           oninput="onParentSearchInput(this.value)">
+                    <input type="hidden" id="prParentId" value="">
+                    <div class="pr-typeahead" id="prParentResults" hidden></div>
+                </div>
+                <div class="filter-group">
+                    <label for="prChildSearch">Child</label>
+                    <input type="text" id="prChildSearch" placeholder="Type a child's name..." autocomplete="off"
+                           oninput="onChildSearchInput(this.value)">
+                    <input type="hidden" id="prChildId" value="">
+                    <div class="pr-typeahead" id="prChildResults" hidden></div>
+                </div>
+                <div class="filter-group">
+                    <label for="prDateFrom">Date From</label>
+                    <input type="date" id="prDateFrom" onchange="onPatientFilterChange('dateFrom', this.value)">
+                </div>
+                <div class="filter-group">
+                    <label for="prDateTo">Date To</label>
+                    <input type="date" id="prDateTo" onchange="onPatientFilterChange('dateTo', this.value)">
+                </div>
+                <div class="filter-group">
+                    <label for="prScope">Report Scope</label>
+                    <select id="prScope" onchange="onPatientFilterChange('scope', this.value)">
+                        <option value="all">All Reports</option>
+                        <option value="assessments">Assessments</option>
+                        <option value="reviewed">Pediatrician Reviewed</option>
+                        <option value="followup">Follow-up / Recommendation</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="prSort">Sort</label>
+                    <select id="prSort" onchange="onPatientFilterChange('sort', this.value)">
+                        <option value="newest">Newest First</option>
+                        <option value="oldest">Oldest First</option>
+                    </select>
+                </div>
+                <div class="filter-group" style="justify-content:flex-end;">
+                    <button class="btn btn-secondary" type="button" onclick="resetPatientFilters()">Reset</button>
+                </div>
+            </div>
+
+            <div id="patientReportsNotice" class="pr-notice" hidden></div>
+
+            <h4 id="patientPivotTitle" style="margin:0 0 0.6rem;">All Patient Reports</h4>
+            <div class="report-grid" id="patientFilteredSummary" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:1.25rem;">
+                <div class="report-card"><p class="report-label">Patients</p><p class="report-value">—</p></div>
+            </div>
+
+            <!-- Pediatrician Report Summary (req 5) — always the full roster, -->
+            <!-- independent of the pivot filters above; only the date range   -->
+            <!-- narrows its Assessments/Reviewed/Latest Activity columns.     -->
+            <details style="margin-bottom:1.25rem;">
+                <summary style="cursor:pointer;font-weight:600;padding:0.5rem 0;">Pediatrician Report Summary</summary>
+                <div style="overflow-x:auto;">
+                    <table class="simple-table">
+                        <thead>
+                            <tr><th>Pediatrician</th><th>Patients</th><th>Assessments</th><th>Reviewed</th><th>Latest Activity</th></tr>
+                        </thead>
+                        <tbody id="pediatricianReportSummaryRows"><tr><td colspan="5" class="muted">Loading...</td></tr></tbody>
+                    </table>
+                </div>
+            </details>
+
+            <!-- Parent Summary (req 7) — same idea, keyed by parent. -->
+            <details style="margin-bottom:1.25rem;">
+                <summary style="cursor:pointer;font-weight:600;padding:0.5rem 0;">Parent Summary</summary>
+                <div style="overflow-x:auto;">
+                    <table class="simple-table">
+                        <thead>
+                            <tr><th>Parent</th><th>Children</th><th>Assessments</th><th>Latest Activity</th></tr>
+                        </thead>
+                        <tbody id="parentReportSummaryRows"><tr><td colspan="4" class="muted">Loading...</td></tr></tbody>
+                    </table>
+                </div>
+            </details>
+
+            <div style="overflow-x:auto;">
+                <table class="simple-table" id="patientReportsTable">
+                    <thead>
+                        <tr>
+                            <th>Child</th><th>Parent</th><th>Pediatrician</th>
+                            <th>Assessments</th><th>Latest Score</th><th>Status</th>
+                            <th>Last Assessed</th><th>Review</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="patientReportsRows"><tr><td colspan="9" class="muted">Loading patient reports...</td></tr></tbody>
+                </table>
+            </div>
+
+            <div class="origin-pagination" style="margin-top:1rem;">
+                <span class="page-info" id="patientReportsPageInfo">—</span>
+                <div style="display:flex;gap:0.5rem;">
+                    <button class="btn btn-secondary" id="prPrevBtn" onclick="changePatientReportsPage(-1)">Previous</button>
+                    <button class="btn btn-secondary" id="prNextBtn" onclick="changePatientReportsPage(1)">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed patient report modal (req 11) — reuses the SAME
+             /api/parent/children/:childId/report endpoint Parent Reports
+             calls, so the numbers can never disagree with what a parent sees. -->
+        <div class="notifications-modal" id="patientReportModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="patientReportModalTitle">
+            <div class="notifications-content" style="max-width:700px;width:min(92vw,700px);max-height:85vh;">
+                <div class="notifications-header">
+                    <h3 id="patientReportModalTitle">Patient Report</h3>
+                    <button type="button" class="close-btn" onclick="closePatientReportModal()" aria-label="Close">&times;</button>
+                </div>
+                <div id="patientReportModalBody" style="padding:1.25rem;overflow-y:auto;">
+                    <p class="muted">Loading...</p>
+                </div>
+            </div>
+        </div>
+
         <div class="report-section">
             <h3><img src="/icons/parent.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> User and Appointment Snapshot</h3>
             <div style="overflow-x:auto;">

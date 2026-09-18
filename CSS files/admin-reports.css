@@ -124,13 +124,127 @@
     color: var(--text-light);
 }
 
+/* ------------------------------------------------------------------ *
+ * Centralized Patient Reports — filter row + typeahead + pagination
+ * ------------------------------------------------------------------ */
+.filter-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.1rem;
+    padding: 0.9rem 1rem;
+    background: var(--bg-primary, #f7f9f7);
+    border-radius: 10px;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 170px;
+    position: relative;
+}
+
+.filter-group label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.filter-group select,
+.filter-group input[type="date"],
+.filter-group input[type="text"] {
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font: inherit;
+    font-size: 0.85rem;
+    background: #ffffff;
+}
+
+.pr-typeahead {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+    max-height: 220px;
+    overflow-y: auto;
+    margin-top: 0.2rem;
+}
+
+.pr-typeahead-item {
+    padding: 0.5rem 0.7rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.pr-typeahead-item:hover {
+    background: var(--surface-tint, #f2f5f2);
+}
+
+.pr-notice {
+    background: #fff8e5;
+    border: 1px solid #e6cf8b;
+    border-left: 4px solid #d4a017;
+    color: #6b5200;
+    padding: 0.9rem 1.1rem;
+    border-radius: 8px;
+    margin-bottom: 1.25rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.pr-notice.is-error {
+    background: #fde8e8;
+    border-color: #e8a5a5;
+    border-left-color: var(--danger, #c0392b);
+    color: var(--danger, #c0392b);
+}
+
+.origin-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.origin-pagination .page-info {
+    font-size: 0.85rem;
+    color: var(--text-light);
+}
+
+.pr-status-badge {
+    display: inline-block;
+    padding: 0.12rem 0.55rem;
+    border-radius: var(--radius-pill, 999px);
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.pr-review-yes { color: var(--primary-dark); font-weight: 600; }
+.pr-review-no { color: var(--text-light); font-style: italic; }
+
 @media print {
     .top-nav,
     .notification-btn,
     .profile-btn,
     .profile-menu,
     .report-actions,
-    .notifications-modal {
+    .notifications-modal,
+    .pr-typeahead,
+    #patientReportModal,
+    #prPrevBtn,
+    #prNextBtn {
         display: none !important;
     }
     
