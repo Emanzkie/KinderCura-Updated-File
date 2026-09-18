@@ -361,13 +361,13 @@ requireAuth();
             const pq = s.pediatricianQuestion || {};
             const coreBankQuestions = pq.breakdown?.coreBank?.questions ?? 0;
             const list = pq.pediatricians || [];
-            const note = `<tr><td colspan="4" style="padding:0.7rem 0;color:var(--text-light);font-size:0.78rem;border-bottom:1px solid var(--border);">
+            const note = `<tr><td colspan="5" style="padding:0.7rem 0;color:var(--text-light);font-size:0.78rem;border-bottom:1px solid var(--border);">
                 Core Question Bank (${escapeHtml(String(coreBankQuestions))} system-wide questions, no individual owner) also
                 counts toward the Pediatrician Question tab total, but is not a pediatrician and is not listed as a row here.
             </td></tr>`;
 
             if (!list.length) {
-                rowsEl.innerHTML = note + '<tr><td colspan="4" style="padding:1.2rem;text-align:center;color:var(--text-light);">No pediatrician has entered a question yet.</td></tr>';
+                rowsEl.innerHTML = note + '<tr><td colspan="5" style="padding:1.2rem;text-align:center;color:var(--text-light);">No pediatrician has entered a question yet.</td></tr>';
                 return;
             }
             rowsEl.innerHTML = note + list.map((p) => `
@@ -375,6 +375,7 @@ requireAuth();
                     <td>${escapeHtml(p.name)}</td>
                     <td style="text-align:right;font-weight:700;">${escapeHtml(String(p.total))}</td>
                     <td style="text-align:right;">${escapeHtml(String(p.active))}</td>
+                    <td style="text-align:right;">${escapeHtml(String(p.assignedChildren ?? 0))}</td>
                     <td>${fmtDateShort(p.latestCreatedAt)}</td>
                 </tr>`).join('');
         }

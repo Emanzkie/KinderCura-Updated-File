@@ -57,6 +57,8 @@ const {
   filterDatasetRows,
   filterPediatricianRows,
   summarizePediatricians,
+  countAssignedChildrenByPediatrician,
+  attachAssignedChildCounts,
   groupDatasetSources,
 } = require('../services/adminDataSourceView');
 // approve | revise | reject → the label the admin page shows for the reviewer's
@@ -2298,7 +2300,25 @@ router.get('/data-origin/summary', authMiddleware, adminOnly, async (req, res) =
     const nameById = new Map(pediatricianUsers.map((u) => [String(u._id), fullName(u) || 'Unknown Pediatrician']));
     // One question document = one count, no matter how many assignments point
     // at it (req 14) — see summarizePediatricians().
-    const pediatricianSummary = summarizePediatricians(pediaDocsForSummary, nameById);
+    let pediatricianSummary = summarizePediatricians(pediaDocsForSummary, nameById);
+
+    // "Assigned Children" — distinct children who have received at least one
+    // question from that pediatrician (the Pediatrician → Child → Question
+    // flow), NOT the pediatrician's full appointment-based patient list,
+    // which can be much larger and includes patients never asked a custom
+    // question. See countAssignedChildrenByPediatrician() for why a child
+    // answering two questions from the same pediatrician still counts once.
+    const questionToPediatricianId = new Map(
+      pediaDocsForSummary.map((q) => [String(q._id), String(q.pediatricianId)])
+    );
+    const assignmentPairs = await PediaCustomQuestionAssignment.aggregate([
+      { $group: { _id: { questionId: '$questionId', childId: '$childId' } } },
+      { $project: { _id: 0, questionId: '$_id.questionId', childId: '$_id.childId' } },
+    ]);
+    const assignedChildCountByPediatrician = countAssignedChildrenByPediatrician(
+      assignmentPairs, questionToPediatricianId
+    );
+    pediatricianSummary = attachAssignedChildCounts(pediatricianSummary, assignedChildCountByPediatrician);
 
     res.json({
       total: {

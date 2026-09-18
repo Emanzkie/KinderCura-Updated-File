@@ -165,6 +165,44 @@ function summarizePediatricians(questionDocs, nameById) {
   return [...byId.values()].sort((a, b) => b.total - a.total);
 }
 
+// Per-pediatrician "Assigned Children" count for the Admin Pediatrician
+// Question Summary table (Pediatrician Question + Child Assignment flow).
+// Counts DISTINCT children who have received at least one of that
+// pediatrician's questions — a child answering two different questions from
+// the same pediatrician still counts once (req 17: assignments and question
+// counts are separate metrics, and this is neither — it is a distinct-child
+// count, computed the same way).
+//
+// `assignmentPairs` — deduplicated {questionId, childId} pairs from
+// PediaCustomQuestionAssignment (routes/admin.js aggregates these).
+// `questionToPediatricianId` — Map<questionId string, pediatricianId string>,
+// built from PediaCustomQuestion so a child is only ever attributed to the
+// pediatrician who actually authored the question they were asked — never
+// inferred from the appointment relationship, which can list many more
+// patients than have ever actually received a question.
+function countAssignedChildrenByPediatrician(assignmentPairs, questionToPediatricianId) {
+  const childrenByPed = new Map(); // pediatricianId -> Set<childId>
+  for (const { questionId, childId } of assignmentPairs) {
+    const pedId = questionToPediatricianId.get(String(questionId));
+    if (!pedId || !childId) continue;
+    if (!childrenByPed.has(pedId)) childrenByPed.set(pedId, new Set());
+    childrenByPed.get(pedId).add(String(childId));
+  }
+  const counts = new Map();
+  for (const [pedId, childSet] of childrenByPed) counts.set(pedId, childSet.size);
+  return counts;
+}
+
+// Merges the assigned-children counts onto summarizePediatricians()'s output.
+// A pediatrician with questions but no assignments yet correctly reads 0,
+// never `undefined` or a missing field.
+function attachAssignedChildCounts(pediatricianSummary, assignedChildCountByPediatrician) {
+  return pediatricianSummary.map((p) => ({
+    ...p,
+    assignedChildren: assignedChildCountByPediatrician.get(p.pediatricianId) || 0,
+  }));
+}
+
 // Groups documents by their REAL source and nests distinct sourceVersion
 // values underneath. Sources and versions are both returned newest-first by
 // a real stored date (importedAt, falling back to createdAt — never array
@@ -234,5 +272,7 @@ module.exports = {
   filterDatasetRows,
   filterPediatricianRows,
   summarizePediatricians,
+  countAssignedChildrenByPediatrician,
+  attachAssignedChildCounts,
   groupDatasetSources,
 };

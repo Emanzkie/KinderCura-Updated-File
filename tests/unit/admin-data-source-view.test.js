@@ -20,6 +20,9 @@
 //   - sorting is newest-first by default, stable on a tiebreak, and supports
 //     oldest-first
 //   - pagination totals reflect the FILTERED row set, not the unfiltered one
+//   - "Assigned Children" counts DISTINCT children per pediatrician, never
+//     double-counting a child who answered two of that pediatrician's
+//     questions, and never attributing a child to the wrong pediatrician
 const assert = require('assert');
 
 const {
@@ -33,6 +36,8 @@ const {
   filterDatasetRows,
   filterPediatricianRows,
   summarizePediatricians,
+  countAssignedChildrenByPediatrician,
+  attachAssignedChildCounts,
   groupDatasetSources,
 } = require('../../services/adminDataSourceView');
 
@@ -265,8 +270,53 @@ function run() {
   assert.strictEqual(p4.pagination.hasNext, false);
   assert.strictEqual(p4.pagination.hasPrev, true);
 
+  // ── countAssignedChildrenByPediatrician(): distinct children, not raw
+  // assignment counts (req 17 — assignments and question/child counts are
+  // separate metrics, never conflated) ──────────────────────────────────────
+  const questionToPed = new Map([
+    ['q1', 'pedA'], // Dr. A's question
+    ['q2', 'pedA'], // Dr. A's second question
+    ['q3', 'pedB'], // Dr. B's question
+  ]);
+  const assignmentPairs = [
+    { questionId: 'q1', childId: 'childX' },
+    { questionId: 'q2', childId: 'childX' }, // same child, Dr. A's OTHER question — must not double count
+    { questionId: 'q1', childId: 'childY' },
+    { questionId: 'q3', childId: 'childZ' }, // Dr. B's own child
+  ];
+  const assignedCounts = countAssignedChildrenByPediatrician(assignmentPairs, questionToPed);
+  assert.strictEqual(assignedCounts.get('pedA'), 2, 'Dr. A must show 2 distinct children (childX counted once despite 2 questions)');
+  assert.strictEqual(assignedCounts.get('pedB'), 1, 'Dr. B must show only childZ, never childX/childY from Dr. A\'s questions');
+  assert.strictEqual(assignedCounts.has('pedC'), false, 'a pediatrician with no assignments must not appear in the map at all');
+
+  // An assignment whose questionId is not in the lookup (e.g. a Core Question
+  // Bank id that never has a pediatricianId) must be silently skipped, never
+  // attributed to a fabricated pediatrician.
+  const withUnknownQuestion = [...assignmentPairs, { questionId: 'core-bank-q', childId: 'childW' }];
+  const countsWithUnknown = countAssignedChildrenByPediatrician(withUnknownQuestion, questionToPed);
+  assert.strictEqual(countsWithUnknown.get('pedA'), 2);
+  assert.strictEqual(countsWithUnknown.get('pedB'), 1);
+  assert.strictEqual([...countsWithUnknown.values()].reduce((a, b) => a + b, 0), 3,
+    'an unattributable assignment must not inflate any pediatrician\'s count');
+
+  // ── attachAssignedChildCounts(): merges cleanly, defaults to 0 ────────────
+  const baseSummary = [
+    { pediatricianId: 'pedA', name: 'Dr. A', total: 2, active: 2, latestCreatedAt: null },
+    { pediatricianId: 'pedB', name: 'Dr. B', total: 1, active: 1, latestCreatedAt: null },
+    { pediatricianId: 'pedNoAssignments', name: 'Dr. Quiet', total: 1, active: 1, latestCreatedAt: null },
+  ];
+  const withCounts = attachAssignedChildCounts(baseSummary, assignedCounts);
+  const byId = new Map(withCounts.map((p) => [p.pediatricianId, p]));
+  assert.strictEqual(byId.get('pedA').assignedChildren, 2);
+  assert.strictEqual(byId.get('pedB').assignedChildren, 1);
+  assert.strictEqual(byId.get('pedNoAssignments').assignedChildren, 0,
+    'a pediatrician with questions but no assignments yet must read 0, not undefined');
+  // Original fields must survive the merge untouched.
+  assert.strictEqual(byId.get('pedA').name, 'Dr. A');
+  assert.strictEqual(byId.get('pedA').total, 2);
+
   console.log('Admin Data Source view rules OK — two categories, source grouping, '
-    + 'per-pediatrician totals, filters, sort and pagination all verified');
+    + 'per-pediatrician totals, assigned-children counts, filters, sort and pagination all verified');
 }
 
 run();
