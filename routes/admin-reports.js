@@ -360,6 +360,70 @@ function facetCount(rows) {
 }
 
 /**
+ * ── DIAGNOSIS MODE ───────────────────────────────────────────────────────
+ * Reduces the already-grouped diagnosis-variant rows from the /screenings
+ * `diagnosisRaw` facet (one row per distinct {normalized key, exact original
+ * text} pair, each already counted in MongoDB) into the frequency report the
+ * adviser asked for: the diagnosis with the highest count (the MODE), all
+ * ties when more than one diagnosis shares the top count, and the full
+ * frequency table sorted highest-first.
+ *
+ * Text is never rewritten or medically reinterpreted — variants are merged
+ * ONLY when they are the same wording modulo letter case and surrounding
+ * whitespace (both already normalized by the $group stage that produced
+ * `variantRows`). The DISPLAYED text for a merged group is whichever exact
+ * original spelling was recorded most often within that group, so "the
+ * common diagnosis" reads as something a pediatrician actually typed rather
+ * than a synthesized label.
+ *
+ * This only ever reduces the small, already-grouped distinct-diagnosis list
+ * (bounded by how many different exact strings pediatricians have typed),
+ * never a per-assessment record set — the heavy counting already happened
+ * in MongoDB.
+ *
+ * @param {Array<{_id:{key:string,text:string}, count:number}>} variantRows
+ * @returns {{totalConsidered:number, rows:Array<{diagnosis:string,count:number}>, topCount:number, topDiagnoses:string[], tie:boolean}}
+ */
+function computeDiagnosisMode(variantRows) {
+  const byKey = new Map();
+  for (const row of variantRows || []) {
+    const key = row && row._id ? row._id.key : null;
+    const text = row && row._id ? row._id.text : null;
+    const count = (row && row.count) || 0;
+    if (key == null || text == null || !count) continue;
+    if (!byKey.has(key)) byKey.set(key, { total: 0, variants: [] });
+    const entry = byKey.get(key);
+    entry.total += count;
+    entry.variants.push({ text, count });
+  }
+
+  const rows = [];
+  for (const entry of byKey.values()) {
+    // Canonical display text: the exact spelling recorded most often within
+    // this normalized group. Alphabetical break makes the choice fully
+    // deterministic when two spellings were recorded equally often.
+    entry.variants.sort((a, b) => b.count - a.count || a.text.localeCompare(b.text));
+    rows.push({ diagnosis: entry.variants[0].text, count: entry.total });
+  }
+  // Highest frequency first; alphabetical break for a stable, deterministic order.
+  rows.sort((a, b) => b.count - a.count || a.diagnosis.localeCompare(b.diagnosis));
+
+  const totalConsidered = rows.reduce((sum, r) => sum + r.count, 0);
+  const topCount = rows.length ? rows[0].count : 0;
+  // Every diagnosis at the top count, not just the first — a genuine tie is
+  // reported as a tie, never arbitrarily resolved to one entry.
+  const topDiagnoses = rows.filter((r) => r.count === topCount).map((r) => r.diagnosis);
+
+  return {
+    totalConsidered,
+    rows,
+    topCount,
+    topDiagnoses,
+    tie: topDiagnoses.length > 1,
+  };
+}
+
+/**
  * Fills month gaps in a timeline so a quiet month renders as a zero column
  * rather than vanishing and making the series look continuous.
  */
@@ -736,6 +800,41 @@ router.get('/screenings', authMiddleware, adminOnly, async (req, res) => {
               },
             },
           ],
+          // ── Pediatrician diagnosis frequency (adviser: "most common
+          // diagnosis") ──────────────────────────────────────────────────
+          // GROUND TRUTH IS Assessment.diagnosis — the pediatrician's own
+          // free-text note (see models/Assessment.js) — NEVER clinicalOutcome,
+          // which is a different, structured field used only by Section 4's
+          // concordance matrix above. Independent of hasResult/hasBand: a
+          // diagnosis can exist whether or not the screening carries a score.
+          //
+          // Normalization is intentionally minimal — trim whitespace and
+          // lowercase for GROUPING only ("Speech Delay" / "speech delay" /
+          // " Speech Delay " count as one diagnosis) — the text itself is
+          // never rewritten or reinterpreted. Grouped by {normalized key,
+          // exact original text} so computeDiagnosisMode (below) can pick the
+          // most-recorded ORIGINAL spelling as the display text, rather than
+          // inventing a canonical casing. Counting happens here in MongoDB;
+          // only this already-small distinct-variant list is handed to Node.
+          diagnosisRaw: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $ne: [{ $ifNull: ['$diagnosis', null] }, null] },
+                    { $ne: [{ $trim: { input: { $ifNull: ['$diagnosis', ''] } } }, ''] },
+                  ],
+                },
+              },
+            },
+            { $addFields: { diagnosisText: { $trim: { input: '$diagnosis' } } } },
+            {
+              $group: {
+                _id: { key: { $toLower: '$diagnosisText' }, text: '$diagnosisText' },
+                count: { $sum: 1 },
+              },
+            },
+          ],
           reviewStatus: [
             {
               $group: {
@@ -839,6 +938,11 @@ router.get('/screenings', authMiddleware, adminOnly, async (req, res) => {
 
     const latencyRow = (facet.reviewLatency || [])[0] || null;
 
+    // Adviser: "most common pediatrician diagnosis" — see computeDiagnosisMode
+    // above and the diagnosisRaw facet. Scoped to the SAME date range (and any
+    // demographic filters) as everything else in this endpoint.
+    const diagnosisFrequency = computeDiagnosisMode(facet.diagnosisRaw);
+
     // ── Custom pediatrician questions ──────────────────────────────────────
     // A SEPARATE, UNSCORED BLOCK. Pediatrician-authored questions are never part
     // of any band computation: routes/assessments.js scores the core bank only,
@@ -874,6 +978,9 @@ router.get('/screenings', authMiddleware, adminOnly, async (req, res) => {
       domainBands,
       bandByAgeBand,
       bandByGender,
+      // Adviser: "most common pediatrician diagnosis" — see computeDiagnosisMode.
+      // Ground truth is Assessment.diagnosis (free text), never clinicalOutcome.
+      diagnosisFrequency,
       review: {
         reviewed: review.reviewed,
         unreviewed: review.unreviewed,
@@ -1112,3 +1219,9 @@ router.get('/concordance', authMiddleware, adminOnly, async (req, res) => {
 });
 
 module.exports = router;
+
+// Exposed for tests only (see tests/unit/admin-reports-diagnosis-mode.test.js).
+// Attaching to the router function is inert for Express — app.use() only ever
+// calls it as a request handler, so this does not affect routing. Mirrors the
+// pattern already used by routes/assessments.js (router.__testables).
+router.__testables = { computeDiagnosisMode };

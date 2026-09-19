@@ -664,11 +664,196 @@ requireAuth();
             }
         }
 
+        // ================================================================
+        // Demographic Profile of Late Development + Most Common Pediatrician
+        // Diagnosis — adviser revision.
+        //
+        // Reuses the EXISTING GET /api/admin-reports/screenings endpoint
+        // (routes/admin-reports.js) — no new backend aggregation for the
+        // gender/age-range breakdown, which that endpoint already returns as
+        // bandByGender.delayed / bandByAgeBand.delayed. diagnosisFrequency IS
+        // a new, small, server-computed field on that same endpoint (see
+        // routes/admin-reports.js computeDiagnosisMode) — the browser only
+        // ever receives the already-grouped, small frequency table, never raw
+        // per-assessment diagnosis text.
+        //
+        // "Late development" here means the "Delayed" band ONLY — see
+        // js/admin/admin-reports-interpretations.js header for why that is
+        // the deliberate choice, not the broader At-Risk+Delayed grouping.
+        // ================================================================
+
+        const GENDER_DISPLAY_LABELS = { male: 'Male', female: 'Female', other: 'Other' };
+        const GENDER_UNKNOWN_LABEL = 'Not recorded';
+        const AGE_BAND_UNKNOWN_LABEL = 'Age not resolvable';
+        const OTHER_DIAGNOSES_DISPLAY_LIMIT = 25;
+
+        function fmtReportDate(iso) {
+            if (!iso) return '—';
+            const d = new Date(iso);
+            return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        }
+
+        /** One .mini-bars set, each row scaled relative to the GROUP's own max (not a global 100). */
+        function renderMiniBars(orderedKeys, counts, labels) {
+            const max = Math.max(1, ...orderedKeys.map((k) => counts[k] || 0));
+            return `<div class="mini-bars">${orderedKeys.map((k) => {
+                const n = counts[k] || 0;
+                const pct = Math.round((n / max) * 100);
+                return `
+                    <div>
+                        <div class="mini-bar-row-label">
+                            <span>${escapeHtml(labels[k] || k)}</span>
+                            <span class="mini-bar-count">${n} ${n === 1 ? 'case' : 'cases'}</span>
+                        </div>
+                        <div class="mini-bar-track"><div class="mini-bar-fill" style="width:${pct}%;"></div></div>
+                    </div>`;
+            }).join('')}</div>`;
+        }
+
+        function renderLateDevelopmentSection(data) {
+            const scopeNote = document.getElementById('lateDevelopmentScopeNote');
+            const body = document.getElementById('lateDevelopmentBody');
+            if (!scopeNote || !body) return;
+
+            const vocab = data.vocabulary || {};
+            const unknownKey = vocab.unknownKey || 'unknown';
+            const delayedBand = (vocab.bands || []).find((b) => b.key === 'delayed');
+            const delayedLabel = delayedBand ? delayedBand.label : 'Delayed';
+
+            scopeNote.textContent = `Based on completed, scored assessments from ${fmtReportDate(data.filters?.from)} to ${fmtReportDate(data.filters?.to)}. "Late development" here means the "${delayedLabel}" band only, per KinderCura's existing scoring rules — not a new category.`;
+
+            const genderKeys = [...(vocab.genders || []), unknownKey];
+            const genderLabels = { ...GENDER_DISPLAY_LABELS, [unknownKey]: GENDER_UNKNOWN_LABEL };
+            const genderCounts = (data.bandByGender && data.bandByGender.delayed) || {};
+
+            const ageKeys = [...(vocab.ageBands || []).map((b) => b.key), unknownKey];
+            const ageLabels = Object.fromEntries((vocab.ageBands || []).map((b) => [b.key, b.label]));
+            ageLabels[unknownKey] = AGE_BAND_UNKNOWN_LABEL;
+            const ageCounts = (data.bandByAgeBand && data.bandByAgeBand.delayed) || {};
+
+            const KI = window.KCAdminReportsInterpretations;
+            const genderMode = KI.mostFrequentEntries(genderCounts, genderKeys);
+            const ageMode = KI.mostFrequentEntries(ageCounts, ageKeys);
+
+            if (!genderMode.hasData) {
+                body.innerHTML = `
+                    <p class="muted" style="padding:1rem 0;">
+                        No assessments in this range are classified as "${escapeHtml(delayedLabel)}", so a demographic profile cannot be shown yet.
+                    </p>`;
+                return;
+            }
+
+            const genderInterp = KI.formatGenderInterpretation(genderCounts, genderKeys, genderLabels);
+            const ageInterp = KI.formatAgeRangeInterpretation(ageCounts, ageKeys, ageLabels);
+            const genderLeaderText = genderMode.leaders.map((k) => genderLabels[k] || k).join(' / ');
+            const ageLeaderText = ageMode.leaders.map((k) => ageLabels[k] || k).join(' / ');
+
+            body.innerHTML = `
+                <p style="margin:0 0 1rem;"><strong>${genderMode.total}</strong> assessment${genderMode.total === 1 ? '' : 's'} classified as "${escapeHtml(delayedLabel)}" in this range.</p>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start;">
+                    <div>
+                        <h4 style="margin:0 0 0.6rem;">Gender Distribution</h4>
+                        ${renderMiniBars(genderKeys, genderCounts, genderLabels)}
+                        <div class="report-interp">
+                            <p class="report-interp-label">Interpretation</p>
+                            <p class="report-interp-text">${escapeHtml(genderInterp)}</p>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 style="margin:0 0 0.6rem;">Age Range Distribution <span class="muted" style="font-weight:400;font-size:0.78rem;">(age at assessment)</span></h4>
+                        ${renderMiniBars(ageKeys, ageCounts, ageLabels)}
+                        <div class="report-interp">
+                            <p class="report-interp-label">Interpretation</p>
+                            <p class="report-interp-text">${escapeHtml(ageInterp)}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="report-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:1.25rem;">
+                    ${summaryCard('Most Frequent Gender', escapeHtml(genderLeaderText), `${genderMode.maxCount} ${genderMode.maxCount === 1 ? 'case' : 'cases'}${genderMode.leaders.length > 1 ? ' — tied' : ''}`)}
+                    ${summaryCard('Most Frequent Age Range', escapeHtml(ageLeaderText), `${ageMode.maxCount} ${ageMode.maxCount === 1 ? 'case' : 'cases'}${ageMode.leaders.length > 1 ? ' — tied' : ''}`)}
+                </div>`;
+        }
+
+        function renderDiagnosisModeSection(data) {
+            const scopeNote = document.getElementById('diagnosisScopeNote');
+            const body = document.getElementById('diagnosisModeBody');
+            if (!scopeNote || !body) return;
+
+            scopeNote.textContent = `Based on completed assessments with a recorded diagnosis, from ${fmtReportDate(data.filters?.from)} to ${fmtReportDate(data.filters?.to)}.`;
+
+            const df = data.diagnosisFrequency || { totalConsidered: 0, rows: [], topCount: 0, topDiagnoses: [], tie: false };
+            const KI = window.KCAdminReportsInterpretations;
+            const interp = KI.formatDiagnosisInterpretation(df);
+
+            if (!df.rows || !df.rows.length) {
+                body.innerHTML = `<p class="muted" style="padding:1rem 0;">${escapeHtml(interp)}</p>`;
+                return;
+            }
+
+            const topRows = df.rows.filter((r) => df.topDiagnoses.includes(r.diagnosis));
+            const otherRowsAll = df.rows.filter((r) => !df.topDiagnoses.includes(r.diagnosis));
+            const otherRows = otherRowsAll.slice(0, OTHER_DIAGNOSES_DISPLAY_LIMIT);
+            const otherCapped = otherRowsAll.length > OTHER_DIAGNOSES_DISPLAY_LIMIT;
+
+            const topBlock = df.tie
+                ? `
+                    <h4 style="margin:0 0 0.6rem;">Most Common Diagnoses (tied)</h4>
+                    <div class="report-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:1rem;">
+                        ${topRows.map((r) => summaryCard(escapeHtml(r.diagnosis), r.count, `${r.count === 1 ? 'recorded assessment' : 'recorded assessments'}`)).join('')}
+                    </div>`
+                : `
+                    <div class="report-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:1rem;">
+                        ${summaryCard('Most Common Diagnosis', escapeHtml(topRows[0].diagnosis))}
+                        ${summaryCard('Recorded Cases', topRows[0].count, `${topRows[0].count === 1 ? 'recorded assessment' : 'recorded assessments'}`)}
+                    </div>`;
+
+            const otherTable = otherRows.length
+                ? `
+                    <h4 style="margin:1rem 0 0.6rem;">Other Recorded Diagnoses</h4>
+                    <div style="overflow-x:auto;">
+                        <table class="simple-table">
+                            <thead><tr><th>Diagnosis</th><th>Recorded Cases</th></tr></thead>
+                            <tbody>${otherRows.map((r) => `<tr><td>${escapeHtml(r.diagnosis)}</td><td>${r.count}</td></tr>`).join('')}</tbody>
+                        </table>
+                    </div>
+                    ${otherCapped ? `<p class="muted" style="margin-top:0.5rem;font-size:0.8rem;">Showing the ${OTHER_DIAGNOSES_DISPLAY_LIMIT} most frequent of ${otherRowsAll.length} other recorded diagnoses.</p>` : ''}`
+                : '';
+
+            body.innerHTML = `
+                ${topBlock}
+                ${otherTable}
+                <div class="report-interp">
+                    <p class="report-interp-label">Interpretation</p>
+                    <p class="report-interp-text">${escapeHtml(interp)}</p>
+                </div>`;
+        }
+
+        async function loadLateDevelopmentAndDiagnosis() {
+            try {
+                const data = await apiFetch('/admin-reports/screenings');
+                renderLateDevelopmentSection(data);
+                renderDiagnosisModeSection(data);
+            } catch (err) {
+                console.error('late development / diagnosis report error:', err);
+                const ldBody = document.getElementById('lateDevelopmentBody');
+                const dxBody = document.getElementById('diagnosisModeBody');
+                const ldScope = document.getElementById('lateDevelopmentScopeNote');
+                const dxScope = document.getElementById('diagnosisScopeNote');
+                if (ldBody) ldBody.innerHTML = `<p style="color:var(--status-attention-fg, #c0392b);">Could not load demographic profile: ${escapeHtml(err.message)}</p>`;
+                if (dxBody) dxBody.innerHTML = `<p style="color:var(--status-attention-fg, #c0392b);">Could not load diagnosis frequency: ${escapeHtml(err.message)}</p>`;
+                if (ldScope) ldScope.textContent = '';
+                if (dxScope) dxScope.textContent = '';
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             loadReport();
             loadPatientReportsOverview();
             loadPatientReportsList();
             loadDemoDataVolume();
+            loadLateDevelopmentAndDiagnosis();
             if (typeof loadNotificationCount === 'function') loadNotificationCount();
             setInterval(() => {
                 if (typeof loadNotificationCount === 'function') loadNotificationCount();

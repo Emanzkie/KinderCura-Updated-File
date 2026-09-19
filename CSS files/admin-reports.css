@@ -130,6 +130,50 @@
     border-radius: var(--radius-pill);
 }
 
+/* One labelled row inside .mini-bars — used by the Demographic Profile of
+   Late Development section (gender / age-range distribution). Reuses the
+   existing .mini-bar-track/.mini-bar-fill primitives above rather than
+   pulling in a charting library for a handful of categories. */
+.mini-bar-row-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    margin-bottom: 0.3rem;
+}
+
+.mini-bar-row-label .mini-bar-count {
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+/* Dynamic, data-driven interpretation shown directly under a visualization —
+   same labelled-panel pattern already used on the Parent/Pediatrician
+   Reports pages (.interp-block / .chart-interp) so a chart+interpretation
+   pairing reads the same way everywhere in the app. */
+.report-interp {
+    background: var(--bg-primary);
+    border-radius: var(--radius-panel, 10px);
+    border-left: 3px solid var(--primary);
+    padding: 0.9rem 1.1rem;
+    margin-top: 1rem;
+}
+
+.report-interp-label {
+    margin: 0 0 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--primary);
+}
+
+.report-interp-text {
+    margin: 0;
+    color: var(--text-dark);
+    line-height: 1.6;
+    font-size: 0.92rem;
+}
+
 .muted {
     color: var(--text-light);
 }
