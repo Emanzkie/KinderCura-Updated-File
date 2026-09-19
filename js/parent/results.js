@@ -10,6 +10,10 @@ let latestReview = null;
 // assessment exists, a `previous` state. Drives the per-card Previous/Present
 // switch — see renderDomainCard / switchDomainView.
 let domainViewModels = [];
+// Previous-vs-current overall score chart in the "Progress Since Last
+// Assessment" card. Re-created on every load (Chart.js instances cannot be
+// reused across a destroyed canvas) — see drawProgressionChart.
+let progressionChart = null;
 
 // Small HTML escape helper so diagnosis/recommendation text is safe in the page.
 function escapeHtml(value) {
@@ -388,6 +392,121 @@ function renderCareStageColumn(heading, side) {
         </div>`;
 }
 
+// Assessment Progression chart + at-a-glance Current/Previous/Change/Direction
+// stats + dynamic interpretation, shown inside the comparison card above the
+// existing Previous/Current care-stage columns. Built entirely from the SAME
+// /compare payload those columns already read — no second calculation.
+// Returns '' when the overall score isn't usable on both sides, so the card
+// degrades to its existing text-only content instead of showing a broken chart.
+function renderProgressionChartBlock(compare) {
+    const overall = compare.scores && compare.scores.overall;
+    if (!overall || overall.current == null || overall.previous == null) return '';
+
+    const KPI = window.KCProgressionInterpretation;
+    const CP = window.KCCarePlan;
+    const direction = KPI.scoreDirection(overall.current, overall.previous);
+    const directionTone = direction === 'positive' ? 'positive' : direction === 'negative' ? 'attention' : 'neutral';
+
+    // Same helper renderCareStageColumn uses two lines below for this exact
+    // field, so "Developmental Band" cannot read differently in two places
+    // on the same card.
+    const currentBandLabel = CP.developmentalBandLabel(compare.current && compare.current.developmentalBand);
+    const previousBandLabel = CP.developmentalBandLabel(compare.previous && compare.previous.developmentalBand);
+    const consultationLabel = compare.currentCarePlan && compare.currentCarePlan.consultationLevel
+        ? CP.consultationLevelLabel(compare.currentCarePlan.consultationLevel) : null;
+    const monitoringLabel = compare.currentCarePlan && compare.currentCarePlan.monitoringLevel
+        ? CP.monitoringLevelLabel(compare.currentCarePlan.monitoringLevel) : null;
+
+    const interpretation = KPI.buildOverallProgressionInterpretation({
+        current: overall.current,
+        previous: overall.previous,
+        currentBandLabel,
+        previousBandLabel,
+        careStageDirection: compare.comparison && compare.comparison.direction,
+        consultationLabel,
+        monitoringLabel,
+    });
+
+    return `
+        <div class="progression-block">
+            <h4 style="margin:0 0 .8rem;color:var(--text-dark);font-size:1rem;">Assessment Progression</h4>
+            <div class="progression-chart-wrap"><canvas id="progressionChart"></canvas></div>
+            <div class="progression-stats-grid">
+                <div class="progression-stat">
+                    <p class="progression-stat-label">Current</p>
+                    <p class="progression-stat-value">${overall.current}%</p>
+                </div>
+                <div class="progression-stat">
+                    <p class="progression-stat-label">Previous</p>
+                    <p class="progression-stat-value">${overall.previous}%</p>
+                </div>
+                <div class="progression-stat">
+                    <p class="progression-stat-label">Change</p>
+                    <p class="progression-stat-value" style="color:${diffColor(overall.difference)};">${KPI.formatSignedPoints(overall.difference)} pts</p>
+                </div>
+                <div class="progression-stat">
+                    <p class="progression-stat-label">Direction</p>
+                    <p class="progression-stat-value"><span class="kc-badge kc-badge--${stageBadgeSafe(directionTone)}">${escapeHtml(KPI.directionWord(direction))}</span></p>
+                </div>
+            </div>
+            <div class="progression-interp">
+                <p class="progression-interp-label">Interpretation</p>
+                <p class="progression-interp-text">${escapeHtml(interpretation)}</p>
+            </div>
+        </div>`;
+}
+
+// Chart.js is only initialised after renderProgressionChartBlock's markup is
+// in the DOM (mirrors js/parent/reports.js drawTrendChart). A bar chart, not
+// a line — "Previous" and "Current" are two named snapshots, not points on a
+// continuous timeline, so a line would imply a slope between them that the
+// two-assessment data does not support.
+function drawProgressionChart(compare) {
+    const canvas = document.getElementById('progressionChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    const overall = compare && compare.scores && compare.scores.overall;
+    if (!overall || overall.current == null || overall.previous == null) return;
+
+    if (progressionChart) progressionChart.destroy();
+
+    progressionChart = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: ['Previous', 'Current'],
+            datasets: [{
+                label: 'Overall score',
+                data: [overall.previous, overall.current],
+                backgroundColor: [
+                    window.KCScoring.colorForScore(overall.previous),
+                    window.KCScoring.colorForScore(overall.current),
+                ],
+                borderRadius: 6,
+                maxBarThickness: 90,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    min: 0,
+                    max: 100,
+                    ticks: { callback: (v) => `${v}%` },
+                    title: { display: true, text: 'Overall score' },
+                },
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => `${ctx.parsed.y}% — ${window.KCScoring.parentOverallLabel(ctx.parsed.y)}`,
+                    },
+                },
+            },
+        },
+    });
+}
+
 function renderComparisonSection(compare) {
     if (!compare) return '';
     const CP = window.KCCarePlan;
@@ -398,7 +517,7 @@ function renderComparisonSection(compare) {
         return `
         <div class="comparison-card" style="background:white;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
             <h3 style="margin:0 0 .5rem;color:var(--primary);">Progress Since Last Assessment</h3>
-            <p style="margin:0;color:var(--text-light);">First completed assessment — there is no earlier screening to compare yet.</p>
+            <p style="margin:0;color:var(--text-light);">First completed assessment — there is no earlier screening to compare yet. A progression chart needs at least two completed assessments.</p>
         </div>`;
     }
 
@@ -413,6 +532,7 @@ function renderComparisonSection(compare) {
             <p style="margin:0 0 1.2rem;color:var(--text-light);font-size:.85rem;">
                 Previous: ${escapeHtml(fmtDate(compare.previous?.date))} &nbsp;→&nbsp; Current: ${escapeHtml(fmtDate(compare.current?.date))}
             </p>
+            ${renderProgressionChartBlock(compare)}
             <div class="compare-stage-grid">
                 ${renderCareStageColumn('Previous', compare.previous)}
                 ${renderCareStageColumn('Current', compare.current)}
@@ -789,7 +909,9 @@ async function loadResults() {
                     <button class="btn btn-secondary" onclick="window.location.href='/parent/screening.html'">Reassessment</button>
                 </div>
             </div>`;
-            
+
+        drawProgressionChart(compareData);
+
         let userRole = 'parent';
         try { userRole = JSON.parse(localStorage.getItem('kc_user') || '{}').role; } catch(e) {}
         if (userRole === 'pediatrician' || userRole === 'admin') {

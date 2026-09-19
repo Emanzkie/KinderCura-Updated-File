@@ -9,6 +9,9 @@
     <link rel="stylesheet" href="/css/notifications-styles.css">
     <link rel="stylesheet" href="/notifications-card-ui.css">
     <link rel="stylesheet" href="/css/parent-responsive.css">
+    <!-- Same charting library PARENT/reports.html already loads, used here for
+         the small "Assessment Progression" Previous-vs-Current chart. -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 <header class="top-nav has-mobile-nav">
@@ -94,6 +97,8 @@
 <script src="/constants/scoring.js"></script>
 <!-- Must load before results.js — provides window.KCCarePlan (care-plan label formatting). -->
 <script src="/js/shared/care-plan-labels.js"></script>
+<!-- Must load before results.js — provides window.KCProgressionInterpretation. -->
+<script src="/js/parent/progression-interpretation.js"></script>
 <script src="/js/parent/results.js"></script>
 </body>
 </html>

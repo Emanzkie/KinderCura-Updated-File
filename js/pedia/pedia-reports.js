@@ -277,6 +277,15 @@ function renderClassification(overview) {
 
     const anyDomain = count(riskFlagged.anyDomain);
 
+    // Dynamic, data-driven interpretation for each chart — built from the
+    // SAME counts the chart itself renders (js/pedia/pedia-reports-interpretations.js),
+    // never a static caption. See that file's header for why the "needs
+    // support" grouping matches Admin Analytics rather than the stricter
+    // risk-flag threshold used by the strip below.
+    const KCPI = window.KCPediaReportsInterpretations;
+    const domainInterpretation = KCPI.formatDomainBandInterpretation(overview.domainDistribution, withScreening);
+    const overallInterpretation = KCPI.formatOverallBandInterpretation(overview.overallDistribution, withScreening);
+
     section.innerHTML = `
         <div class="report-card">
             <h2>Classification overview</h2>
@@ -285,10 +294,18 @@ function renderClassification(overview) {
                 <div>
                     <div class="chart-box"><canvas id="bandDomainChart"></canvas></div>
                     <p class="chart-caption">Band distribution per domain (${withScreening} ${plural(withScreening, 'child', 'children')}).</p>
+                    <div class="chart-interp">
+                        <p class="chart-interp-label">Interpretation</p>
+                        <p class="chart-interp-text">${escapeHtml(domainInterpretation)}</p>
+                    </div>
                 </div>
                 <div>
                     <div class="chart-box"><canvas id="overallBandChart"></canvas></div>
                     <p class="chart-caption">Overall band, latest assessment per child.</p>
+                    <div class="chart-interp">
+                        <p class="chart-interp-label">Interpretation</p>
+                        <p class="chart-interp-text">${escapeHtml(overallInterpretation)}</p>
+                    </div>
                 </div>
             </div>
 
@@ -400,6 +417,8 @@ function renderProgression(progression) {
 
     const movement = progression.cohortMovement || {};
     const rows = children.map((child, index) => progressionRowHtml(child, index)).join('');
+    const cohortInterpretation = window.KCPediaReportsInterpretations
+        .formatProgressionCohortInterpretation(movement, children.length);
 
     section.innerHTML = `
         <div class="report-card">
@@ -421,6 +440,11 @@ function renderProgression(progression) {
                     <p class="tile-label">Declined overall band</p>
                     <p class="tile-value" style="color:var(--status-attention-fg);">${count(movement.declined)}</p>
                 </div>
+            </div>
+
+            <div class="chart-interp" style="margin-bottom:1.4rem;">
+                <p class="chart-interp-label">Interpretation</p>
+                <p class="chart-interp-text">${escapeHtml(cohortInterpretation)}</p>
             </div>
 
             <div class="report-table-wrap">

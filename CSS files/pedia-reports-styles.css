@@ -208,6 +208,33 @@
     line-height: 1.5;
 }
 
+/* Dynamic, data-driven interpretation shown directly under a chart — same
+   labelled-panel pattern as .interp-block on PARENT/reports.html, so a
+   chart+interpretation pairing reads the same way everywhere in the app. */
+.chart-interp {
+    background: var(--bg-primary);
+    border-radius: var(--radius-panel, 10px);
+    border-left: 3px solid var(--primary);
+    padding: 0.9rem 1.1rem;
+    margin-top: 1rem;
+}
+
+.chart-interp-label {
+    margin: 0 0 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--primary);
+}
+
+.chart-interp-text {
+    margin: 0;
+    color: var(--text-dark);
+    line-height: 1.6;
+    font-size: 0.92rem;
+}
+
 /* ── Risk strip ──────────────────────────────────────────────────────────── */
 .risk-strip {
     display: grid;
