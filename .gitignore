@@ -1,10 +1,16 @@
 # Dependencies
 node_modules/
 
-# Environment variables
+# Environment files — real ones hold credentials and are NEVER committed.
+# The last matching rule wins, so the allow-rule for the placeholder-only
+# template must stay AFTER every .env ignore rule (there must be no later
+# `.env*` line).
 .env
 .env.local
+.env.*.local
+.env.backup*
 .env.*
+!.env.example
 
 # IDE files
 .vscode/
@@ -76,7 +82,9 @@ public/dist/
 *.swo
 
 .vercel
-.env*
+
+# Local AI-tooling workspaces (plans, scratch files, node_modules) — not project source.
+.opencode/
 
 # DB backups written by scripts/backfill-*.js and scripts/migrate-*.js.
 # These contain real patient records (childId + screening scores) and must
