@@ -222,12 +222,159 @@ function validateDoctorCredentials() {
     return '';
 }
 
+// ── Terms of Service & consent (sign-up only) ────────────────────────────────
+// The wording of the three selections is in the markup, copied verbatim from
+// legal/KINDERCURA-TERMS-OF-SERVICE.txt (section 17). This code only checks that
+// the two REQUIRED boxes are ticked before an account can be created; the
+// optional machine-learning box never blocks anything. Login is not affected.
+const TERMS_TEXT_URL = '/legal/KINDERCURA-TERMS-OF-SERVICE.txt';
+
+const CONSENT_IDS = {
+    parent:       { terms: 'pAcceptTerms', privacy: 'pAckPrivacy', ml: 'pMlConsent', error: 'pConsentError' },
+    pediatrician: { terms: 'dAcceptTerms', privacy: 'dAckPrivacy', ml: 'dMlConsent', error: 'dConsentError' },
+};
+
+function readConsent(kind) {
+    const ids = CONSENT_IDS[kind];
+    return {
+        acceptTerms: Boolean(byId(ids.terms)?.checked),
+        acknowledgePrivacy: Boolean(byId(ids.privacy)?.checked),
+        mlConsent: Boolean(byId(ids.ml)?.checked),
+    };
+}
+
+function consentErrorMessage(consent) {
+    if (!consent.acceptTerms && !consent.acknowledgePrivacy) {
+        return 'Please accept the Terms of Service and acknowledge the Privacy Notice to continue.';
+    }
+    if (!consent.acceptTerms) return 'Please accept the Terms of Service to continue.';
+    if (!consent.acknowledgePrivacy) return 'Please acknowledge the Privacy Notice to continue.';
+    return '';
+}
+
+// True when both REQUIRED selections are made. Otherwise it shows a message inside
+// the consent block, marks the missing checkboxes aria-invalid and (when they are on
+// screen) moves focus to the first one. It reads and writes ONLY the consent
+// controls, so nothing the user has typed elsewhere is ever cleared.
+function validateConsent(kind, { focus = true } = {}) {
+    const ids = CONSENT_IDS[kind];
+    const consent = readConsent(kind);
+    const message = consentErrorMessage(consent);
+    const termsEl = byId(ids.terms);
+    const privacyEl = byId(ids.privacy);
+
+    if (termsEl) termsEl.setAttribute('aria-invalid', consent.acceptTerms ? 'false' : 'true');
+    if (privacyEl) privacyEl.setAttribute('aria-invalid', consent.acknowledgePrivacy ? 'false' : 'true');
+
+    setMessage(ids.error, message);
+    if (message && focus) {
+        const first = !consent.acceptTerms ? termsEl : privacyEl;
+        if (first && typeof first.focus === 'function') first.focus();
+    }
+    return !message;
+}
+
+// For the later steps (resend / final submit), where the checkboxes are not on screen:
+// if a required box is not ticked, take the user back to the credentials step that
+// holds them and show the message there, instead of failing somewhere they cannot act.
+function requireConsent(kind, credentialsStepId) {
+    if (validateConsent(kind, { focus: false })) return true;
+    show(credentialsStepId);
+    validateConsent(kind);
+    return false;
+}
+
+let termsLoaded = false;
+let termsTrigger = null;
+
+// Renders the Terms one line at a time with textContent, so the wording is exactly
+// the file's. Only the block type (heading / paragraph / divider) is chosen; no
+// text is added, removed, reordered or rewritten.
+function renderTermsDocument(text, container) {
+    const lines = String(text).replace(/^﻿/, '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    container.textContent = '';
+    lines.forEach((line, i) => {
+        let el;
+        let sectionNo = null;
+        if (/^_{5,}$/.test(line)) {
+            el = document.createElement('hr');
+        } else {
+            let tag = 'p';
+            let cls = '';
+            if (i === 0) cls = 'terms-brand';
+            else if (i === 1) { tag = 'h3'; cls = 'terms-doc-title'; }
+            else if (/^(Effective Date|Last Updated|Version):/.test(line)) cls = 'terms-meta';
+            else if (/^\d+\.\s/.test(line) && line === line.toUpperCase()) { tag = 'h4'; cls = 'terms-section-heading'; sectionNo = /^(\d+)\./.exec(line)[1]; }
+            else if ((lines[i + 1] || '').startsWith('☐')) { tag = 'h5'; cls = 'terms-subheading'; }
+            el = document.createElement(tag);
+            if (cls) el.className = cls;
+            el.textContent = line;
+            // Numbered headings get the source's own section number as an anchor, so a link can
+            // open the Terms at a given section (for example section 7, PRIVACY AND COOKIES).
+            if (sectionNo) {
+                el.id = `terms-section-${sectionNo}`;
+                el.setAttribute('tabindex', '-1');
+            }
+        }
+        container.appendChild(el);
+    });
+}
+
+async function loadTermsDocument() {
+    const body = byId('termsDialogBody');
+    if (!body || termsLoaded) return;
+    try {
+        const response = await fetch(TERMS_TEXT_URL, { cache: 'no-cache' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        renderTermsDocument(await response.text(), body);
+        termsLoaded = true;
+    } catch (err) {
+        body.textContent = '';
+        const p = document.createElement('p');
+        p.className = 'terms-status';
+        p.appendChild(document.createTextNode('The Terms of Service could not be loaded here. '));
+        const link = document.createElement('a');
+        link.href = TERMS_TEXT_URL;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = 'Open the Terms of Service as a plain text file.';
+        p.appendChild(link);
+        body.appendChild(p);
+    }
+}
+
+// Scrolls the open Terms to a numbered section and moves focus to its heading, so
+// keyboard and screen-reader users land there too. No-op if the section is not rendered.
+function jumpToTermsSection(section) {
+    const heading = byId(`terms-section-${section}`);
+    if (!heading) return false;
+    heading.scrollIntoView({ block: 'start' });
+    if (typeof heading.focus === 'function') heading.focus({ preventScroll: true });
+    return true;
+}
+
+// Returns true when the dialog was opened. False (no <dialog> support) lets the
+// link's normal behaviour run, which opens the plain-text file in a new tab.
+// With a `section` number the Terms open at that section; otherwise at the top.
+function openTermsDialog(trigger, section) {
+    const dialog = byId('termsDialog');
+    if (!dialog || typeof dialog.showModal !== 'function') return false;
+    termsTrigger = trigger || null;
+    if (!dialog.open) dialog.showModal();
+    const body = byId('termsDialogBody');
+    if (body) body.scrollTop = 0;
+    const loading = loadTermsDocument();
+    if (section) loading.then(() => jumpToTermsSection(section));
+    return true;
+}
+
 async function sendOTP(isResend = false) {
     const error = validateParentCredentials();
     if (error) {
         setMessage('ep4', error);
         return;
     }
+    if (!(isResend ? requireConsent('parent', 'sp4') : validateConsent('parent'))) return;
 
     const restore = setButtonLoading('verifyBtn', 'Sending...');
     try {
@@ -279,11 +426,14 @@ async function verifyAndRegister() {
         setMessage('ep5e', 'Please enter the 4-digit verification code.');
         return;
     }
+    // Final guard, before the code is consumed or an account is created.
+    if (!requireConsent('parent', 'sp4')) return;
 
     const restore = setButtonLoading('verifyBtn', 'Verifying...');
     try {
         await postJson('/api/auth/verify-otp', { email, code: otp });
 
+        const consent = readConsent('parent');
         const payload = {
             role: 'parent',
             firstName: valueOf('pFirst'),
@@ -298,6 +448,9 @@ async function verifyAndRegister() {
             dateOfBirth: valueOf('dob'),
             gender: valueOf('childGender') || null,
             relationship: valueOf('relationship') || null,
+            acceptTerms: consent.acceptTerms,
+            acknowledgePrivacy: consent.acknowledgePrivacy,
+            mlConsent: consent.mlConsent,
         };
 
         // Multipart, so the selected parent/child photos travel with the
@@ -323,6 +476,7 @@ async function sendDoctorOTP(isResend = false) {
         setMessage('ed3', error);
         return;
     }
+    if (!(isResend ? requireConsent('pediatrician', 'sd3') : validateConsent('pediatrician'))) return;
 
     const restore = setButtonLoading('dVerifyBtn', 'Sending...');
     try {
@@ -424,6 +578,11 @@ async function registerPedia() {
             setMessage('ed5', credentialError || professionalError);
             return;
         }
+        // Final guard: nothing is sent to the server unless both REQUIRED boxes are ticked.
+        if (!requireConsent('pediatrician', 'sd3')) {
+            return;
+        }
+        const consent = readConsent('pediatrician');
 
         const docIdFile = byId('docIdInput').files[0];
         const licenseNumber = valueOf('license');
@@ -449,6 +608,9 @@ async function registerPedia() {
         formData.append('phoneNumber', valueOf('pediaPhone'));
         formData.append('licenseExpiry', valueOf('licenseExpiry'));
         formData.append('specialization', specialization);
+        formData.append('acceptTerms', String(consent.acceptTerms));
+        formData.append('acknowledgePrivacy', String(consent.acknowledgePrivacy));
+        formData.append('mlConsent', String(consent.mlConsent));
         formData.append('prcIdCard', docIdFile);
 
         console.log([...formData.keys()]);
@@ -515,6 +677,38 @@ document.addEventListener('DOMContentLoaded', function() {
             setMessage('e1', '');
         });
     });
+
+    // Keep the consent message in step with what the user ticks once they have been told
+    // what is missing.
+    Object.keys(CONSENT_IDS).forEach((kind) => {
+        const ids = CONSENT_IDS[kind];
+        [ids.terms, ids.privacy].forEach((id) => {
+            const box = byId(id);
+            if (!box) return;
+            box.addEventListener('change', () => {
+                const errorEl = byId(ids.error);
+                if (errorEl && errorEl.textContent) validateConsent(kind, { focus: false });
+            });
+        });
+    });
+
+    // Terms reader: the link still opens the plain-text file if the dialog is unavailable.
+    const termsDialog = byId('termsDialog');
+    document.querySelectorAll('.terms-open-link').forEach((link) => {
+        link.addEventListener('click', (event) => {
+            if (openTermsDialog(link, link.getAttribute('data-terms-section'))) event.preventDefault();
+        });
+    });
+    if (termsDialog) {
+        const closeBtn = byId('termsDialogClose');
+        if (closeBtn) closeBtn.addEventListener('click', () => termsDialog.close());
+        termsDialog.addEventListener('click', (event) => {
+            if (event.target === termsDialog) termsDialog.close();
+        });
+        termsDialog.addEventListener('close', () => {
+            if (termsTrigger && typeof termsTrigger.focus === 'function') termsTrigger.focus();
+        });
+    }
 
     const okBtn = byId('regSuccessOkBtn');
     if (okBtn) {

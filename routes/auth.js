@@ -19,6 +19,7 @@ const Notification = require('../models/Notification');
 const { authMiddleware } = require('../middleware/auth');
 const sse = require('../sse');
 const fileStorage = require('../services/fileStorage');
+const { parseSignupConsent } = require('../constants/legalConsent');
 
 const router = express.Router();
 
@@ -599,6 +600,15 @@ router.post('/register', handleProfileUpload, async (req, res) => {
       return fail(400, 'Password must be at least 8 characters long.');
     }
 
+    // Terms acceptance + Privacy Notice acknowledgment are REQUIRED to create an
+    // account; the machine-learning consent is optional and never blocks this.
+    // Enforced here, not only in the sign-up page, so a request that skips the
+    // page cannot create an account. See constants/legalConsent.js.
+    const consent = parseSignupConsent(req.body);
+    if (!consent.ok) {
+      return fail(400, consent.error);
+    }
+
     const existingUser = await User.findOne({
       $or: [{ email: cleanEmail }, { username: cleanUsername }],
     }).select('_id').lean();
@@ -675,6 +685,7 @@ router.post('/register', handleProfileUpload, async (req, res) => {
       role: cleanRole,
       status: initialStatus,
       emailVerified: true,
+      consents: consent.consents,
       profileIcon: profileIcon || 'avatar1',
       licenseNumber: licenseNumber || null,
       institution: institution || null,

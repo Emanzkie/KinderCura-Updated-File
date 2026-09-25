@@ -819,3 +819,257 @@
         font-size: 2.5rem;
     }
 }
+
+/* ── Terms of Service & consent (sign-up) ─────────────────────────────────
+   Real <input type="checkbox"> controls with associated <label for>. Nothing is
+   hidden or replaced: the native checkbox stays visible, focusable and toggled by
+   Space, and its checkmark shape (not colour) shows the checked state. */
+.consent-group {
+    border: 1px solid var(--border, #DDD9CC);
+    border-radius: 12px;
+    padding: 1rem 1.1rem 1.1rem;
+    margin: 1.25rem 0 0.5rem;
+    min-width: 0;
+    background: var(--bg-primary, #FAFAF6);
+}
+
+.consent-legend {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--primary-dark, #5A7560);
+    padding: 0 0.4rem;
+}
+
+.consent-intro {
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--text-dark, #3D4738);
+    margin: 0 0 0.6rem;
+}
+
+.consent-review {
+    margin: 0 0 0.75rem;
+    font-size: 0.88rem;
+}
+
+.terms-open-link,
+.terms-dialog-footer a {
+    font-weight: 600;
+    color: var(--primary-dark, #5A7560);
+    text-decoration: underline;
+}
+
+.consent-item {
+    margin-top: 1rem;
+}
+
+.consent-heading {
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--text-dark, #3D4738);
+    margin: 0 0 0.4rem;
+}
+
+.consent-required-tag {
+    font-weight: 600;
+}
+
+.consent-check {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 0.35rem 0.4rem;
+    border-radius: 8px;
+}
+
+.consent-check:focus-within {
+    background: rgba(107, 142, 111, 0.14);
+}
+
+.consent-input {
+    flex: 0 0 auto;
+    width: 1.4rem;
+    height: 1.4rem;
+    margin: 0.15rem 0 0;
+    accent-color: var(--primary-dark, #5A7560);
+    cursor: pointer;
+}
+
+.consent-input:focus-visible {
+    outline: 3px solid #1a56db;
+    outline-offset: 3px;
+}
+
+.consent-input[aria-invalid="true"] {
+    outline: 2px solid #b42318;
+    outline-offset: 2px;
+}
+
+.consent-label {
+    display: block;
+    flex: 1 1 auto;
+    font-size: 0.85rem;
+    line-height: 1.55;
+    color: var(--text-dark, #3D4738);
+    cursor: pointer;
+    padding: 0.1rem 0;
+}
+
+.consent-note {
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--text-light, #6B7967);
+    margin: 0.35rem 0 0 2.6rem;
+}
+
+.consent-error {
+    margin: 1rem 0 0;
+    color: #b42318;
+    font-weight: 600;
+}
+
+.consent-error:not(:empty) {
+    display: block;
+}
+
+/* Terms reader (native <dialog>) */
+.terms-dialog {
+    width: min(760px, calc(100vw - 2rem));
+    max-height: min(88vh, 900px);
+    padding: 0;
+    border: 1px solid var(--border, #DDD9CC);
+    border-radius: 14px;
+    background: #fff;
+    color: var(--text-dark, #3D4738);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+.terms-dialog[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+.terms-dialog::backdrop {
+    background: rgba(20, 30, 20, 0.55);
+}
+
+.terms-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 1.1rem;
+    border-bottom: 1px solid var(--border, #DDD9CC);
+}
+
+.terms-dialog-header h2 {
+    margin: 0;
+    font-size: 1.05rem;
+    color: var(--primary-dark, #5A7560);
+}
+
+.terms-dialog-close {
+    min-height: 44px;
+    min-width: 88px;
+}
+
+.terms-dialog-close:focus-visible,
+.terms-dialog-footer a:focus-visible,
+.terms-open-link:focus-visible {
+    outline: 3px solid #1a56db;
+    outline-offset: 2px;
+}
+
+.terms-dialog-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 1rem 1.25rem;
+    font-size: 0.9rem;
+    line-height: 1.65;
+}
+
+.terms-dialog-body:focus-visible {
+    outline: 3px solid #1a56db;
+    outline-offset: -3px;
+}
+
+.terms-dialog-body p {
+    margin: 0 0 0.7rem;
+}
+
+.terms-dialog-body hr {
+    border: 0;
+    border-top: 1px solid var(--border, #DDD9CC);
+    margin: 1rem 0;
+}
+
+.terms-brand {
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.1rem !important;
+}
+
+.terms-doc-title {
+    font-size: 1.2rem;
+    margin: 0 0 0.6rem;
+}
+
+.terms-section-heading {
+    font-size: 0.98rem;
+    margin: 0.3rem 0 0.5rem;
+    color: var(--primary-dark, #5A7560);
+}
+
+.terms-subheading {
+    font-size: 0.9rem;
+    margin: 0.8rem 0 0.35rem;
+}
+
+.terms-meta {
+    color: var(--text-light, #6B7967);
+    margin-bottom: 0.2rem !important;
+}
+
+.terms-dialog-footer {
+    padding: 0.7rem 1.1rem;
+    border-top: 1px solid var(--border, #DDD9CC);
+    font-size: 0.85rem;
+}
+
+@media (max-width: 480px) {
+    .consent-group {
+        padding: 0.85rem 0.75rem 1rem;
+    }
+
+    .consent-note {
+        margin-left: 0;
+    }
+
+    .terms-dialog {
+        width: calc(100vw - 1rem);
+        max-height: 92vh;
+    }
+
+    .terms-dialog-body {
+        padding: 0.9rem;
+    }
+}
+
+/* Link from the Privacy Notice Acknowledgment to the privacy section of the Terms */
+.consent-privacy-review {
+    margin: 0.4rem 0 0 2.6rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.terms-dialog-body .terms-section-heading:focus {
+    outline: 2px solid #1a56db;
+    outline-offset: 3px;
+}
+
+@media (max-width: 480px) {
+    .consent-privacy-review {
+        margin-left: 0;
+    }
+}

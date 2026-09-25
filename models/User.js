@@ -146,6 +146,22 @@ const userSchema = new mongoose.Schema(
       managePayments: { type: Boolean, default: false },
     },
 
+    // ── Sign-up consent record (additive) ───────────────────────────────────
+    // Written once, at registration, from the three separate selections in
+    // SIGN-UP,LOGIN/legal/KINDERCURA-TERMS-OF-SERVICE.txt (section 17): Terms
+    // acceptance and Privacy Notice acknowledgment are required; machine-learning
+    // consent is optional and independent of both. Every field is null on accounts
+    // created before this existed — those users are not retroactively prompted.
+    // For mlConsentGiven, null means "never asked" and false means "asked and
+    // declined". See constants/legalConsent.js.
+    consents: {
+      termsVersion: { type: String, default: null },
+      termsAcceptedAt: { type: Date, default: null },
+      privacyNoticeAcknowledgedAt: { type: Date, default: null },
+      mlConsentGiven: { type: Boolean, default: null },
+      mlConsentRecordedAt: { type: Date, default: null },
+    },
+
     // ── Synthetic/demo marker (additive) ────────────────────────────────────
     // false/null on every real account, including every account created before
     // this field existed. Set to true ONLY by
