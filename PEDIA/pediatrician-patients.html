@@ -180,19 +180,102 @@
         </div>
     </div>
 
-    <!-- Progress History Modal -->
+    <!-- Progress / Check-up History Modal -->
     <div class="notifications-modal" id="progressModal" style="display:none;">
-        <div class="notifications-content" style="max-width:900px;">
+        <div class="notifications-content" style="max-width:960px;">
             <div class="notifications-header">
-                <h3 id="progressModalTitle">Patient Progress History</h3>
+                <h3 id="progressModalTitle">Patient Check-up History</h3>
                 <button class="close-btn" onclick="closeProgressModal()">&#215;</button>
             </div>
-            <div style="padding:1.5rem 2rem 2rem;max-height:75vh;overflow-y:auto;">
+            <div style="padding:1.5rem 2rem 2rem;max-height:78vh;overflow-y:auto;">
                 <p id="progressPatientName" style="color:var(--text-light);margin-bottom:1rem;font-size:0.9rem;"></p>
 
-                <!-- Small form so pediatrician can add a new follow-up note quickly -->
+                <!-- ── Check-up / Medical History — a continuous, longitudinal
+                     visit record (diagnosis, findings, recommendations, next
+                     follow-up, status) separate from the Assessment History
+                     column below, which stays score-only. ── -->
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;flex-wrap:wrap;gap:0.6rem;">
+                    <div>
+                        <h4 style="margin:0;color:var(--primary);">Patient Check-up History</h4>
+                        <p style="margin:0.25rem 0 0;font-size:0.78rem;color:var(--text-light);max-width:560px;">A continuous medical-history-style record of this patient's visits over time — each check-up is its own entry and earlier entries are never overwritten.</p>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="addCheckupToggleBtn" onclick="toggleAddCheckupForm()" style="padding:0.6rem 1.1rem;white-space:nowrap;">+ Add Check-up</button>
+                </div>
+
+                <div id="checkupFormWrap" style="display:none;background:var(--bg-primary);border-radius:12px;padding:1.2rem;margin:1rem 0 1.5rem;">
+                    <h5 id="checkupFormTitle" style="margin:0 0 0.9rem;color:var(--primary);">Add Check-up</h5>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label style="font-weight:600;">Visit Type</label>
+                            <select id="checkup-visit-type" style="width:100%;padding:0.8rem;border:2px solid var(--border);border-radius:8px;">
+                                <option value="initial_checkup">Initial Check-up</option>
+                                <option value="follow_up_checkup">Follow-up Check-up</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label style="font-weight:600;">Check-up Date</label>
+                            <input type="date" id="checkup-date" style="width:100%;padding:0.8rem;border:2px solid var(--border);border-radius:8px;">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-top:1rem;">
+                        <label style="font-weight:600;">Diagnosis</label>
+                        <textarea id="checkup-diagnosis" placeholder="e.g., Communication concern" style="width:100%;height:80px;padding:0.9rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;resize:vertical;"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label style="font-weight:600;">Findings / Observations <span style="font-weight:400;color:var(--text-light);">(optional)</span></label>
+                        <textarea id="checkup-findings" placeholder="What was observed at this visit..." style="width:100%;height:80px;padding:0.9rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;resize:vertical;"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label style="font-weight:600;">Recommendations <span style="font-weight:400;color:var(--text-light);">(optional)</span></label>
+                        <textarea id="checkup-recommendations" placeholder="e.g., Continue developmental activities and return for follow-up." style="width:100%;height:80px;padding:0.9rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;resize:vertical;"></textarea>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label style="font-weight:600;">Next Follow-up Date <span style="font-weight:400;color:var(--text-light);">(optional)</span></label>
+                            <input type="date" id="checkup-next-date" style="width:100%;padding:0.8rem;border:2px solid var(--border);border-radius:8px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label style="font-weight:600;">Status</label>
+                            <select id="checkup-status" style="width:100%;padding:0.8rem;border:2px solid var(--border);border-radius:8px;">
+                                <option value="initial_review">Initial Review</option>
+                                <option value="monitoring">Monitoring</option>
+                                <option value="improving">Improving</option>
+                                <option value="stable">Stable</option>
+                                <option value="needs_attention">Needs Attention</option>
+                                <option value="referred">Referred</option>
+                                <option value="resolved">Resolved / Ruled Out</option>
+                                <option value="parent_monitoring">Parent Monitoring</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label style="font-weight:600;">Next Follow-up Reason <span style="font-weight:400;color:var(--text-light);">(optional)</span></label>
+                        <input type="text" id="checkup-next-reason" placeholder="e.g., Routine follow-up" style="width:100%;padding:0.85rem;border:2px solid var(--border);border-radius:8px;">
+                    </div>
+                    <div class="form-group">
+                        <label style="font-weight:600;">Link to Assessment <span style="font-weight:400;color:var(--text-light);">(optional)</span></label>
+                        <select id="checkup-linked-assessment" style="width:100%;padding:0.8rem;border:2px solid var(--border);border-radius:8px;">
+                            <option value="">— None —</option>
+                        </select>
+                        <p style="font-size:0.76rem;color:var(--text-light);margin-top:0.35rem;">Only link this visit to an assessment when it is based on one — a routine follow-up with no new screening should stay unlinked. This never recalculates or duplicates the assessment's score.</p>
+                    </div>
+                    <div style="display:flex;justify-content:flex-end;gap:0.8rem;margin-top:1rem;">
+                        <button type="button" class="btn btn-secondary" onclick="cancelAddCheckup()" style="padding:0.75rem 1.2rem;">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="checkupSubmitBtn" onclick="submitCheckup()" style="padding:0.75rem 1.2rem;">Save Check-up</button>
+                    </div>
+                </div>
+
+                <div id="checkupHistoryList" style="display:grid;gap:1rem;margin-bottom:2rem;">
+                    <p style="text-align:center;color:var(--text-light);padding:1rem;">Loading check-up history...</p>
+                </div>
+
+                <hr style="margin:0 0 1.5rem;border:none;border-top:1px solid var(--border);">
+
+                <!-- Small form so pediatrician can add a quick free-form note — kept
+                     separate from the structured check-up history above. -->
                 <div style="background:var(--bg-primary);border-radius:12px;padding:1.2rem 1.2rem 1rem;margin-bottom:1.5rem;">
-                    <h4 style="margin-bottom:0.8rem;color:var(--primary);">Add Progress Note</h4>
+                    <h4 style="margin-bottom:0.2rem;color:var(--primary);">Quick Progress Note</h4>
+                    <p style="margin:0 0 0.8rem;font-size:0.76rem;color:var(--text-light);">A short free-form note — not part of the structured check-up history above.</p>
                     <div style="display:grid;grid-template-columns:220px 1fr;gap:1rem;align-items:start;">
                         <div class="form-group" style="margin-bottom:0;">
                             <label style="font-weight:600;">Progress Status</label>
@@ -220,7 +303,7 @@
 
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start;">
                     <div style="background:white;">
-                        <h4 style="margin-bottom:0.8rem;color:var(--primary);">Progress Timeline</h4>
+                        <h4 style="margin-bottom:0.8rem;color:var(--primary);">Progress Notes</h4>
                         <div id="progressTimeline" style="display:grid;gap:0.8rem;">
                             <p style="text-align:center;color:var(--text-light);padding:1rem;">Loading progress notes...</p>
                         </div>

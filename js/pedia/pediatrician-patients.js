@@ -358,7 +358,7 @@ const API = window.location.origin + '/api';
                     </button>
                     <button class="btn btn-secondary" onclick="openProgressModal('${p.childId}','${childNameEsc}')"
                         style="flex:1;min-width:130px;padding:0.7rem;border-color:var(--primary-dark);color:var(--primary-dark);">
-                        <img src="/icons/analytics.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Progress History
+                        <img src="/icons/analytics.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Check-up History
                     </button>
                     ${p.appointmentId ? `<button class="btn btn-secondary" onclick="window.location.href='/pedia/pedia-chat.html?appointmentId=${p.appointmentId}'" style="flex:1;min-width:130px;padding:0.7rem;border-color:var(--primary);color:var(--primary);"> Chat with Parent</button>` : ''}
                 </div>
@@ -691,25 +691,292 @@ const API = window.location.origin + '/api';
         }).join('');
     }
 
+    // ── Check-up / Medical History ──────────────────────────────────────────
+    // Longitudinal, structured visit record — separate from the free-form
+    // Quick Progress Note below and from Assessment History (scores only).
+    // Descriptive statuses only: never derived from a score, never a new
+    // scoring threshold — the pediatrician always chooses the status explicitly.
+    function checkupStatusMeta(status) {
+        const map = {
+            initial_review:    { label: 'Initial Review',       color: '#3b82f6', bg: '#dbeafe' },
+            monitoring:        { label: 'Monitoring',           color: '#7c3aed', bg: '#ede9fe' },
+            improving:         { label: 'Improving',            color: '#15803d', bg: '#dcfce7' },
+            stable:            { label: 'Stable',                color: '#0f766e', bg: '#ccfbf1' },
+            needs_attention:   { label: 'Needs Attention',      color: '#b91c1c', bg: '#fee2e2' },
+            referred:          { label: 'Referred',             color: '#1d4ed8', bg: '#dbeafe' },
+            resolved:          { label: 'Resolved / Ruled Out', color: '#166534', bg: '#dcfce7' },
+            parent_monitoring: { label: 'Parent Monitoring',    color: '#a16207', bg: '#fef3c7' },
+        };
+        return map[status] || { label: status || 'Monitoring', color: '#7c3aed', bg: '#ede9fe' };
+    }
+
+    function checkupVisitTypeLabel(visitType) {
+        return visitType === 'follow_up_checkup' ? 'Follow-up Check-up' : 'Initial Check-up';
+    }
+
+    let _currentCheckups = [];
+    let _currentCheckupAssessments = [];
+    window.editingCheckupId = null;
+
+    // Populates the "Link to Assessment" dropdown from this child's existing
+    // Assessment History (already loaded for the right column) — never a
+    // separate fetch, and never a source of score data itself.
+    function populateLinkedAssessmentOptions(assessments) {
+        _currentCheckupAssessments = assessments || [];
+        const sel = document.getElementById('checkup-linked-assessment');
+        if (!sel) return;
+        const current = sel.value;
+        const options = _currentCheckupAssessments
+            .filter(a => a.completedAt)
+            .map(a => {
+                const dateText = new Date(a.completedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+                const scoreText = a.overallScore != null ? ` — ${Math.round(a.overallScore)}% overall` : '';
+                return `<option value="${a.id}">${dateText}${scoreText}</option>`;
+            }).join('');
+        sel.innerHTML = '<option value="">— None —</option>' + options;
+        sel.value = current || '';
+    }
+
+    function assessmentDateLabel(assessmentIdValue) {
+        const a = _currentCheckupAssessments.find(x => String(x.id) === String(assessmentIdValue));
+        if (!a || !a.completedAt) return null;
+        return new Date(a.completedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    }
+
+    function renderCheckupHistory(items) {
+        _currentCheckups = items || [];
+        const wrap = document.getElementById('checkupHistoryList');
+        if (!wrap) return;
+        if (!_currentCheckups.length) {
+            wrap.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1.5rem;background:var(--bg-primary);border-radius:10px;">No check-up history recorded yet for this patient. Use "+ Add Check-up" to start the record.</p>';
+            return;
+        }
+        // Newest first — the API already sorts by checkupDate desc.
+        wrap.innerHTML = _currentCheckups.map((c, idx) => {
+            const meta = checkupStatusMeta(c.status);
+            const dateText = c.checkupDate ? new Date(c.checkupDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—';
+            const nextFollowText = c.nextFollowUpDate ? new Date(c.nextFollowUpDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : null;
+            const linkedAssessmentLabel = c.assessmentId ? assessmentDateLabel(c.assessmentId) : null;
+            const isLatest = idx === 0;
+            return `
+                <div style="background:white;border:1px solid var(--border);border-left:4px solid ${meta.color};border-radius:10px;padding:1.1rem 1.3rem;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+                        <div>
+                            <p style="margin:0;font-weight:700;color:var(--text-dark);">${escapeHtml(dateText)}${isLatest ? ' <span style="font-size:0.66rem;font-weight:700;color:var(--primary);background:var(--surface-tint);padding:0.15rem 0.5rem;border-radius:999px;margin-left:0.3rem;vertical-align:middle;">LATEST</span>' : ''}</p>
+                            <p style="margin:0.15rem 0 0;font-size:0.8rem;color:var(--text-light);">${escapeHtml(checkupVisitTypeLabel(c.visitType))}</p>
+                        </div>
+                        <span style="background:${meta.bg};color:${meta.color};padding:0.25rem 0.7rem;border-radius:999px;font-size:0.76rem;font-weight:700;white-space:nowrap;">${escapeHtml(meta.label)}</span>
+                    </div>
+                    ${c.diagnosis ? `<p style="margin:0.75rem 0 0;font-size:0.85rem;color:var(--text-dark);line-height:1.5;"><strong>Diagnosis:</strong> ${escapeHtml(c.diagnosis)}</p>` : ''}
+                    ${c.findings ? `<p style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--text-dark);line-height:1.5;"><strong>Findings:</strong> ${escapeHtml(c.findings)}</p>` : ''}
+                    ${c.recommendations ? `<p style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--text-dark);line-height:1.5;"><strong>Recommendations:</strong> ${escapeHtml(c.recommendations)}</p>` : ''}
+                    ${nextFollowText ? `<p style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--text-dark);"><strong>Next Follow-up:</strong> ${escapeHtml(nextFollowText)}${c.nextFollowUpReason ? ` — ${escapeHtml(c.nextFollowUpReason)}` : ''}</p>` : ''}
+                    ${linkedAssessmentLabel ? `<p style="margin:0.5rem 0 0;font-size:0.8rem;color:var(--status-info-fg);">Linked Assessment: ${escapeHtml(linkedAssessmentLabel)} Assessment</p>` : ''}
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75rem;">
+                        <p style="margin:0;font-size:0.74rem;color:var(--text-light);">Recorded by ${escapeHtml(c.pediatricianName || 'Pediatrician')}${c.editedAt ? ' · edited' : ''}</p>
+                        <button type="button" onclick="editCheckup('${c.id}')" style="border:none;background:none;color:var(--primary);cursor:pointer;font-size:0.78rem;font-weight:600;">Edit</button>
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    // Shown INSTEAD of the empty state when the request itself failed, so an API
+    // error is never mistaken for "no check-ups recorded yet".
+    function renderCheckupHistoryError(err) {
+        _currentCheckups = [];
+        console.warn('Check-up history could not be loaded:', err && err.message);
+        const wrap = document.getElementById('checkupHistoryList');
+        if (!wrap) return;
+        wrap.innerHTML = `<p style="text-align:center;color:var(--status-attention-fg);padding:1.5rem;background:var(--bg-primary);border-radius:10px;">Check-up history could not be loaded right now (${escapeHtml((err && err.message) || 'unknown error')}). Assessment history and progress notes are unaffected. Close and reopen this window to try again.</p>`;
+    }
+
+    // Never throws: a failed reload after a successful save must not be reported as a failed save.
+    async function loadCheckupHistory(childId) {
+        try {
+            const data = await apiFetch(`/checkups/child/${childId}`);
+            renderCheckupHistory(data.checkups || []);
+        } catch (err) {
+            renderCheckupHistoryError(err);
+        }
+    }
+
+    function toggleAddCheckupForm() {
+        const wrap = document.getElementById('checkupFormWrap');
+        if (!wrap) return;
+        const show = wrap.style.display === 'none';
+        if (show) resetCheckupForm();
+        wrap.style.display = show ? 'block' : 'none';
+    }
+
+    function cancelAddCheckup() {
+        document.getElementById('checkupFormWrap').style.display = 'none';
+        resetCheckupForm();
+    }
+
+    function resetCheckupForm() {
+        window.editingCheckupId = null;
+        document.getElementById('checkupFormTitle').textContent = 'Add Check-up';
+        document.getElementById('checkupSubmitBtn').textContent = 'Save Check-up';
+
+        const visitTypeEl = document.getElementById('checkup-visit-type');
+        visitTypeEl.disabled = false;
+        // A small, non-binding hint: default to Follow-up once history already
+        // exists for this child, Initial otherwise. The pediatrician can still
+        // change it — this never gets submitted without their confirmation.
+        visitTypeEl.value = _currentCheckups.length ? 'follow_up_checkup' : 'initial_checkup';
+
+        const dateEl = document.getElementById('checkup-date');
+        dateEl.disabled = false;
+        dateEl.value = toDateInputValue(new Date());
+        dateEl.max = toDateInputValue(new Date());
+
+        document.getElementById('checkup-diagnosis').value = '';
+        document.getElementById('checkup-findings').value = '';
+        document.getElementById('checkup-recommendations').value = '';
+        const nextDateEl = document.getElementById('checkup-next-date');
+        nextDateEl.value = '';
+        nextDateEl.min = toDateInputValue(new Date());
+        document.getElementById('checkup-next-reason').value = '';
+        document.getElementById('checkup-status').value = 'initial_review';
+        const linkedSel = document.getElementById('checkup-linked-assessment');
+        if (linkedSel) linkedSel.value = '';
+    }
+
+    // Controlled edit: pre-fills the SAME form from an existing record and
+    // switches submitCheckup() into PATCH mode. Visit type and check-up date
+    // stay fixed while editing — this is for correcting the clinical text
+    // (e.g. a typo), not restructuring which visit a record represents.
+    function editCheckup(checkupId) {
+        const record = _currentCheckups.find(c => String(c.id) === String(checkupId));
+        if (!record) { alert('Could not find that check-up record.'); return; }
+
+        window.editingCheckupId = record.id;
+        document.getElementById('checkupFormWrap').style.display = 'block';
+        document.getElementById('checkupFormTitle').textContent = 'Edit Check-up';
+        document.getElementById('checkupSubmitBtn').textContent = 'Save Changes';
+
+        const visitTypeEl = document.getElementById('checkup-visit-type');
+        visitTypeEl.value = record.visitType;
+        visitTypeEl.disabled = true;
+
+        const dateEl = document.getElementById('checkup-date');
+        dateEl.value = toDateInputValue(record.checkupDate);
+        dateEl.disabled = true;
+
+        document.getElementById('checkup-diagnosis').value = record.diagnosis || '';
+        document.getElementById('checkup-findings').value = record.findings || '';
+        document.getElementById('checkup-recommendations').value = record.recommendations || '';
+        const nextDateEl = document.getElementById('checkup-next-date');
+        nextDateEl.value = toDateInputValue(record.nextFollowUpDate);
+        // A retained past date must not render as invalid; a newly typed past
+        // date is still blocked in submitCheckup().
+        nextDateEl.min = '';
+        document.getElementById('checkup-next-reason').value = record.nextFollowUpReason || '';
+        document.getElementById('checkup-status').value = record.status;
+        const linkedSel = document.getElementById('checkup-linked-assessment');
+        if (linkedSel) linkedSel.value = record.assessmentId || '';
+
+        document.getElementById('checkupFormWrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    async function submitCheckup() {
+        const childId = window.currentProgressChildId;
+        if (!childId) { alert('Child is missing. Please reopen the check-up history modal.'); return; }
+
+        const visitType = document.getElementById('checkup-visit-type').value;
+        const checkupDate = document.getElementById('checkup-date').value;
+        const diagnosis = document.getElementById('checkup-diagnosis').value.trim();
+        const findings = document.getElementById('checkup-findings').value.trim();
+        const recommendations = document.getElementById('checkup-recommendations').value.trim();
+        const nextFollowUpDate = document.getElementById('checkup-next-date').value;
+        const nextFollowUpReason = document.getElementById('checkup-next-reason').value.trim();
+        const status = document.getElementById('checkup-status').value;
+        const linkedAssessmentId = document.getElementById('checkup-linked-assessment')?.value || '';
+
+        // Mirrors the server-side rules in routes/checkups.js so the
+        // pediatrician gets the message inline instead of via a failed request.
+        if (!diagnosis || diagnosis.trim().length < 3) {
+            alert('Please describe the diagnosis for this visit.');
+            return;
+        }
+        const editingId = window.editingCheckupId;
+        // While editing, keeping the follow-up date the record already has is not
+        // a change — an older record's date is legitimately in the past by now.
+        // Only a newly entered or changed date is held to "not in the past".
+        const originalRecord = editingId ? _currentCheckups.find(c => String(c.id) === String(editingId)) : null;
+        const followUpUnchanged = Boolean(originalRecord)
+            && nextFollowUpDate === toDateInputValue(originalRecord.nextFollowUpDate);
+
+        if (nextFollowUpDate && !followUpUnchanged && isPastDateInput(nextFollowUpDate)) {
+            alert('Next follow-up date cannot be in the past.');
+            return;
+        }
+
+        const payload = {
+            diagnosis,
+            findings: findings || null,
+            recommendations: recommendations || null,
+            nextFollowUpReason: nextFollowUpReason || null,
+            status,
+        };
+        // An unchanged follow-up date is simply not sent, so the stored value is left as-is.
+        if (!followUpUnchanged) payload.nextFollowUpDate = nextFollowUpDate || null;
+        // visitType/checkupDate/assessmentId only apply to a NEW record — an
+        // edit never restructures which visit a record represents (see
+        // editCheckup() above and routes/checkups.js updateCheckupRecord).
+        if (!editingId) {
+            payload.visitType = visitType;
+            payload.checkupDate = checkupDate;
+            if (linkedAssessmentId) payload.assessmentId = linkedAssessmentId;
+        }
+
+        try {
+            if (editingId) {
+                await apiFetch(`/checkups/child/${childId}/${editingId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+                alert('✅ Check-up record updated.');
+            } else {
+                await apiFetch(`/checkups/child/${childId}`, { method: 'POST', body: JSON.stringify(payload) });
+                alert('✅ Check-up saved to the patient\'s history. Earlier check-ups remain unchanged.');
+            }
+            cancelAddCheckup();
+            await loadCheckupHistory(childId);
+            await loadPatients();
+        } catch (err) {
+            alert('Failed to save check-up: ' + err.message);
+        }
+    }
+
     async function loadProgressData(childId) {
-        const [historyData, notesData] = await Promise.all([
+        const [historyData, notesData, checkupsResult] = await Promise.all([
             apiFetch(`/assessments/${childId}/history`),
-            apiFetch(`/assessments/child/${childId}/progress-notes`)
+            apiFetch(`/assessments/child/${childId}/progress-notes`),
+            // Isolated on purpose: a check-up failure only affects the Check-up
+            // panel and never takes down Assessment History or Progress Notes.
+            apiFetch(`/checkups/child/${childId}`)
+                .then((d) => ({ checkups: d.checkups || [], error: null }))
+                .catch((err) => ({ checkups: [], error: err }))
         ]);
         renderAssessmentHistory(historyData.assessments || []);
         renderProgressNotes(notesData.notes || []);
+        populateLinkedAssessmentOptions(historyData.assessments || []);
+        if (checkupsResult.error) renderCheckupHistoryError(checkupsResult.error);
+        else renderCheckupHistory(checkupsResult.checkups);
     }
 
     function openProgressModal(childId, childName) {
         window.currentProgressChildId = childId;
-        document.getElementById('progressModalTitle').textContent = `Patient Progress History — ${childName}`;
+        document.getElementById('progressModalTitle').textContent = `Patient Check-up History — ${childName}`;
         document.getElementById('progressPatientName').textContent = `Patient: ${childName}`;
         document.getElementById('progress-note').value = '';
         document.getElementById('progress-status').value = 'monitoring';
+        document.getElementById('checkupFormWrap').style.display = 'none';
+        resetCheckupForm();
         document.getElementById('progressModal').style.display = 'flex';
+        document.getElementById('checkupHistoryList').innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1rem;">Loading check-up history...</p>';
         document.getElementById('progressTimeline').innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1rem;">Loading progress notes...</p>';
         document.getElementById('assessmentHistoryList').innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1rem;">Loading assessment history...</p>';
         loadProgressData(childId).catch((err) => {
+            document.getElementById('checkupHistoryList').innerHTML = `<p style="text-align:center;color:var(--status-attention-fg);padding:1rem;">${err.message}</p>`;
             document.getElementById('progressTimeline').innerHTML = `<p style="text-align:center;color:var(--status-attention-fg);padding:1rem;">${err.message}</p>`;
             document.getElementById('assessmentHistoryList').innerHTML = `<p style="text-align:center;color:var(--status-attention-fg);padding:1rem;">${err.message}</p>`;
         });
@@ -741,6 +1008,8 @@ const API = window.location.origin + '/api';
     function closeProgressModal() {
         document.getElementById('progressModal').style.display = 'none';
         document.getElementById('progress-note').value = '';
+        document.getElementById('checkupFormWrap').style.display = 'none';
+        window.editingCheckupId = null;
         window.currentProgressChildId = null;
     }
 

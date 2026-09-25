@@ -202,6 +202,10 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/videos', require('./routes/videos'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/questions', require('./routes/custom-questions'));
+// Longitudinal pediatrician check-up / medical-history records — a
+// dedicated resource separate from Assessment's per-screening diagnosis
+// fields. See routes/checkups.js header and models/PediatricianCheckup.js.
+app.use('/api/checkups', require('./routes/checkups'));
 // Parent-scoped read-only views. Currently the child progress report; this is
 // the namespace for future parent-facing aggregate endpoints.
 app.use('/api/parent', require('./routes/parent-reports'));

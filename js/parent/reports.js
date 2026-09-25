@@ -450,6 +450,105 @@ function renderTimeline(assessments) {
         </div>`;
 }
 
+// ── Check-up / Medical History (read-only) ──────────────────────────────────
+// A SEPARATE, longitudinal record from the assessment timeline above: this is
+// the pediatrician's own clinical visit history (diagnosis, findings,
+// recommendations, next follow-up, status) from GET
+// /api/checkups/child/:childId, never editable from this page. Never claims a
+// medical outcome on its own — "resolved"/"parent monitoring" are RECORDED
+// pediatrician follow-up statuses, not an automated diagnosis.
+function checkupStatusMeta(status) {
+    const map = {
+        initial_review:    { label: 'Initial Review',       color: '#3b82f6', bg: '#dbeafe' },
+        monitoring:        { label: 'Monitoring',           color: '#7c3aed', bg: '#ede9fe' },
+        improving:         { label: 'Improving',            color: '#15803d', bg: '#dcfce7' },
+        stable:            { label: 'Stable',                color: '#0f766e', bg: '#ccfbf1' },
+        needs_attention:   { label: 'Needs Attention',      color: '#b91c1c', bg: '#fee2e2' },
+        referred:          { label: 'Referred',             color: '#1d4ed8', bg: '#dbeafe' },
+        resolved:          { label: 'Resolved / Ruled Out', color: '#166534', bg: '#dcfce7' },
+        parent_monitoring: { label: 'Parent Monitoring',    color: '#a16207', bg: '#fef3c7' },
+    };
+    return map[status] || { label: status || 'Recorded', color: '#7c3aed', bg: '#ede9fe' };
+}
+
+function checkupVisitTypeLabel(visitType) {
+    return visitType === 'follow_up_checkup' ? 'Follow-up Check-up' : 'Initial Check-up';
+}
+
+function renderCheckupHistory(checkups, loadError) {
+    // A failed request is NOT the same as "no check-ups": say so explicitly
+    // instead of falling through to the empty state below.
+    if (loadError) {
+        console.warn('Check-up history could not be loaded:', loadError && loadError.message);
+        const denied = /access denied/i.test((loadError && loadError.message) || '');
+        return `
+            <div class="report-card">
+                <h2>Check-up / Medical History</h2>
+                <p class="card-sub">${denied
+                    ? 'Check-up history is not shared with your account for this child.'
+                    : 'Check-up history could not be loaded right now. This does not mean none has been recorded — please refresh the page or try again in a moment.'}</p>
+            </div>`;
+    }
+
+    if (!checkups || !checkups.length) {
+        return `
+            <div class="report-card">
+                <h2>Check-up / Medical History</h2>
+                <p class="card-sub">
+                    This is your pediatrician's recorded clinical visit history — separate from the
+                    assessment results above, and read-only here. No check-up visits have been
+                    recorded yet.
+                </p>
+            </div>`;
+    }
+
+    // API returns newest first.
+    const latest = checkups[0];
+    const latestMeta = checkupStatusMeta(latest.status);
+
+    const rows = checkups.map((c) => {
+        const meta = checkupStatusMeta(c.status);
+        const dateStr = fmtDate(c.checkupDate) || 'Date not recorded';
+        const nextFollowStr = c.nextFollowUpDate ? fmtScheduledDate(c.nextFollowUpDate) : null;
+        return `
+            <div class="timeline-item" style="border-left-color:${meta.color};">
+                <div class="timeline-top">
+                    <div>
+                        <div class="timeline-date">${escapeHtml(dateStr)}</div>
+                        <div class="timeline-age">${escapeHtml(checkupVisitTypeLabel(c.visitType))}</div>
+                    </div>
+                    <span style="background:${meta.bg};color:${meta.color};padding:0.3rem 0.75rem;border-radius:999px;font-size:0.78rem;font-weight:700;white-space:nowrap;">${escapeHtml(meta.label)}</span>
+                </div>
+                ${c.diagnosis ? `<p class="timeline-note"><strong>Diagnosis recorded at this visit:</strong> ${escapeHtml(c.diagnosis)}</p>` : ''}
+                ${c.findings ? `<p class="timeline-note"><strong>Findings:</strong> ${escapeHtml(c.findings)}</p>` : ''}
+                ${c.recommendations ? `<p class="timeline-note"><strong>Recommendation:</strong> ${escapeHtml(c.recommendations)}</p>` : ''}
+                ${nextFollowStr ? `<p class="timeline-note"><strong>Next follow-up:</strong> ${escapeHtml(nextFollowStr)}${c.nextFollowUpReason ? ` — ${escapeHtml(c.nextFollowUpReason)}` : ''}</p>` : ''}
+                <p class="timeline-pedia">Recorded by ${escapeHtml(c.pediatricianName || 'your pediatrician')}${c.assessmentId ? ' · linked to an assessment on the timeline above' : ''}</p>
+            </div>`;
+    }).join('');
+
+    return `
+        <div class="report-card">
+            <h2>Check-up / Medical History</h2>
+            <p class="card-sub">
+                Your pediatrician's recorded clinical visit history for this child, most recent
+                first. This is separate from the assessment scores above — it is the
+                pediatrician's own clinical record of each visit, not a screening result, and it
+                cannot be edited from this page.
+            </p>
+            <div class="interp-block" style="margin-bottom:1.2rem;">
+                <p class="interp-label">Latest recorded follow-up</p>
+                <p class="interp-text">
+                    The latest recorded follow-up is from ${escapeHtml(fmtDate(latest.checkupDate) || 'an earlier visit')},
+                    with status "${escapeHtml(latestMeta.label)}"${latest.recommendations ? ` — recommendation: ${escapeHtml(latest.recommendations.replace(/\.+$/, ''))}.` : '.'}
+                    Recorded history shows every visit below in order; this is a pediatrician
+                    follow-up record, not an automated diagnosis or a claim of medical recovery.
+                </p>
+            </div>
+            <div class="timeline-list">${rows}</div>
+        </div>`;
+}
+
 // Shown only when something genuinely could not be rendered, so a gap in the
 // page is never left unexplained.
 function renderDataNote(unrenderable) {
@@ -506,14 +605,26 @@ async function loadReport() {
         localStorage.setItem('kc_childId', activeChild.id);
         renderChildSwitcher();
 
-        reportData = await apiFetch(`/parent/children/${encodeURIComponent(activeChild.id)}/report`);
+        // Check-up history is fetched alongside the assessment report — it can
+        // exist independently of any assessment (a pure follow-up visit), so it
+        // is never gated behind assessments.length below. A fetch failure here
+        // must not take down the rest of the report.
+        const [reportResult, checkupsResult] = await Promise.all([
+            apiFetch(`/parent/children/${encodeURIComponent(activeChild.id)}/report`),
+            apiFetch(`/checkups/child/${encodeURIComponent(activeChild.id)}`)
+                .then((r) => ({ checkups: r.checkups || [], error: null }))
+                .catch((err) => ({ checkups: [], error: err })),
+        ]);
+        reportData = reportResult;
+        const checkups = checkupsResult.checkups;
+        const checkupsError = checkupsResult.error;
 
         const assessments = reportData.assessments || [];
         meta.textContent = `${activeChild.firstName} ${activeChild.lastName} • ${
             assessments.length} completed assessment${assessments.length === 1 ? '' : 's'}`;
 
         if (!assessments.length) {
-            content.innerHTML = renderEmptyState();
+            content.innerHTML = renderEmptyState() + renderCheckupHistory(checkups, checkupsError);
             return;
         }
 
@@ -527,6 +638,7 @@ async function loadReport() {
             ${renderDiscussPrompt(latest)}
             ${renderTimeline(assessments)}
             ${renderPediatricianReview(reportData)}
+            ${renderCheckupHistory(checkups, checkupsError)}
             ${renderDataNote(reportData.unrenderable)}`;
 
         drawTrendChart(assessments);
