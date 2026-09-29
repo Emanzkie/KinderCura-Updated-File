@@ -265,6 +265,44 @@ function mailBudgetFrom(startedAt) {
   return Math.max(2500, MAIL_DEADLINE_MS - (Date.now() - startedAt));
 }
 
+// Sorts a mail failure into one stable label, so the failing layer is named
+// rather than inferred. Nothing here is secret: these are SMTP protocol codes
+// and socket errnos, never credentials, addresses or the OTP.
+//
+//   EMAIL_AUTH_FAILED       Gmail answered and rejected the login (535 / EAUTH).
+//                           Credentials reached Gmail, so the network is fine.
+//   EMAIL_CONNECTION_FAILED The TCP/TLS connection to smtp.gmail.com never
+//                           completed — refused, timed out, DNS, or TLS. This is
+//                           the signature of a host that blocks outbound SMTP.
+//   EMAIL_TIMEOUT           Our own deadline fired first.
+//   EMAIL_SEND_FAILED       Connected and authenticated, but the message itself
+//                           was refused (bad envelope, bad From, quota).
+function classifyMailError(err) {
+  const code = String(err?.code || '');
+  const errno = String(err?.errno || '');
+  const command = String(err?.command || '');
+  const message = String(err?.message || '');
+  const responseCode = Number(err?.responseCode) || null;
+  const blob = `${code} ${errno} ${message}`;
+
+  const smtp = { code: code || null, command: command || null, responseCode };
+
+  if (/MAIL_TIMEOUT/.test(message)) {
+    return { label: 'EMAIL_TIMEOUT', status: 502, smtp,
+      clientMessage: 'The verification email is taking too long to send. Please try again.' };
+  }
+  if (responseCode === 535 || code === 'EAUTH') {
+    return { label: 'EMAIL_AUTH_FAILED', status: 503, smtp,
+      clientMessage: 'Email service is not configured. Please contact support.' };
+  }
+  if (/ECONNECTION|ESOCKET|EDNS|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|ECONNRESET|EPIPE|ERR_TLS|CERT_/.test(blob)) {
+    return { label: 'EMAIL_CONNECTION_FAILED', status: 502, smtp,
+      clientMessage: 'The verification email could not be sent right now. Please try again.' };
+  }
+  return { label: 'EMAIL_SEND_FAILED', status: 502, smtp,
+    clientMessage: 'Failed to send the verification email. Please try again.' };
+}
+
 function sendMailWithin(message, budgetMs) {
   let timer;
   const deadline = new Promise((_resolve, reject) => {
@@ -459,6 +497,61 @@ async function getParentPreAssessmentState(parentId) {
   };
 }
 
+// GET /api/auth/email-status
+//
+// Answers one question: can THIS server open an authenticated SMTP session to
+// Gmail? It runs transporter.verify(), which connects, does TLS, greets and
+// authenticates — then disconnects. No mail is sent, no OTP is generated and
+// nothing is written to the database, so it is safe to hit from a browser.
+//
+// It exists because the interesting failure is infrastructural: on a host that
+// blocks outbound SMTP, /send-otp fails identically every time and the reason is
+// only visible in the platform's own logs. This surfaces it over HTTP.
+// Presence booleans and SMTP protocol codes only — never any value.
+router.get('/email-status', async (_req, res) => {
+  const startedAt = Date.now();
+  const present = {
+    EMAIL_USER: Boolean(process.env.EMAIL_USER),
+    EMAIL_PASS: Boolean(process.env.EMAIL_PASS),
+    MONGODB_URI: Boolean(process.env.MONGODB_URI),
+    JWT_SECRET: Boolean(process.env.JWT_SECRET),
+  };
+
+  if (!emailConfigured()) {
+    console.error('[OTP] EMAIL_NOT_CONFIGURED (email-status probe)');
+    return res.status(503).json({
+      ok: false, code: 'EMAIL_NOT_CONFIGURED', present,
+      transport: { kind: 'smtp', host: 'smtp.gmail.com', port: 465, secure: true },
+    });
+  }
+
+  try {
+    await Promise.race([
+      transporter.verify(),
+      new Promise((_r, reject) => setTimeout(() => reject(new Error('MAIL_TIMEOUT after 12000ms')), 12000)),
+    ]);
+    const elapsedMs = Date.now() - startedAt;
+    console.log('[OTP] email-status probe: SMTP OK', `${elapsedMs}ms`);
+    res.json({
+      ok: true, code: 'SMTP_OK', present, elapsedMs,
+      transport: { kind: 'smtp', host: 'smtp.gmail.com', port: 465, secure: true },
+    });
+  } catch (err) {
+    const failure = classifyMailError(err);
+    const elapsedMs = Date.now() - startedAt;
+    console.error(`[OTP] ${failure.label} (email-status probe)`, `${elapsedMs}ms`, {
+      smtp: failure.smtp,
+      errno: err?.errno ?? null,
+      syscall: err?.syscall ?? null,
+      message: err?.message,
+    });
+    res.status(failure.status).json({
+      ok: false, code: failure.label, present, elapsedMs, smtp: failure.smtp,
+      transport: { kind: 'smtp', host: 'smtp.gmail.com', port: 465, secure: true },
+    });
+  }
+});
+
 // POST /api/auth/send-otp
 //
 // Every stage is timed and logged with an elapsed-milliseconds marker so the
@@ -488,6 +581,7 @@ router.post('/send-otp', async (req, res) => {
 
     // Refuse before writing an OTP nobody can receive. Answering here is what
     // keeps a misconfigured deployment from looking like a frozen button.
+    console.log('[OTP] email configuration checked', `configured=${emailConfigured()}`, ms());
     if (!emailConfigured()) {
       console.error('[OTP] ERROR email service not configured — EMAIL_USER / EMAIL_PASS missing or still placeholders', ms());
       return res.status(503).json({
@@ -528,27 +622,24 @@ router.post('/send-otp', async (req, res) => {
       }, mailBudget);
       console.log('[OTP] email send completed', ms());
     } catch (mailErr) {
-      // Enough to diagnose (SMTP response code, command, message) without
-      // printing the credentials or the code itself.
-      const timedOut = /MAIL_TIMEOUT/.test(mailErr?.message || '');
-      console.error('[OTP] ERROR email send failed', ms(), {
-        responseCode: mailErr?.responseCode,
-        code: mailErr?.code,
-        command: mailErr?.command,
+      // The label names the failing layer; smtp carries the protocol/socket
+      // identifiers. Neither contains credentials, the recipient or the OTP.
+      const failure = classifyMailError(mailErr);
+      console.error(`[OTP] ${failure.label}`, ms(), {
+        smtp: failure.smtp,
+        errno: mailErr?.errno ?? null,
+        syscall: mailErr?.syscall ?? null,
+        host: mailErr?.address ?? 'smtp.gmail.com',
+        port: mailErr?.port ?? 465,
         message: mailErr?.message,
       });
-      // Gmail rejected the login. Almost always a wrong or unset App Password.
-      if (mailErr?.responseCode === 535 || mailErr?.code === 'EAUTH') {
-        return res.status(503).json({
-          error: 'Email service is not configured. Please contact support.',
-          code: 'EMAIL_AUTH_FAILED',
-        });
-      }
-      return res.status(502).json({
-        error: timedOut
-          ? 'The verification email is taking too long to send. Please try again.'
-          : 'Failed to send the verification email. Please try again.',
-        code: timedOut ? 'EMAIL_TIMEOUT' : 'EMAIL_SEND_FAILED',
+      return res.status(failure.status).json({
+        error: failure.clientMessage,
+        code: failure.label,
+        // Echoed so the failing layer is visible from DevTools when the host's
+        // logs are not to hand. Protocol codes only — safe to remove once the
+        // transport is settled.
+        smtp: failure.smtp,
       });
     }
 
@@ -1202,3 +1293,7 @@ router.post('/logout', (req, res) => {
 });
 
 module.exports = router;
+
+// Test seam: lets the unit tests assert how a mail failure is labelled without
+// standing up SMTP. Not used by the application.
+module.exports._classifyMailError = classifyMailError;

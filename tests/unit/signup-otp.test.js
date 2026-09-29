@@ -63,6 +63,63 @@ function fillDoctor(env) {
 
 const ok = (m) => console.log('  ok -', m);
 
+// Mail-failure labelling. The distinction that matters in production: a host
+// that blocks outbound SMTP produces a socket-level error, which must NOT be
+// reported as a generic send failure — it is a connectivity fault and points at
+// the network, not at the credentials or the message.
+function mailErrorTests() {
+  const classify = require(path.join(ROOT, 'routes/auth.js'))._classifyMailError;
+  assert.strictEqual(typeof classify, 'function', 'routes/auth.js must export the classifier test seam');
+
+  const cases = [
+    // real nodemailer shapes, captured from live failures
+    [{ code: 'ETIMEDOUT' },                          'EMAIL_CONNECTION_FAILED', 502, 'blocked / dropped SMTP port'],
+    [{ code: 'ESOCKET', errno: -4078, syscall: 'connect' }, 'EMAIL_CONNECTION_FAILED', 502, 'connection refused'],
+    [{ code: 'EDNS', errno: -3008, syscall: 'getaddrinfo' }, 'EMAIL_CONNECTION_FAILED', 502, 'DNS failure'],
+    [{ code: 'ECONNECTION' },                        'EMAIL_CONNECTION_FAILED', 502, 'generic connection error'],
+    [{ message: 'ECONNREFUSED 173.194.76.109:465' }, 'EMAIL_CONNECTION_FAILED', 502, 'errno only in the message'],
+    [{ code: 'EAUTH', responseCode: 535 },           'EMAIL_AUTH_FAILED',       503, 'bad App Password'],
+    [{ responseCode: 535 },                          'EMAIL_AUTH_FAILED',       503, '535 without a code'],
+    [{ message: 'MAIL_TIMEOUT after 8500ms' },       'EMAIL_TIMEOUT',           502, 'our own deadline'],
+    [{ code: 'EENVELOPE', responseCode: 553 },       'EMAIL_SEND_FAILED',       502, 'message refused after connecting'],
+    [{},                                             'EMAIL_SEND_FAILED',       502, 'unknown'],
+  ];
+
+  for (const [err, label, status, why] of cases) {
+    const got = classify(err);
+    assert.strictEqual(got.label, label, `${why}: expected ${label}, got ${got.label}`);
+    assert.strictEqual(got.status, status, `${why}: expected HTTP ${status}, got ${got.status}`);
+    assert.ok(got.clientMessage && !/password|pass|secret|@/i.test(got.clientMessage), `${why}: client message leaks nothing`);
+    // the echoed detail is protocol-level only
+    assert.deepStrictEqual(Object.keys(got.smtp).sort(), ['code', 'command', 'responseCode']);
+  }
+
+  // An auth failure must never be described as a connectivity problem: Gmail
+  // answering at all proves the network path works.
+  assert.notStrictEqual(classify({ code: 'EAUTH', responseCode: 535 }).label, 'EMAIL_CONNECTION_FAILED');
+  ok('mail errors: blocked port / refused / DNS -> EMAIL_CONNECTION_FAILED (502), 535 -> EMAIL_AUTH_FAILED (503), deadline -> EMAIL_TIMEOUT, envelope -> EMAIL_SEND_FAILED');
+}
+
+// The OTP value must never reach a log line or a response body.
+function noSecretLeakTests() {
+  const src = fs.readFileSync(path.join(ROOT, 'routes/auth.js'), 'utf8');
+  const sendOtp = src.slice(src.indexOf("router.post('/send-otp'"), src.indexOf("router.post('/verify-otp'"));
+  const logLines = sendOtp.split('\n').filter((l) => /console\.(log|error|warn)/.test(l));
+  for (const line of logLines) {
+    assert.ok(!/\botp\b/.test(line.replace(/\[OTP\]/g, '').replace(/OTP /g, '')),
+      `a /send-otp log line may reference the otp variable: ${line.trim()}`);
+  }
+  assert.ok(!/res\.json\([^)]*\botp\b/.test(sendOtp), 'the OTP must never be returned in a response');
+  assert.ok(/EMAIL_PASS = String\(process\.env\.EMAIL_PASS \|\| ''\)\.replace/.test(src), 'EMAIL_PASS whitespace is stripped');
+  // Naming EMAIL_PASS inside a message string is fine ("EMAIL_USER / EMAIL_PASS
+  // missing"); interpolating or passing the variable is not.
+  assert.ok(!/\$\{\s*EMAIL_PASS\s*\}/.test(src), 'EMAIL_PASS is never interpolated into a string');
+  assert.ok(!/console\.\w+\([^)]*,\s*EMAIL_PASS\s*[,)]/.test(src), 'EMAIL_PASS is never passed to a logger');
+  assert.ok(!/\$\{\s*EMAIL_USER\s*\}/.test(src.replace(/from: `"KinderCura" <\$\{EMAIL_USER\}>`/g, '')),
+    'EMAIL_USER is interpolated only into the From header');
+  ok('secrets: no /send-otp log references the OTP value, no OTP in any response, EMAIL_PASS never logged');
+}
+
 (async () => {
   // 1. Every id the JS touches exists in the markup.
   for (const id of ['pEmail','pPassword','pConfirm','pUsername','otpEmail','o1','o2','o3','o4','sp5','verifyBtn','sendOtpBtn','resendOtpBtn',
@@ -171,6 +228,9 @@ const ok = (m) => console.log('  ok -', m);
     assert.ok(!env.els.sp5 || !env.els.sp5.classList.added.includes('active'), 'does not advance on failure');
     ok('failure path: server message shown, button restored, no advance to the OTP step');
   }
+
+  mailErrorTests();
+  noSecretLeakTests();
 
   console.log('\nOTP UI tests OK');
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });
