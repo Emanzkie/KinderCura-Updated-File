@@ -20,6 +20,8 @@ const { authMiddleware } = require('../middleware/auth');
 const sse = require('../sse');
 const fileStorage = require('../services/fileStorage');
 const { parseSignupConsent } = require('../constants/legalConsent');
+const httpEmail = require('../services/httpEmail');
+const { httpEmailConfigured } = httpEmail;
 
 const router = express.Router();
 
@@ -236,13 +238,25 @@ async function uploadPathExists(publicPath) {
   return fileStorage.existsStored(dir, name, access);
 }
 
-function emailConfigured() {
+function smtpConfigured() {
   return Boolean(
     EMAIL_USER &&
     EMAIL_PASS &&
     EMAIL_USER !== 'your_email@gmail.com' &&
     EMAIL_PASS !== 'your_gmail_app_password'
   );
+}
+
+// Mail can leave by either route. EMAIL_API_KEY selects the provider's HTTPS
+// API; with no key set, the original Gmail SMTP path is used exactly as before.
+// Hosts that block outbound SMTP (Render does — see services/httpEmail.js) need
+// the key; local development works unchanged without one.
+function emailConfigured() {
+  return httpEmailConfigured() || smtpConfigured();
+}
+
+function activeTransport() {
+  return httpEmailConfigured() ? 'https-api' : 'smtp';
 }
 
 // A Gmail handshake that outlives the request budget turns a diagnosable mail
@@ -309,6 +323,16 @@ function sendMailWithin(message, budgetMs) {
     timer = setTimeout(() => reject(new Error(`MAIL_TIMEOUT after ${budgetMs}ms`)), budgetMs);
   });
   return Promise.race([transporter.sendMail(message), deadline]).finally(() => clearTimeout(timer));
+}
+
+// One entry point for both transports, so /send-otp does not care which is in
+// use. The HTTPS API bounds itself with AbortController; SMTP is raced against
+// the same budget. Either way the caller only proceeds on a real success.
+function deliverOtpEmail({ to, subject, html }, budgetMs) {
+  if (httpEmailConfigured()) {
+    return httpEmail.sendViaHttp({ to, subject, html, fromName: 'KinderCura' }, budgetMs);
+  }
+  return sendMailWithin({ from: `"KinderCura" <${EMAIL_USER}>`, to, subject, html }, budgetMs);
 }
 
 function generateOTP() {
@@ -526,11 +550,36 @@ router.get('/email-status', async (req, res) => {
     JWT_SECRET: Boolean(process.env.JWT_SECRET),
   };
 
-  const transport = { kind: 'smtp', host: 'smtp.gmail.com', port: probePort, secure: probeSecure };
+  present.EMAIL_API_KEY = Boolean(process.env.EMAIL_API_KEY);
+
+  const usingHttp = httpEmailConfigured();
+  const transport = usingHttp
+    ? httpEmail.describe()
+    : { kind: 'smtp', host: 'smtp.gmail.com', port: probePort, secure: probeSecure };
 
   if (!emailConfigured()) {
     console.error('[OTP] EMAIL_NOT_CONFIGURED (email-status probe)');
     return res.status(503).json({ ok: false, code: 'EMAIL_NOT_CONFIGURED', present, transport });
+  }
+
+  // With a key set, the HTTPS API is what /send-otp uses, so that is what gets
+  // checked: an authenticated GET that validates the key without sending mail.
+  if (usingHttp) {
+    try {
+      await httpEmail.verifyHttpEmail(10000);
+      const elapsedMs = Date.now() - startedAt;
+      console.log('[OTP] email-status probe: HTTPS API OK', `provider=${transport.provider}`, `${elapsedMs}ms`);
+      return res.json({ ok: true, code: 'EMAIL_API_OK', present, elapsedMs, transport });
+    } catch (err) {
+      const failure = classifyMailError(err);
+      const elapsedMs = Date.now() - startedAt;
+      console.error(`[OTP] ${failure.label} (email-status probe)`, `provider=${transport.provider}`, `${elapsedMs}ms`, {
+        smtp: failure.smtp, message: err?.message,
+      });
+      return res.status(failure.status).json({
+        ok: false, code: failure.label, present, elapsedMs, smtp: failure.smtp, transport,
+      });
+    }
   }
 
   // The default port reuses the application's own transporter, so the probe
@@ -597,7 +646,7 @@ router.post('/send-otp', async (req, res) => {
     // keeps a misconfigured deployment from looking like a frozen button.
     console.log('[OTP] email configuration checked', `configured=${emailConfigured()}`, ms());
     if (!emailConfigured()) {
-      console.error('[OTP] ERROR email service not configured — EMAIL_USER / EMAIL_PASS missing or still placeholders', ms());
+      console.error('[OTP] EMAIL_NOT_CONFIGURED — set EMAIL_API_KEY (HTTPS) or EMAIL_USER + EMAIL_PASS (SMTP)', ms());
       return res.status(503).json({
         error: 'Email service is not configured. Please contact support.',
         code: 'EMAIL_NOT_CONFIGURED',
@@ -613,10 +662,9 @@ router.post('/send-otp', async (req, res) => {
     console.log('[OTP] OTP saved', ms());
 
     const mailBudget = mailBudgetFrom(startedAt);
-    console.log('[OTP] email send started', `budget=${mailBudget}ms`, ms());
+    console.log('[OTP] email send started', `transport=${activeTransport()}`, `budget=${mailBudget}ms`, ms());
     try {
-      await sendMailWithin({
-        from: `"KinderCura" <${EMAIL_USER}>`,
+      await deliverOtpEmail({
         to: email,
         subject: 'KinderCura — Email Verification Code',
         html: `
@@ -639,12 +687,10 @@ router.post('/send-otp', async (req, res) => {
       // The label names the failing layer; smtp carries the protocol/socket
       // identifiers. Neither contains credentials, the recipient or the OTP.
       const failure = classifyMailError(mailErr);
-      console.error(`[OTP] ${failure.label}`, ms(), {
+      console.error(`[OTP] ${failure.label}`, `transport=${activeTransport()}`, ms(), {
         smtp: failure.smtp,
         errno: mailErr?.errno ?? null,
         syscall: mailErr?.syscall ?? null,
-        host: mailErr?.address ?? 'smtp.gmail.com',
-        port: mailErr?.port ?? 465,
         message: mailErr?.message,
       });
       return res.status(failure.status).json({
@@ -653,6 +699,7 @@ router.post('/send-otp', async (req, res) => {
         // Echoed so the failing layer is visible from DevTools when the host's
         // logs are not to hand. Protocol codes only — safe to remove once the
         // transport is settled.
+        transport: activeTransport(),
         smtp: failure.smtp,
       });
     }

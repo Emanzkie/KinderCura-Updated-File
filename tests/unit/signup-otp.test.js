@@ -120,6 +120,127 @@ function noSecretLeakTests() {
   ok('secrets: no /send-otp log references the OTP value, no OTP in any response, EMAIL_PASS never logged');
 }
 
+// HTTPS email transport. Render blocks outbound SMTP, so this is the path that
+// actually carries production OTP mail; its request shape is checked against
+// each provider's documented API, and its failures must land on the same labels
+// the SMTP path uses.
+async function httpEmailTests() {
+  const httpEmail = require(path.join(ROOT, 'services/httpEmail.js'));
+  const classify = require(path.join(ROOT, 'routes/auth.js'))._classifyMailError;
+  const saved = { key: process.env.EMAIL_API_KEY, provider: process.env.EMAIL_PROVIDER, from: process.env.EMAIL_FROM, user: process.env.EMAIL_USER };
+  const realFetch = global.fetch;
+
+  const withEnv = (env, fn) => {
+    Object.assign(process.env, env);
+    return fn();
+  };
+  const capture = (responder) => {
+    const seen = [];
+    global.fetch = async (url, init) => { seen.push({ url, init }); return responder(url, init); };
+    return seen;
+  };
+  const jsonResponse = (status, body) => ({
+    ok: status >= 200 && status < 300, status,
+    json: async () => body, text: async () => JSON.stringify(body),
+  });
+
+  process.env.EMAIL_FROM = ''; process.env.EMAIL_USER = 'sender@kindercura.com';
+
+  // Provider detected from the key prefix; no extra configuration needed.
+  withEnv({ EMAIL_API_KEY: 're_abc123', EMAIL_PROVIDER: '' }, () => {
+    assert.strictEqual(httpEmail.providerName(), 'resend');
+    assert.strictEqual(httpEmail.httpEmailConfigured(), true);
+  });
+  withEnv({ EMAIL_API_KEY: 'xkeysib-abc123', EMAIL_PROVIDER: '' }, () => {
+    assert.strictEqual(httpEmail.providerName(), 'brevo');
+  });
+  // An unrecognised key must NOT be treated as usable — guessing an API shape
+  // would reproduce exactly the opaque failure this replaces.
+  withEnv({ EMAIL_API_KEY: 'mystery-key', EMAIL_PROVIDER: '' }, () => {
+    assert.strictEqual(httpEmail.httpEmailConfigured(), false);
+  });
+  // No key at all means the SMTP path stays in charge.
+  withEnv({ EMAIL_API_KEY: '', EMAIL_PROVIDER: '' }, () => {
+    assert.strictEqual(httpEmail.httpEmailConfigured(), false);
+  });
+
+  // Resend: POST https://api.resend.com/emails, Bearer auth, {from,to[],subject,html}
+  {
+    const seen = capture(() => jsonResponse(200, { id: 'msg-1' }));
+    const out = await withEnv({ EMAIL_API_KEY: 're_abc123', EMAIL_PROVIDER: '' },
+      () => httpEmail.sendViaHttp({ to: 'p@example.invalid', subject: 'S', html: '<b>H</b>' }, 5000));
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].url, 'https://api.resend.com/emails');
+    assert.strictEqual(seen[0].init.method, 'POST');
+    assert.strictEqual(seen[0].init.headers.Authorization, 'Bearer re_abc123');
+    const body = JSON.parse(seen[0].init.body);
+    assert.strictEqual(body.from, 'KinderCura <sender@kindercura.com>');
+    assert.deepStrictEqual(body.to, ['p@example.invalid']);
+    assert.strictEqual(body.subject, 'S');
+    assert.strictEqual(body.html, '<b>H</b>');
+    assert.strictEqual(out.messageId, 'msg-1');
+    assert.strictEqual(out.provider, 'resend');
+  }
+
+  // Brevo: POST https://api.brevo.com/v3/smtp/email, api-key header,
+  // {sender:{email,name}, to:[{email}], subject, htmlContent}
+  {
+    const seen = capture(() => jsonResponse(201, { messageId: '<abc@relay>' }));
+    const out = await withEnv({ EMAIL_API_KEY: 'xkeysib-abc123', EMAIL_PROVIDER: '' },
+      () => httpEmail.sendViaHttp({ to: 'p@example.invalid', subject: 'S', html: '<b>H</b>' }, 5000));
+    assert.strictEqual(seen[0].url, 'https://api.brevo.com/v3/smtp/email');
+    assert.strictEqual(seen[0].init.headers['api-key'], 'xkeysib-abc123');
+    assert.ok(!seen[0].init.headers.Authorization, 'Brevo uses api-key, not Authorization');
+    const body = JSON.parse(seen[0].init.body);
+    assert.deepStrictEqual(body.sender, { email: 'sender@kindercura.com', name: 'KinderCura' });
+    assert.deepStrictEqual(body.to, [{ email: 'p@example.invalid' }]);
+    assert.strictEqual(body.htmlContent, '<b>H</b>');
+    assert.ok(!('html' in body), 'Brevo expects htmlContent');
+    assert.strictEqual(out.messageId, '<abc@relay>');
+  }
+
+  // Failure mapping, and the key must never surface in an error message.
+  const failures = [
+    [() => jsonResponse(401, { message: 'bad key re_abc123' }), 'EMAIL_AUTH_FAILED', 503, 'rejected key'],
+    [() => jsonResponse(403, { message: 'forbidden' }),         'EMAIL_AUTH_FAILED', 503, 'forbidden key'],
+    [() => jsonResponse(422, { message: 'sender not verified' }), 'EMAIL_SEND_FAILED', 502, 'unverified sender'],
+    [() => jsonResponse(500, { message: 'boom' }),              'EMAIL_SEND_FAILED', 502, 'provider outage'],
+    [() => { const e = new Error('fetch failed'); e.cause = { code: 'ENOTFOUND' }; throw e; }, 'EMAIL_CONNECTION_FAILED', 502, 'DNS failure'],
+    [() => { const e = new Error('aborted'); e.name = 'AbortError'; throw e; }, 'EMAIL_TIMEOUT', 502, 'our deadline'],
+  ];
+  for (const [responder, label, status, why] of failures) {
+    capture(responder);
+    let thrown = null;
+    try {
+      await withEnv({ EMAIL_API_KEY: 're_abc123', EMAIL_PROVIDER: '' },
+        () => httpEmail.sendViaHttp({ to: 'p@example.invalid', subject: 'S', html: 'H' }, 5000));
+    } catch (e) { thrown = e; }
+    assert.ok(thrown, `${why}: must throw rather than report success`);
+    const got = classify(thrown);
+    assert.strictEqual(got.label, label, `${why}: expected ${label}, got ${got.label}`);
+    assert.strictEqual(got.status, status, `${why}: expected HTTP ${status}`);
+    assert.ok(!/re_abc123|xkeysib-/.test(thrown.message), `${why}: the API key must never appear in an error`);
+  }
+
+  // The key check sends no mail.
+  {
+    const seen = capture(() => jsonResponse(200, { data: [] }));
+    await withEnv({ EMAIL_API_KEY: 're_abc123', EMAIL_PROVIDER: '' }, () => httpEmail.verifyHttpEmail(5000));
+    assert.strictEqual(seen[0].init.method, 'GET', 'the probe must not POST a message');
+    assert.strictEqual(seen[0].url, 'https://api.resend.com/domains');
+  }
+
+  global.fetch = realFetch;
+  process.env.EMAIL_API_KEY = saved.key ?? ''; process.env.EMAIL_PROVIDER = saved.provider ?? '';
+  process.env.EMAIL_FROM = saved.from ?? ''; process.env.EMAIL_USER = saved.user ?? '';
+
+  // The API key must never be reachable from anything the browser loads.
+  for (const f of ['js/auth/signup.js', 'SIGN-UP,LOGIN/signup.html']) {
+    assert.ok(!/EMAIL_API_KEY/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), `${f} must not reference EMAIL_API_KEY`);
+  }
+  ok('https transport: Resend + Brevo request shapes match their docs, key auto-detected, failures map to the same labels, key never leaked or shipped to the browser');
+}
+
 (async () => {
   // 1. Every id the JS touches exists in the markup.
   for (const id of ['pEmail','pPassword','pConfirm','pUsername','otpEmail','o1','o2','o3','o4','sp5','verifyBtn','sendOtpBtn','resendOtpBtn',
@@ -231,6 +352,7 @@ function noSecretLeakTests() {
 
   mailErrorTests();
   noSecretLeakTests();
+  await httpEmailTests();
 
   console.log('\nOTP UI tests OK');
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });
