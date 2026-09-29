@@ -287,7 +287,7 @@
 
                         <div class="form-actions">
                             <button type="button" class="btn btn-secondary" onclick="go(3)">Back</button>
-                            <button type="button" class="btn btn-primary" onclick="sendOTP()">Send Verification Code</button>
+                            <button type="button" class="btn btn-primary" id="sendOtpBtn" onclick="sendOTP()">Send Verification Code</button>
                         </div>
                     </div>
                     <div class="form-footer">
@@ -319,7 +319,7 @@
                                 onkeydown="otpBack(event,'o3',this)">
                         </div>
                         <p class="resend-text">Didn't receive it? <button type="button" class="resend-btn"
-                                onclick="sendOTP(true)">Resend Code</button></p>
+                                id="resendOtpBtn" onclick="sendOTP(true)">Resend Code</button></p>
                         <div class="form-actions">
                             <button type="button" class="btn btn-secondary" onclick="go(4)">Back</button>
                             <button type="button" class="btn btn-primary" id="verifyBtn" onclick="verifyAndRegister()">Verify &
@@ -451,7 +451,7 @@
 
                         <div class="form-actions">
                             <button type="button" class="btn btn-secondary" onclick="go(2)">Back</button>
-                            <button type="button" class="btn btn-primary" onclick="sendDoctorOTP()">Send Verification Code</button>
+                            <button type="button" class="btn btn-primary" id="dSendOtpBtn" onclick="sendDoctorOTP()">Send Verification Code</button>
                         </div>
                     </div>
                     <div class="form-footer">
@@ -483,7 +483,7 @@
                                 onkeydown="otpBack(event,'d3',this)">
                         </div>
                         <p class="resend-text">Didn't receive it? <button type="button" class="resend-btn"
-                                onclick="sendDoctorOTP(true)">Resend Code</button></p>
+                                id="dResendOtpBtn" onclick="sendDoctorOTP(true)">Resend Code</button></p>
                         <div class="form-actions">
                             <button type="button" class="btn btn-secondary" onclick="go(3)">Back</button>
                             <button type="button" class="btn btn-primary" id="dVerifyBtn" onclick="verifyDoctorOTP()">Verify &

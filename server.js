@@ -232,8 +232,22 @@ app.use('/api/ml', require('./routes/ml'));
 // PRC License Verification Module — upload, review, and approve PRC documents.
 app.use('/api/prc', require('./routes/prc-verification'));
 
+// Reports only WHETHER each required variable is present, never its value, so a
+// deployment missing MONGODB_URI / JWT_SECRET / EMAIL_USER / EMAIL_PASS can be
+// identified from the browser instead of by watching a signup fail.
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'OK', server: 'KinderCura Mongo Step 1', time: new Date() });
+    res.json({
+        status: 'OK',
+        server: 'KinderCura Mongo Step 1',
+        time: new Date(),
+        db: mongoose.connection.readyState === 1 ? 'connected' : 'not-connected',
+        env: {
+            MONGODB_URI: Boolean(process.env.MONGODB_URI),
+            JWT_SECRET: Boolean(process.env.JWT_SECRET),
+            EMAIL_USER: Boolean(process.env.EMAIL_USER),
+            EMAIL_PASS: Boolean(process.env.EMAIL_PASS),
+        },
+    });
 });
 
 // SSE is only supported in long-lived server environments.

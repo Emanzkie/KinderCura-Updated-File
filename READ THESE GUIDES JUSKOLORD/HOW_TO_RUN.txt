@@ -70,8 +70,8 @@ SETUP STEPS
 3. Edit .env and confirm:
       DB_SERVER=CindyGeverola\SQLEXPRESS02
       DB_NAME=KinderCura
-      EMAIL_USER=cindygeverola54321@gmail.com
-      EMAIL_PASS=rcqhvzsbqakdcsuo
+      EMAIL_USER=<your Gmail address>          # see .env.example
+      EMAIL_PASS=<your Google App Password>    # never commit this value
       PORT=3001
 
 4. Open terminal in this folder and run:

@@ -23,12 +23,31 @@ const { parseSignupConsent } = require('../constants/legalConsent');
 
 const router = express.Router();
 
+// Gmail credentials are read from the environment only — never hardcoded.
+//
+// EMAIL_PASS is a Google App Password. Google displays it as four groups of four
+// ("abcd efgh ijkl mnop") and the spaces are presentation only; pasted verbatim
+// into a hosting dashboard they make Gmail reject the login with 535, which
+// looked exactly like "no OTP email arrives". Whitespace is stripped here.
+const EMAIL_USER = String(process.env.EMAIL_USER || '').trim();
+const EMAIL_PASS = String(process.env.EMAIL_PASS || '').replace(/\s+/g, '');
+
+// smtp.gmail.com:465 is stated explicitly instead of `service: 'gmail'`, and the
+// three timeouts below bound every stage of the SMTP conversation. Implicit TLS
+// on 465 avoids the STARTTLS upgrade round trip that 587 needs, and a blocked
+// or silent SMTP socket now fails fast with a real error instead of hanging
+// until the platform kills the whole request.
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    user: EMAIL_USER,
+    pass: EMAIL_PASS,
   },
+  connectionTimeout: 7000,
+  greetingTimeout: 7000,
+  socketTimeout: 10000,
 });
 
 // Project-relative upload folders. fileStorage maps them to disk locally and
@@ -219,11 +238,39 @@ async function uploadPathExists(publicPath) {
 
 function emailConfigured() {
   return Boolean(
-    process.env.EMAIL_USER &&
-    process.env.EMAIL_PASS &&
-    process.env.EMAIL_USER !== 'your_email@gmail.com' &&
-    process.env.EMAIL_PASS !== 'your_gmail_app_password'
+    EMAIL_USER &&
+    EMAIL_PASS &&
+    EMAIL_USER !== 'your_email@gmail.com' &&
+    EMAIL_PASS !== 'your_gmail_app_password'
   );
+}
+
+// A Gmail handshake that outlives the request budget turns a diagnosable mail
+// error into an opaque timeout, so the send is raced against a deadline measured
+// from when the request arrived. DB connect and the existing-user lookup are
+// already spent by then, which is why the caller passes the time it has left
+// rather than a fixed duration.
+//
+// On Vercel the budget is tight: server.js answers 504 at 9.5 s to stay inside
+// the function limit, so the send must resolve before that. A long-lived host
+// (Render, a plain Node process) has no such cap and gets the longer budget;
+// there the transporter's own connection/greeting timeouts above are what stop
+// a blocked SMTP port from hanging, and they fail in about 7 s.
+const IS_SERVERLESS = !!(process.env.VERCEL || process.env.NOW_REGION);
+const MAIL_DEADLINE_MS = IS_SERVERLESS ? 8500 : 20000;
+
+// Milliseconds still available for the send, given how long the request has
+// already been running. Never below 2.5 s, so a slow start still gets a real try.
+function mailBudgetFrom(startedAt) {
+  return Math.max(2500, MAIL_DEADLINE_MS - (Date.now() - startedAt));
+}
+
+function sendMailWithin(message, budgetMs) {
+  let timer;
+  const deadline = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`MAIL_TIMEOUT after ${budgetMs}ms`)), budgetMs);
+  });
+  return Promise.race([transporter.sendMail(message), deadline]).finally(() => clearTimeout(timer));
 }
 
 function generateOTP() {
@@ -413,37 +460,58 @@ async function getParentPreAssessmentState(parentId) {
 }
 
 // POST /api/auth/send-otp
+//
+// Every stage is timed and logged with an elapsed-milliseconds marker so the
+// slow or failing step is visible in the platform logs instead of guessed at.
+// The OTP value itself is never logged.
 router.post('/send-otp', async (req, res) => {
+  const startedAt = Date.now();
+  const ms = () => `${Date.now() - startedAt}ms`;
+  const email = String(req.body.email || '').trim().toLowerCase();
+  console.log('[OTP] request received', `email=${email || '(none)'}`, ms());
+
   try {
-    const email = String(req.body.email || '').trim().toLowerCase();
     if (!email) return res.status(400).json({ error: 'Email is required.' });
     if (!isValidEmail(email)) return res.status(400).json({ error: 'Please enter a valid email address.' });
+    console.log('[OTP] email validated', ms());
 
+    // Checked before anything is generated or stored, so an address that is
+    // already registered never creates an OTP row.
     const existingUser = await User.findOne({ email }).select('_id').lean();
+    console.log('[OTP] existing-user check completed', `exists=${Boolean(existingUser)}`, ms());
     if (existingUser) {
-      console.log(`[SIGNUP] Existing user found: ${email}`);
       return res.status(409).json({
         error: 'Email already in use.',
         code: 'EMAIL_EXISTS'
       });
     }
 
+    // Refuse before writing an OTP nobody can receive. Answering here is what
+    // keeps a misconfigured deployment from looking like a frozen button.
+    if (!emailConfigured()) {
+      console.error('[OTP] ERROR email service not configured — EMAIL_USER / EMAIL_PASS missing or still placeholders', ms());
+      return res.status(503).json({
+        error: 'Email service is not configured. Please contact support.',
+        code: 'EMAIL_NOT_CONFIGURED',
+      });
+    }
+
     const otp = generateOTP();
-    console.log('[SIGNUP] OTP generated for:', email);
+    console.log('[OTP] OTP generated', ms());
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     await OtpCode.deleteMany({ email, used: false });
     await OtpCode.create({ email, code: otp, expiresAt, used: false });
-    console.log('[SIGNUP] OTP saved to DB for:', email);
+    console.log('[OTP] OTP saved', ms());
 
-    if (emailConfigured()) {
-      console.log('[SIGNUP] Email send start for:', email);
-      try {
-        await transporter.sendMail({
-          from: `"KinderCura" <${process.env.EMAIL_USER}>`,
-          to: email,
-          subject: 'KinderCura — Email Verification Code',
-          html: `
+    const mailBudget = mailBudgetFrom(startedAt);
+    console.log('[OTP] email send started', `budget=${mailBudget}ms`, ms());
+    try {
+      await sendMailWithin({
+        from: `"KinderCura" <${EMAIL_USER}>`,
+        to: email,
+        subject: 'KinderCura — Email Verification Code',
+        html: `
           <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;">
             <div style="background:#6B8E6F;padding:20px;text-align:center;border-radius:10px 10px 0 0;">
               <h1 style="color:white;margin:0;">KinderCura</h1>
@@ -457,21 +525,38 @@ router.post('/send-otp', async (req, res) => {
               <p style="color:#999;font-size:0.85rem;">If you did not request this, please ignore this email.</p>
             </div>
           </div>`,
+      }, mailBudget);
+      console.log('[OTP] email send completed', ms());
+    } catch (mailErr) {
+      // Enough to diagnose (SMTP response code, command, message) without
+      // printing the credentials or the code itself.
+      const timedOut = /MAIL_TIMEOUT/.test(mailErr?.message || '');
+      console.error('[OTP] ERROR email send failed', ms(), {
+        responseCode: mailErr?.responseCode,
+        code: mailErr?.code,
+        command: mailErr?.command,
+        message: mailErr?.message,
+      });
+      // Gmail rejected the login. Almost always a wrong or unset App Password.
+      if (mailErr?.responseCode === 535 || mailErr?.code === 'EAUTH') {
+        return res.status(503).json({
+          error: 'Email service is not configured. Please contact support.',
+          code: 'EMAIL_AUTH_FAILED',
         });
-        console.log('[SIGNUP] Email send success for:', email);
-      } catch (mailErr) {
-        console.error('[SIGNUP] Email send failed for:', email, mailErr);
-        return res.status(500).json({ error: 'Failed to send OTP email. Check email service configuration.' });
       }
-    } else {
-      console.error('[SIGNUP] EMAIL NOT CONFIGURED — EMAIL_USER/EMAIL_PASS env vars missing. OTP for', email, ':', otp);
-      return res.status(500).json({ error: 'Email service not configured. Please contact support.' });
+      return res.status(502).json({
+        error: timedOut
+          ? 'The verification email is taking too long to send. Please try again.'
+          : 'Failed to send the verification email. Please try again.',
+        code: timedOut ? 'EMAIL_TIMEOUT' : 'EMAIL_SEND_FAILED',
+      });
     }
 
+    console.log('[OTP] response sent', 'status=200', ms());
     res.json({ success: true, message: 'OTP sent to your email.' });
   } catch (err) {
-    console.error('Send OTP error:', err);
-    res.status(500).json({ error: 'Failed to send OTP. Please check email configuration.' });
+    console.error('[OTP] ERROR unhandled', ms(), err?.stack || err);
+    res.status(500).json({ error: 'Failed to send OTP. Please try again.' });
   }
 });
 
@@ -490,14 +575,17 @@ router.post('/verify-otp', async (req, res) => {
 
     const otpRow = await OtpCode.findOne({ email, code, used: false }).sort({ createdAt: -1 });
     if (!otpRow) {
+      console.log('[OTP] verify rejected — no matching unused code', `email=${email}`);
       return res.status(400).json({ error: 'Invalid OTP.' });
     }
     if (new Date() > new Date(otpRow.expiresAt)) {
+      console.log('[OTP] verify rejected — code expired', `email=${email}`);
       return res.status(400).json({ error: 'OTP expired.' });
     }
 
     otpRow.used = true;
     await otpRow.save();
+    console.log('[OTP] verify accepted', `email=${email}`);
 
     res.json({ success: true, message: 'Email verified!' });
   } catch (err) {

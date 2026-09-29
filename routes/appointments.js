@@ -31,9 +31,14 @@ function clinicStaffOrAdmin(req, res, next) {
 }
 
 // Optional Gmail sender. If EMAIL_USER / EMAIL_PASS are not set, the app still works.
+// The App Password Google displays as "abcd efgh ijkl mnop" contains no spaces;
+// they are formatting only, and Gmail rejects the login when they are included.
 const transporter = nodemailer.createTransport({
   service: 'gmail',
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+  auth: {
+    user: String(process.env.EMAIL_USER || '').trim(),
+    pass: String(process.env.EMAIL_PASS || '').replace(/\s+/g, ''),
+  },
 });
 
 const emailConfigured = () => Boolean(

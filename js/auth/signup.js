@@ -165,19 +165,35 @@ async function postJson(url, payload) {
     return result;
 }
 
+// Puts a button into its "working" state and returns the restore function.
+//
+// The original label is remembered ON the button the first time it is put into
+// a loading state, not in a local variable. Two overlapping calls on the same
+// button used to capture "Sending..." as the second call's "original" text, so
+// the restore left the button reading "Sending..." for good. Restoring from the
+// remembered label makes that impossible, so a button never sticks.
 function setButtonLoading(buttonId, loadingText) {
     const button = byId(buttonId);
     if (!button) return () => {};
 
-    const originalText = button.textContent;
+    if (button.kcOriginalText === undefined) button.kcOriginalText = button.textContent;
     button.disabled = true;
     button.textContent = loadingText;
 
     return () => {
         button.disabled = false;
-        button.textContent = originalText;
+        if (button.kcOriginalText !== undefined) {
+            button.textContent = button.kcOriginalText;
+            button.kcOriginalText = undefined;
+        }
     };
 }
+
+// One OTP request in flight per role. A second click while a request is running
+// is dropped instead of queued: every /api/auth/send-otp call replaces the
+// previous unused code, so two overlapping sends would invalidate the code in
+// the email the user is about to read.
+const otpSendInFlight = { parent: false, pediatrician: false };
 
 function validateParentCredentials() {
     const email = valueOf('pEmail').toLowerCase();
@@ -376,7 +392,13 @@ async function sendOTP(isResend = false) {
     }
     if (!(isResend ? requireConsent('parent', 'sp4') : validateConsent('parent'))) return;
 
-    const restore = setButtonLoading('verifyBtn', 'Sending...');
+    if (otpSendInFlight.parent) return;
+    otpSendInFlight.parent = true;
+
+    // The button being clicked is the one that shows the progress. This used to
+    // load 'verifyBtn' — the Verify & Continue button on the NEXT step — so the
+    // Send Verification Code button never disabled and never changed label.
+    const restore = setButtonLoading(isResend ? 'resendOtpBtn' : 'sendOtpBtn', isResend ? 'Resending...' : 'Sending...');
     try {
         const email = valueOf('pEmail').toLowerCase();
         console.log('[SIGNUP] Send OTP clicked');
@@ -414,6 +436,7 @@ async function sendOTP(isResend = false) {
         setMessage('ep4', err.message);
         setMessage('ep5e', err.message);
     } finally {
+        otpSendInFlight.parent = false;
         restore();
     }
 }
@@ -478,7 +501,12 @@ async function sendDoctorOTP(isResend = false) {
     }
     if (!(isResend ? requireConsent('pediatrician', 'sd3') : validateConsent('pediatrician'))) return;
 
-    const restore = setButtonLoading('dVerifyBtn', 'Sending...');
+    if (otpSendInFlight.pediatrician) return;
+    otpSendInFlight.pediatrician = true;
+
+    // Same fix as the parent flow: load the button that was actually clicked,
+    // not 'dVerifyBtn' on the step that has not been shown yet.
+    const restore = setButtonLoading(isResend ? 'dResendOtpBtn' : 'dSendOtpBtn', isResend ? 'Resending...' : 'Sending...');
     try {
         const email = valueOf('dEmail').toLowerCase();
         console.log('[SIGNUP] Send OTP clicked');
@@ -516,6 +544,7 @@ async function sendDoctorOTP(isResend = false) {
         setMessage('ed3', err.message);
         setMessage('ed4e', err.message);
     } finally {
+        otpSendInFlight.pediatrician = false;
         restore();
     }
 }

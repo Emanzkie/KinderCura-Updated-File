@@ -34,9 +34,14 @@ function getTransporter() {
     return null;
   }
 
+  // Google shows an App Password as "abcd efgh ijkl mnop"; the spaces are
+  // display only and make Gmail reject the login if they are pasted along.
   _transporter = nodemailer.createTransport({
     service: 'gmail',
-    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    auth: {
+      user: String(process.env.EMAIL_USER).trim(),
+      pass: String(process.env.EMAIL_PASS).replace(/\s+/g, ''),
+    },
   });
   return _transporter;
 }

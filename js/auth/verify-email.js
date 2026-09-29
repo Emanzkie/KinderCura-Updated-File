@@ -1,70 +1,30 @@
-﻿// === Extracted from SIGN-UP,LOGIN\verify-email.html (script block 1) ===
-let resendTimer = 60;
-        let timerRunning = false;
+// RETIRED — this page is no longer part of any sign-up flow.
+//
+// SIGN-UP,LOGIN/verify-email.html was a standalone mock of the old PIN screen.
+// Its script never called the backend: verifyOTP() popped an "Email verified
+// successfully!" alert and redirected on sessionStorage.userRole alone, and
+// resendOTP() only restarted a countdown. It referenced /api/auth/verify-pin
+// and /api/auth/resend-pin, neither of which exists.
+//
+// Email verification now happens entirely inside SIGN-UP,LOGIN/signup.html
+// (steps sp5 for parents and sd4 for pediatricians) against the real endpoints
+// POST /api/auth/send-otp and POST /api/auth/verify-otp — see js/auth/signup.js.
+//
+// Nothing links here any more, but the page is kept reachable by URL, so it
+// redirects to the real flow rather than offering a verification screen that
+// verifies nothing. The stubs below exist only so an inline handler fired
+// before the redirect lands cannot throw.
 
-        function moveToNext(current, nextId) {
-            const value = current.value;
-            if (!/^\d$/.test(value)) { current.value = ''; return; }
-            current.classList.add('filled');
-            if (nextId && value) document.getElementById(nextId).focus();
-            if (nextId === null && value) {
-                setTimeout(() => {
-                    const otp = ['otp1','otp2','otp3','otp4'].map(id => document.getElementById(id).value).join('');
-                    if (otp.length === 4) document.getElementById('otp-form').dispatchEvent(new Event('submit'));
-                }, 300);
-            }
-        }
+function moveToNext() {}
+function handleBackspace() {}
 
-        function handleBackspace(e, current, prevId) {
-            if (e.key === 'Backspace' && !current.value && prevId) {
-                const prev = document.getElementById(prevId);
-                prev.value = '';
-                prev.classList.remove('filled');
-                prev.focus();
-            }
-        }
+function verifyOTP(event) {
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
+    window.location.replace('/signup.html');
+}
 
-        function verifyOTP(event) {
-            event.preventDefault();
-            const otp = ['otp1','otp2','otp3','otp4'].map(id => document.getElementById(id).value).join('');
-            if (otp.length !== 4) { alert('Please enter all 4 digits of the PIN'); return; }
-            // Backend: POST /api/auth/verify-pin { email, pin: otp }
-            alert('Email verified successfully! Welcome to KinderCura.');
-            const userRole = sessionStorage.getItem('userRole') || 'parent';
-            if (userRole === 'parent') {
-                window.location.href = '../SIGN-UP,LOGIN/screening.html';
-            } else if (userRole === 'pediatrician') {
-                window.location.href = '/pedia/pediatrician-dashboard.html';
-            }
-        }
+function resendOTP() {
+    window.location.replace('/signup.html');
+}
 
-        function resendOTP() {
-            if (timerRunning) return;
-            // Backend: POST /api/auth/resend-pin { email }
-            alert('A new 4-digit PIN has been sent to your Gmail!');
-            resendTimer = 60;
-            startTimer();
-        }
-
-        function startTimer() {
-            timerRunning = true;
-            updateTimer();
-        }
-
-        function updateTimer() {
-            const timerEl = document.getElementById('timer');
-            if (resendTimer > 0) {
-                timerEl.textContent = `(${resendTimer}s)`;
-                resendTimer--;
-                setTimeout(updateTimer, 1000);
-            } else {
-                timerEl.textContent = '';
-                timerRunning = false;
-            }
-        }
-
-        window.addEventListener('load', () => {
-            const email = sessionStorage.getItem('userEmail') || 'your-email@gmail.com';
-            document.getElementById('email-display').textContent = email;
-            startTimer();
-        });
+window.location.replace('/signup.html');
