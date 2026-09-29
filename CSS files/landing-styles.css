@@ -311,24 +311,68 @@ body {
     line-height: 1.6;
 }
 
-/* Footer */
+/* ==================== FOOTER ====================
+   The closing panel is built from the same primary-green family as .btn-primary,
+   so it reads as part of the KinderCura design system:
+
+     surface        --primary-dark  #5A7560
+     accent bar     the .btn-primary gradient itself, --primary -> --primary-light
+     headings       --surface       #FFFFFF
+     body / links   --bg-primary    #FAFAF6, the page's cream
+
+   Why --primary-dark and not --primary: white text on --primary (#6B8E6F) reaches
+   only 3.67:1 and on --primary-light 2.57:1, both under the 4.5:1 WCAG AA needs
+   for body text. On --primary-dark white clears 5.06:1 and the cream 4.84:1, so
+   every link and paragraph here is legible. .btn-primary can use the lighter
+   gradient because its label is short, bold and large; a footer of 15px links
+   cannot. The exact button gradient still appears, as the bar across the top,
+   which is what visually ties the footer to the "Continue as Parent" buttons.
+
+   Text hierarchy comes from size and weight rather than opacity: dimming the
+   cream below full strength would drop it under the contrast floor.
+
+   All footer rules live here; landing-page.css styles the page sections only. */
 .footer {
+    /* Aliases, not new values — the palette stays defined in kc-tokens.css. */
+    --footer-surface: var(--primary-dark);
+    --footer-ink: var(--bg-primary);
+
+    position: relative;
+    background: var(--footer-surface);
+    color: var(--footer-ink);
+    padding: 3.25rem 2rem 1.5rem;
+    margin-top: 2rem;
+}
+
+/* The primary-button gradient, carried across the top edge. A border cannot take
+   a gradient, so it is drawn as a bar. */
+.footer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
-    color: white;
-    padding: 3rem 2rem 1rem;
-    margin-top: 4rem;
 }
 
 .footer-content {
-    max-width: 1400px;
-    margin: 0 auto;
+    max-width: 1280px;
+    margin: 0 auto 2.25rem;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 2rem;
-    margin-bottom: 2rem;
+    /* The branding column carries the logo, the description and two store
+       badges, so it is given the extra width. Contact gets a little more than
+       the three link columns because the support address is a single 28-character
+       token: at an even 1fr it landed a few pixels short and broke mid-word. */
+    grid-template-columns: 1.7fr 1.35fr repeat(3, 1fr);
+    gap: 2.5rem 2rem;
 }
 
 .footer-section h3 {
+    font-size: 1.0625rem;      /* 17px */
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--surface);
     margin-bottom: 1rem;
 }
 
@@ -336,26 +380,196 @@ body {
     list-style: none;
 }
 
+.footer-section li + li {
+    margin-top: 0.15rem;
+}
+
 .footer-section a {
-    color: rgba(255, 255, 255, 0.8);
+    display: inline-block;
+    padding: 0.3rem 0;
+    font-size: 0.9375rem;      /* 15px */
+    line-height: 1.45;
+    /* Full-strength cream, no opacity: dimming this text drops it to 4.37:1,
+       under the 4.5:1 floor. The hover lift is a colour change instead. */
+    color: var(--footer-ink);
     text-decoration: none;
-    transition: color 0.3s ease;
-    display: block;
-    padding: 0.4rem 0;
+    transition: color 0.2s ease, transform 0.2s ease;
 }
 
 .footer-section a:hover {
-    color: white;
+    color: var(--surface);
+    transform: translateX(2px);
 }
 
+.footer-section a:focus-visible {
+    outline: 2px solid var(--accent-red);
+    outline-offset: 3px;
+    border-radius: 4px;
+    color: var(--footer-ink);
+}
+
+/* -- Column 1: branding -- */
+.footer-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.75rem;
+}
+
+.footer-logo-img {
+    width: 38px;
+    height: 38px;
+    object-fit: contain;
+}
+
+.footer-logo-text {
+    font-size: 1.375rem;
+    font-weight: 700;
+}
+
+/* "Kinder" keeps its pink, which reads well here. "Cura" is normally --primary
+   green, which would nearly disappear on this background, so it becomes cream. */
+.footer .logo-cura {
+    color: var(--footer-ink);
+}
+
+.footer-tagline {
+    font-size: 0.9rem;         /* ~14px */
+    line-height: 1.6;
+    color: var(--footer-ink);
+    max-width: 32ch;
+    margin-bottom: 1.5rem;
+}
+
+/* Store badges. The PNGs are black artwork on an opaque white background, so the
+   link itself is a white tile: the image's own margin blends into it, which
+   avoids cropping the official artwork and is how a black badge is meant to sit
+   on a dark surface. */
+.footer-stores {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.footer-store {
+    display: block;
+    width: 148px;
+    max-width: 100%;
+    padding: 0;
+    background: var(--surface);
+    border-radius: var(--radius-btn);
+    overflow: hidden;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.footer-store img {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.footer-store:hover {
+    transform: scale(1.03);
+    opacity: 0.92;
+}
+
+.footer-store:focus-visible {
+    outline: 2px solid var(--accent-red);
+    outline-offset: 3px;
+}
+
+/* -- Column 5: social -- */
+.footer-social a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.footer-social svg {
+    width: 17px;
+    height: 17px;
+    fill: currentColor;
+    flex-shrink: 0;
+    transition: fill 0.2s ease;
+}
+
+/* The one other place the brand pink appears, on interaction only. */
+.footer-social a:hover svg {
+    fill: var(--accent-red);
+}
+
+/* -- Copyright -- */
 .footer-bottom {
-    max-width: 1400px;
+    max-width: 1280px;
     margin: 0 auto;
+    padding-top: 1.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.22);
     text-align: center;
-    padding-top: 2rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.2);
-    font-size: 0.9rem;
-    opacity: 0.9;
+    font-size: 0.8125rem;      /* 13px */
+    /* Also full strength: at 13px this is the smallest text here, so it has the
+       least contrast headroom to give away. */
+    color: var(--footer-ink);
+}
+
+/* Large tablet / small laptop: the four link columns stay together in one row
+   under the branding block rather than splitting unevenly. */
+@media (max-width: 1100px) {
+    .footer-content {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .footer-brand {
+        grid-column: 1 / -1;
+        margin-bottom: 0.5rem;
+    }
+}
+
+/* Tablet: two balanced columns. */
+@media (max-width: 768px) {
+    .footer {
+        padding: 2.75rem 1.5rem 1.25rem;
+    }
+
+    .footer-content {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 2rem 1.5rem;
+    }
+}
+
+/* Mobile: a single stacked column. min-width:0 on the track and the ch cap on
+   the description keep long strings from widening the page. */
+@media (max-width: 560px) {
+    .footer {
+        padding: 2.25rem 1.25rem 1.25rem;
+    }
+
+    /* The three link columns pair up two-across rather than stacking one per
+       row, which keeps the footer from running well past a phone screen. */
+    .footer-content {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1.6rem 1.25rem;
+        margin-bottom: 1.75rem;
+    }
+
+    /* Branding and Contact stay full width — the logo row and the support
+       address are both wider than half a phone screen. */
+    .footer-brand,
+    .footer-section:nth-child(2) {
+        grid-column: 1 / -1;
+    }
+
+    .footer-section h3 {
+        margin-bottom: 0.65rem;
+    }
+
+    .footer-tagline {
+        max-width: none;
+    }
+}
+
+/* The support address is the one string that can exceed a narrow column. */
+.footer-section a[href^="mailto:"] {
+    overflow-wrap: anywhere;
 }
 
 .menu-icon {
