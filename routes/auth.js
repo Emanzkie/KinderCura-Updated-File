@@ -508,8 +508,17 @@ async function getParentPreAssessmentState(parentId) {
 // blocks outbound SMTP, /send-otp fails identically every time and the reason is
 // only visible in the platform's own logs. This surfaces it over HTTP.
 // Presence booleans and SMTP protocol codes only — never any value.
-router.get('/email-status', async (_req, res) => {
+// ?port= probes an alternative Gmail SMTP port (465 implicit TLS, 587 STARTTLS,
+// 25 plain). The host is fixed and the port is allowlisted, so this cannot be
+// pointed at anything else. It answers "is only 465 blocked, or all of SMTP?",
+// which decides between a one-line port change and a different transport.
+const PROBE_PORTS = new Map([[465, true], [587, false], [25, false]]);
+
+router.get('/email-status', async (req, res) => {
   const startedAt = Date.now();
+  const requestedPort = Number(req.query.port);
+  const probePort = PROBE_PORTS.has(requestedPort) ? requestedPort : 465;
+  const probeSecure = PROBE_PORTS.get(probePort);
   const present = {
     EMAIL_USER: Boolean(process.env.EMAIL_USER),
     EMAIL_PASS: Boolean(process.env.EMAIL_PASS),
@@ -517,38 +526,43 @@ router.get('/email-status', async (_req, res) => {
     JWT_SECRET: Boolean(process.env.JWT_SECRET),
   };
 
+  const transport = { kind: 'smtp', host: 'smtp.gmail.com', port: probePort, secure: probeSecure };
+
   if (!emailConfigured()) {
     console.error('[OTP] EMAIL_NOT_CONFIGURED (email-status probe)');
-    return res.status(503).json({
-      ok: false, code: 'EMAIL_NOT_CONFIGURED', present,
-      transport: { kind: 'smtp', host: 'smtp.gmail.com', port: 465, secure: true },
-    });
+    return res.status(503).json({ ok: false, code: 'EMAIL_NOT_CONFIGURED', present, transport });
   }
+
+  // The default port reuses the application's own transporter, so the probe
+  // reports on exactly what /send-otp uses. Another port needs its own.
+  const probe = probePort === 465 ? transporter : nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: probePort,
+    secure: probeSecure,
+    auth: { user: EMAIL_USER, pass: EMAIL_PASS },
+    connectionTimeout: 7000,
+    greetingTimeout: 7000,
+    socketTimeout: 10000,
+  });
 
   try {
     await Promise.race([
-      transporter.verify(),
+      probe.verify(),
       new Promise((_r, reject) => setTimeout(() => reject(new Error('MAIL_TIMEOUT after 12000ms')), 12000)),
     ]);
     const elapsedMs = Date.now() - startedAt;
-    console.log('[OTP] email-status probe: SMTP OK', `${elapsedMs}ms`);
-    res.json({
-      ok: true, code: 'SMTP_OK', present, elapsedMs,
-      transport: { kind: 'smtp', host: 'smtp.gmail.com', port: 465, secure: true },
-    });
+    console.log('[OTP] email-status probe: SMTP OK', `port=${probePort}`, `${elapsedMs}ms`);
+    res.json({ ok: true, code: 'SMTP_OK', present, elapsedMs, transport });
   } catch (err) {
     const failure = classifyMailError(err);
     const elapsedMs = Date.now() - startedAt;
-    console.error(`[OTP] ${failure.label} (email-status probe)`, `${elapsedMs}ms`, {
+    console.error(`[OTP] ${failure.label} (email-status probe)`, `port=${probePort}`, `${elapsedMs}ms`, {
       smtp: failure.smtp,
       errno: err?.errno ?? null,
       syscall: err?.syscall ?? null,
       message: err?.message,
     });
-    res.status(failure.status).json({
-      ok: false, code: failure.label, present, elapsedMs, smtp: failure.smtp,
-      transport: { kind: 'smtp', host: 'smtp.gmail.com', port: 465, secure: true },
-    });
+    res.status(failure.status).json({ ok: false, code: failure.label, present, elapsedMs, smtp: failure.smtp, transport });
   }
 });
 
