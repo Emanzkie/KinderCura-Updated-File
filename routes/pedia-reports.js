@@ -48,20 +48,9 @@ const DOMAINS = Object.freeze([
 // drift from constants/scoring.js if ACTIVE_BANDS is ever changed.
 const BAND_KEYS = Object.freeze(scoring.ACTIVE_BANDS.map((b) => b.key));
 
-// The outcome vocabulary is read off the schema rather than restated here, so
-// adding a sixth clinical outcome cannot silently leave this report showing
-// five. Same reason routes/assessments.js reads enumValues in the diagnose
-// handler instead of keeping its own list.
-const OUTCOME_KEYS = Object.freeze(Assessment.schema.path('clinicalOutcome').enumValues.slice());
-
 /** Every band key at zero, ready to be counted into. */
 function emptyBandCounts() {
   return BAND_KEYS.reduce((acc, key) => { acc[key] = 0; return acc; }, {});
-}
-
-/** Every clinical outcome at zero. An outcome nobody recorded reads as 0, not absent. */
-function emptyOutcomeCounts() {
-  return OUTCOME_KEYS.reduce((acc, key) => { acc[key] = 0; return acc; }, {});
 }
 
 /**
@@ -126,6 +115,46 @@ function rangeEcho(range) {
   };
 }
 
+/**
+ * Optional ?classification= and ?childId= filters, parsed alongside the date
+ * range so that every endpoint applies the identical set.
+ *
+ * `classification` selects children whose LATEST screening in range falls in
+ * that band — the same "one child, one vote, latest only" rule the
+ * distributions already count by. Filtering per screening instead would let a
+ * child appear under a band they have since moved out of.
+ *
+ * An unknown band key is rejected rather than ignored: silently returning the
+ * unfiltered cohort would make the page show numbers that contradict its own
+ * filter chip.
+ */
+function parseFilters(query) {
+  const out = { classification: null, childId: null };
+
+  const rawBand = query.classification == null ? '' : String(query.classification).trim();
+  if (rawBand && rawBand !== 'all') {
+    if (!BAND_KEYS.includes(rawBand)) {
+      return { error: `Query parameter \`classification\` must be one of: ${BAND_KEYS.join(', ')}.` };
+    }
+    out.classification = rawBand;
+  }
+
+  const rawChild = query.childId == null ? '' : String(query.childId).trim();
+  if (rawChild && rawChild !== 'all') {
+    if (!/^[0-9a-fA-F]{24}$/.test(rawChild)) {
+      return { error: 'Query parameter `childId` is not a valid id.' };
+    }
+    out.childId = rawChild;
+  }
+
+  return out;
+}
+
+/** Echoed back so the page can label exactly what the numbers were filtered to. */
+function filtersEcho(filters) {
+  return { classification: filters.classification, childId: filters.childId };
+}
+
 function fullName(child) {
   if (!child) return 'Unknown child';
   const name = `${child.firstName || ''} ${child.lastName || ''}`.trim();
@@ -160,20 +189,29 @@ function pediatriciansOnly(req, res, next) {
  * read exactly once with an $in over the scoped child ids, so cost is a
  * function of collection count, not of patient count.
  */
-async function loadScope(req, range) {
+async function loadScope(req, range, filters) {
+  const active = filters || { classification: null, childId: null };
+
   const appointments = await Appointment.find({ pediatricianId: req.user.userId })
     .select('childId')
     .lean();
 
   const seen = new Set();
-  const childIds = [];
+  const allChildIds = [];
   for (const appt of appointments) {
     if (!appt.childId) continue;
     const key = String(appt.childId);
     if (seen.has(key)) continue;
     seen.add(key);
-    childIds.push(appt.childId);
+    allChildIds.push(appt.childId);
   }
+
+  // The patient filter narrows scope before anything is read, so a request for
+  // one child does not load the whole cohort's results. A childId outside this
+  // pediatrician's scope simply matches nothing — it cannot widen the cohort.
+  const childIds = active.childId
+    ? allChildIds.filter((id) => String(id) === active.childId)
+    : allChildIds;
 
   const resultFilter = { childId: { $in: childIds } };
   if (range.from || range.to) {
@@ -204,7 +242,64 @@ async function loadScope(req, range) {
     resultsByChild.get(key).push(r);
   }
 
-  return { childIds, childMap, results, resultsByChild };
+  // ── Classification filter ────────────────────────────────────────────────
+  // Applied HERE, centrally, rather than in each handler. Every section and the
+  // CSV read the same `results` / `resultsByChild` afterwards, which is what
+  // guarantees a chart, its interpretation, the roster and the export can never
+  // describe different datasets.
+  //
+  // A child is kept when their LATEST screening in range falls in the chosen
+  // band. Children with no screening cannot match any band, so they drop out of
+  // the filtered cohort entirely.
+  let filteredResults = results;
+  if (active.classification) {
+    for (const [key, list] of Array.from(resultsByChild.entries())) {
+      const latest = list[list.length - 1];
+      const band = latest.overallScore == null ? null : scoring.bandFor(latest.overallScore);
+      if (band !== active.classification) resultsByChild.delete(key);
+    }
+    filteredResults = results.filter((r) => resultsByChild.has(String(r.childId)));
+  }
+
+  // Children still in the cohort after every filter. With a classification
+  // filter this is exactly the children who matched; otherwise it is scope.
+  const matchedChildIds = active.classification
+    ? childIds.filter((id) => resultsByChild.has(String(id)))
+    : childIds;
+
+  return {
+    // Every child linked to this pediatrician, before any filter — the
+    // denominator for "N of M patients match".
+    patientsInScope: allChildIds.length,
+    childIds: matchedChildIds,
+    childMap,
+    results: filteredResults,
+    resultsByChild,
+  };
+}
+
+/**
+ * Screenings per calendar month, oldest first, over whatever set of results the
+ * filters produced. Answers "how much assessment activity has there been, and
+ * when" — a question the page could not previously answer at all.
+ *
+ * Grouped in JS rather than by a $group pipeline because loadScope has already
+ * read these documents: a second round trip to re-group them would cost a query
+ * to compute something already in memory. Cohorts here are tens of documents,
+ * not thousands (one pediatrician's patients).
+ */
+function assessmentsByMonth(results) {
+  const buckets = new Map();
+  for (const r of results) {
+    if (!r.generatedAt) continue;
+    const d = new Date(r.generatedAt);
+    if (Number.isNaN(d.getTime())) continue;
+    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    buckets.set(key, (buckets.get(key) || 0) + 1);
+  }
+  return Array.from(buckets.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([month, count]) => ({ month, count }));
 }
 
 /**
@@ -253,9 +348,10 @@ router.get('/overview', authMiddleware, pediatriciansOnly, async (req, res) => {
   try {
     const range = parseRange(req.query);
     if (range.error) return res.status(400).json({ error: range.error });
+    const filters = parseFilters(req.query);
+    if (filters.error) return res.status(400).json({ error: filters.error });
 
-    const { childIds, results, resultsByChild } = await loadScope(req, range);
-    const assessmentMap = await loadAssessments(results);
+    const { patientsInScope, childIds, results, resultsByChild } = await loadScope(req, range, filters);
 
     // ── Distribution counting rule ──────────────────────────────────────────
     // overallDistribution and domainDistribution count the LATEST screening
@@ -308,31 +404,30 @@ router.get('/overview', authMiddleware, pediatriciansOnly, async (req, res) => {
       if (anyFlag) riskFlagged.anyDomain += 1;
     }
 
-    // ── Outcome labelling coverage ──────────────────────────────────────────
-    // Counted per SCREENING, not per child: the question this answers is "how
-    // many of the screenings on file carry a clinician's structured
-    // conclusion", which is the count that governs whether the outcomes
-    // cross-tab means anything yet.
-    const byOutcome = emptyOutcomeCounts();
-    let labelled = 0;
-    for (const result of results) {
-      const assessment = assessmentMap.get(String(result.assessmentId));
-      const outcome = assessment?.clinicalOutcome || null;
-      if (!outcome) continue;
-      labelled += 1;
-      // An outcome outside the schema enum cannot reach the database, but a
-      // hand-edited document could carry one. Counting it into a bucket that
-      // does not exist would silently vanish it.
-      if (Object.prototype.hasOwnProperty.call(byOutcome, outcome)) byOutcome[outcome] += 1;
+    // How many children have more than one screening in range. This is what
+    // makes the progression section possible, so the count belongs next to the
+    // cohort totals rather than only inside that section.
+    let repeatAssessed = 0;
+    let singleAssessed = 0;
+    for (const list of resultsByChild.values()) {
+      if (list.length >= 2) repeatAssessed += 1;
+      else singleAssessed += 1;
     }
 
     res.json({
       success: true,
       range: rangeEcho(range),
+      filters: filtersEcho(filters),
       cohort: {
+        // Children matching the active filters.
         patients: childIds.length,
+        // Every child linked to this pediatrician, ignoring filters, so the page
+        // can say "12 of your 26 patients match".
+        patientsInScope,
         screenings: results.length,
         patientsWithScreening: resultsByChild.size,
+        patientsWithRepeatAssessments: repeatAssessed,
+        patientsWithSingleAssessment: singleAssessed,
         // Documents with no band-version stamp. Their bands in this report are
         // derived from the stored SCORE under the current ACTIVE_BANDS, so the
         // report is internally consistent — but the *Status strings saved on
@@ -343,11 +438,7 @@ router.get('/overview', authMiddleware, pediatriciansOnly, async (req, res) => {
       overallDistribution,
       domainDistribution,
       riskFlagged,
-      labelling: {
-        labelled,
-        unlabelled: results.length - labelled,
-        byOutcome,
-      },
+      assessmentsByMonth: assessmentsByMonth(results),
     });
   } catch (err) {
     console.error('pedia-reports overview error:', err);
@@ -362,8 +453,10 @@ router.get('/progression', authMiddleware, pediatriciansOnly, async (req, res) =
   try {
     const range = parseRange(req.query);
     if (range.error) return res.status(400).json({ error: range.error });
+    const filters = parseFilters(req.query);
+    if (filters.error) return res.status(400).json({ error: filters.error });
 
-    const { childIds, childMap, resultsByChild } = await loadScope(req, range);
+    const { childIds, childMap, resultsByChild } = await loadScope(req, range, filters);
 
     // Progress notes are scoped to the requesting pediatrician, matching the
     // filter in routes/assessments.js:807. A count shown here must agree with
@@ -456,10 +549,11 @@ router.get('/progression', authMiddleware, pediatriciansOnly, async (req, res) =
     res.json({
       success: true,
       range: rangeEcho(range),
+      filters: filtersEcho(filters),
       cohortMovement,
       // How many in-scope children were left out of the table for having only
       // one screening, so an apparently short table is explained rather than
-      // just short.
+      // just short. Those children are not lost: they appear in /patients.
       childrenWithSingleScreening: Array.from(resultsByChild.values()).filter((l) => l.length === 1).length,
       patientsWithScreening: resultsByChild.size,
       children,
@@ -471,101 +565,98 @@ router.get('/progression', authMiddleware, pediatriciansOnly, async (req, res) =
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// GET /api/pedia-reports/outcomes
+// GET /api/pedia-reports/patients
 // ───────────────────────────────────────────────────────────────────────────
 //
-// WHY THIS RETURNS COUNTS AND NOT VALIDATION METRICS
-// ---------------------------------------------------------------------------
-// This handler deliberately computes NO accuracy, sensitivity, specificity,
-// PPV, NPV, F1, kappa, or any other validation statistic, and none may be
-// added later. Three independent reasons, each sufficient on its own:
+// One row per in-scope child, INCLUDING children with a single assessment and
+// children with none at all. This is the roster the rest of the page cannot
+// show: the distributions collapse each child into a band count, and
+// /progression deliberately excludes anyone without two screenings. Without
+// this endpoint a pediatrician could see that "3 patients are At-Risk" but
+// never which three.
 //
-//  1. SAMPLE SIZE. docs/AUDIT-SUMMARY.md §4 records 11 completed screenings
-//     across the whole system. A sensitivity computed on a handful of labelled
-//     cases has a confidence interval wide enough to span "useless" and
-//     "excellent", and quoting the point estimate hides that.
-//
-//  2. THE LABELS ARE NOT BLIND. The pediatrician recording clinicalOutcome has
-//     already seen the screening scores on the same page — the diagnosis modal
-//     shows them. So the label is not independent of the thing it would be
-//     validating, and agreement between them partly measures the influence of
-//     the score on the clinician, not the correctness of the score.
-//
-//  3. THE CUTOFFS ARE UNCONFIRMED. Band provenance is still pending the
-//     consultant pediatrician (constants/scoring.js header). An accuracy figure
-//     computed against unconfirmed boundaries measures agreement with an
-//     arbitrary line, not with child development.
-//
-// So: return the cross-tab and let the reader read it. A panelist is entitled
-// to say a computed accuracy figure here would be misleading, and they would
-// be right. The honest artefact is the contingency table itself.
-router.get('/outcomes', authMiddleware, pediatriciansOnly, async (req, res) => {
+// Every figure is read from the stored AssessmentResult documents that
+// loadScope already fetched. Nothing is recomputed from answers, and no row is
+// created for a child who has no record.
+router.get('/patients', authMiddleware, pediatriciansOnly, async (req, res) => {
   try {
     const range = parseRange(req.query);
     if (range.error) return res.status(400).json({ error: range.error });
+    const filters = parseFilters(req.query);
+    if (filters.error) return res.status(400).json({ error: filters.error });
 
-    const { childMap, results } = await loadScope(req, range);
-    const assessmentMap = await loadAssessments(results);
+    const { childIds, childMap, results, resultsByChild } = await loadScope(req, range, filters);
 
-    // Fully enumerated so every band × outcome cell exists at zero. An empty
-    // cell must render as 0, never as a gap the reader fills in themselves.
-    const matrix = {};
-    for (const band of BAND_KEYS) matrix[band] = emptyOutcomeCounts();
+    const patients = [];
+    for (const id of childIds) {
+      const key = String(id);
+      const child = childMap.get(key);
+      const list = resultsByChild.get(key) || [];
 
-    const rows = [];
-    for (const result of results) {
-      const assessment = assessmentMap.get(String(result.assessmentId));
-      // Only a non-null clinicalOutcome counts as a label. The free-text
-      // `diagnosis` field is never consulted — models/Assessment.js forbids
-      // inferring a label from it, and the one diagnosis that existed before
-      // that field was added was the string "Yes please".
-      const outcome = assessment?.clinicalOutcome || null;
-      if (!outcome) continue;
-
-      const view = screeningView(result);
-      if (view.overallBand && matrix[view.overallBand]
-          && Object.prototype.hasOwnProperty.call(matrix[view.overallBand], outcome)) {
-        matrix[view.overallBand][outcome] += 1;
+      if (list.length === 0) {
+        // Kept as a row rather than dropped. "This patient has no assessment in
+        // this range" is itself a reportable fact, and silently omitting them
+        // would make the roster disagree with the Patients tile.
+        patients.push({
+          childId: key,
+          name: fullName(child),
+          dateOfBirth: child?.dateOfBirth || null,
+          gender: child?.gender || null,
+          assessmentCount: 0,
+          firstAssessmentAt: null,
+          latestAssessmentAt: null,
+          latestOverallScore: null,
+          latestOverallBand: null,
+          latestDomains: null,
+          hasRepeatAssessments: false,
+        });
+        continue;
       }
 
-      rows.push({
-        childName: fullName(childMap.get(String(result.childId))),
-        assessmentId: view.assessmentId,
-        screeningBand: view.overallBand,
-        overallScore: view.overallScore,
-        clinicalOutcome: outcome,
-        clinicalOutcomeDomains: Array.isArray(assessment.clinicalOutcomeDomains)
-          ? assessment.clinicalOutcomeDomains
-          : [],
-        clinicalOutcomeAt: assessment.clinicalOutcomeAt || null,
-        screenedAt: view.generatedAt,
+      const first = screeningView(list[0]);
+      const latest = screeningView(list[list.length - 1]);
+      const latestDomains = {};
+      for (const d of DOMAINS) {
+        latestDomains[d.key] = {
+          score: latest.domains[d.key].score,
+          band: latest.domains[d.key].band,
+        };
+      }
+
+      patients.push({
+        childId: key,
+        name: fullName(child),
+        dateOfBirth: child?.dateOfBirth || null,
+        gender: child?.gender || null,
+        assessmentCount: list.length,
+        firstAssessmentAt: first.generatedAt,
+        latestAssessmentAt: latest.generatedAt,
+        latestOverallScore: latest.overallScore,
+        latestOverallBand: latest.overallBand,
+        latestDomains,
+        hasRepeatAssessments: list.length >= 2,
       });
     }
 
-    rows.sort((a, b) => new Date(b.clinicalOutcomeAt || 0) - new Date(a.clinicalOutcomeAt || 0));
+    // Alphabetical, like /progression. Sorting by score would rank children by
+    // how poorly they scored, which is not a default a clinician asked for.
+    patients.sort((a, b) => a.name.localeCompare(b.name));
 
-    const payload = {
+    res.json({
       success: true,
       range: rangeEcho(range),
-      labelledCount: rows.length,
-      screeningCount: results.length,
-      matrix,
-      rows,
-    };
-
-    // Zero labels is the expected state today, not an error. Say so explicitly
-    // rather than returning an empty table the reader has to interpret.
-    if (rows.length === 0) {
-      payload.message = results.length === 0
-        ? 'No screenings on file for your patients in this date range, so there is nothing to cross-tabulate yet.'
-        : `None of the ${results.length} screening${results.length === 1 ? '' : 's'} in this range has a recorded clinical outcome yet. `
-          + 'Outcome labelling starts when a pediatrician records a structured conclusion in the diagnosis form. '
-          + 'Until then this table stays empty — an outcome is never inferred from the written diagnosis.';
-    }
-
-    res.json(payload);
+      filters: filtersEcho(filters),
+      totals: {
+        patients: patients.length,
+        withAssessment: patients.filter((p) => p.assessmentCount > 0).length,
+        withoutAssessment: patients.filter((p) => p.assessmentCount === 0).length,
+        withRepeatAssessments: patients.filter((p) => p.hasRepeatAssessments).length,
+        assessments: results.length,
+      },
+      patients,
+    });
   } catch (err) {
-    console.error('pedia-reports outcomes error:', err);
+    console.error('pedia-reports patients error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -599,8 +690,13 @@ router.get('/export.csv', authMiddleware, pediatriciansOnly, async (req, res) =>
   try {
     const range = parseRange(req.query);
     if (range.error) return res.status(400).json({ error: range.error });
+    // The export follows the SAME filters as the page. A CSV that silently
+    // contained more rows than the table it was downloaded from would be worse
+    // than no export at all.
+    const filters = parseFilters(req.query);
+    if (filters.error) return res.status(400).json({ error: filters.error });
 
-    const { childMap, results } = await loadScope(req, range);
+    const { childMap, results } = await loadScope(req, range, filters);
     const assessmentMap = await loadAssessments(results);
 
     const header = [

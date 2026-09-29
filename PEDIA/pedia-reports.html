@@ -56,7 +56,10 @@
         </div>
 
 
-        <!-- 1. Date range + cohort counts -->
+        <!-- 1. Filters + cohort counts.
+             Every filter here is applied by the backend to one shared dataset,
+             so the charts, the tables, the interpretations and the CSV can
+             never describe different sets of patients. -->
         <div class="report-filters">
             <div class="report-filters-grid">
                 <div class="filter-field">
@@ -67,12 +70,27 @@
                     <label for="rangeTo">Assessed to</label>
                     <input type="date" id="rangeTo">
                 </div>
-                <button class="btn btn-primary" onclick="applyRange()" style="padding:0.75rem 1.4rem;">Apply</button>
-                <button class="btn btn-secondary" onclick="clearRange()" style="padding:0.75rem 1.4rem;">All time</button>
+                <div class="filter-field">
+                    <label for="filterClassification">Latest classification</label>
+                    <select id="filterClassification">
+                        <option value="all">All classifications</option>
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <label for="filterPatient">Patient</label>
+                    <select id="filterPatient">
+                        <option value="all">All patients</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" onclick="applyFilters()" style="padding:0.75rem 1.4rem;">Apply</button>
+                <button class="btn btn-secondary" onclick="clearFilters()" style="padding:0.75rem 1.4rem;">Reset</button>
             </div>
             <p class="filter-note">
-                Filters by the date each assessment was completed. Leave both blank for all time.
+                Dates filter by when each assessment was completed; leave both blank for all time.
+                "Latest classification" keeps only patients whose most recent assessment falls in that band.
+                Every section below, and the CSV export, use exactly these filters.
             </p>
+            <p class="filter-note" id="activeFilterNote" style="display:none;"></p>
         </div>
 
         <div class="report-tiles" id="cohortTiles"></div>
@@ -82,14 +100,20 @@
             <div class="report-card"><div class="report-loading">Loading classification overview…</div></div>
         </div>
 
-        <!-- 3. Progression -->
+        <!-- 3. Patient roster — the only section that lists patients individually,
+             including those with a single assessment or none in range. -->
+        <div id="patientsSection">
+            <div class="report-card"><div class="report-loading">Loading patient list…</div></div>
+        </div>
+
+        <!-- 4. Progression -->
         <div id="progressionSection">
             <div class="report-card"><div class="report-loading">Loading progression…</div></div>
         </div>
 
-        <!-- 4. Outcome labelling -->
-        <div id="outcomesSection">
-            <div class="report-card"><div class="report-loading">Loading outcome labelling…</div></div>
+        <!-- 5. Assessment activity over time -->
+        <div id="activitySection">
+            <div class="report-card"><div class="report-loading">Loading assessment activity…</div></div>
         </div>
     </div>
 

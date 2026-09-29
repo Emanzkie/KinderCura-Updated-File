@@ -85,6 +85,9 @@
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
+    /* Lets a field shrink inside the wrapping flex row instead of forcing the
+       card wider than the page on a narrow screen. */
+    min-width: 0;
 }
 
 .report-filters label {
@@ -95,13 +98,87 @@
     letter-spacing: 0.04em;
 }
 
-.report-filters input[type="date"] {
+/* ── Filter controls ─────────────────────────────────────────────────────────
+   The date inputs and the two dropdowns share ONE rule. They are different
+   native controls, so they cannot be pixel-identical internally, but every
+   value that decides how they read as a group — height, border, radius, type,
+   colour — is declared once here so the four cannot drift apart later. */
+.report-filters input[type="date"],
+.report-filters select {
+    /* Same box metrics on both, which is what makes the row line up. */
     padding: 0.7rem 0.85rem;
     border: 2px solid var(--border);
     border-radius: 8px;
     font-family: inherit;
     font-size: 0.9rem;
-    background: white;
+    line-height: 1.3;
+    color: var(--text-dark);
+    background-color: white;
+    /* A select's default line box is shorter than a date input's, so the two
+       are pinned to one height rather than left to each control's default. */
+    min-height: 2.9rem;
+    max-width: 100%;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* The native select chrome is what made these two read as browser defaults
+   next to the styled date fields: a grey gradient button on Windows, a
+   different metal on macOS. Removing it and drawing the chevron as a
+   background image keeps this a real <select> — native dropdown, native
+   keyboard handling, native mobile picker — with only its skin changed. */
+.report-filters select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    /* Room for the chevron, so a long patient name cannot run under it. */
+    padding-right: 2.4rem;
+    /* Inline SVG: no extra request and no icon dependency. %23 is the encoded
+       '#' of --text-light (#6B7967), which cannot be read from a CSS variable
+       inside a data URI. */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%236B7967' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5 6 6.5l5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.9rem center;
+    background-size: 12px 8px;
+    /* Sized to its own content, floored so "All classifications" is not cramped
+       and capped so one long patient name cannot stretch the whole row. */
+    min-width: 11rem;
+    max-width: 15rem;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+.report-filters input[type="date"]:hover,
+.report-filters select:hover {
+    border-color: var(--primary-light);
+}
+
+/* One visible focus treatment, matching the --focus-ring token the rest of the
+   app uses. Kept to a 3px ring rather than a glow, and the border darkens too
+   so focus is not carried by colour alone. */
+.report-filters input[type="date"]:focus-visible,
+.report-filters select:focus-visible {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: var(--focus-ring);
+}
+
+/* Firefox keeps a dotted inner ring on a focused select; the ring above is the
+   visible indicator, so the duplicate is suppressed. */
+.report-filters select:-moz-focusring {
+    color: transparent;
+    text-shadow: 0 0 0 var(--text-dark);
+}
+
+/* Apply / Reset sit in the same row as the four fields. They were 40px and
+   43px tall respectively — .btn-secondary carries a 2px border that .btn-primary
+   does not — against the fields' 46px, so the group read as three different
+   heights. Matched to the control height here only; the shared .btn rules are
+   left alone so no other page is affected. */
+.report-filters-grid .btn {
+    min-height: 2.9rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .report-filters .filter-note {
@@ -479,4 +556,108 @@
     padding: 2.5rem 1.5rem;
     color: var(--text-light);
     font-size: 0.9rem;
+}
+
+/* ── Revised reports: plain-language leads, counts table, roster ─────────────
+   Added with the Classification counts table, the patient roster and the
+   assessment-activity chart. Reuses the existing tokens and the .report-table
+   rules above rather than introducing a second table style. */
+
+/* Short explanation under a section heading, saying what the numbers below
+   count before the reader meets them. */
+.section-lead {
+    font-size: 0.88rem;
+    line-height: 1.65;
+    color: var(--text-light);
+    margin: 0 0 1.1rem;
+    max-width: 78ch;
+}
+
+.sub-heading {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    margin: 1.8rem 0 0.5rem;
+}
+
+/* The numbers written out beside the chart. Slightly roomier than the
+   progression table because it is the first thing read in the section. */
+.counts-table {
+    margin-bottom: 1.2rem;
+}
+
+/* A row header is a label, not a column heading: the uppercase/letter-spaced
+   treatment on .report-table th is for the header row only. Without this a
+   patient's name renders as "CARLO PADILLA". */
+.report-table th[scope="row"] {
+    text-transform: none;
+    font-size: 0.86rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    color: var(--text-dark);
+    border-bottom: 1px solid var(--border);
+    white-space: normal;
+}
+
+.counts-table td.num {
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+/* The band's colour as a small dot next to its count, so the table and the
+   chart are read with one colour key. */
+.count-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 0.45rem;
+    vertical-align: 0.05em;
+}
+
+/* One sentence per domain, under the counts table. */
+.domain-notes {
+    display: grid;
+    gap: 0.5rem;
+    margin-bottom: 1.4rem;
+}
+
+.domain-note {
+    font-size: 0.86rem;
+    line-height: 1.6;
+    color: var(--text-dark);
+    margin: 0;
+    padding-left: 0.9rem;
+    border-left: 3px solid var(--border);
+}
+
+/* The roster is the widest table on the page — four domain columns plus five
+   of its own — so it scrolls sideways instead of forcing the page to. */
+.table-scroll {
+    overflow-x: auto;
+}
+
+.table-note {
+    font-size: 0.78rem;
+    line-height: 1.6;
+    color: var(--text-light);
+    margin: 0.9rem 0 0;
+}
+
+.report-table .muted {
+    color: var(--text-light);
+    font-style: italic;
+}
+
+/* The activity chart is a single full-width series, so it is not constrained
+   to the two-up .chart-row height. */
+.chart-box-wide {
+    height: 260px;
+}
+
+@media (max-width: 700px) {
+    .section-lead,
+    .domain-note {
+        font-size: 0.84rem;
+    }
 }

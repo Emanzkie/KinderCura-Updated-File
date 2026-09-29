@@ -44,10 +44,17 @@ function doLogout() {
 // ── Local state ─────────────────────────────────────────────────────────────
 let overviewData = null;
 let progressionData = null;
-let outcomesData = null;
+let patientsData = null;
 
 let bandDomainChart = null;
 let overallBandChart = null;
+let activityChart = null;
+
+// Populated once from the patient roster so the patient filter can list names
+// without a second endpoint. Rebuilt only when the filter is not itself
+// narrowing to one patient, so selecting a patient cannot empty the dropdown
+// that produced the selection.
+let patientFilterOptions = [];
 
 // Row indexes currently expanded in the progression table.
 const expandedRows = new Set();
@@ -63,28 +70,6 @@ const DOMAINS = [
     { key: 'cognitive',     label: 'Cognitive' },
     { key: 'motor',         label: 'Motor Skills' },
 ];
-
-// Clinician-facing wording for the structured outcome enum in
-// models/Assessment.js. Unknown keys are humanised rather than dropped, so a
-// future sixth outcome renders readably instead of as a blank column.
-const OUTCOME_LABELS = {
-    typical_development: 'Typical development',
-    monitor: 'Monitor',
-    referred_for_evaluation: 'Referred for evaluation',
-    confirmed_delay: 'Confirmed delay',
-    inconclusive: 'Inconclusive',
-};
-
-const PROGRESS_STATUS_LABELS = {
-    initial_review: 'Initial Review',
-    monitoring: 'Monitoring',
-    follow_up: 'Follow-up',
-    improving: 'Improving',
-    stable: 'Stable',
-    needs_attention: 'Needs Attention',
-    referred: 'Referred',
-    completed: 'Completed',
-};
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -124,15 +109,6 @@ function scoreText(value) {
     return Number.isFinite(n) ? `${Math.round(n)}%` : '—';
 }
 
-function outcomeLabel(key) {
-    return OUTCOME_LABELS[key] || String(key || '').replace(/_/g, ' ');
-}
-
-function progressStatusLabel(key) {
-    if (!key) return 'No notes yet';
-    return PROGRESS_STATUS_LABELS[key] || String(key).replace(/_/g, ' ');
-}
-
 /** Band keys high → low, straight from the shared band set. */
 function bandKeys() {
     return window.KCScoring.ACTIVE_BANDS.map((b) => b.key);
@@ -145,11 +121,14 @@ function bandChip(bandKey) {
     return `<span class="band-chip" style="background:${escapeHtml(color)};">${escapeHtml(label)}</span>`;
 }
 
+// Wording chosen so the chip can be read without knowing what a "band" is.
+// The full sentence behind each one comes from
+// KCPediaReportsInterpretations.formatMovementDescription().
 function movementChip(movement) {
     const m = movement === 'improved' || movement === 'declined' ? movement : 'unchanged';
-    const label = m === 'improved' ? 'Improved band'
-        : m === 'declined' ? 'Declined band'
-        : 'Same band';
+    const label = m === 'improved' ? 'Less concern'
+        : m === 'declined' ? 'More concern'
+        : 'No change';
     return `<span class="move-chip move-${escapeHtml(m)}">${escapeHtml(label)}</span>`;
 }
 
@@ -163,15 +142,94 @@ function deltaHtml(value) {
     return '<span class="delta delta-flat">0</span>';
 }
 
-/** The ?from=&to= the filter inputs currently describe. */
+/**
+ * The query string every request on this page uses — the four report endpoints
+ * and the CSV export alike. Built in ONE place on purpose: the moment two
+ * callers assemble their own filters, a chart and its export start describing
+ * different patients.
+ */
 function currentRangeQuery() {
     const from = document.getElementById('rangeFrom').value;
     const to = document.getElementById('rangeTo').value;
+    const classification = document.getElementById('filterClassification')?.value || 'all';
+    const childId = document.getElementById('filterPatient')?.value || 'all';
+
     const params = new URLSearchParams();
     if (from) params.set('from', from);
     if (to) params.set('to', to);
+    if (classification && classification !== 'all') params.set('classification', classification);
+    if (childId && childId !== 'all') params.set('childId', childId);
+
     const qs = params.toString();
     return qs ? `?${qs}` : '';
+}
+
+/** Fills the classification dropdown from the shared band set, once. */
+function initClassificationFilter() {
+    const select = document.getElementById('filterClassification');
+    if (!select || select.dataset.ready === '1') return;
+    for (const band of bandKeys()) {
+        const opt = document.createElement('option');
+        opt.value = band;
+        opt.textContent = window.KCScoring.clinicalLabel(band);
+        select.appendChild(opt);
+    }
+    select.dataset.ready = '1';
+}
+
+/**
+ * Fills the patient dropdown from the roster. Skipped while a patient filter is
+ * active, because that response contains only the selected patient and
+ * rebuilding from it would drop every other name from the list.
+ */
+function syncPatientFilter(patients) {
+    const select = document.getElementById('filterPatient');
+    if (!select) return;
+    const selected = select.value;
+
+    if (select.value === 'all' && Array.isArray(patients)) {
+        patientFilterOptions = patients.map((p) => ({ id: p.childId, name: p.name }));
+    }
+    if (!patientFilterOptions.length) return;
+
+    select.innerHTML = '<option value="all">All patients</option>';
+    for (const p of patientFilterOptions) {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name;
+        select.appendChild(opt);
+    }
+    select.value = selected;
+    // The previously selected patient may not exist under a new date range.
+    if (!select.value) select.value = 'all';
+}
+
+/** A one-line statement of what the numbers below are filtered to. */
+function renderActiveFilterNote(overview) {
+    const note = document.getElementById('activeFilterNote');
+    if (!note) return;
+    const filters = overview?.filters || {};
+    const parts = [];
+
+    if (filters.classification) {
+        parts.push(`latest classification is ${window.KCScoring.clinicalLabel(filters.classification)}`);
+    }
+    if (filters.childId) {
+        const match = patientFilterOptions.find((p) => p.id === filters.childId);
+        parts.push(`patient is ${match ? match.name : 'the selected patient'}`);
+    }
+
+    if (!parts.length) {
+        note.style.display = 'none';
+        note.textContent = '';
+        return;
+    }
+
+    const shown = count(overview?.cohort?.patients);
+    const scope = count(overview?.cohort?.patientsInScope);
+    note.style.display = '';
+    note.textContent = `Showing ${shown} of your ${scope} ${plural(scope, 'patient')}: ${parts.join(' and ')}. `
+        + 'Every section and the CSV export below use this same filtered set.';
 }
 
 function errorCard(title, message) {
@@ -194,6 +252,8 @@ function renderCohortTiles(overview) {
     const screenings = count(cohort.screenings);
     const withScreening = count(cohort.patientsWithScreening);
     const legacy = count(cohort.legacyBandDocs);
+    const repeat = count(cohort.patientsWithRepeatAssessments);
+    const single = count(cohort.patientsWithSingleAssessment);
 
     wrap.innerHTML = `
         <div class="report-tile">
@@ -219,12 +279,26 @@ function renderCohortTiles(overview) {
                     patients - withScreening === 1 ? 'has' : 'have'} no assessment in range.`}</p>
         </div>
         <div class="report-tile">
-            <p class="tile-label">Historical Assessments</p>
-            <p class="tile-value">${legacy}</p>
-            <p class="tile-sub">${legacy === 0
-                ? 'Every assessment in range uses the standard scoring baseline.'
-                : `${plural(legacy, 'assessment')} using historical scoring baseline.`}</p>
+            <p class="tile-label">Assessed more than once</p>
+            <p class="tile-value">${repeat}</p>
+            <p class="tile-sub">${withScreening === 0
+                ? 'No assessments in range.'
+                : `${single} assessed once; ${repeat} ${plural(repeat, 'has', 'have')} a repeat assessment to compare.`}</p>
         </div>`;
+
+    // Only shown when it is non-zero. This used to be a permanent tile labelled
+    // "Historical Assessments", which reads as "assessments from the past" —
+    // it actually counts documents carrying no scoring-band version stamp, and
+    // is 0 for every record currently on file. A tile that always reads 0 and
+    // means something other than its label is worse than no tile.
+    if (legacy > 0) {
+        wrap.insertAdjacentHTML('beforeend', `
+            <div class="report-tile">
+                <p class="tile-label">Older scoring baseline</p>
+                <p class="tile-value">${legacy}</p>
+                <p class="tile-sub">${plural(legacy, 'assessment')} saved before the current scoring baseline. Bands here are recomputed from the stored score, so this report stays consistent.</p>
+            </div>`);
+    }
 }
 
 // ── Section 2: classification overview ──────────────────────────────────────
@@ -285,15 +359,62 @@ function renderClassification(overview) {
     const KCPI = window.KCPediaReportsInterpretations;
     const domainInterpretation = KCPI.formatDomainBandInterpretation(overview.domainDistribution, withScreening);
     const overallInterpretation = KCPI.formatOverallBandInterpretation(overview.overallDistribution, withScreening);
+    const domainSentences = KCPI.formatDomainCountSentences(overview.domainDistribution, withScreening);
+
+    // The numbers, written out. The stacked bar shows the shape of the cohort;
+    // this table answers "how many children are Delayed in Social Skills?"
+    // without anyone having to read a bar segment against an axis.
+    const keys = bandKeys();
+    const dist = overview.domainDistribution || {};
+    // Wrapped in a scroll container like the other tables: the four band columns
+    // plus a label do not fit a phone, and without this the whole PAGE scrolls
+    // sideways instead of just the table.
+    const countsTable = `
+        <div class="table-scroll">
+        <table class="report-table counts-table">
+            <thead>
+                <tr>
+                    <th scope="col">Developmental domain</th>
+                    ${keys.map((k) => `<th scope="col" class="num">${escapeHtml(window.KCScoring.clinicalLabel(k))}</th>`).join('')}
+                    <th scope="col" class="num">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${DOMAINS.map((d) => {
+                    const row = dist[d.key] || {};
+                    const total = keys.reduce((sum, k) => sum + count(row[k]), 0);
+                    return `
+                        <tr>
+                            <th scope="row">${escapeHtml(d.label)}</th>
+                            ${keys.map((k) => `<td class="num"><span class="count-dot" style="background:${escapeHtml(window.KCScoring.colorForBand(k))};"></span>${count(row[k])}</td>`).join('')}
+                            <td class="num"><strong>${total}</strong></td>
+                        </tr>`;
+                }).join('')}
+            </tbody>
+        </table>
+        </div>`;
 
     section.innerHTML = `
         <div class="report-card">
             <h2>Classification overview</h2>
+            <p class="section-lead">
+                Counts the most recent assessment for each of your ${withScreening}
+                assessed ${plural(withScreening, 'patient', 'patients')} — one patient, one count.
+                A patient assessed several times is counted once, on their latest result.
+            </p>
+
+            ${countsTable}
+
+            <div class="domain-notes">
+                ${domainSentences.map((s) => `
+                    <p class="domain-note"><strong>${escapeHtml(s.label)}:</strong> ${escapeHtml(s.text)}</p>
+                `).join('')}
+            </div>
 
             <div class="chart-row">
                 <div>
                     <div class="chart-box"><canvas id="bandDomainChart"></canvas></div>
-                    <p class="chart-caption">Band distribution per domain (${withScreening} ${plural(withScreening, 'child', 'children')}).</p>
+                    <p class="chart-caption">The same counts as the table, by domain.</p>
                     <div class="chart-interp">
                         <p class="chart-interp-label">Interpretation</p>
                         <p class="chart-interp-text">${escapeHtml(domainInterpretation)}</p>
@@ -301,7 +422,7 @@ function renderClassification(overview) {
                 </div>
                 <div>
                     <div class="chart-box"><canvas id="overallBandChart"></canvas></div>
-                    <p class="chart-caption">Overall band, latest assessment per child.</p>
+                    <p class="chart-caption">Overall classification, latest assessment per patient.</p>
                     <div class="chart-interp">
                         <p class="chart-interp-label">Interpretation</p>
                         <p class="chart-interp-text">${escapeHtml(overallInterpretation)}</p>
@@ -309,6 +430,11 @@ function renderClassification(overview) {
                 </div>
             </div>
 
+            <h3 class="sub-heading">Patients scoring below 40% in a domain</h3>
+            <p class="section-lead">
+                A domain score under 40% is what KinderCura's existing rules flag for closer review.
+                "Any domain" counts each patient once, however many domains are flagged.
+            </p>
             <div class="risk-strip">
                 ${riskItems}
                 <div class="risk-item">
@@ -400,11 +526,11 @@ function renderProgression(progression) {
     if (!children.length) {
         section.innerHTML = `
             <div class="report-card">
-                <h2>Assessment-to-assessment progression</h2>
+                <h2>How results changed over time</h2>
                 <div class="report-empty">
                     <h3>Not enough repeat assessments yet</h3>
                     <p>
-                        Progression requires at least two assessments for the same child.
+                        Comparing results over time needs at least two assessments for the same patient.
                         ${withScreening === 0
                             ? 'None of your patients has an assessment in this date range yet.'
                             : `${single} of your ${withScreening} assessed ${plural(withScreening, 'patient')}
@@ -422,23 +548,29 @@ function renderProgression(progression) {
 
     section.innerHTML = `
         <div class="report-card">
-            <h2>Assessment-to-assessment progression</h2>
-            <p class="card-sub">
-                Select a row to see each assessment in detail.
+            <h2>How results changed over time</h2>
+            <p class="section-lead">
+                Only patients with two or more assessments in this range appear here — a single
+                assessment is one reading, not a change. Each row compares a patient's
+                <strong>first</strong> assessment in range with their <strong>latest</strong>.
+                Select a row to see every assessment in between.
             </p>
 
             <div class="report-tiles" style="margin-bottom:1.4rem;">
                 <div class="report-tile">
-                    <p class="tile-label">Improved overall band</p>
+                    <p class="tile-label">Moved to less concern</p>
                     <p class="tile-value" style="color:var(--status-positive-fg);">${count(movement.improved)}</p>
+                    <p class="tile-sub">Latest result is in a better classification than the first.</p>
                 </div>
                 <div class="report-tile">
-                    <p class="tile-label">Same overall band</p>
+                    <p class="tile-label">No change in classification</p>
                     <p class="tile-value" style="color:var(--text-light);">${count(movement.unchanged)}</p>
+                    <p class="tile-sub">The score may still have moved within the same band.</p>
                 </div>
                 <div class="report-tile">
-                    <p class="tile-label">Declined overall band</p>
+                    <p class="tile-label">Moved to more concern</p>
                     <p class="tile-value" style="color:var(--status-attention-fg);">${count(movement.declined)}</p>
+                    <p class="tile-sub">Latest result is in a classification indicating greater concern.</p>
                 </div>
             </div>
 
@@ -453,11 +585,11 @@ function renderProgression(progression) {
                         <tr>
                             <th>Patient</th>
                             <th class="num">Assessments</th>
-                            <th>First</th>
-                            <th>Latest</th>
-                            <th class="num">Change</th>
-                            <th>Overall band</th>
-                            <th>Progress notes</th>
+                            <th>First assessment</th>
+                            <th>Latest assessment</th>
+                            <th class="num">Score change</th>
+                            <th>Current classification</th>
+                            <th>What changed</th>
                         </tr>
                     </thead>
                     <tbody>${rows}</tbody>
@@ -498,11 +630,8 @@ function progressionRowHtml(child, index) {
                 <span style="font-size:0.76rem;color:var(--text-light);">${escapeHtml(fmtShortDate(latest.generatedAt))}</span>
             </td>
             <td class="num">${deltaHtml(child.delta?.overall)}</td>
-            <td>${bandChip(latest.overallBand)} ${movementChip(child.bandMovement?.overall)}</td>
-            <td>
-                ${count(child.progressNoteCount)} ${plural(child.progressNoteCount, 'note')}<br>
-                <span style="font-size:0.76rem;color:var(--text-light);">${escapeHtml(progressStatusLabel(child.latestProgressStatus))}</span>
-            </td>
+            <td>${bandChip(latest.overallBand)}</td>
+            <td>${movementChip(child.bandMovement?.overall)}</td>
         </tr>
         <tr class="prog-detail" id="prog-detail-${index}" ${expanded ? '' : 'hidden'}>
             <td colspan="7">${progressionDetailHtml(child)}</td>
@@ -512,13 +641,28 @@ function progressionRowHtml(child, index) {
 function progressionDetailHtml(child) {
     const screenings = Array.isArray(child.screenings) ? child.screenings : [];
 
+    // The plain-language summary of this patient's own history, built from the
+    // stored values already in the row — nothing is recomputed here.
+    const summary = window.KCPediaReportsInterpretations.formatPatientProgressionInterpretation({
+        name: child.name,
+        assessmentCount: child.screeningCount,
+        firstScore: child.firstScreening?.overallScore ?? null,
+        firstBand: child.firstScreening?.overallBand ?? null,
+        firstDate: child.firstScreening?.generatedAt ? fmtShortDate(child.firstScreening.generatedAt) : null,
+        latestScore: child.latestScreening?.overallScore ?? null,
+        latestBand: child.latestScreening?.overallBand ?? null,
+        latestDate: child.latestScreening?.generatedAt ? fmtShortDate(child.latestScreening.generatedAt) : null,
+        movement: child.bandMovement?.overall,
+    });
+
     const perDomain = DOMAINS.map((d) => `
         <tr>
             <td>${escapeHtml(d.label)}</td>
             <td class="num">${scoreText(child.firstScreening?.domains?.[d.key]?.score)}</td>
             <td class="num">${scoreText(child.latestScreening?.domains?.[d.key]?.score)}</td>
             <td class="num">${deltaHtml(child.delta?.[d.key])}</td>
-            <td>${bandChip(child.latestScreening?.domains?.[d.key]?.band)} ${movementChip(child.bandMovement?.[d.key])}</td>
+            <td>${bandChip(child.latestScreening?.domains?.[d.key]?.band)}</td>
+            <td>${movementChip(child.bandMovement?.[d.key])}</td>
         </tr>`).join('');
 
     const history = screenings.map((s) => `
@@ -527,16 +671,20 @@ function progressionDetailHtml(child) {
             ${DOMAINS.map((d) => `<td class="num">${scoreText(s.domains?.[d.key]?.score)}</td>`).join('')}
             <td class="num"><strong>${scoreText(s.overallScore)}</strong></td>
             <td>${bandChip(s.overallBand)}</td>
-            <td style="font-size:0.76rem;color:var(--text-light);">${escapeHtml(s.scoringBandsVersion || 'standard')}</td>
         </tr>`).join('');
 
     return `
-        <h4>Per-domain, first vs latest — ${escapeHtml(child.name)}</h4>
+        <div class="chart-interp" style="margin-bottom:1.1rem;">
+            <p class="chart-interp-label">What this patient's record shows</p>
+            <p class="chart-interp-text">${escapeHtml(summary)}</p>
+        </div>
+
+        <h4>Each domain, first vs latest — ${escapeHtml(child.name)}</h4>
         <table>
             <thead>
                 <tr>
                     <th>Domain</th><th class="num">First</th><th class="num">Latest</th>
-                    <th class="num">Change</th><th>Latest band / movement</th>
+                    <th class="num">Change</th><th>Current classification</th><th>What changed</th>
                 </tr>
             </thead>
             <tbody>${perDomain}</tbody>
@@ -548,7 +696,7 @@ function progressionDetailHtml(child) {
                 <tr>
                     <th>Assessed</th>
                     ${DOMAINS.map((d) => `<th class="num">${escapeHtml(d.label)}</th>`).join('')}
-                    <th class="num">Overall</th><th>Band</th><th>Baseline</th>
+                    <th class="num">Overall</th><th>Classification</th>
                 </tr>
             </thead>
             <tbody>${history}</tbody>
@@ -573,115 +721,140 @@ function toggleProgressionRow(index) {
     }
 }
 
-// ── Section 4: outcome labelling ────────────────────────────────────────────
+// ── Section 4: patient roster ───────────────────────────────────────────────
+//
+// The only section that names individual patients. The distributions collapse
+// each patient into a band count and the progression table deliberately
+// excludes anyone without two assessments, so without this a pediatrician can
+// see that three patients are At-Risk but never which three.
 
-function renderOutcomes(outcomes) {
-    const section = document.getElementById('outcomesSection');
-    const labelled = count(outcomes?.labelledCount);
-    const screenings = count(outcomes?.screeningCount);
+function patientRowHtml(p) {
+    const domains = p.latestDomains || {};
+    return `
+        <tr>
+            <th scope="row">${escapeHtml(p.name)}</th>
+            <td class="num">${count(p.assessmentCount)}</td>
+            <td>${p.latestAssessmentAt ? escapeHtml(fmtShortDate(p.latestAssessmentAt)) : '<span class="muted">No assessment in range</span>'}</td>
+            <td class="num">${p.latestOverallScore == null ? '—' : escapeHtml(scoreText(p.latestOverallScore))}</td>
+            <td>${bandChip(p.latestOverallBand)}</td>
+            ${DOMAINS.map((d) => `<td>${bandChip(domains[d.key] ? domains[d.key].band : null)}</td>`).join('')}
+        </tr>`;
+}
 
-    const methodNote = '';
+function renderPatients(data) {
+    const section = document.getElementById('patientsSection');
+    const patients = Array.isArray(data?.patients) ? data.patients : [];
+    const totals = data?.totals || {};
 
-    const coverage = `
-        <div class="coverage-line">
-            <strong>${labelled} of ${screenings}</strong> ${plural(screenings, 'assessment')} in this
-            range ${labelled === 1 ? 'has' : 'have'} a recorded clinical outcome.
-        </div>`;
-
-    if (labelled === 0) {
+    if (patients.length === 0) {
         section.innerHTML = `
             <div class="report-card">
-                <h2>Assessment band vs recorded clinical outcome</h2>
-                <p class="card-sub">
-                    Compare assessment results with clinical outcomes recorded by the pediatrician.
-                </p>
-                ${coverage}
+                <h2>Patient list</h2>
                 <div class="report-empty">
-                    <h3>No clinical outcomes recorded yet</h3>
-                    <p>${escapeHtml(outcomes?.message
-                        || 'No assessment in this range has a recorded clinical outcome.')}</p>
+                    <h3>No patients match these filters</h3>
+                    <p>Widen the date range, or reset the classification and patient filters.</p>
                 </div>
             </div>`;
         return;
     }
 
-    const matrix = outcomes.matrix || {};
-    const keys = bandKeys();
-    // Outcome columns come from the server's enumeration of the schema enum, so
-    // this table cannot fall behind a change to models/Assessment.js.
-    const outcomeKeys = Object.keys(matrix[keys[0]] || {});
-
-    const colTotals = outcomeKeys.map((oKey) =>
-        keys.reduce((sum, band) => sum + count(matrix[band]?.[oKey]), 0));
-
-    const bodyRows = keys.map((band) => {
-        const rowTotal = outcomeKeys.reduce((sum, oKey) => sum + count(matrix[band]?.[oKey]), 0);
-        return `
-            <tr>
-                <td class="band-head">${bandChip(band)}</td>
-                ${outcomeKeys.map((oKey) => {
-                    const n = count(matrix[band]?.[oKey]);
-                    return `<td class="cell${n === 0 ? ' cell-zero' : ''}">${n}</td>`;
-                }).join('')}
-                <td class="cell total">${rowTotal}</td>
-            </tr>`;
-    }).join('');
-
-    const detailRows = (outcomes.rows || []).map((row) => `
-        <tr>
-            <td>${escapeHtml(row.childName)}</td>
-            <td>${escapeHtml(fmtShortDate(row.screenedAt))}</td>
-            <td class="num">${scoreText(row.overallScore)}</td>
-            <td>${bandChip(row.screeningBand)}</td>
-            <td>${escapeHtml(outcomeLabel(row.clinicalOutcome))}</td>
-            <td>${Array.isArray(row.clinicalOutcomeDomains) && row.clinicalOutcomeDomains.length
-                ? escapeHtml(row.clinicalOutcomeDomains.join(', '))
-                : '<span style="color:var(--text-light);">—</span>'}</td>
-            <td>${escapeHtml(fmtShortDate(row.clinicalOutcomeAt))}</td>
-        </tr>`).join('');
+    const interpretation = window.KCPediaReportsInterpretations.formatPatientRosterInterpretation(totals);
 
     section.innerHTML = `
         <div class="report-card">
-            <h2>Assessment band vs recorded clinical outcome</h2>
-            <p class="card-sub">
-                Compare assessment results with clinical outcomes recorded by the pediatrician.
+            <h2>Patient list</h2>
+            <p class="section-lead">
+                Every patient matching the current filters, with their most recent assessment.
+                Patients with no assessment in the selected range are listed too, so this table
+                always reconciles with the Patients tile above.
             </p>
-            ${coverage}
 
-            <div class="report-table-wrap">
-                <table class="report-table crosstab">
-                    <thead>
-                        <tr>
-                            <th>Assessment band</th>
-                            ${outcomeKeys.map((oKey) => `<th class="rot">${escapeHtml(outcomeLabel(oKey))}</th>`).join('')}
-                            <th class="total">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>${bodyRows}</tbody>
-                    <tfoot>
-                        <tr>
-                            <td>Total</td>
-                            ${colTotals.map((n) => `<td class="cell">${n}</td>`).join('')}
-                            <td class="cell">${labelled}</td>
-                        </tr>
-                    </tfoot>
-                </table>
+            <div class="chart-interp">
+                <p class="chart-interp-label">Interpretation</p>
+                <p class="chart-interp-text">${escapeHtml(interpretation)}</p>
             </div>
 
-            <h2 style="margin-top:1.8rem;font-size:1rem;">Labelled assessments</h2>
-            <div class="report-table-wrap">
+            <div class="table-scroll">
                 <table class="report-table">
                     <thead>
                         <tr>
-                            <th>Patient</th><th>Assessed</th><th class="num">Overall</th>
-                            <th>Assessment band</th><th>Clinical outcome</th>
-                            <th>Domains concerned</th><th>Outcome recorded</th>
+                            <th scope="col">Patient</th>
+                            <th scope="col" class="num">Assessments</th>
+                            <th scope="col">Latest assessment</th>
+                            <th scope="col" class="num">Overall score</th>
+                            <th scope="col">Overall classification</th>
+                            ${DOMAINS.map((d) => `<th scope="col">${escapeHtml(d.label)}</th>`).join('')}
                         </tr>
                     </thead>
-                    <tbody>${detailRows}</tbody>
+                    <tbody>
+                        ${patients.map(patientRowHtml).join('')}
+                    </tbody>
                 </table>
             </div>
+            <p class="table-note">
+                Classifications come from KinderCura's existing scoring rules applied to the stored
+                score. They describe recorded assessment results and are not medical diagnoses.
+            </p>
         </div>`;
+}
+
+// ── Section 5: assessment activity over time ────────────────────────────────
+
+function renderActivity(overview) {
+    const section = document.getElementById('activitySection');
+    const byMonth = Array.isArray(overview?.assessmentsByMonth) ? overview.assessmentsByMonth : [];
+    const KCPI = window.KCPediaReportsInterpretations;
+
+    if (byMonth.length === 0) {
+        section.innerHTML = `
+            <div class="report-card">
+                <h2>Assessment activity</h2>
+                <div class="report-empty">
+                    <h3>No assessments in this range</h3>
+                    <p>Nothing was recorded for your patients in the selected dates.</p>
+                </div>
+            </div>`;
+        if (activityChart) { activityChart.destroy(); activityChart = null; }
+        return;
+    }
+
+    section.innerHTML = `
+        <div class="report-card">
+            <h2>Assessment activity</h2>
+            <p class="section-lead">
+                How many assessments your patients completed each month. This counts activity only —
+                it says nothing about the results.
+            </p>
+            <div class="chart-box chart-box-wide"><canvas id="activityChart"></canvas></div>
+            <div class="chart-interp">
+                <p class="chart-interp-label">Interpretation</p>
+                <p class="chart-interp-text">${escapeHtml(KCPI.formatActivityInterpretation(byMonth))}</p>
+            </div>
+        </div>`;
+
+    if (typeof Chart === 'undefined') return;
+    const canvas = document.getElementById('activityChart');
+    if (!canvas) return;
+    if (activityChart) activityChart.destroy();
+    activityChart = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: byMonth.map((r) => KCPI.formatMonthLabel(r.month)),
+            datasets: [{
+                label: 'Assessments completed',
+                data: byMonth.map((r) => r.count),
+                backgroundColor: window.KCScoring.colorForBand(window.KCScoring.BAND.ON_TRACK),
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Assessments' } },
+            },
+            plugins: { legend: { display: false } },
+        },
+    });
 }
 
 // ── Loading ─────────────────────────────────────────────────────────────────
@@ -697,25 +870,30 @@ async function loadReports() {
 
     document.getElementById('classificationSection').innerHTML =
         '<div class="report-card"><div class="report-loading">Loading classification overview…</div></div>';
+    document.getElementById('patientsSection').innerHTML =
+        '<div class="report-card"><div class="report-loading">Loading patient list…</div></div>';
     document.getElementById('progressionSection').innerHTML =
         '<div class="report-card"><div class="report-loading">Loading progression…</div></div>';
-    document.getElementById('outcomesSection').innerHTML =
-        '<div class="report-card"><div class="report-loading">Loading outcome labelling…</div></div>';
+    document.getElementById('activitySection').innerHTML =
+        '<div class="report-card"><div class="report-loading">Loading assessment activity…</div></div>';
     meta.textContent = 'Loading…';
 
+    // One query string for all three, so the sections cannot disagree about
+    // which patients they are describing.
     try {
-        [overviewData, progressionData, outcomesData] = await Promise.all([
+        [overviewData, progressionData, patientsData] = await Promise.all([
             apiFetch(`/pedia-reports/overview${query}`),
             apiFetch(`/pedia-reports/progression${query}`),
-            apiFetch(`/pedia-reports/outcomes${query}`),
+            apiFetch(`/pedia-reports/patients${query}`),
         ]);
     } catch (err) {
         meta.textContent = 'Could not load reports';
         document.getElementById('cohortTiles').innerHTML = '';
         document.getElementById('classificationSection').innerHTML =
             errorCard('We could not load this report', err.message);
+        document.getElementById('patientsSection').innerHTML = '';
         document.getElementById('progressionSection').innerHTML = '';
-        document.getElementById('outcomesSection').innerHTML = '';
+        document.getElementById('activitySection').innerHTML = '';
         return;
     }
 
@@ -728,10 +906,13 @@ async function loadReports() {
     meta.textContent = `${patients} ${plural(patients, 'patient')} • ${screenings} ${
         plural(screenings, 'assessment')} • ${rangeLabel}`;
 
+    syncPatientFilter(patientsData?.patients);
+    renderActiveFilterNote(overviewData);
     renderCohortTiles(overviewData);
     renderClassification(overviewData);
+    renderPatients(patientsData);
     renderProgression(progressionData);
-    renderOutcomes(outcomesData);
+    renderActivity(overviewData);
 }
 
 // ── Filter actions ──────────────────────────────────────────────────────────
@@ -739,7 +920,7 @@ async function loadReports() {
 // polling interval: these are aggregate queries over several collections, and
 // nothing on this page changes second to second.
 
-function applyRange() {
+function applyFilters() {
     const from = document.getElementById('rangeFrom').value;
     const to = document.getElementById('rangeTo').value;
     if (from && to && from > to) {
@@ -749,9 +930,13 @@ function applyRange() {
     loadReports();
 }
 
-function clearRange() {
+function clearFilters() {
     document.getElementById('rangeFrom').value = '';
     document.getElementById('rangeTo').value = '';
+    const band = document.getElementById('filterClassification');
+    const patient = document.getElementById('filterPatient');
+    if (band) band.value = 'all';
+    if (patient) patient.value = 'all';
     loadReports();
 }
 
@@ -794,5 +979,6 @@ async function exportScreeningsCsv() {
 
 document.addEventListener('DOMContentLoaded', () => {
     if (typeof initNav === 'function') initNav();
+    initClassificationFilter();
     loadReports();
 });

@@ -17,11 +17,22 @@ stale.
 A read-only reporting page for a pediatrician, covering their own patients only:
 
 1. **Classification analytics** — where the cohort falls across the four bands,
-   overall and per scoring domain.
-2. **Screening-to-screening progression** — for children screened more than
+   overall and per scoring domain, as a counts table and two charts.
+2. **Patient roster** — one row per in-scope child, including children with a
+   single screening and children with none in range.
+3. **Screening-to-screening progression** — for children screened more than
    once, how their scores and bands moved.
-3. **Outcome cross-tab** — how the screening classified each child set against
-   what the reviewing pediatrician actually concluded.
+4. **Assessment activity** — screenings per calendar month.
+
+**Removed (2026-09-29):** the outcome cross-tab (`GET /outcomes`) and the
+`labelling` block on `/overview`. `Assessment.clinicalOutcome` was set on **0 of
+1,716** assessments, so the section rendered only its own "no labels yet"
+message in every state. The field, the diagnosis form that writes it, and its
+readers in `routes/assessments.js`, `js/pedia/pediatrician-patients.js` and
+`routes/admin-reports.js` are all untouched, and the CSV still carries the
+`clinical_outcome*` columns so the export gains the data the moment one is
+recorded. §5 below is retained because its reasoning governs any future
+attempt to add validation metrics.
 
 **It is descriptive reporting over stored, rule-based scores.** It counts what
 is on file. There is no model, no prediction, no estimation, and no inference
@@ -71,7 +82,16 @@ many collections are involved, not how many patients exist.
 
 ## 3. Endpoints
 
-All four accept optional `?from=` and `?to=` ISO dates, filtering on
+All five accept `?from=` / `?to=` ISO dates, plus `?classification=` (a band
+key) and `?childId=`. **Every filter is applied once, centrally, in
+`loadScope()`**, so the charts, the tables, the interpretations and the CSV
+cannot describe different sets of patients. `classification` keeps children
+whose **latest** screening in range falls in that band — so a filtered CSV may
+still contain that child's *earlier* screenings from other bands, which is the
+intended reading of "latest classification". An unknown band key or a malformed
+`childId` is rejected with `400` rather than ignored.
+
+The date filters act on
 `AssessmentResult.generatedAt`. **Default is all time.** A date-only `to`
 (`2026-08-08`) is extended to the end of that day, so "to 8 August" includes
 screenings generated during 8 August. A full ISO timestamp is honoured exactly.
@@ -139,18 +159,30 @@ Progress notes are filtered to `pediatricianId: req.user.userId`, matching
 `routes/assessments.js:807`, so the count here agrees with the timeline the same
 clinician sees in My Patients.
 
-### `GET /api/pedia-reports/outcomes`
+### `GET /api/pedia-reports/patients`
 
-The cross-tab of **screening overall band × recorded clinical outcome**, over
-every in-scope assessment where `clinicalOutcome != null`, plus a `rows` list of
-the individual labelled screenings.
+One row per in-scope child — **including children with a single screening and
+children with none in range**, which is what the rest of the page cannot show:
+the distributions collapse each child into a band count, and `/progression`
+deliberately excludes anyone without two screenings. Without this a clinician
+could read "3 patients are At-Risk" and never learn which three.
 
-`matrix` is fully enumerated: every band × every outcome exists, at zero if
-nobody recorded it. An empty cell renders as `0`, never as a gap.
+Each row carries `assessmentCount`, `firstAssessmentAt`, `latestAssessmentAt`,
+`latestOverallScore`, `latestOverallBand`, `latestDomains` (score + band per
+domain) and `hasRepeatAssessments`. A child with no screening is emitted with
+`assessmentCount: 0` and null scores rather than dropped, so the table
+reconciles against the Patients tile exactly. `totals` gives `patients`,
+`withAssessment`, `withoutAssessment`, `withRepeatAssessments` and
+`assessments`.
 
-When `labelledCount === 0` the same structure is returned with an explicit
-`message` explaining that outcome labelling has not started. **No label is ever
-fabricated or inferred from the free-text `diagnosis` field.**
+### Assessment activity (`assessmentsByMonth` on `/overview`)
+
+Screenings per calendar month over the filtered set, oldest first, as
+`[{ month: '2026-08', count: 19 }]`. Grouped in JS rather than by a `$group`
+pipeline because `loadScope()` has already read those documents — a second
+round trip would recompute something already in memory, and one pediatrician's
+cohort is tens of documents, not thousands. It counts activity only and carries
+no clinical meaning.
 
 ### `GET /api/pedia-reports/export.csv`
 
