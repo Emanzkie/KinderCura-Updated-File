@@ -1,0 +1,195 @@
+/* mobile-nav.css — collapsed top navigation, shared by every role
+   ---------------------------------------------------------------------------
+   The hamburger header. Lifted out of parent-responsive.css unchanged so the
+   PARENT and PEDIA sides run one implementation instead of two copies; the
+   ADMIN and SECRETARY sides can opt in the same way.
+
+   Load it AFTER dashboard-new-styles.css (whose 1024px block turns .main-nav
+   into a full-width vertical stack) and BEFORE the role's own responsive
+   layer.
+
+   Two hooks, both required, and both no-ops on a page that does not set them:
+     .top-nav.has-mobile-nav   on the <header>
+     button.nav-toggle         inside .nav-right
+   js/shared/mobile-nav.js toggles `nav-open` on the header; it touches
+   nothing else.
+
+   Above 1024px every rule here is inert, so the desktop bar is untouched.
+   =========================================================================== */
+
+/* Desktop keeps the existing horizontal bar. Below 1024px the links move into
+   a dropdown panel opened by a hamburger button, so the sticky header stays
+   one row high instead of growing into a six- or seven-line stack. */
+
+.nav-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    flex: 0 0 auto;
+    padding: 0;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-btn);
+    background: var(--surface);
+    color: var(--primary-dark);
+    cursor: pointer;
+}
+
+.nav-toggle:hover {
+    border-color: var(--primary-light);
+    background: var(--surface-tint);
+}
+
+.nav-toggle-bars,
+.nav-toggle-bars::before,
+.nav-toggle-bars::after {
+    display: block;
+    width: 20px;
+    height: 2px;
+    border-radius: 2px;
+    background: currentColor;
+    transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.nav-toggle-bars {
+    position: relative;
+}
+
+.nav-toggle-bars::before {
+    content: "";
+    position: absolute;
+    top: -6px;
+}
+
+.nav-toggle-bars::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+}
+
+.top-nav.nav-open .nav-toggle-bars {
+    background: transparent;
+}
+
+.top-nav.nav-open .nav-toggle-bars::before {
+    transform: translateY(6px) rotate(45deg);
+}
+
+.top-nav.nav-open .nav-toggle-bars::after {
+    transform: translateY(-6px) rotate(-45deg);
+}
+
+/* Narrow desktop. The seven links plus the logo and the icon cluster need
+   1119px to sit on one line; between 1024px and there the bar used to squeeze
+   the logo and spill toward the icon cluster. Tightening the gap and the link
+   size buys back ~190px, which clears the breakpoint with room to spare.
+   Wider than 1180px the bar is untouched.
+
+   The lower bound overlaps the mobile breakpoint by a pixel on purpose: an
+   exact 1025px floor left a sub-pixel gap where neither band applied. The
+   collapsed-nav block below therefore comes AFTER this one, so on the shared
+   pixel its rules win the tie. */
+@media (min-width: 1024px) and (max-width: 1180px) {
+    .top-nav.has-mobile-nav .nav-container {
+        gap: 1rem;
+    }
+
+    .top-nav.has-mobile-nav .main-nav {
+        gap: 1rem;
+    }
+
+    .top-nav.has-mobile-nav .nav-link {
+        font-size: 0.875rem;
+    }
+}
+
+@media (max-width: 1024px) {
+    .top-nav.has-mobile-nav .nav-toggle {
+        display: inline-flex;
+    }
+
+    /* The header stays a single row: logo on the left, bell / avatar /
+       hamburger on the right. */
+    .top-nav.has-mobile-nav .nav-container {
+        flex-wrap: nowrap;
+        gap: 1rem;
+    }
+
+    .top-nav.has-mobile-nav .logo {
+        min-width: 0;
+    }
+
+    .top-nav.has-mobile-nav .logo-text {
+        overflow: hidden;
+    }
+
+    /* .top-nav is position: sticky, so it is the containing block here. */
+    .top-nav.has-mobile-nav .main-nav {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        flex: none;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: 0;
+        max-height: 70vh;
+        overflow-y: auto;
+        padding: 0.25rem 1rem 0.75rem;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        box-shadow: var(--shadow-raised);
+    }
+
+    .top-nav.has-mobile-nav.nav-open .main-nav {
+        display: flex;
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-link {
+        display: flex;
+        align-items: center;
+        min-height: 48px;
+        padding: 0.35rem 0.25rem;
+        font-size: 1rem;
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-link + .nav-link {
+        border-top: 1px solid var(--border);
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-link.active,
+    .top-nav.has-mobile-nav .main-nav .nav-link[aria-current="page"] {
+        padding-left: 0.75rem;
+        border-left: 3px solid var(--accent-red);
+        background: var(--surface-tint);
+    }
+
+    /* Guardian Management pins the bar to 96px for its desktop hero spacing;
+       on a phone that is dead space above the fold. */
+    .top-nav.has-mobile-nav {
+        height: auto;
+    }
+}
+
+@media (max-width: 768px) {
+    .top-nav.has-mobile-nav .nav-container {
+        gap: 0.6rem;
+    }
+
+    .top-nav.has-mobile-nav .nav-right {
+        gap: 0.9rem;
+    }
+}
+
+@media (max-width: 380px) {
+    .top-nav.has-mobile-nav .logo {
+        font-size: 1.25rem;
+    }
+
+    .top-nav.has-mobile-nav .nav-right {
+        gap: 0.7rem;
+    }
+}

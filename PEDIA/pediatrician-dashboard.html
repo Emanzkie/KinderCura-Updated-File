@@ -14,9 +14,11 @@ Purpose:
     <link rel="stylesheet" href="/css/notifications-styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="/notifications-card-ui.css">
+    <link rel="stylesheet" href="/css/mobile-nav.css">
+    <link rel="stylesheet" href="/css/pedia-responsive.css">
 </head>
 <body>
-    <header class="top-nav">
+    <header class="top-nav has-mobile-nav">
         <div class="nav-container">
             <a href="/pedia/pediatrician-dashboard.html" class="logo">
                 <img src="/icons/logo.png" alt="KinderCura Logo" class="logo-img">
@@ -39,6 +41,7 @@ Purpose:
                 <button class="icon-btn profile-btn" onclick="toggleProfileMenu()">
                     <img src="/icons/profile.png" class="profile-icon" id="navProfilePic" style="width:36px;height:36px;border-radius:50%;object-fit:cover;display:block;">
                 </button>
+                <button type="button" class="nav-toggle" aria-label="Open menu" aria-expanded="false"><span class="nav-toggle-bars" aria-hidden="true"></span></button>
                 <div class="profile-menu" id="profileMenu" style="display:none;">
                     <div class="menu-header"><p id="navWelcome">Welcome, Doctor</p></div>
                     <a href="/pedia/pediatrician-profile.html" class="menu-item"><img src="/icons/profile_icon.png" class="menu-icon">Profile</a>
@@ -105,6 +108,7 @@ Purpose:
      page's own script so the page keeps its existing local overrides. -->
 <script src="/api.js"></script>
 <script src="/notifications-card-ui.js"></script>
+<script src="/js/shared/mobile-nav.js"></script>
 <script src="/js/pedia/pediatrician-dashboard.js"></script>
 </body>
 </html>

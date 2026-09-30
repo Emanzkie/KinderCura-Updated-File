@@ -9,11 +9,13 @@
     <link rel="stylesheet" href="/css/pedia-reports-styles.css">
     <link rel="stylesheet" href="/css/notifications-styles.css">
     <link rel="stylesheet" href="/notifications-card-ui.css">
+    <link rel="stylesheet" href="/css/mobile-nav.css">
+    <link rel="stylesheet" href="/css/pedia-responsive.css">
     <!-- Same charting library the pediatrician dashboard already loads. -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <header class="top-nav">
+    <header class="top-nav has-mobile-nav">
         <div class="nav-container">
             <a href="/pedia/pediatrician-dashboard.html" class="logo">
                 <img src="/icons/logo.png" alt="KinderCura" class="logo-img">
@@ -35,6 +37,7 @@
                 <button class="icon-btn profile-btn" onclick="toggleProfileMenu()">
                     <img src="/icons/profile.png" class="profile-icon" id="navProfilePic">
                 </button>
+                <button type="button" class="nav-toggle" aria-label="Open menu" aria-expanded="false"><span class="nav-toggle-bars" aria-hidden="true"></span></button>
                 <div class="profile-menu" id="profileMenu" style="display:none;">
                     <div class="menu-header"><p id="navWelcome">Welcome, Dr.</p></div>
                     <a href="/pedia/pediatrician-profile.html" class="menu-item"><img src="/icons/profile_icon.png" class="menu-icon">Profile</a>
@@ -136,6 +139,7 @@
 <script src="/api.js"></script>
 <script src="/constants/scoring.js"></script>
 <script src="/notifications-card-ui.js"></script>
+<script src="/js/shared/mobile-nav.js"></script>
 <script src="/js/pedia/pedia-reports-interpretations.js"></script>
 <script src="/js/pedia/pedia-reports.js"></script>
 </body>
