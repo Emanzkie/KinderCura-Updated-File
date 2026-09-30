@@ -6,7 +6,9 @@
     <title>Login - KinderCura</title>
     <link rel="stylesheet" href="/css/auth-new-styles.css">
 </head>
-<body>
+<!-- .auth-page opts this page into the shared auth design system defined at the
+     bottom of auth-new-styles.css, the same one signup.html uses. -->
+<body class="auth-page">
     <div class="auth-container">
         <div class="auth-sidebar">
             <div class="sidebar-logo">
@@ -15,44 +17,52 @@
             </div>
             <p class="sidebar-tagline">Supporting Your Child's Development Journey</p>
             <div class="sidebar-features">
-                <div class="feature"><span class="check-icon">&#10003;</span><p>Comprehensive Screening</p></div>
-                <div class="feature"><span class="check-icon">&#10003;</span><p>Progress Tracking</p></div>
-                <div class="feature"><span class="check-icon">&#10003;</span><p>Expert Recommendations</p></div>
-                <div class="feature"><span class="check-icon">&#10003;</span><p>Appointment System</p></div>
+                <div class="feature"><span class="check-icon" aria-hidden="true">&#10003;</span><p>Comprehensive Screening</p></div>
+                <div class="feature"><span class="check-icon" aria-hidden="true">&#10003;</span><p>Progress Tracking</p></div>
+                <div class="feature"><span class="check-icon" aria-hidden="true">&#10003;</span><p>Expert Recommendations</p></div>
+                <div class="feature"><span class="check-icon" aria-hidden="true">&#10003;</span><p>Appointment System</p></div>
             </div>
         </div>
 
         <div class="auth-form-section">
             <div class="form-container">
-                <div class="form-header">
-                    <h2>Welcome Back</h2>
-                    <p>Sign in to your account to continue</p>
-                </div>
-
-                <div id="sessionMsg" style="display:none;background:#eef7ee;color:#3b6b44;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;font-size:0.9rem;"></div>
-                <div id="errorMsg" style="display:none;background:#fde8e8;color:var(--status-attention-fg);padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;font-size:0.9rem;"></div>
-
-                <form id="loginForm">
-                    <div class="form-group">
-                        <label>Username or Email</label>
-                        <input type="text" id="identifier" placeholder="username or email@example.com" required>
+                <!-- Same shell the sign-up steps use: heading block, white card,
+                     footer link. .onboarding-step carries no display rule of its
+                     own, so unlike .form-step it needs no JS to stay visible. -->
+                <div class="onboarding-step login-step">
+                    <div class="form-header">
+                        <h2>Welcome Back</h2>
+                        <p>Sign in to your account to continue</p>
                     </div>
-                    <div class="form-group">
-                        <label>Password</label>
-                        <input type="password" id="password" placeholder="Enter your password" required>
-                    </div>
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
-                        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;">
-                            <input type="checkbox" id="rememberMe" style="width:18px;height:18px;">
-                            <span style="font-size:0.9rem;">Remember me</span>
-                        </label>
-                        <a href="#" style="font-size:0.9rem;color:var(--primary);text-decoration:none;">Forgot password?</a>
-                    </div>
-                    <button type="submit" id="submitBtn" class="btn btn-primary btn-full" style="padding:0.9rem;">Sign In</button>
-                </form>
 
-                <div class="form-footer">
-                    <p>Don't have an account? <a href="signup.html">Sign up</a></p>
+                    <div class="form-section onboarding-card">
+                        <!-- display is toggled inline by login.js; the look comes from the classes -->
+                        <div id="sessionMsg" class="auth-message auth-message--info" style="display:none;"></div>
+                        <div id="errorMsg" class="auth-message auth-message--error" style="display:none;"></div>
+
+                        <form id="loginForm">
+                            <div class="form-group">
+                                <label for="identifier">Username or Email</label>
+                                <input type="text" id="identifier" placeholder="username or email@example.com" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="password">Password</label>
+                                <input type="password" id="password" placeholder="Enter your password" required>
+                            </div>
+                            <div class="form-options">
+                                <label class="checkbox-label" for="rememberMe">
+                                    <input type="checkbox" id="rememberMe">
+                                    <span>Remember me</span>
+                                </label>
+                                <a href="#" class="text-link">Forgot password?</a>
+                            </div>
+                            <button type="submit" id="submitBtn" class="btn btn-primary btn-full">Sign In</button>
+                        </form>
+                    </div>
+
+                    <div class="form-footer">
+                        <p>Don't have an account? <a href="signup.html">Sign up</a></p>
+                    </div>
                 </div>
             </div>
         </div>

@@ -490,3 +490,416 @@ body {
     object-fit: contain;
 }
 
+
+/* ==================== KINDERCURA AUTH DESIGN SYSTEM ====================
+   One visual language shared by Login and Sign Up, scoped to the .auth-page
+   class that both <body> elements now carry.
+
+   Sign Up is the reference: every value below is the one signup.css already
+   defines, lifted here so the Login page inherits the same system instead of
+   falling back to the plainer base rules above it.
+
+   Load order matters and is deliberate. signup.css is linked AFTER this file
+   and its rules are written as ".signup-page ...", which matches this layer's
+   specificity or beats it, so wherever the sign-up flow already states a value
+   its own rule still wins. This layer is therefore what Login picks up, and
+   what any future auth page can opt into with one class.
+
+   The gradient branding panel (.auth-sidebar and its logo) is untouched here
+   apart from sizing and spacing — the colours, the gradient and the wordmark
+   treatment all still come from the rules further up this file. */
+
+/* -- Page surfaces --------------------------------------------------------
+   The form half gets the flat cream Sign Up uses. On Login that half was
+   transparent, so the body's cream-to-blush gradient showed through and made
+   the content area read as pink next to Sign Up's off-white. */
+.auth-page {
+    min-height: 100vh;
+    background:
+        linear-gradient(135deg, rgba(250, 250, 246, 0.96) 0%, rgba(240, 220, 216, 0.9) 100%),
+        var(--bg-primary);
+    overflow-x: hidden;
+}
+
+.auth-page .auth-container {
+    min-height: 100vh;
+    align-items: stretch;
+}
+
+.auth-page .auth-sidebar {
+    flex: 0 0 50%;
+    min-height: 100vh;
+    padding: clamp(2.5rem, 5vw, 4.5rem) clamp(2rem, 4vw, 3.5rem);
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.auth-page .auth-form-section {
+    flex: 0 0 50%;
+    min-height: 100vh;
+    padding: clamp(2rem, 4vw, 3.5rem);
+    background: var(--bg-primary);
+}
+
+.auth-page .form-container {
+    max-width: 500px;
+}
+
+/* -- Branding panel: sizing and rhythm only, no colour changes ------------- */
+.auth-page .sidebar-logo {
+    margin-bottom: 1.25rem;
+}
+
+.auth-page .sidebar-logo-img {
+    width: 150px;
+    height: 150px;
+}
+
+.auth-page .sidebar-logo h1 {
+    font-size: 2.2rem;
+    line-height: 1;
+}
+
+/* Login has no subtitle between the tagline and the feature list, so on Login
+   the tagline carries that gap. Sign Up's own 0.65rem rule still wins there,
+   where the subtitle supplies the spacing instead. */
+.auth-page .sidebar-tagline {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-bottom: 1.75rem;
+    width: 100%;
+    max-width: 360px;
+    overflow-wrap: break-word;
+}
+
+.auth-page .sidebar-subtitle {
+    max-width: 360px;
+    margin-bottom: 2rem;
+    overflow-wrap: break-word;
+}
+
+.auth-page .sidebar-features {
+    gap: 0.9rem;
+    max-width: 340px;
+}
+
+.auth-page .feature {
+    width: 100%;
+    min-width: 0;
+    padding: 0.9rem 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: var(--radius-panel);
+    background: rgba(255, 255, 255, 0.24);
+    box-shadow: 0 14px 30px rgba(61, 71, 56, 0.16);
+    backdrop-filter: blur(8px);
+}
+
+.auth-page .check-icon {
+    width: 32px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.32);
+    color: white;
+}
+
+.auth-page .feature p {
+    min-width: 0;
+    font-weight: 600;
+    color: white;
+    overflow-wrap: break-word;
+}
+
+/* -- Headings and the white content card ---------------------------------- */
+.auth-page .onboarding-step .form-header {
+    margin-bottom: 1.35rem;
+}
+
+.auth-page .onboarding-step .form-header h2 {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.15;
+    margin-bottom: 0.65rem;
+    color: var(--text-dark);
+}
+
+.auth-page .onboarding-step .form-header p {
+    color: var(--text-light);
+    font-size: 1rem;
+    line-height: 1.6;
+    max-width: 460px;
+}
+
+.auth-page .onboarding-card {
+    padding: clamp(1.5rem, 3vw, 2.25rem);
+}
+
+/* -- Fields ---------------------------------------------------------------- */
+.auth-page .onboarding-step .form-group {
+    margin-bottom: 1.55rem;
+}
+
+.auth-page .onboarding-step .form-group label {
+    margin-bottom: 0.55rem;
+    color: var(--text-dark);
+    font-weight: 600;
+    font-size: 0.92rem;
+}
+
+.auth-page .onboarding-step .form-group input,
+.auth-page .onboarding-step .form-group select {
+    min-height: 50px;
+    border-color: var(--border);
+    background: var(--surface-muted);
+}
+
+.auth-page .onboarding-step .form-group input:hover,
+.auth-page .onboarding-step .form-group select:hover {
+    border-color: var(--primary-light);
+}
+
+.auth-page .onboarding-step .form-group input:focus,
+.auth-page .onboarding-step .form-group select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(107, 142, 111, 0.14);
+}
+
+.auth-page .onboarding-step .form-group input::placeholder {
+    color: #8b9787;
+    opacity: 1;
+}
+
+.auth-page .onboarding-step .form-group small {
+    margin-top: 0.45rem;
+    color: var(--text-light);
+    line-height: 1.45;
+}
+
+/* -- Buttons ---------------------------------------------------------------
+   50px is the height Sign Up's own form-actions buttons already use; applying
+   it to every .btn inside a step also lines the step-1 "Continue" button up
+   with them. */
+.auth-page .onboarding-step .btn {
+    min-height: 50px;
+}
+
+.auth-page .onboarding-step .btn-primary {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+    color: white;
+    box-shadow: 0 10px 22px rgba(107, 142, 111, 0.22);
+}
+
+.auth-page .onboarding-step .btn-secondary {
+    background: white;
+    color: var(--primary-dark);
+    border: 2px solid var(--border);
+}
+
+.auth-page .onboarding-step .btn-secondary:hover,
+.auth-page .onboarding-step .btn-secondary:focus-visible {
+    border-color: var(--primary-light);
+    background: var(--bg-primary);
+    color: var(--primary-dark);
+}
+
+/* -- Links ----------------------------------------------------------------- */
+.auth-page .form-footer {
+    margin-top: 1.5rem;
+    font-size: 0.9rem;
+    color: var(--text-light);
+}
+
+.auth-page .form-footer a,
+.auth-page .text-link {
+    color: var(--primary);
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-decoration: none;
+}
+
+.auth-page .form-footer a:hover,
+.auth-page .text-link:hover {
+    text-decoration: underline;
+}
+
+.auth-page .text-link:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 3px;
+    border-radius: 4px;
+}
+
+/* -- Inline status banners -------------------------------------------------
+   Same treatment as the sign-up flow's .error-msg / .success-msg. These were
+   hard-coded as inline styles on the Login page, which is why they could not
+   follow the system. Visibility stays an inline style toggled by login.js. */
+.auth-page .auth-message {
+    padding: 0.9rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+    line-height: 1.45;
+}
+
+.auth-page .auth-message--info {
+    border: 1px solid rgba(107, 142, 111, 0.24);
+    border-left: 4px solid var(--primary);
+    background: #edf6ea;
+    color: var(--primary-dark);
+}
+
+.auth-page .auth-message--error {
+    border: 1px solid #f0c7c7;
+    border-left: 4px solid #d36f6f;
+    background: #fff1f1;
+    color: var(--danger);
+}
+
+/* -- "Remember me" / "Forgot password?" row (Login only) ------------------- */
+.auth-page .form-options {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.auth-page .checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-dark);
+    cursor: pointer;
+}
+
+.auth-page .checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    min-height: 0;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+.auth-page .form-options .text-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+}
+
+/* ==================== AUTH RESPONSIVE ====================
+   Mirrors the breakpoints signup.css already uses, so both pages change shape
+   at the same widths. */
+
+/* Small laptop / large tablet: the two panels stay side by side. */
+@media (max-width: 1024px) and (min-width: 769px) {
+    .auth-page .auth-container {
+        flex-direction: row;
+    }
+
+    .auth-page .auth-sidebar {
+        flex-basis: 40%;
+        min-height: 100vh;
+        padding: 2rem 1.4rem;
+    }
+
+    .auth-page .auth-form-section {
+        flex-basis: 60%;
+        min-height: 100vh;
+        padding: 2rem;
+    }
+
+    .auth-page .form-container {
+        max-width: 500px;
+    }
+
+    .auth-page .sidebar-logo-img {
+        width: 120px;
+        height: 120px;
+    }
+
+    .auth-page .sidebar-features {
+        max-width: 290px;
+    }
+}
+
+/* Phones and small tablets: branding panel stacks above the form. */
+@media (max-width: 768px) {
+    .auth-page .auth-container {
+        flex-direction: column;
+    }
+
+    .auth-page .auth-sidebar {
+        flex: none;
+        width: 100%;
+        min-height: auto;
+        padding: 1.75rem 1.25rem;
+    }
+
+    .auth-page .auth-form-section {
+        flex: none;
+        width: 100%;
+        min-height: auto;
+        padding: 1.5rem 1rem 2rem;
+    }
+
+    .auth-page .form-container {
+        max-width: 100%;
+    }
+
+    .auth-page .sidebar-logo-img {
+        width: 92px;
+        height: 92px;
+    }
+
+    .auth-page .sidebar-logo h1 {
+        font-size: 1.8rem;
+    }
+
+    .auth-page .sidebar-tagline {
+        margin-bottom: 1.1rem;
+    }
+
+    .auth-page .sidebar-subtitle {
+        margin-bottom: 1.25rem;
+    }
+
+    .auth-page .sidebar-features {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.65rem;
+        max-width: 340px;
+    }
+
+    .auth-page .feature {
+        padding: 0.7rem;
+        gap: 0.6rem;
+    }
+
+    .auth-page .feature p {
+        font-size: 0.8rem;
+    }
+
+    .auth-page .onboarding-step .form-header h2 {
+        font-size: 1.75rem;
+    }
+
+    .auth-page .onboarding-card {
+        padding: 1.25rem;
+    }
+
+    .auth-page .onboarding-step .form-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Small Android phones. Deliberately only the one rule signup.css also has at
+   this width: anything extra here would apply to Login but be overridden on
+   Sign Up by its own higher-priority rules, reintroducing the drift between the
+   two pages that this layer exists to remove. */
+@media (max-width: 420px) {
+    .auth-page .onboarding-step .form-header p {
+        font-size: 0.95rem;
+    }
+}

@@ -8,7 +8,10 @@
     <link rel="stylesheet" href="/css/auth-new-styles.css">
     <link rel="stylesheet" href="/css/signup.css">
 </head>
-<body class="signup-page">
+<!-- auth-page: the shared auth design system in auth-new-styles.css.
+     signup.css loads after it, so every value this flow already defines
+     still wins; the class is what ties Sign Up and Login to one system. -->
+<body class="auth-page signup-page">
     <div class="auth-container signup-auth-container">
         <div class="auth-sidebar">
             <div class="sidebar-logo">
