@@ -16,15 +16,24 @@
                     <img src="/icons/logo.png" alt="KinderCura Logo" class="logo-img">
                     <span class="logo-text"><span class="logo-kinder">Kinder</span><span class="logo-cura">Cura</span></span>
                 </div>
-                <nav class="header-nav">
-                    <a href="#features">Features</a>
-                    <a href="#about">About</a>
-                    <a href="#contact">Contact</a>
-                </nav>
-                <div class="header-buttons">
-                    <!-- Important: open the real login page first, do not skip straight into a dashboard -->
-                    <a href="/login.html?showLogin=1" class="btn btn-secondary">Login</a>
-                    <a href="/signup.html" class="btn btn-primary">Sign Up</a>
+                <!-- Phone / small-tablet menu button. Hidden on desktop, where
+                     .header-collapse is display:contents so the nav and the buttons
+                     stay direct flex children of .header-content exactly as before. -->
+                <button type="button" class="nav-toggle" id="navToggle"
+                        aria-label="Open navigation menu" aria-expanded="false" aria-controls="primaryNav">
+                    <span class="nav-toggle-bars" aria-hidden="true"></span>
+                </button>
+                <div class="header-collapse" id="primaryNav">
+                    <nav class="header-nav">
+                        <a href="#features">Features</a>
+                        <a href="#about">About</a>
+                        <a href="#contact">Contact</a>
+                    </nav>
+                    <div class="header-buttons">
+                        <!-- Important: open the real login page first, do not skip straight into a dashboard -->
+                        <a href="/login.html?showLogin=1" class="btn btn-secondary">Login</a>
+                        <a href="/signup.html" class="btn btn-primary">Sign Up</a>
+                    </div>
                 </div>
             </div>
         </header>
