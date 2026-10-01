@@ -117,9 +117,10 @@ iframe {
 
 /* ==========================================================================
    3. Mobile navigation
-   Moved to mobile-nav.css, which every parent page now links just before this
-   file. Same rules, same breakpoints — it simply lives where the PEDIA side
-   can load it too instead of the two roles keeping separate copies.
+   Moved to mobile-nav.css. The collapsed panel — profile block, icon rows,
+   chevrons, soft-green active pill, separated Log Out — is identical on the
+   PARENT and PEDIA sides, so it lives in the one stylesheet both roles load
+   rather than being duplicated per role. Nothing parent-specific remains.
    ========================================================================== */
 
 /* ==========================================================================
