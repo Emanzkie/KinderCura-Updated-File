@@ -5,6 +5,16 @@
  * show the dropdown panel below 1024px. Above that breakpoint the class is
  * inert, so the desktop bar is unaffected whether it is set or not.
  *
+ * Deliberately independent of api.js: it registers no globals and does not
+ * interfere with toggleProfileMenu()/openNotifications(), which keep owning
+ * the profile menu and the notifications modal.
+ *
+ * A header that also carries `.nav-drawer` (the parent side does, via
+ * parent-mobile-nav.css) gets two extras, both purely presentational:
+ * an identity row at the top of the panel and a Log Out row at the bottom.
+ * Neither adds a route or a request — the Log Out row forwards the click to
+ * the header's own `a.logout`, so whichever page script bound that link keeps
+ * owning the sign-out. Headers without the class are unaffected.
  * It also builds the panel's profile block (avatar, name, role). That block
  * is identical on the PARENT and PEDIA sides and has to be filled from the
  * signed-in user either way, so building it once here beats repeating six
@@ -22,6 +32,102 @@
 
     var DESKTOP_QUERY = '(min-width: 1025px)';
 
+    /* ---------------------------------------------------------------------
+     * Drawer chrome — only for .nav-drawer headers.
+     * ------------------------------------------------------------------- */
+
+    function buildIdentity(header, nav) {
+        // Parent and pedia headers id the avatar; the secretary header does not,
+        // so fall back to the image inside the profile button. The greeting is
+        // whichever element api.js writes the name into on that role's pages.
+        var sourcePic = header.querySelector('#navProfilePic') ||
+            header.querySelector('.profile-btn .profile-icon');
+        var sourceName = header.querySelector('#navWelcome, .menu-header p');
+
+        // A link only when the header names a profile page; otherwise the row
+        // is a plain label, never a dead href.
+        var profileHref = header.getAttribute('data-nav-profile');
+        var link = document.createElement(profileHref ? 'a' : 'div');
+        link.className = 'nav-drawer-identity';
+        if (profileHref) link.href = profileHref;
+
+        var avatar = document.createElement('img');
+        avatar.className = 'nav-drawer-avatar';
+        avatar.alt = '';
+        avatar.setAttribute('aria-hidden', 'true');
+
+        var who = document.createElement('span');
+        who.className = 'nav-drawer-who';
+
+        var name = document.createElement('span');
+        name.className = 'nav-drawer-name';
+
+        var role = document.createElement('span');
+        role.className = 'nav-drawer-role';
+        role.textContent = header.getAttribute('data-nav-role') || '';
+
+        // Guardian Management has no profile menu, so there is no greeting to
+        // mirror. Rather than show an empty line, the role becomes the label.
+        if (!sourceName && role.textContent) {
+            name.textContent = role.textContent;
+            role.textContent = '';
+        }
+
+        who.appendChild(name);
+        if (role.textContent) who.appendChild(role);
+        link.appendChild(avatar);
+        link.appendChild(who);
+        nav.insertBefore(link, nav.firstChild);
+
+        // The header's own avatar and greeting are filled in asynchronously by
+        // api.js / the page script, so mirror them whenever they change rather
+        // than reading them once at load.
+        function sync() {
+            if (sourcePic && sourcePic.src && avatar.src !== sourcePic.src) {
+                avatar.src = sourcePic.src;
+            }
+            if (sourceName) {
+                var text = (sourceName.textContent || '').replace(/^\s*welcome[,\s]*/i, '').trim();
+                if (text && name.textContent !== text) name.textContent = text;
+            }
+        }
+        sync();
+
+        if (window.MutationObserver) {
+            if (sourcePic) {
+                new MutationObserver(sync).observe(sourcePic, {
+                    attributes: true,
+                    attributeFilter: ['src']
+                });
+            }
+            if (sourceName) {
+                new MutationObserver(sync).observe(sourceName, {
+                    childList: true,
+                    characterData: true,
+                    subtree: true
+                });
+            }
+        }
+    }
+
+    function buildLogout(header, nav) {
+        var source = header.querySelector('a.logout');
+        if (!source) return;
+
+        var divider = document.createElement('div');
+        divider.className = 'nav-drawer-divider';
+
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'nav-drawer-logout';
+        button.textContent = 'Log Out';
+        // Forwards to the existing link, so the page's own logout handler runs.
+        button.addEventListener('click', function () {
+            source.click();
+        });
+
+        nav.appendChild(divider);
+        nav.appendChild(button);
     // Mirrors the wording api.js uses for the profile dropdown greeting.
     function roleLabel(role) {
         if (!role) return '';
@@ -83,6 +189,11 @@
         if (!nav.id) nav.id = 'primaryNav';
         toggle.setAttribute('aria-controls', nav.id);
 
+        var isDrawer = header.classList.contains('nav-drawer');
+        if (isDrawer) {
+            buildIdentity(header, nav);
+            buildLogout(header, nav);
+        }
         fillProfile(nav);
 
         function setOpen(open) {
@@ -90,6 +201,9 @@
             header.classList.toggle('nav-open', open);
             toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
             toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+            // The drawer dims the page behind it, so that page must not
+            // scroll away underneath. The class is a no-op above 1024px.
+            if (isDrawer) document.body.classList.toggle('nav-drawer-open', open);
         }
 
         function close() {

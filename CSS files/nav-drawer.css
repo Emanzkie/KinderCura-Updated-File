@@ -1,0 +1,374 @@
+/* nav-drawer.css — shared mobile navigation drawer
+   ---------------------------------------------------------------------------
+   Opt-in skin for the collapsed header that mobile-nav.css already builds.
+   It changes only how the open panel LOOKS; the open/close behaviour, the
+   links and their hrefs stay exactly as mobile-nav.css / mobile-nav.js have
+   them.
+
+   Role-neutral by design: the layout rules below key off .nav-drawer alone, and
+   the only role-specific part is the icon map in section 1, which matches on
+   each module's own href. In use by PARENT and SECRETARY; PEDIA and ADMIN can
+   opt in by adding the class and one icon block each.
+
+   Hooks (the first two already required by mobile-nav.css):
+     .top-nav.has-mobile-nav.nav-drawer   on the <header>
+     button.nav-toggle                    inside .nav-right
+     data-nav-role="Parent"               on the header — label only
+     data-nav-profile="/..."              on the header — optional, makes the
+                                          identity row a link
+
+   Load order on a page:
+     dashboard-new-styles.css -> mobile-nav.css -> THIS FILE -> <role>-responsive.css
+
+   Every rule lives inside the <= 1024px media query, so the desktop bar is
+   untouched. A header without .nav-drawer keeps the panel mobile-nav.css
+   gives it.
+
+   What it replaces, and why:
+     - the pink 3px left border on the active row  ->  soft green rounded pill
+     - the hairline between every row              ->  spacing + one divider
+     - text-only rows                              ->  icon + label + chevron
+   =========================================================================== */
+
+/* The identity row, the divider and the Log Out button are injected into the
+   nav on every width, but they belong to the phone panel alone: above 1024px
+   the nav is a horizontal bar and they must stay out of it. Hidden by
+   default, switched on inside the mobile block below. */
+.nav-drawer-identity,
+.nav-drawer-divider,
+.nav-drawer-logout {
+    display: none;
+}
+
+@media (max-width: 1024px) {
+
+    /* ----------------------------------------------------------------------
+       1. Icon set
+       One outline glyph per module, carried as a data-URI mask so the icon
+       takes the row's own colour: dark text at rest, dark green when the row
+       is the current page, red on Log Out. No new image files, and no markup
+       change on any page — each rule matches the module's own href.
+
+       Drawn in the Lucide geometry the project's other line icons follow:
+       24x24 box, 1.8 stroke, round caps and joins, no fills. One family, so
+       the rows read as a set at 22px.
+
+       Parent modules.
+       ---------------------------------------------------------------------- */
+
+    .top-nav.nav-drawer .main-nav .nav-link[href$="/dashboard.html"] {
+        --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 10 9-7 9 7v9a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z'/%3E%3C/svg%3E");
+    }
+
+    .top-nav.nav-drawer .main-nav .nav-link[href$="/results.html"] {
+        --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 20h18'/%3E%3Cpath d='M6 20v-7'/%3E%3Cpath d='M12 20V5'/%3E%3Cpath d='M18 20v-11'/%3E%3C/svg%3E");
+    }
+
+    .top-nav.nav-drawer .main-nav .nav-link[href$="/reports.html"] {
+        --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z'/%3E%3Cpath d='M14 3v5h5'/%3E%3Cpath d='M9 13h6'/%3E%3Cpath d='M9 17h4'/%3E%3C/svg%3E");
+    }
+
+    .top-nav.nav-drawer .main-nav .nav-link[href$="/recommendations.html"] {
+        --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.5 18h5'/%3E%3Cpath d='M10 21h4'/%3E%3Cpath d='M12 3a6 6 0 0 0-3.5 10.9c.6.4.9 1.1 1 1.6h5c.1-.5.4-1.2 1-1.6A6 6 0 0 0 12 3z'/%3E%3C/svg%3E");
+    }
+
+    .top-nav.nav-drawer .main-nav .nav-link[href$="/appointments.html"] {
+        --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M8 3v4'/%3E%3Cpath d='M16 3v4'/%3E%3Cpath d='M3 11h18'/%3E%3C/svg%3E");
+    }
+
+    .top-nav.nav-drawer .main-nav .nav-link[href$="/chat.html"] {
+        --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 11.5a8.4 8.4 0 0 1-12.8 7.3L3.5 20.5l1.7-4.6A8.4 8.4 0 1 1 21 11.5z'/%3E%3C/svg%3E");
+    }
+
+    .top-nav.nav-drawer .main-nav .nav-link[href$="/custom-questions.html"] {
+        --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M9.2 9.3a3 3 0 0 1 5.8 1c0 2-3 2.4-3 4'/%3E%3Cpath d='M12 17.4h.01'/%3E%3C/svg%3E");
+    }
+
+    /* Secretary modules. The hrefs are prefixed (secretary-dashboard.html,
+       secretary-appointments.html), so they never collide with the parent
+       rules above even though two of the labels match. */
+
+    .top-nav.nav-drawer .main-nav .nav-link[href$="secretary-dashboard.html"] {
+        --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 10 9-7 9 7v9a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z'/%3E%3C/svg%3E");
+    }
+
+    /* Approvals — clipboard with a check, the queue the secretary works. */
+    .top-nav.nav-drawer .main-nav .nav-link[href$="secretary-approval.html"] {
+        --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='8.5' y='2.5' width='7' height='4' rx='1.2'/%3E%3Cpath d='M15.5 4.5H17a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2h1.5'/%3E%3Cpath d='m9.2 13.4 2 2 3.6-3.8'/%3E%3C/svg%3E");
+    }
+
+    .top-nav.nav-drawer .main-nav .nav-link[href$="secretary-appointments.html"] {
+        --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M8 3v4'/%3E%3Cpath d='M16 3v4'/%3E%3Cpath d='M3 11h18'/%3E%3C/svg%3E");
+    }
+
+    /* Cashier — banknote, which reads as "money taken at the desk" at 22px
+       more clearly than a wallet or a card does. */
+    .top-nav.nav-drawer .main-nav .nav-link[href$="secretary-cashier.html"] {
+        --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.5' y='6' width='19' height='12' rx='2'/%3E%3Ccircle cx='12' cy='12' r='2.6'/%3E%3Cpath d='M6 12h.01'/%3E%3Cpath d='M18 12h.01'/%3E%3C/svg%3E");
+    }
+
+    /* Patients — two people, matching the "families" the page lists. */
+    .top-nav.nav-drawer .main-nav .nav-link[href$="secretary-patients.html"] {
+        --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 20v-1.8a3.6 3.6 0 0 0-3.6-3.6H6.1A3.6 3.6 0 0 0 2.5 18.2V20'/%3E%3Ccircle cx='8.75' cy='8' r='3.6'/%3E%3Cpath d='M21.5 20v-1.8a3.6 3.6 0 0 0-2.7-3.5'/%3E%3Cpath d='M16 4.6a3.6 3.6 0 0 1 0 6.9'/%3E%3C/svg%3E");
+    }
+
+    .top-nav.nav-drawer .nav-drawer-logout {
+        --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4'/%3E%3Cpath d='m16 17 5-5-5-5'/%3E%3Cpath d='M21 12H9'/%3E%3C/svg%3E");
+    }
+
+    /* ----------------------------------------------------------------------
+       2. The panel
+       A floating white card hung just under the header instead of a
+       full-bleed slab, so it reads as a menu rather than as the page.
+       ---------------------------------------------------------------------- */
+
+    .top-nav.has-mobile-nav.nav-drawer .main-nav {
+        top: calc(100% + 6px);
+        left: 0.7rem;
+        right: 0.7rem;
+        z-index: 2;
+        gap: 0.15rem;
+        max-height: calc(100vh - 5.5rem);
+        padding: 0.6rem;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-card);
+        box-shadow: 0 16px 40px rgba(61, 71, 56, 0.18);
+        overscroll-behavior: contain;
+    }
+
+    /* Everything below the header dims while the menu is open, so the eye
+       goes straight to the panel. The backdrop is a pseudo-element of the
+       header, which means a tap on it lands on the header and the existing
+       outside-click handler in mobile-nav.js closes the menu — no extra
+       listener, no extra node. */
+    .top-nav.has-mobile-nav.nav-drawer.nav-open::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        height: 100vh;
+        z-index: 1;
+        background: rgba(61, 71, 56, 0.38);
+    }
+
+    /* Set by mobile-nav.js while the panel is open: the page behind the
+       backdrop must not scroll away under the menu. */
+    body.nav-drawer-open {
+        overflow: hidden;
+    }
+
+    /* ----------------------------------------------------------------------
+       3. Who am I
+       The avatar and name already in the header, repeated at the top of the
+       panel so the menu says whose account it belongs to. Tapping it opens
+       the profile page.
+       ---------------------------------------------------------------------- */
+
+    .top-nav.nav-drawer .nav-drawer-identity {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        min-height: 56px;
+        padding: 0.5rem 0.65rem 0.8rem;
+        text-decoration: none;
+        color: inherit;
+    }
+
+    .top-nav.nav-drawer .nav-drawer-avatar {
+        width: 44px;
+        height: 44px;
+        flex: 0 0 auto;
+        border-radius: 50%;
+        object-fit: cover;
+        background: var(--surface-muted);
+        border: 1px solid var(--border);
+    }
+
+    .top-nav.nav-drawer .nav-drawer-who {
+        display: flex;
+        flex-direction: column;
+        gap: 0.1rem;
+        min-width: 0;
+    }
+
+    .top-nav.nav-drawer .nav-drawer-name {
+        font-size: 0.98rem;
+        font-weight: var(--fw-strong);
+        color: var(--text-dark);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .top-nav.nav-drawer .nav-drawer-role {
+        font-size: var(--fs-tiny);
+        color: var(--text-light);
+    }
+
+    /* ----------------------------------------------------------------------
+       4. The rows
+       48px+ of tappable height each, icon on the left, chevron on the right,
+       and no hairline between them — the spacing does that job now.
+       ---------------------------------------------------------------------- */
+
+    .top-nav.has-mobile-nav.nav-drawer .main-nav .nav-link {
+        position: relative;
+        gap: 0.85rem;
+        min-height: 52px;
+        padding: 0.6rem 2.1rem 0.6rem 0.75rem;
+        border: 0;
+        border-radius: var(--radius-panel);
+        font-size: 0.97rem;
+        font-weight: var(--fw-medium);
+        color: var(--text-dark);
+        transition: background-color 0.18s ease, color 0.18s ease;
+    }
+
+    /* Kills the hairline mobile-nav.css draws between rows. */
+    .top-nav.has-mobile-nav.nav-drawer .main-nav .nav-link + .nav-link {
+        border-top: 0;
+    }
+
+    .top-nav.nav-drawer .main-nav .nav-link::before,
+    .top-nav.nav-drawer .nav-drawer-logout::before {
+        content: "";
+        width: 22px;
+        height: 22px;
+        flex: 0 0 auto;
+        background-color: currentColor;
+        /* The fallback matters: a row whose href has no icon rule would
+           otherwise paint the whole 22px box as a solid square. A hollow dot
+           is the graceful degradation for a module added later. */
+        -webkit-mask: var(--kc-nav-icon, var(--kc-nav-icon-fallback)) center / 22px 22px no-repeat;
+        mask: var(--kc-nav-icon, var(--kc-nav-icon-fallback)) center / 22px 22px no-repeat;
+        --kc-nav-icon-fallback: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8'%3E%3Ccircle cx='12' cy='12' r='4.5'/%3E%3C/svg%3E");
+    }
+
+    /* Chevron: a quiet "this goes somewhere" cue, not a second focal point. */
+    .top-nav.nav-drawer .main-nav .nav-link::after {
+        content: "";
+        position: absolute;
+        right: 0.75rem;
+        width: 16px;
+        height: 16px;
+        opacity: 0.45;
+        background-color: currentColor;
+        -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 6 6 6-6 6'/%3E%3C/svg%3E") center / 16px 16px no-repeat;
+        mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 6 6 6-6 6'/%3E%3C/svg%3E") center / 16px 16px no-repeat;
+    }
+
+    .top-nav.has-mobile-nav.nav-drawer .main-nav .nav-link:hover,
+    .top-nav.has-mobile-nav.nav-drawer .main-nav .nav-link:active {
+        color: var(--primary-dark);
+        background: var(--surface-muted);
+    }
+
+    /* Current page: a soft green pill. This is what replaces the pink bar. */
+    .top-nav.has-mobile-nav.nav-drawer .main-nav .nav-link.active,
+    .top-nav.has-mobile-nav.nav-drawer .main-nav .nav-link[aria-current="page"] {
+        padding-left: 0.75rem;
+        border: 0;
+        background: var(--surface-tint);
+        color: var(--primary-dark);
+        font-weight: var(--fw-strong);
+    }
+
+    .top-nav.has-mobile-nav.nav-drawer .main-nav .nav-link.active::after,
+    .top-nav.has-mobile-nav.nav-drawer .main-nav .nav-link[aria-current="page"]::after {
+        opacity: 0.7;
+    }
+
+    /* ----------------------------------------------------------------------
+       5. Log Out
+       Last, behind a divider, so it is never the row a thumb lands on by
+       accident. It forwards to the header's own logout link — the logout
+       logic itself is untouched.
+       ---------------------------------------------------------------------- */
+
+    .top-nav.nav-drawer .nav-drawer-divider {
+        display: block;
+        height: 1px;
+        margin: 0.45rem 0.4rem;
+        background: var(--border);
+    }
+
+    .top-nav.nav-drawer .nav-drawer-logout {
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+        width: 100%;
+        min-height: 52px;
+        padding: 0.6rem 0.75rem;
+        border: 0;
+        border-radius: var(--radius-panel);
+        background: none;
+        font: inherit;
+        font-size: 0.97rem;
+        font-weight: var(--fw-medium);
+        color: var(--danger);
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .top-nav.nav-drawer .nav-drawer-logout:hover,
+    .top-nav.nav-drawer .nav-drawer-logout:active {
+        background: rgba(212, 137, 122, 0.1);
+    }
+
+    /* Keyboard focus stays visible on every row of the panel. */
+    .top-nav.nav-drawer .main-nav .nav-link:focus-visible,
+    .top-nav.nav-drawer .nav-drawer-identity:focus-visible,
+    .top-nav.nav-drawer .nav-drawer-logout:focus-visible {
+        outline: 2px solid var(--primary);
+        outline-offset: -2px;
+    }
+}
+
+/* Small phones (320–400px): the panel takes the full width it can get and the
+   type steps down a notch, so "Recommendations" still fits on one line. */
+@media (max-width: 400px) {
+    .top-nav.has-mobile-nav.nav-drawer .main-nav {
+        left: 0.5rem;
+        right: 0.5rem;
+        padding: 0.5rem;
+    }
+
+    .top-nav.has-mobile-nav.nav-drawer .main-nav .nav-link {
+        gap: 0.7rem;
+        min-height: 48px;
+        padding: 0.55rem 1.9rem 0.55rem 0.6rem;
+        font-size: 0.92rem;
+    }
+
+    .top-nav.has-mobile-nav.nav-drawer .main-nav .nav-link.active,
+    .top-nav.has-mobile-nav.nav-drawer .main-nav .nav-link[aria-current="page"] {
+        padding-left: 0.6rem;
+    }
+
+    .top-nav.nav-drawer .nav-drawer-logout {
+        gap: 0.7rem;
+        min-height: 48px;
+        padding: 0.55rem 0.6rem;
+        font-size: 0.92rem;
+    }
+
+    .top-nav.nav-drawer .nav-drawer-identity {
+        gap: 0.65rem;
+        padding: 0.4rem 0.55rem 0.7rem;
+    }
+
+    .top-nav.nav-drawer .nav-drawer-avatar {
+        width: 40px;
+        height: 40px;
+    }
+}
+
+/* Users who ask for less motion get the panel without the colour fade.
+   Width-scoped like everything else here, so the desktop bar keeps its own
+   transition regardless of the motion setting. */
+@media (max-width: 1024px) and (prefers-reduced-motion: reduce) {
+    .top-nav.has-mobile-nav.nav-drawer .main-nav .nav-link {
+        transition: none;
+    }
+}
