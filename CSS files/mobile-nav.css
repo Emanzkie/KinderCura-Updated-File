@@ -8,14 +8,36 @@
    into a full-width vertical stack) and BEFORE the role's own responsive
    layer.
 
-   Two hooks, both required, and both no-ops on a page that does not set them:
+   Below 1024px the links become a panel that is the same on both sides:
+     profile block (avatar, name, role)
+     icon + label + chevron rows, 48px tall
+     soft-green pill on the current page
+     Log Out set apart at the bottom
+   The PARENT and PEDIA navs differ only in their labels and hrefs, so the
+   presentation lives here rather than being duplicated per role.
+
+   Three hooks, all no-ops on a page that does not set them:
      .top-nav.has-mobile-nav   on the <header>
      button.nav-toggle         inside .nav-right
-   js/shared/mobile-nav.js toggles `nav-open` on the header; it touches
-   nothing else.
+     a.nav-link.nav-logout     last child of .main-nav
+   js/shared/mobile-nav.js toggles `nav-open` on the header and builds the
+   profile block; it touches nothing else.
 
-   Above 1024px every rule here is inert, so the desktop bar is untouched.
+   Row icons are masks filled with currentColor, keyed off a substring of each
+   link's href, so they survive the query strings PARENT/custom-questions.js
+   and PARENT/recommendations.js append to the nav hrefs.
+
+   Above 1024px every rule here is inert except two `display: none` lines for
+   the panel-only elements, so the desktop bar is untouched.
    =========================================================================== */
+
+/* Elements that exist only inside the collapsed panel. Hidden at base so the
+   desktop bar never renders them; the 1024px block below switches them on.
+   They are the only base-level rules this redesign adds. */
+.top-nav.has-mobile-nav .main-nav .nav-profile,
+.top-nav.has-mobile-nav .main-nav .nav-logout {
+    display: none;
+}
 
 /* Desktop keeps the existing horizontal bar. Below 1024px the links move into
    a dropdown panel opened by a hamburger button, so the sticky header stays
@@ -124,7 +146,8 @@
         overflow: hidden;
     }
 
-    /* .top-nav is position: sticky, so it is the containing block here. */
+    /* -- Panel -----------------------------------------------------------
+       .top-nav is position: sticky, so it is the containing block here. */
     .top-nav.has-mobile-nav .main-nav {
         display: none;
         position: absolute;
@@ -135,12 +158,15 @@
         flex-direction: column;
         align-items: stretch;
         justify-content: flex-start;
-        gap: 0;
+        gap: 2px;
         max-height: 70vh;
         overflow-y: auto;
-        padding: 0.25rem 1rem 0.75rem;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        padding: 0.4rem 0.9rem 0.9rem;
         background: var(--surface);
         border-top: 1px solid var(--border);
+        border-radius: 0 0 var(--radius-panel) var(--radius-panel);
         box-shadow: var(--shadow-raised);
     }
 
@@ -148,23 +174,222 @@
         display: flex;
     }
 
-    .top-nav.has-mobile-nav .main-nav .nav-link {
+    /* -- Profile block ----------------------------------------------------
+       Built by js/shared/mobile-nav.js from the cached kc_user. The avatar
+       also carries .profile-icon, the hook api.js already refreshes after
+       /auth/me, so it stays current without a change there. */
+    .top-nav.has-mobile-nav .main-nav .nav-profile {
         display: flex;
         align-items: center;
+        gap: 0.75rem;
+        min-width: 0;
+        margin-bottom: 0.35rem;
+        padding: 0.55rem 0.6rem 0.8rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-profile-pic {
+        flex: 0 0 42px;
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        object-fit: cover;
+        background: var(--surface-muted);
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-profile-text {
+        min-width: 0;
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-profile-name {
+        margin: 0;
+        font-size: var(--fs-sub);
+        font-weight: var(--fw-medium);
+        line-height: 1.3;
+        color: var(--text-dark);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-profile-role {
+        margin: 0;
+        font-size: var(--fs-small);
+        line-height: 1.3;
+        color: var(--text-light);
+    }
+
+    /* -- Rows -------------------------------------------------------------
+       border: 0 clears the 3px underline the desktop .nav-link keeps for its
+       hover / active treatment, which inside a vertical panel reads as stray
+       pink lines. position: relative carries the Log Out divider below. */
+    .top-nav.has-mobile-nav .main-nav .nav-link {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
         min-height: 48px;
-        padding: 0.35rem 0.25rem;
-        font-size: 1rem;
+        padding: 0.6rem;
+        border: 0;
+        border-radius: var(--radius-btn);
+        font-size: var(--fs-sub);
+        font-weight: 500;
+        line-height: 1.35;
+        color: var(--text-dark);
+        white-space: normal;
+        overflow-wrap: break-word;
+        transition: background-color 0.2s ease, color 0.2s ease;
     }
 
-    .top-nav.has-mobile-nav .main-nav .nav-link + .nav-link {
-        border-top: 1px solid var(--border);
+    /* -- Row icon ---------------------------------------------------------
+       Painted as a mask filled with currentColor, so every glyph inherits its
+       row's text colour: muted on a normal row, green inside the active pill,
+       soft red on Log Out. --nav-icon falls back to an empty SVG, so a link
+       with no icon rule reserves the same gutter instead of painting a solid
+       square. */
+    .top-nav.has-mobile-nav .main-nav .nav-link::before {
+        content: "";
+        flex: 0 0 20px;
+        width: 20px;
+        height: 20px;
+        background-color: currentColor;
+        opacity: 0.72;
+        --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E");
+        -webkit-mask-image: var(--nav-icon);
+                mask-image: var(--nav-icon);
+        -webkit-mask-repeat: no-repeat;
+                mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+                mask-position: center;
+        -webkit-mask-size: contain;
+                mask-size: contain;
     }
 
+    /* home - the landing page on both sides */
+    .top-nav.has-mobile-nav .main-nav .nav-link[href*="dashboard"]::before {
+        --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3Cpolyline points='9 22 9 12 15 12 15 22'/%3E%3C/svg%3E");
+    }
+
+    /* users - My Patients (PEDIA) */
+    .top-nav.has-mobile-nav .main-nav .nav-link[href*="patients"]::before {
+        --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='9' cy='7' r='4'/%3E%3Cpath d='M23 21v-2a4 4 0 0 0-3-3.87'/%3E%3Cpath d='M16 3.13a4 4 0 0 1 0 7.75'/%3E%3C/svg%3E");
+    }
+
+    /* file-text - Reports (both sides) */
+    .top-nav.has-mobile-nav .main-nav .nav-link[href*="reports"]::before {
+        --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/%3E%3Cpolyline points='14 2 14 8 20 8'/%3E%3Cline x1='16' y1='13' x2='8' y2='13'/%3E%3Cline x1='16' y1='17' x2='8' y2='17'/%3E%3Cpolyline points='10 9 9 9 8 9'/%3E%3C/svg%3E");
+    }
+
+    /* calendar - Appointments (both sides) */
+    .top-nav.has-mobile-nav .main-nav .nav-link[href*="appointments"]::before {
+        --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'/%3E%3Cline x1='16' y1='2' x2='16' y2='6'/%3E%3Cline x1='8' y1='2' x2='8' y2='6'/%3E%3Cline x1='3' y1='10' x2='21' y2='10'/%3E%3C/svg%3E");
+    }
+
+    /* message-square - Chat (both sides) */
+    .top-nav.has-mobile-nav .main-nav .nav-link[href*="chat"]::before {
+        --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'/%3E%3C/svg%3E");
+    }
+
+    /* help-circle - My Questions (PEDIA) / Questions (PARENT) */
+    .top-nav.has-mobile-nav .main-nav .nav-link[href*="questions"]::before {
+        --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3'/%3E%3Cline x1='12' y1='17' x2='12.01' y2='17'/%3E%3C/svg%3E");
+    }
+
+    /* activity - Results (PARENT) */
+    .top-nav.has-mobile-nav .main-nav .nav-link[href*="results"]::before {
+        --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='22 12 18 12 15 21 9 3 6 12 2 12'/%3E%3C/svg%3E");
+    }
+
+    /* star - Recommendations (PARENT) */
+    .top-nav.has-mobile-nav .main-nav .nav-link[href*="recommendations"]::before {
+        --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'/%3E%3C/svg%3E");
+    }
+
+    /* -- Chevron ----------------------------------------------------------
+       Decorative affordance only; Log Out ends the panel and has none. */
+    .top-nav.has-mobile-nav .main-nav .nav-link::after {
+        content: "";
+        flex: 0 0 16px;
+        width: 16px;
+        height: 16px;
+        margin-left: auto;
+        background-color: currentColor;
+        opacity: 0.35;
+        -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='9 18 15 12 9 6'/%3E%3C/svg%3E");
+                mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='9 18 15 12 9 6'/%3E%3C/svg%3E");
+        -webkit-mask-repeat: no-repeat;
+                mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+                mask-position: center;
+        -webkit-mask-size: contain;
+                mask-size: contain;
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-link:hover {
+        background: var(--surface-muted);
+        color: var(--primary-dark);
+    }
+
+    /* -- Active page ------------------------------------------------------
+       Soft green pill. The background / text pair is the system's positive
+       status pair, which clears AA at this size; the heavier weight carries
+       the state for anyone who cannot see the tint. */
     .top-nav.has-mobile-nav .main-nav .nav-link.active,
     .top-nav.has-mobile-nav .main-nav .nav-link[aria-current="page"] {
-        padding-left: 0.75rem;
-        border-left: 3px solid var(--accent-red);
-        background: var(--surface-tint);
+        background: var(--status-positive-bg);
+        color: var(--status-positive-fg);
+        font-weight: var(--fw-medium);
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-link.active::before,
+    .top-nav.has-mobile-nav .main-nav .nav-link[aria-current="page"]::before {
+        opacity: 1;
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-link.active::after,
+    .top-nav.has-mobile-nav .main-nav .nav-link[aria-current="page"]::after {
+        opacity: 0.5;
+    }
+
+    /* -- Log Out ----------------------------------------------------------
+       Set apart at the bottom. The markup carries class "logout", the hook
+       api.js already binds, so no new JS. The shared .menu-item.logout pink
+       (--accent-red) is too light to read as body text, so this uses the
+       system's attention foreground instead.
+
+       ::after is the divider here rather than a chevron: drawn as a
+       positioned hairline, since a border-top would curve around the row's
+       --radius-btn corners. */
+    .top-nav.has-mobile-nav .main-nav .nav-logout {
+        display: flex;
+        margin-top: 0.6rem;
+        color: var(--status-attention-fg);
+        font-weight: var(--fw-medium);
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-logout::before {
+        --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4'/%3E%3Cpolyline points='16 17 21 12 16 7'/%3E%3Cline x1='21' y1='12' x2='9' y2='12'/%3E%3C/svg%3E");
+        opacity: 1;
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-logout::after {
+        position: absolute;
+        top: -0.3rem;
+        left: 0.6rem;
+        right: 0.6rem;
+        flex: none;
+        width: auto;
+        height: 1px;
+        margin: 0;
+        background-color: var(--border);
+        opacity: 1;
+        -webkit-mask-image: none;
+                mask-image: none;
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-logout:hover {
+        background: var(--status-attention-bg);
+        color: var(--status-attention-fg);
     }
 
     /* Guardian Management pins the bar to 96px for its desktop hero spacing;
@@ -191,5 +416,28 @@
 
     .top-nav.has-mobile-nav .nav-right {
         gap: 0.7rem;
+    }
+
+    /* Tighten the panel gutter so 320px keeps its side padding with the
+       icon, label and chevron all on one line. */
+
+    .top-nav.has-mobile-nav .main-nav {
+        padding-left: 0.6rem;
+        padding-right: 0.6rem;
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-link {
+        gap: 0.65rem;
+        padding: 0.6rem 0.45rem;
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-profile {
+        padding-left: 0.45rem;
+        padding-right: 0.45rem;
+    }
+
+    .top-nav.has-mobile-nav .main-nav .nav-logout::after {
+        left: 0.45rem;
+        right: 0.45rem;
     }
 }
