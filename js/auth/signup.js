@@ -506,7 +506,21 @@ async function verifyAndRegister() {
 
         window.location.href = result.needsPreAssessment ? '/parent/screening.html' : '/parent/dashboard.html';
     } catch (err) {
-        setMessage('ep5e', err.message);
+        // A code the server will not accept is only recoverable by asking for
+        // a new one, so say so rather than leaving the user to guess. Resending
+        // deletes the unused row, which is why an older code stops working.
+        // Drop the stale “code sent” line: now that these boxes are visible,
+        // leaving it would show a success and a failure side by side.
+        setMessage('ep5s', '');
+        const rejectedCode = /invalid otp|otp expired/i.test(err.message || '');
+        setMessage('ep5e', rejectedCode
+            ? `${err.message} Tap “Resend Code” above and enter the newest code from your e-mail.`
+            : err.message);
+        if (rejectedCode) {
+            ['1', '2', '3', '4'].forEach((n) => { const box = byId(`o${n}`); if (box) box.value = ''; });
+            const first = byId('o1');
+            if (first) first.focus();
+        }
     } finally {
         restore();
     }
