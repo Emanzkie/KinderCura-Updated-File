@@ -250,6 +250,12 @@
         content: "";
         position: absolute;
         right: 0.75rem;
+        /* Centred explicitly. With only right set the vertical offset falls
+           back to the static position, which shifts with whatever else a
+           page loads - Guardian Management pulls in styles.css and landed
+           its chevrons 41px down a 52px row, reading as detached marks. */
+        top: 50%;
+        transform: translateY(-50%);
         width: 16px;
         height: 16px;
         opacity: 0.45;

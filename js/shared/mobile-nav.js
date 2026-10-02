@@ -35,7 +35,15 @@
      * ------------------------------------------------------------------- */
 
     function buildLogout(header, nav) {
-        var source = header.querySelector('a.logout');
+        // The panel may already carry a Log Out row in the markup (the parent
+        // pages do; the secretary pages do not). That row predates the drawer:
+        // it is a .nav-link, so the drawer gives it an icon box it has no rule
+        // for — a hollow fallback dot — and a chevron that lands above the row
+        // because the divider shifts its static position. The button built
+        // below replaces it, so prefer a logout link from outside the panel as
+        // the forwarding target and drop the row once the button is in place.
+        var inPanel = nav.querySelector('a.logout.nav-logout');
+        var source = header.querySelector('a.logout:not(.nav-logout)') || inPanel;
         if (!source) return;
 
         var divider = document.createElement('div');
@@ -52,6 +60,14 @@
 
         nav.appendChild(divider);
         nav.appendChild(button);
+
+        // The button above replaces that row, so it always comes out of the
+        // panel. Guardian Management has no profile menu, so there the row is
+        // also the forwarding target: detaching it keeps the click working,
+        // because api.js bound the handler to the node itself (it runs on
+        // DOMContentLoaded, before this file) and listeners survive removal.
+        // The row was never more than that hook — its href is "#".
+        if (inPanel) inPanel.remove();
     }
 
     // Mirrors the wording api.js uses for the profile dropdown greeting.
