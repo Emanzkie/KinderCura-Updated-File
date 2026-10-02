@@ -234,7 +234,7 @@
 
             const bandLabel = CP.developmentalBandLabel(developmentalBand);
             const bandTone = stageBadgeSafe(CP.toneForDevelopmentalBand(developmentalBand));
-            const riskLabel = CP.riskCategoryLabel(carePlan.riskCategory);
+            const riskLabel = CP.riskCategoryLabel(carePlan.riskCategory, carePlan.source);
             const riskTone = stageBadgeSafe(CP.toneForRiskCategory(carePlan.riskCategory));
             const stageLabel = CP.careStageLabel(carePlan.careStageLabel);
             const stageTone = stageBadgeSafe(CP.toneForCareStage(carePlan.careStage));
@@ -268,8 +268,8 @@
                 document.getElementById('recsContent').innerHTML = `
                     <div style="text-align:center;padding:3rem;background:white;border-radius:15px;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
                         <p style="font-size:1.1rem;font-weight:600;margin-bottom:1rem;">No recommendations yet</p>
-                        <p style="color:var(--text-light);margin-bottom:1.5rem;">Complete a screening first to receive personalized recommendations for this child.</p>
-                        <button class="btn btn-primary" onclick="window.location.href='/parent/screening.html'">Start Screening</button>
+                        <p style="color:var(--text-light);margin-bottom:1.5rem;">Complete an assessment first to receive personalized recommendations for this child.</p>
+                        <button class="btn btn-primary" onclick="window.location.href='/parent/screening.html'">Start Assessment</button>
                     </div>`;
                 return;
             }

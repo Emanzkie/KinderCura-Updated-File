@@ -64,6 +64,9 @@ const assessmentResultSchema = new mongoose.Schema(
           consultationLevel: { type: String, required: true },
           monitoringLevel: { type: String, required: true },
           probabilities: { type: mongoose.Schema.Types.Mixed, default: null },
+          // Why the ML path was skipped when source is rule_based (e.g.
+          // 'no_active_model', 'prediction_failed: ...'); null when source is ml.
+          mlUnavailableReason: { type: String, default: null },
           generatedAt: { type: Date, required: true },
         },
         { _id: false }

@@ -79,34 +79,54 @@ async function getPreviousCompletedAssessment(childId, currentAssessmentId, anch
     .lean();
 }
 
+// Item-level feature columns a question_based model (ml/trainer.py Model B)
+// is trained on. ml/predict.py encodes an ABSENT Q column as "not
+// administered", so a question_based model fed only the five scores would
+// silently classify an empty questionnaire — the answers must be supplied.
+const QUESTION_FEATURE_PATTERN = /^Q\d{2}$/;
+
 /**
  * Run the active, compatible ML model against an AssessmentResult's scores
- * and translate the resulting risk category into a care stage. Returns null
+ * (and, for a question_based model, the assessment's core-bank answers) and
+ * translate the resulting risk category into a care stage. Returns null
  * (never throws) when no active model exists, the active model is
  * incompatible with the current feature set (see ml/model_manager.js
- * isModelCompatible — guards the Step 2 gender_encoded removal), or
- * prediction fails for any reason.
+ * isModelCompatible — guards the Step 2 gender_encoded removal), the inputs
+ * the model needs are unavailable, or prediction fails for any reason.
  *
  * @param {object} resultDoc  AssessmentResult document (lean or hydrated)
  * @param {string|ObjectId} [childId]  used only to fetch age_months, if the
  *   active model was trained with it
+ * @param {object} [options]
+ * @param {Object<string,string>} [options.answers]  core-bank answers keyed
+ *   by questionId ('Q01'..'Q34' -> 'yes'/'sometimes'/'no')
+ * @param {object} [options.diagnostics]  filled with `{ reason }` when the
+ *   ML path is skipped, so the caller can record WHY a fallback happened
  * @returns {Promise<object|null>}
  */
-async function getMLCareStage(resultDoc, childId) {
+async function getMLCareStage(resultDoc, childId, options = {}) {
+  const diagnostics = options.diagnostics || {};
+  const skip = (reason, log = true) => {
+    diagnostics.reason = reason;
+    if (log) console.warn(`ML prediction skipped — using rule-based fallback: ${reason}`);
+    return null;
+  };
+
   try {
     const activeModel = await TrainedModel.findOne({ isActive: true, status: 'completed' }).lean();
-    if (!activeModel || !activeModel.modelPath) return null;
+    if (!activeModel) return skip('no_active_model');
+    if (!activeModel.modelPath) return skip('active_model_has_no_artifact');
 
     if (!modelManager.isModelCompatible(activeModel)) {
       console.warn(`ML model v${activeModel.version} is incompatible with the current feature set — using rule-based fallback.`);
-      return null;
+      return skip('active_model_incompatible', false);
     }
 
     let modelPath = activeModel.modelPath;
     if (!path.isAbsolute(modelPath)) modelPath = path.join(__dirname, '..', modelPath);
     modelPath = path.normalize(modelPath);
 
-    const scores = {
+    const inputs = {
       communication_score: resultDoc.communicationScore || 0,
       social_score: resultDoc.socialScore || 0,
       cognitive_score: resultDoc.cognitiveScore || 0,
@@ -114,31 +134,39 @@ async function getMLCareStage(resultDoc, childId) {
       overall_score: resultDoc.overallScore || 0,
     };
 
+    const features = Array.isArray(activeModel.featuresUsed) ? activeModel.featuresUsed : [];
+    const questionFeatures = features.filter((f) => QUESTION_FEATURE_PATTERN.test(f));
+    if (questionFeatures.length) {
+      const answers = options.answers || {};
+      const supplied = questionFeatures.filter((q) => answers[q] != null && String(answers[q]).trim() !== '');
+      if (!supplied.length) return skip('question_answers_unavailable');
+      for (const q of supplied) inputs[q] = String(answers[q]).trim().toLowerCase();
+    }
+
     if (childId) {
       try {
         const child = await Child.findById(childId).lean();
         if (child?.dateOfBirth) {
           const diffMs = Date.now() - new Date(child.dateOfBirth).getTime();
-          scores.age_months = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.4375)));
+          inputs.age_months = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.4375)));
         }
       } catch (childErr) {
         console.warn('Could not fetch child for ML care-stage lookup:', childErr.message);
       }
     }
 
-    const prediction = await modelManager.predict(modelPath, scores);
+    const prediction = await modelManager.predict(modelPath, inputs);
 
     // B -> C: ML risk category -> care stage. The ONLY translation used here.
     const careStage = staging.getCareStageFromRiskCategory(prediction.risk_category);
     if (!careStage) {
-      console.warn(`ML prediction returned an unrecognized risk_category "${prediction.risk_category}" — using rule-based fallback.`);
-      return null;
+      return skip(`unrecognized_risk_category:${prediction.risk_category}`);
     }
     const definition = staging.getCareStageDefinition(careStage);
 
     return {
       source: 'ml',
-      riskCategory: prediction.risk_category,
+      riskCategory: staging.getRiskCategoryDefinition(prediction.risk_category).riskCategory,
       careStage: definition.careStage,
       careStageLabel: definition.label,
       consultationLevel: definition.consultationLevel,
@@ -148,8 +176,7 @@ async function getMLCareStage(resultDoc, childId) {
       modelVersion: activeModel.version,
     };
   } catch (err) {
-    console.warn('ML care-stage lookup fallback — using rule-based:', err.message);
-    return null;
+    return skip(`prediction_failed: ${err.message}`);
   }
 }
 
@@ -192,8 +219,8 @@ function getRuleBasedCareStage(resultDoc) {
  * @param {object} resultDoc  AssessmentResult document
  * @param {string|ObjectId} [childId]
  */
-async function getAssessmentCareStage(resultDoc, childId) {
-  const mlCareStage = await getMLCareStage(resultDoc, childId);
+async function getAssessmentCareStage(resultDoc, childId, options = {}) {
+  const mlCareStage = await getMLCareStage(resultDoc, childId, options);
   return mlCareStage || getRuleBasedCareStage(resultDoc);
 }
 
@@ -221,11 +248,14 @@ function withConsultationNeeded(careStageInfo) {
  *
  * @param {{communicationScore:number, socialScore:number, cognitiveScore:number, motorScore:number, overallScore:number}} scores
  * @param {string|ObjectId} childId
+ * @param {Object<string,string>} [answers]  core-bank answers keyed by
+ *   questionId — required for a question_based active model
  * @returns {Promise<object>} shaped exactly like AssessmentResult.prediction
  */
-async function buildPredictionForStorage(scores, childId) {
+async function buildPredictionForStorage(scores, childId, answers = null) {
   try {
-    const careStageInfo = await getAssessmentCareStage(scores, childId);
+    const diagnostics = {};
+    const careStageInfo = await getAssessmentCareStage(scores, childId, { answers: answers || {}, diagnostics });
     return {
       source: careStageInfo.source,
       modelVersion: careStageInfo.modelVersion,
@@ -235,6 +265,7 @@ async function buildPredictionForStorage(scores, childId) {
       consultationLevel: careStageInfo.consultationLevel,
       monitoringLevel: careStageInfo.monitoringLevel,
       probabilities: careStageInfo.probabilities,
+      mlUnavailableReason: careStageInfo.source === 'ml' ? null : (diagnostics.reason || 'unknown'),
       generatedAt: new Date(),
     };
   } catch (err) {
@@ -255,6 +286,7 @@ async function buildPredictionForStorage(scores, childId) {
       consultationLevel: carePlan ? carePlan.consultationLevel : null,
       monitoringLevel: carePlan ? carePlan.monitoringLevel : null,
       probabilities: null,
+      mlUnavailableReason: `prediction_record_error: ${err.message}`,
       generatedAt: new Date(),
     };
   }
@@ -293,6 +325,7 @@ function getStoredOrDerivedCareStage(resultDoc) {
       consultationLevel: stored.consultationLevel,
       monitoringLevel: stored.monitoringLevel,
       probabilities: stored.probabilities,
+      mlUnavailableReason: stored.mlUnavailableReason ?? null,
     });
   }
   return withConsultationNeeded(getRuleBasedCareStage(resultDoc));

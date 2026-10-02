@@ -101,9 +101,9 @@
     if (careStageDirection === 'worsened' && planBits) {
       sentence += ` Based on KinderCura's existing scoring and care-plan rules, the current result now corresponds to ${planBits}. This reflects the recorded assessment result only and is not a medical diagnosis.`;
     } else if (diff < 0 || bandChanged) {
-      sentence += ' This describes a change in the recorded screening result only, and does not by itself indicate a medical diagnosis or its cause.';
+      sentence += ' This describes a change in the recorded assessment result only, and does not by itself indicate a medical diagnosis or its cause.';
     } else if (diff === 0 && !bandChanged) {
-      sentence += ' A single unchanged result is not by itself a sign of improvement or concern — it describes the recorded screening only.';
+      sentence += ' A single unchanged result is not by itself a sign of improvement or concern — it describes the recorded assessment only.';
     }
 
     return sentence;
