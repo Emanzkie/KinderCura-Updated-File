@@ -6,10 +6,13 @@
     <title>Settings - KinderCura Admin</title>
     <link rel="stylesheet" href="/css/dashboard-new-styles.css">
     <link rel="stylesheet" href="/notifications-card-ui.css">
+    <link rel="stylesheet" href="/css/mobile-nav.css">
+    <link rel="stylesheet" href="/css/nav-drawer.css">
+    <link rel="stylesheet" href="/css/admin-responsive.css">
 </head>
 <body>
     <!-- Top Navigation Bar -->
-    <header class="top-nav">
+    <header class="top-nav has-mobile-nav nav-drawer">
         <div class="nav-container">
             <a href="/admin/admin-dashboard.html" class="logo">
                 <img src="/icons/logo.png" alt="KinderCura Logo" class="logo-img">
@@ -34,6 +37,7 @@
                 <button class="icon-btn profile-btn" onclick="toggleProfileMenu()">
                     <img src="/icons/profile.png" class="profile-icon" style="width:36px;height:36px;border-radius:50%;object-fit:cover;display:block;">
                 </button>
+                <button type="button" class="nav-toggle" aria-label="Open menu" aria-expanded="false"><span class="nav-toggle-bars" aria-hidden="true"></span></button>
 
                 <div class="profile-menu" id="profileMenu" style="display: none;">
                     <div class="menu-header">
@@ -388,6 +392,7 @@
     <script src="/notifications-card-ui.js"></script>
     <script src="/assets/js/notifications.js"></script>
     <script src="/assets/js/admin-nav.js"></script>
+    <script src="/js/shared/mobile-nav.js"></script>
     <script src="/js/admin/admin-settings.js"></script>
 </body>
 </html>

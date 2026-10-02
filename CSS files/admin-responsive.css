@@ -1,0 +1,205 @@
+/* admin-responsive.css — Administrator responsive layer
+   ---------------------------------------------------------------------------
+   Loaded LAST on every ADMIN page, after dashboard-new-styles.css, the page
+   stylesheet, mobile-nav.css and nav-drawer.css. Same contract as
+   parent-responsive.css, pedia-responsive.css and secretary-responsive.css, so
+   all four roles behave identically on a phone:
+
+     1. Nothing outside a media query changes an existing desktop value. The
+        few base rules here are overflow guards (min-width: 0, overflow-wrap)
+        that only take effect when content would otherwise push the page
+        sideways.
+     2. Every layout adaptation lives in a media query at or below 1024px, so
+        the desktop admin screens render exactly as they did before.
+
+   Breakpoints match the other three roles exactly:
+     <= 1024px  tablet landscape  — nav collapses into the drawer
+     <=  900px  tablet portrait   — the two overview cards go one-up
+     <=  768px  phone             — container padding tightens, actions stack
+     <=  600px  narrow phone      — card internals tighten
+     <=  480px  small phone       — padding and type tighten
+
+   The admin dashboard builds its stat tiles with inline grid styles, so a few
+   rules below raise specificity against those rather than against a class.
+   That is deliberate: it keeps the markup, the JavaScript and the API calls
+   untouched.
+   =========================================================================== */
+
+
+/* ===========================================================================
+   1. Overflow guards
+   These fix the actual causes of horizontal scrolling rather than hiding it
+   with overflow-x: hidden.
+
+   Scoped to the collapsed breakpoint rather than left at base level. A global
+   `img { max-width: 100% }` is what the other three roles use, but the admin
+   header sizes its logo and icon images from their intrinsic width, so at
+   desktop width that rule shrank .logo from 184px to 166px and .nav-right
+   from 80px to 72px. Inside the media query it still does its job on a phone
+   and leaves the desktop header byte-identical.
+   ========================================================================== */
+
+@media (max-width: 1024px) {
+
+    img,
+    video,
+    canvas,
+    iframe {
+        max-width: 100%;
+    }
+
+    /* Long e-mail addresses, PRC numbers and dataset filenames are the usual
+       overflow culprits on a narrow screen; break them instead of widening
+       the card. break-word, not anywhere: `anywhere` also shrinks an
+       element’s min-content width, which collapses the admin tables where
+       there is room. */
+    .dashboard-container,
+    .overview-card,
+    .actions-card,
+    .card,
+    .notifications-content {
+        min-width: 0;
+        overflow-wrap: break-word;
+    }
+}
+
+
+/* ==========================================================================
+   2. Tablet landscape and below (<= 1024px)
+   The nav collapses into the shared drawer here — mobile-nav.css and
+   nav-drawer.css own that entirely, and the header markup now opts in with
+   .has-mobile-nav.nav-drawer, exactly as the parent, pedia and secretary
+   headers do. Nothing is restyled here; the rules below are layout only.
+   ========================================================================== */
+
+@media (max-width: 1024px) {
+
+    /* 2rem all round is a desktop figure. On a tablet it costs more width
+       than the content can spare once the cards stack. */
+    .dashboard-container {
+        padding: 1.25rem;
+    }
+}
+
+
+/* ==========================================================================
+   3. Tablet portrait (<= 900px)
+   The two overview cards go one-up; their inner stat grids stay two-up,
+   which is what makes the numbers readable rather than squeezed.
+   ========================================================================== */
+
+@media (max-width: 900px) {
+
+    .overview-grid {
+        gap: 1.25rem;
+    }
+
+    .overview-card,
+    .actions-card {
+        padding: 1.35rem;
+    }
+}
+
+
+/* ==========================================================================
+   4. Phone (<= 768px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+
+    .dashboard-container {
+        padding: 0.9rem;
+    }
+
+    .overview-card,
+    .actions-card,
+    .dashboard-container > .card {
+        padding: 1.1rem;
+    }
+
+    .overview-grid {
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .page-header h1 {
+        font-size: 1.5rem;
+    }
+
+    .page-header p {
+        font-size: 0.92rem;
+    }
+
+    /* Quick Actions — a two-up grid instead of a wrapping flex row, so the
+       six buttons line up in even columns instead of leaving a ragged last
+       row. .btn-secondary carries a 2px border and .btn-primary none, which
+       is a 4px height difference on desktop; min-height plus border-box
+       makes every button the same tappable height here. */
+    .actions-buttons {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.6rem;
+    }
+
+    .actions-buttons .btn {
+        box-sizing: border-box;
+        width: 100%;
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 0.65rem 0.75rem;
+        font-size: 0.9rem;
+        line-height: 1.25;
+    }
+}
+
+
+/* ==========================================================================
+   5. Narrow phone (<= 600px)
+   ========================================================================== */
+
+@media (max-width: 600px) {
+
+    .overview-card h3,
+    .actions-card h3,
+    .dashboard-container > .card h3 {
+        margin-bottom: 1rem;
+        font-size: 1.05rem;
+    }
+}
+
+
+/* ==========================================================================
+   6. Small phone (<= 360px)
+   Two stat tiles side by side still read at 375px and 390px, the two
+   commonest phone widths, so the one-up fallback waits until 360px, where
+   "Completed Assessments" would otherwise take three lines over a number.
+   Quick Actions follows at the same point. These grids are written as inline
+   styles on the markup, so matching them needs !important; the alternative
+   is rewriting the dashboard markup, which would touch the JavaScript that
+   fills these tiles by id.
+   ========================================================================== */
+
+@media (max-width: 360px) {
+
+    .overview-card > div[style*="grid"] {
+        grid-template-columns: 1fr !important;
+        gap: 0.65rem !important;
+    }
+
+    .actions-buttons {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboard-container {
+        padding: 0.7rem;
+    }
+
+    .overview-card,
+    .actions-card,
+    .dashboard-container > .card {
+        padding: 0.9rem;
+    }
+}
