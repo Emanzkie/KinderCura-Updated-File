@@ -5,10 +5,6 @@
  * show the dropdown panel below 1024px. Above that breakpoint the class is
  * inert, so the desktop bar is unaffected whether it is set or not.
  *
- * Deliberately independent of api.js: it registers no globals and does not
- * interfere with toggleProfileMenu()/openNotifications(), which keep owning
- * the profile menu and the notifications modal.
- *
  * A header that also carries `.nav-drawer` (the parent side does, via
  * parent-mobile-nav.css) gets two extras, both purely presentational:
  * an identity row at the top of the panel and a Log Out row at the bottom.
@@ -128,6 +124,8 @@
 
         nav.appendChild(divider);
         nav.appendChild(button);
+    }
+
     // Mirrors the wording api.js uses for the profile dropdown greeting.
     function roleLabel(role) {
         if (!role) return '';
