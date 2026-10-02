@@ -212,6 +212,15 @@ function validateParentCredentials() {
     if (password !== confirm) {
         return 'Passwords do not match.';
     }
+    // Checked here, the single gate before the OTP is sent, exactly as
+    // validateDoctorCredentials() checks dFirst/dLast. go() moves the parent
+    // between steps without validating, so a blank name on step 3 otherwise
+    // travelled all the way to /register and failed there as a bare 400 —
+    // after the verification code had already been spent.
+    if (!valueOf('pFirst') || !valueOf('pLast')) {
+        return 'Please go back and enter your first and last name.';
+    }
+
     return '';
 }
 
@@ -401,6 +410,7 @@ async function sendOTP(isResend = false) {
     const restore = setButtonLoading(isResend ? 'resendOtpBtn' : 'sendOtpBtn', isResend ? 'Resending...' : 'Sending...');
     try {
         const email = valueOf('pEmail').toLowerCase();
+        parentVerifiedEmail = null;
         console.log('[SIGNUP] Send OTP clicked');
         console.log('[SIGNUP] Request payload:', { email });
 
@@ -441,6 +451,12 @@ async function sendOTP(isResend = false) {
     }
 }
 
+// The e-mail whose code has already been accepted in this session. /verify-otp
+// marks a code used, so re-sending the same one after a failed /register got
+// back 'Invalid OTP.' and hid the real error. Cleared whenever a new code is
+// sent, so a resend still has to be verified.
+let parentVerifiedEmail = null;
+
 async function verifyAndRegister() {
     const otp = collectOtp('o');
     const email = valueOf('pEmail').toLowerCase();
@@ -454,7 +470,10 @@ async function verifyAndRegister() {
 
     const restore = setButtonLoading('verifyBtn', 'Verifying...');
     try {
-        await postJson('/api/auth/verify-otp', { email, code: otp });
+        if (parentVerifiedEmail !== email) {
+            await postJson('/api/auth/verify-otp', { email, code: otp });
+            parentVerifiedEmail = email;
+        }
 
         const consent = readConsent('parent');
         const payload = {

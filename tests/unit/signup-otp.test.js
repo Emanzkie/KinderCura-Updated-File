@@ -51,7 +51,7 @@ function makeEnv(sendDelayMs = 20) {
 }
 
 function fillParent(env) {
-  Object.entries({ pUsername: 'p', pEmail: 'new.parent@example.invalid', pPassword: 'pw-long-enough', pConfirm: 'pw-long-enough' })
+  Object.entries({ pFirst: 'A', pLast: 'B', pUsername: 'p', pEmail: 'new.parent@example.invalid', pPassword: 'pw-long-enough', pConfirm: 'pw-long-enough' })
     .forEach(([k, v]) => { env.el(k).value = v; });
   env.el('pAcceptTerms').checked = true; env.el('pAckPrivacy').checked = true;
 }

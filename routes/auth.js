@@ -802,8 +802,14 @@ router.post('/register', handleProfileUpload, async (req, res) => {
       licenseExpiry,
     } = req.body;
 
-    if (!role || !firstName || !lastName || !username || !email || !password) {
-      return fail(400, 'All required fields must be filled.');
+    // Naming the fields matters: the browser drops empty values from the
+    // multipart body entirely, so a blank input arrives as a missing one and
+    // the old catch-all message gave the user nothing to act on.
+    const missingFields = Object.entries({
+      role, firstName, lastName, username, email, password,
+    }).filter(([, value]) => !String(value == null ? '' : value).trim()).map(([key]) => key);
+    if (missingFields.length) {
+      return fail(400, `All required fields must be filled. Missing: ${missingFields.join(', ')}.`);
     }
 
     const cleanRole = String(role).trim().toLowerCase();
