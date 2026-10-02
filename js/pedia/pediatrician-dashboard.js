@@ -7,6 +7,10 @@ const API = window.location.origin + '/api';
 
 const _u = getUser();
 
+// Pending requests keyed by appointment id, filled by renderPending(). The
+// reschedule modal reads the parent, child and current schedule from here.
+let pendingById = {};
+
 
 
 
@@ -113,6 +117,8 @@ if (!getToken() || !_u) {
         }
 
         function renderPending(pending){
+            pendingById = {};
+            pending.forEach(function(p){ pendingById[String(p.id)] = p; });
             const el=document.getElementById('pendingList');
             if(pending.length===0){el.innerHTML='<div class="empty-state"><span>✅</span>No pending appointment requests.<br><small style="color:var(--text-light);">Requests from parents will appear here once booked.</small></div>';return;}
             el.innerHTML=pending.map(n=>`
@@ -134,12 +140,100 @@ if (!getToken() || !_u) {
                            Overall: <strong style="color:var(--primary);font-size:1rem;">${n.overallScore||0}%</strong></div>`
                         :`<p style="color:var(--text-light);font-size:.85rem;font-style:italic;margin:.5rem 0;">No assessment results on file yet.</p>`
                     }
-                    <div style="display:flex;gap:.8rem;">
-                        <button class="btn-approve" onclick="respond(${n.id},'approved')">Approve</button>
+                    <div class="apt-actions">
+                        <button class="btn-approve" onclick="respond(${n.id},'approved')">Accept</button>
+                        <button class="btn-reschedule" onclick="openReschedule(${n.id})">Reschedule</button>
                         <button class="btn-reject"  onclick="respond(${n.id},'declined')">Decline</button>
+                    </div>
                     </div>
                 </div>`).join('');
         }
+
+        // ── Reschedule ──────────────────────────────────────────────────────
+        // Posts to the existing POST /appointments/:id/reschedule endpoint, which
+        // already validates availability, updates the one appointment record and
+        // notifies the parent in-app and by e-mail. Nothing new is created here.
+
+        const rsEl = (id) => document.getElementById(id);
+
+        function openReschedule(id){
+            const appt = pendingById[String(id)];
+            if(!appt){ alert('That request is no longer on screen. Refreshing...'); loadDashboard(); return; }
+
+            rsEl('rsApptId').value = id;
+            rsEl('rsParent').textContent  = appt.parentName || 'Parent';
+            rsEl('rsChild').textContent   = appt.childName  || 'Child';
+            rsEl('rsCurrent').textContent = fmtDate(appt.appointmentDate) + ' at ' + fmtTime(appt.appointmentTime);
+
+            const dateEl = rsEl('rsDate');
+            dateEl.value = '';
+            // The backend refuses a past date; do not offer one in the picker either.
+            dateEl.min = new Date().toISOString().slice(0,10);
+            rsEl('rsTime').value = '';
+            rsEl('rsReason').value = '';
+            rescheduleError('');
+            rsEl('rsConfirm').disabled = false;
+            rsEl('rsConfirm').textContent = 'Confirm Reschedule';
+
+            rsEl('rescheduleModal').style.display = 'flex';
+            setTimeout(function(){ dateEl.focus(); }, 50);
+        }
+
+        function closeReschedule(){
+            rsEl('rescheduleModal').style.display = 'none';
+        }
+
+        function rescheduleError(msg){
+            const el = rsEl('rsError');
+            el.textContent = msg || '';
+            el.style.display = msg ? 'block' : 'none';
+        }
+
+        async function submitReschedule(){
+            const id     = rsEl('rsApptId').value;
+            const date   = rsEl('rsDate').value;
+            const time   = rsEl('rsTime').value;
+            const reason = rsEl('rsReason').value.trim();
+
+            if(!date){ rescheduleError('Please choose a new date.'); return; }
+            if(!time){ rescheduleError('Please choose a new time.'); return; }
+
+            const appt = pendingById[String(id)];
+            if(appt){
+                const currentDate = new Date(appt.appointmentDate).toISOString().slice(0,10);
+                if(date === currentDate && time === appt.appointmentTime){
+                    rescheduleError('That is already the current schedule. Choose a different date or time.');
+                    return;
+                }
+            }
+            if(new Date(date + 'T' + time) < new Date()){
+                rescheduleError('The new schedule cannot be in the past.');
+                return;
+            }
+
+            const btn = rsEl('rsConfirm');
+            btn.disabled = true; btn.textContent = 'Rescheduling...';
+            rescheduleError('');
+
+            try{
+                const res = await apiFetch('/appointments/' + id + '/reschedule', {
+                    method:'POST',
+                    body: JSON.stringify({ newDate: date, newTime: time, reason: reason || undefined })
+                });
+                closeReschedule();
+                // The appointment is saved either way; only the e-mail may have failed.
+                if(res && res.emailSent === false){
+                    alert('Appointment rescheduled. The parent was notified in KinderCura, but the confirmation e-mail could not be sent.');
+                }
+                loadDashboard();
+            }catch(e){
+                // Availability clashes, past dates and permission problems all come
+                // back from the server with a message worth showing verbatim.
+                rescheduleError(e.message || 'Could not reschedule. Please try again.');
+                btn.disabled = false; btn.textContent = 'Confirm Reschedule';
+            }
+        }
+
 
         function renderActivity(all){
             const el=document.getElementById('activityList');

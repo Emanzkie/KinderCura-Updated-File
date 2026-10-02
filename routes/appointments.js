@@ -58,10 +58,15 @@ function wrapEmail(content) {
   </div>`;
 }
 
+// Returns true when the message actually went out, false when the mailer is
+// unconfigured, the address is missing, or the provider rejected it. Callers
+// that do not care can keep ignoring it; the reschedule route uses it to
+// report emailSent. Never throws: a mail failure must not roll back work that
+// is already committed to the database.
 async function sendEmail(to, subject, html) {
   if (!emailConfigured() || !to) {
     console.log(`\n[EMAIL SKIPPED] To: ${to || 'n/a'} | Subject: ${subject}\n`);
-    return;
+    return false;
   }
   try {
     await transporter.sendMail({
@@ -70,8 +75,10 @@ async function sendEmail(to, subject, html) {
       subject,
       html: wrapEmail(html),
     });
+    return true;
   } catch (err) {
     console.error('Appointment email error:', err.message);
+    return false;
   }
 }
 
@@ -1233,6 +1240,21 @@ async function hydrateAppointment(appointmentDoc) {
     notes: appointmentDoc.notes,
     location: appointmentDoc.location,
     status: appointmentDoc.status,
+    // Reschedule history. isRescheduled drives the 'Rescheduled' badge the
+    // parent, pediatrician and secretary lists show. The workflow status stays
+    // 'approved' so the slot stays occupied and chat / guards keep working.
+    isRescheduled: Boolean(appointmentDoc.reschedule && appointmentDoc.reschedule.isRescheduled),
+    reschedule: appointmentDoc.reschedule && appointmentDoc.reschedule.isRescheduled
+      ? {
+        isRescheduled: true,
+        originalDate: appointmentDoc.reschedule.originalDate || null,
+        originalTime: appointmentDoc.reschedule.originalTime || null,
+        rescheduledByRole: appointmentDoc.reschedule.rescheduledByRole || null,
+        rescheduledAt: appointmentDoc.reschedule.rescheduledAt || null,
+        reason: appointmentDoc.reschedule.reason || null,
+        count: appointmentDoc.reschedule.count || 0,
+      }
+      : null,
     paymentType: appointmentDoc.paymentType || null,
     paymentStatus: appointmentDoc.paymentStatus || 'Unpaid',
     totalAmount: appointmentDoc.totalAmount || 0,
@@ -1806,6 +1828,12 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
 
       appt = await Appointment.findOne({ id: Number(req.params.appointmentId), pediatricianId: pedId });
       if (!appt) return res.status(404).json({ error: 'Appointment not found.' });
+
+      // Only a live appointment can be rescheduled. Without this a cancelled,
+      // rejected or completed booking could be dragged back onto the calendar.
+      if (!['pending', 'approved'].includes(appt.status)) {
+        return res.status(400).json({ error: `A ${appt.status} appointment cannot be rescheduled.` });
+      }
     } else {
       // Parent path — same ownership check the cancel route already uses, so a
       // parent cannot touch another parent's appointment by changing the id.
@@ -1828,8 +1856,23 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
     if (!pediatrician) return res.status(404).json({ error: 'Linked pediatrician not found.' });
 
     // Remember the "from" schedule for the notification message.
+    const originalDateValue = appt.appointmentDate;
+    const originalTimeValue = appt.appointmentTime;
     const prevDateStr = fmtDate(appt.appointmentDate);
     const prevTimeStr = fmtTime(appt.appointmentTime);
+
+    // Moving an appointment to the slot it already occupies is almost always a
+    // misclick, and it would still fire a notification and an e-mail.
+    const requestedDate = normalizeUtcDate(newDate);
+    if (!requestedDate) return res.status(400).json({ error: 'Please choose a valid appointment date.' });
+    const requestedTime = normalizeTimeString(newTime) || newTime;
+    const sameDay = String(requestedDate.toISOString().slice(0, 10))
+      === String(new Date(appt.appointmentDate).toISOString().slice(0, 10));
+    if (sameDay && String(requestedTime) === String(appt.appointmentTime)) {
+      return res.status(400).json({
+        error: 'That is already the current schedule. Choose a different date or time.',
+      });
+    }
 
     const availability = await evaluateAvailability({
       pediatrician,
@@ -1848,6 +1891,22 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
     // (still needs clinic approval), an approved appointment stays approved.
     if (isClinic) appt.status = 'approved';
     if (note && String(note).trim()) appt.notes = String(note).trim();
+
+    // Reschedule history, written only on the path that actually saves. The
+    // first reschedule captures the schedule the parent originally booked;
+    // later ones keep that first value, so 'Original' always means the
+    // booking, not the previous move.
+    const prior = appt.reschedule && appt.reschedule.isRescheduled ? appt.reschedule : null;
+    appt.reschedule = {
+      isRescheduled: true,
+      originalDate: prior && prior.originalDate ? prior.originalDate : originalDateValue,
+      originalTime: prior && prior.originalTime ? prior.originalTime : originalTimeValue,
+      rescheduledBy: req.user.userId,
+      rescheduledByRole: role,
+      rescheduledAt: new Date(),
+      reason: reason && String(reason).trim() ? String(reason).trim() : null,
+      count: (prior && prior.count ? prior.count : 0) + 1,
+    };
     await appt.save();
 
     const hydrated = await hydrateAppointment(appt.toObject());
@@ -1897,27 +1956,40 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
       return res.json({ success: true });
     }
 
-    // ── Clinic-initiated reschedule notifications (unchanged behaviour) ──────
+    // ── Clinic-initiated reschedule notifications ───────────────────────────
+    // Both channels name the doctor and carry the original schedule beside the
+    // new one, so the parent can see exactly what moved without opening the app.
+    const docName = hydrated.pediatricianName ? `Dr. ${hydrated.pediatricianName}` : 'Your pediatrician';
+    const reasonText = reason && String(reason).trim() ? String(reason).trim() : null;
+
     await pushNotification(
       hydrated.parentId,
       'Appointment Rescheduled',
-      `Your appointment for ${hydrated.childName} was moved to ${newDateStr} at ${newTimeStr}.`,
+      `${docName} rescheduled your appointment for ${hydrated.childName}.`
+      + ` Original schedule: ${prevDateStr} at ${prevTimeStr}.`
+      + ` New schedule: ${newDateStr} at ${newTimeStr}.`
+      + (reasonText ? ` Reason: ${reasonText}` : ''),
       'appointment',
       { ...apptLink, relatedPage: '/parent/appointments.html' }
     );
 
-    await sendEmail(
+    // Sent only after the save above succeeded. sendEmail never throws, so a
+    // mailer outage cannot undo a reschedule that is already committed; it
+    // returns false instead and the response reports emailSent.
+    const emailSent = await sendEmail(
       hydrated.parentEmail,
-      'Appointment Rescheduled — KinderCura',
+      'KinderCura — Your Appointment Has Been Rescheduled',
       `<h2>Appointment Rescheduled</h2>
-       <p>Hello ${hydrated.parentFirstName || 'Parent'},</p>
+       <p>Dear ${hydrated.parentName || hydrated.parentFirstName || 'Parent'},</p>
+       <p>Your appointment for <strong>${hydrated.childName}</strong> has been rescheduled by ${docName}.</p>
        <div style="background:white;border-left:4px solid #6B8E6F;padding:16px;border-radius:6px;margin:16px 0;">
-         <p><strong>Patient:</strong> ${hydrated.childName}</p>
-         <p><strong>New Date:</strong> ${newDateStr}</p>
-         <p><strong>New Time:</strong> ${newTimeStr}</p>
-         ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+         <p><strong>Original Appointment</strong><br>Date: ${prevDateStr}<br>Time: ${prevTimeStr}</p>
+         <p><strong>New Appointment</strong><br>Date: ${newDateStr}<br>Time: ${newTimeStr}</p>
+         <p><strong>Pediatrician:</strong> ${docName}</p>
+         ${reasonText ? `<p><strong>Reason:</strong> ${reasonText}</p>` : ''}
          ${note ? `<p><strong>Note:</strong> ${note}</p>` : ''}
-       </div>`
+       </div>
+       <p>Please check your KinderCura account for the updated appointment details.</p>`
     );
 
     // Important: if a secretary performed the reschedule, also notify the pediatrician.
@@ -1937,7 +2009,18 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
       );
     }
 
-    res.json({ success: true });
+    // emailSent is reported rather than thrown: the reschedule is already
+    // saved, so a mailer outage must not read as a failed reschedule.
+    res.json({
+      success: true,
+      emailSent,
+      status: appt.status,
+      isRescheduled: true,
+      appointmentDate: appt.appointmentDate,
+      appointmentTime: appt.appointmentTime,
+      originalDate: prevDateStr,
+      originalTime: prevTimeStr,
+    });
   } catch (err) {
     console.error('appointments reschedule error:', err);
     res.status(500).json({ error: err.message });

@@ -58,6 +58,33 @@ const appointmentSchema = new mongoose.Schema(
       migratedAt: { type: Date, default: null },
       rolledBackAt: { type: Date, default: null },
     },
+    // ── Reschedule history (additive, backward compatible) ─────────────────
+    // Written only when a reschedule actually succeeds. Absent on every
+    // existing record, where `reschedule?.isRescheduled` simply reads falsy.
+    //
+    // The workflow `status` below is deliberately NOT given a rescheduled
+    // value. approved is load-bearing across the system — the slot-conflict
+    // query in routes/appointments.js only counts pending/approved, so a
+    // separate status would free the new slot for double-booking, and chat
+    // access, the pediatrician assignment guard, recommendations, custom
+    // questions and the admin counts all gate on it too. The UIs read
+    // `isRescheduled` to show a Rescheduled badge instead, which keeps the
+    // appointment confirmed and occupying its slot.
+    reschedule: {
+      isRescheduled: { type: Boolean, default: false, index: true },
+      originalDate: { type: Date, default: null },
+      originalTime: { type: String, default: null },
+      rescheduledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      rescheduledByRole: {
+        type: String,
+        enum: ['pediatrician', 'secretary', 'parent', null],
+        default: null,
+      },
+      rescheduledAt: { type: Date, default: null },
+      reason: { type: String, trim: true, default: null },
+      count: { type: Number, default: 0 },
+    },
+
     status: {
       type: String,
       enum: ['pending', 'approved', 'completed', 'cancelled', 'rejected'],

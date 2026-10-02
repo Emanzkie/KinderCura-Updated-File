@@ -900,10 +900,12 @@ function renderActive(list) {
                     <p class="mini" style="margin:0;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.clinicName || 'Clinic not set')}</p>
                     <p class="mini" style="margin:.15rem 0 0;"><img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.clinicAddress || 'Clinic address not available')}</p>
                     <p class="mini" style="margin:.15rem 0 0;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${fmtDate(a.appointmentDate)} at ${fmtTime(a.appointmentTime)}</p>
+                    ${a.isRescheduled && a.reschedule ? `<p class="mini" style="margin:.15rem 0 0;color:var(--text-light);">Rescheduled from ${fmtDate(a.reschedule.originalDate)} at ${fmtTime(a.reschedule.originalTime)}${a.reschedule.reason ? ` — ${escapeHtml(a.reschedule.reason)}` : ''}</p>` : ''}
                     <p class="mini" style="margin:.15rem 0 0;"><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.reason || 'General checkup')}</p>
                     ${a.childName ? `<p class="mini" style="margin:.15rem 0 0;"><img src="/icons/parent.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.childName)}</p>` : ''}
                 </div>
                 <span class="badge ${a.status}">${a.status.charAt(0).toUpperCase() + a.status.slice(1)}</span>
+                ${a.isRescheduled && a.reschedule ? `<span class="badge rescheduled" style="background:var(--surface-muted,#eef2ee);color:var(--primary-dark);">Rescheduled</span>` : ''}
             </div>
             ${a.status === 'pending' ? '<p style="font-size:0.82rem;color:var(--status-caution-fg);margin:0;">⏳ Your request is being reviewed by the clinic staff.</p>' : ''}
             ${a.status === 'approved' ? `<p style="font-size:0.82rem;color:var(--status-positive-fg);margin:0;">✅ Confirmed by clinic staff on behalf of Dr. ${escapeHtml(a.pediatricianName || 'Pediatrician')}</p>` : ''}
@@ -933,6 +935,7 @@ function renderPast(list) {
                     ${a.reason ? `<p class="mini" style="margin:.15rem 0 0;"><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.reason)}</p>` : ''}
                 </div>
                 <span class="badge ${a.status}">${a.status.charAt(0).toUpperCase() + a.status.slice(1)}</span>
+                ${a.isRescheduled && a.reschedule ? `<span class="badge rescheduled" style="background:var(--surface-muted,#eef2ee);color:var(--primary-dark);">Rescheduled</span>` : ''}
             </div>
             ${renderPaymentSummary(a)}
         </div>`).join('');

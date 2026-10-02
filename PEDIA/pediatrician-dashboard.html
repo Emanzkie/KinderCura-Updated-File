@@ -112,5 +112,44 @@ Purpose:
 <script src="/notifications-card-ui.js"></script>
 <script src="/js/shared/mobile-nav.js"></script>
 <script src="/js/pedia/pediatrician-dashboard.js"></script>
+
+<!-- Reschedule dialog. Deliberately outside #pendingList: loadDashboard() rewrites
+     that list every 5 seconds, which would wipe a half-filled form. -->
+<div class="reschedule-modal" id="rescheduleModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="rescheduleTitle">
+    <div class="reschedule-content" role="document">
+        <div class="reschedule-header">
+            <h3 id="rescheduleTitle">Reschedule Appointment</h3>
+            <button type="button" class="reschedule-close" onclick="closeReschedule()" aria-label="Close">&times;</button>
+        </div>
+
+        <div class="reschedule-body">
+            <input type="hidden" id="rsApptId">
+
+            <dl class="reschedule-summary">
+                <dt>Parent</dt><dd id="rsParent">—</dd>
+                <dt>Child</dt><dd id="rsChild">—</dd>
+                <dt>Current Appointment</dt><dd id="rsCurrent">—</dd>
+            </dl>
+
+            <label class="reschedule-label" for="rsDate">New Date</label>
+            <input type="date" id="rsDate" class="reschedule-input" required>
+
+            <label class="reschedule-label" for="rsTime">New Time</label>
+            <input type="time" id="rsTime" class="reschedule-input" required>
+
+            <label class="reschedule-label" for="rsReason">Reason <span class="reschedule-optional">(optional)</span></label>
+            <textarea id="rsReason" class="reschedule-input reschedule-textarea" rows="3"
+                      placeholder="e.g. Doctor unavailable on the original schedule."></textarea>
+
+            <p class="reschedule-error" id="rsError" style="display:none;" role="alert"></p>
+        </div>
+
+        <div class="reschedule-actions">
+            <button type="button" class="btn-reject" onclick="closeReschedule()">Cancel</button>
+            <button type="button" class="btn-approve" id="rsConfirm" onclick="submitReschedule()">Confirm Reschedule</button>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>

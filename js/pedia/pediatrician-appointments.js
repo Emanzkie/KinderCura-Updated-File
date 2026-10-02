@@ -269,6 +269,8 @@ function renderUpcoming(apts) {
                 <div>
                     <p class="info-label">Status</p>
                     <p class="info-val">${a.status.charAt(0).toUpperCase()+a.status.slice(1)}</p>
+                    ${a.isRescheduled && a.reschedule ? `<p class="info-label" style="margin-top:.3rem;color:var(--primary-dark);font-weight:600;">Rescheduled</p>
+                    <p class="info-label">Rescheduled from ${fmtDate(a.reschedule.originalDate)} at ${fmtTime(a.reschedule.originalTime)}</p>` : ''}
                 </div>
             </div>
             ${paymentSection(a)}

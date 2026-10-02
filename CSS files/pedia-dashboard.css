@@ -178,3 +178,215 @@
     display: block;
     margin-bottom: 0.8rem;
 }
+/* ===========================================================================
+   Appointment request actions — Accept / Reschedule / Decline
+   The row used to be a bare inline flex with two buttons. Three buttons need a
+   container that can rewrap on a phone without the actions changing order.
+   =========================================================================== */
+
+.apt-actions {
+    display: flex;
+    gap: 0.8rem;
+}
+
+/* Neutral middle action: clearly not the green confirm and not the red
+   decline, built from the same tokens as the two buttons beside it. */
+.btn-reschedule {
+    background: var(--surface, white);
+    color: var(--text-dark);
+    border: 2px solid var(--border);
+    padding: 0.6rem 1.2rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    flex: 1;
+    font-weight: 600;
+}
+
+.btn-reschedule:hover {
+    border-color: var(--primary-light);
+    background: var(--surface-tint, #f3f7f3);
+}
+
+/* ===========================================================================
+   Reschedule dialog
+   Mirrors the notifications modal already in this project rather than adding a
+   second dialog language.
+   =========================================================================== */
+
+.reschedule-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    z-index: 1000;
+}
+
+.reschedule-content {
+    background: white;
+    border-radius: var(--radius-card, 12px);
+    width: 100%;
+    max-width: 460px;
+    /* The dialog itself never grows past the viewport; the body scrolls. */
+    max-height: calc(100vh - 2rem);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18);
+}
+
+.reschedule-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.2rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.reschedule-header h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    color: var(--primary-dark);
+}
+
+.reschedule-close {
+    border: 0;
+    background: none;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text-light);
+    padding: 0 0.25rem;
+}
+
+.reschedule-body {
+    padding: 1.1rem 1.2rem;
+    overflow-y: auto;
+}
+
+.reschedule-summary {
+    margin: 0 0 1rem;
+    padding: 0.8rem;
+    background: var(--bg-primary, #f7f7f5);
+    border-radius: 8px;
+    font-size: 0.9rem;
+}
+
+.reschedule-summary dt {
+    color: var(--text-light);
+    font-size: 0.8rem;
+}
+
+.reschedule-summary dd {
+    margin: 0 0 0.55rem;
+    font-weight: 600;
+    color: var(--text-dark);
+    overflow-wrap: break-word;
+}
+
+.reschedule-summary dd:last-child {
+    margin-bottom: 0;
+}
+
+.reschedule-label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-dark);
+    margin: 0 0 0.3rem;
+}
+
+.reschedule-optional {
+    font-weight: 400;
+    color: var(--text-light);
+}
+
+.reschedule-input {
+    box-sizing: border-box;
+    width: 100%;
+    /* 16px keeps iOS Safari from zooming the page when the field is focused. */
+    font-size: 16px;
+    font-family: inherit;
+    padding: 0.6rem 0.7rem;
+    margin-bottom: 0.9rem;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    background: white;
+    color: var(--text-dark);
+}
+
+.reschedule-input:focus {
+    outline: 2px solid var(--primary-light);
+    outline-offset: -1px;
+}
+
+.reschedule-textarea {
+    resize: vertical;
+    min-height: 68px;
+}
+
+.reschedule-error {
+    margin: 0;
+    padding: 0.6rem 0.7rem;
+    border-radius: 8px;
+    background: #fdecec;
+    color: var(--accent-red, #b4454a);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.reschedule-actions {
+    display: flex;
+    gap: 0.8rem;
+    padding: 1rem 1.2rem;
+    border-top: 1px solid var(--border);
+}
+
+.reschedule-actions .btn-approve,
+.reschedule-actions .btn-reject {
+    min-height: 44px;
+}
+
+.reschedule-actions .btn-approve:disabled {
+    opacity: 0.65;
+    cursor: default;
+}
+
+/* ===========================================================================
+   Phone. Three actions do not read well side by side much under 520px, so the
+   row becomes two columns with Decline spanning underneath. Document order is
+   unchanged, so the actions stay Accept, Reschedule, Decline.
+   =========================================================================== */
+
+@media (max-width: 520px) {
+
+    .apt-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.6rem;
+    }
+
+    .apt-actions .btn-approve,
+    .apt-actions .btn-reschedule,
+    .apt-actions .btn-reject {
+        box-sizing: border-box;
+        width: 100%;
+        min-height: 44px;
+        padding: 0.6rem 0.5rem;
+    }
+
+    .apt-actions .btn-reject {
+        grid-column: 1 / -1;
+    }
+
+    .reschedule-content {
+        max-height: calc(100vh - 1rem);
+    }
+
+    .reschedule-modal {
+        padding: 0.5rem;
+    }
+}
