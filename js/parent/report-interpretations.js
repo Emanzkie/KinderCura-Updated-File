@@ -223,7 +223,7 @@
     const overall = Math.round(latestEntry.overallScore);
     const bandLabel = KCScoring ? KCScoring.parentOverallLabel(overall) : null;
     const highlights = describeDomainHighlights(latestEntry.domains);
-    const bandClause = bandLabel ? `, within the system's current "${bandLabel}" screening range` : '';
+    const bandClause = bandLabel ? `, within the system's current "${bandLabel}" assessment range` : '';
     return `The latest completed assessment had an overall score of ${overall}%${bandClause}. ${highlights.text}`;
   }
 
@@ -278,7 +278,7 @@
       text += ` Note: ${excluded} assessment${excluded === 1 ? '' : 's'} in this child's history had incomplete or unavailable scores and ${excluded === 1 ? 'is' : 'are'} not included in this comparison.`;
     }
 
-    text += ' An assessment score is a screening result on its own — it does not by itself explain what may be causing a change.';
+    text += ' An assessment score is a result on its own — it does not by itself explain what may be causing a change.';
     return text;
   }
 

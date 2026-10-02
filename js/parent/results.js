@@ -517,7 +517,7 @@ function renderComparisonSection(compare) {
         return `
         <div class="comparison-card" style="background:white;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
             <h3 style="margin:0 0 .5rem;color:var(--primary);">Progress Since Last Assessment</h3>
-            <p style="margin:0;color:var(--text-light);">First completed assessment — there is no earlier screening to compare yet. A progression chart needs at least two completed assessments.</p>
+            <p style="margin:0;color:var(--text-light);">First completed assessment — there is no earlier assessment to compare yet. A progression chart needs at least two completed assessments.</p>
         </div>`;
     }
 
@@ -756,12 +756,12 @@ async function loadResults() {
     try {
         const assessmentId = await resolveContext();
         if (!assessmentId || !activeChild) {
-            document.getElementById('resultsMeta').textContent = 'No completed screening yet';
+            document.getElementById('resultsMeta').textContent = 'No completed assessment yet';
             document.getElementById('resultsContent').innerHTML = `
                 <div style="text-align:center;padding:3rem;background:white;border-radius:15px;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
                     <p style="font-size:1.1rem;font-weight:600;margin-bottom:1rem;">No assessment results yet</p>
-                    <p style="color:var(--text-light);margin-bottom:1.5rem;">Complete a screening first to view results for this child.</p>
-                    <button class="btn btn-primary" onclick="window.location.href='/parent/screening.html'">Start Screening</button>
+                    <p style="color:var(--text-light);margin-bottom:1.5rem;">Complete an assessment first to view results for this child.</p>
+                    <button class="btn btn-primary" onclick="window.location.href='/parent/screening.html'">Start Assessment</button>
                 </div>`;
             return;
         }

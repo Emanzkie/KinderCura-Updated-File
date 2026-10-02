@@ -498,14 +498,14 @@ function renderChildren(data) {
                     <p class="tile-sub">Registered children matching current filters.</p>
                 </div>
                 <div class="insight-tile">
-                    <p class="tile-label">Screened in Range</p>
+                    <p class="tile-label">Assessed in Range</p>
                     <p class="tile-value">${count(coverage.withScreening)}</p>
-                    <p class="tile-sub">Children with at least one completed screening.</p>
+                    <p class="tile-sub">Children with at least one completed assessment.</p>
                 </div>
                 <div class="insight-tile">
-                    <p class="tile-label">Not Screened in Range</p>
+                    <p class="tile-label">Not Assessed in Range</p>
                     <p class="tile-value">${count(coverage.withoutScreening)}</p>
-                    <p class="tile-sub">Children without a completed screening in this period.</p>
+                    <p class="tile-sub">Children without a completed assessment in this period.</p>
                 </div>
                 <div class="insight-tile">
                     <p class="tile-label">Sex Not Recorded</p>
@@ -593,8 +593,8 @@ function renderScreenings(data) {
     if (total === 0) {
         section.innerHTML = `
             <div class="insight-card">
-                <h2>Screening Overview</h2>
-                ${emptyBlock('No screenings match these filters',
+                <h2>Assessment Overview</h2>
+                ${emptyBlock('No assessments match these filters',
                     'No assessment falls inside the selected date range for the selected filters. Widen the range or reset the filters.')}
             </div>`;
         return;
@@ -607,13 +607,13 @@ function renderScreenings(data) {
 
     // The scored charts can only describe assessments that have a linked result.
     const scoredBlock = withResult === 0
-        ? emptyBlock('No scored screenings in this selection',
-            'No assessments in this range have screening results available yet.')
+        ? emptyBlock('No scored assessments in this selection',
+            'No assessments in this range have results available yet.')
         : `
             <div class="chart-row">
                 <div>
                     <div class="chart-box"><canvas id="screeningsOverallChart"></canvas></div>
-                    <p class="chart-caption">Overall screening results (${withResult} assessed).</p>
+                    <p class="chart-caption">Overall assessment results (${withResult} assessed).</p>
                 </div>
                 <div>
                     <div class="chart-box"><canvas id="screeningsDomainChart"></canvas></div>
@@ -633,7 +633,7 @@ function renderScreenings(data) {
 
     section.innerHTML = `
         <div class="insight-card">
-            <h2>Screening Overview</h2>
+            <h2>Assessment Overview</h2>
             <p class="card-sub">Overview of completed and ongoing child assessments.</p>
 
             <div class="insight-tiles">
@@ -645,7 +645,7 @@ function renderScreenings(data) {
                 <div class="insight-tile">
                     <p class="tile-label">With Results</p>
                     <p class="tile-value">${withResult}</p>
-                    <p class="tile-sub">Assessments with screening results.</p>
+                    <p class="tile-sub">Assessments with results.</p>
                 </div>
                 <div class="insight-tile">
                     <p class="tile-label">Without Results</p>
@@ -757,7 +757,7 @@ function renderScreenings(data) {
             data: {
                 labels: keys.map(bandLabel),
                 datasets: [{
-                    label: 'Screenings',
+                    label: 'Assessments',
                     data: keys.map((k) => count(overallBands[k])),
                     backgroundColor: keys.map(bandColor),
                     borderWidth: 0,
@@ -845,7 +845,7 @@ function crossTabTable(matrix, bandRows, colKeys, colLabelFn, rowHeading) {
 function methodsNote() {
     return `
         <p class="card-sub" style="margin-top:1rem;font-size:0.82rem;">
-            Screening results are intended to support assessment and should be reviewed by a qualified pediatrician.
+            Assessment results are intended to support evaluation and should be reviewed by a qualified pediatrician.
         </p>`;
 }
 
@@ -926,7 +926,7 @@ function renderConcordance(data) {
             <div class="rate-grid">
                 <div class="rate-item">
                     <p class="rate-value">${rateText(agreement.exact, false)}</p>
-                    <p class="rate-label">Screening result matched the pediatrician's conclusion.</p>
+                    <p class="rate-label">Assessment result matched the pediatrician's conclusion.</p>
                 </div>
                 <div class="rate-item">
                     <p class="rate-value">${rateText(agreement.adjacent, false)}</p>
@@ -935,12 +935,12 @@ function renderConcordance(data) {
                 <div class="rate-item rate-critical">
                     <p class="rate-value">${rateText(agreement.screeningRatedBetter, false)}</p>
                     <p class="rate-label">
-                        <strong>Screening showed lower concern than the pediatrician.</strong>
+                        <strong>Assessment showed lower concern than the pediatrician.</strong>
                     </p>
                 </div>
                 <div class="rate-item">
                     <p class="rate-value">${rateText(agreement.screeningRatedWorse, false)}</p>
-                    <p class="rate-label">Screening showed higher concern than the pediatrician.</p>
+                    <p class="rate-label">Assessment showed higher concern than the pediatrician.</p>
                 </div>
             </div>`;
 
@@ -950,15 +950,15 @@ function renderConcordance(data) {
             ${pipelineStrip(totals)}
             ${ratesBlock}
 
-            <h3>Screening vs. Pediatrician Outcome</h3>
+            <h3>Assessment vs. Pediatrician Outcome</h3>
             <p class="card-sub" style="margin-bottom:0.8rem;">
-                Screening results compared with pediatrician-recorded outcomes. Highlighted cells show where both agree.
+                Assessment results compared with pediatrician-recorded outcomes. Highlighted cells show where both agree.
             </p>
             <div class="insight-table-wrap">
                 <table class="insight-table crosstab">
                     <thead>
                         <tr>
-                            <th>Screening Result</th>
+                            <th>Assessment Result</th>
                             ${outcomeKeys.map((o) => `<th class="cell">${escapeHtml(outcomeLabel(o))}</th>`).join('')}
                             <th class="cell total">Total</th>
                         </tr>
@@ -1021,7 +1021,7 @@ async function loadAll() {
     const bits = [`${fmtShortDate(f.from)} – ${fmtShortDate(f.to)}`];
     if (f.gender && f.gender !== 'all') bits.push(`sex: ${genderLabel(f.gender)}`);
     if (f.ageBand && f.ageBand !== 'all') bits.push(`age: ${ageBandLabel(f.ageBand)}`);
-    meta.innerHTML = `View system activity, child assessments, and screening results.<br>
+    meta.innerHTML = `View system activity, child assessments, and assessment results.<br>
         <span style="font-size:0.85em; opacity:0.8; display:inline-block; margin-top:0.3rem;">
             Data for: ${bits.join(' · ')} &nbsp;|&nbsp; Updated: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
         </span>`;

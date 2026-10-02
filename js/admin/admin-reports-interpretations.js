@@ -84,7 +84,7 @@
 
     return `Among the ${mode.total} ${plural(mode.total, 'assessment')} classified as Delayed in this range, `
       + `${formatList(nonZeroParts)}. ${leadSentence} `
-      + 'This is a descriptive count of recorded screenings only — it does not indicate that any gender causes, or is more biologically prone to, developmental delay.';
+      + 'This is a descriptive count of recorded assessments only — it does not indicate that any gender causes, or is more biologically prone to, developmental delay.';
   }
 
   /**
@@ -113,7 +113,7 @@
 
     return `Among the ${mode.total} ${plural(mode.total, 'assessment')} classified as Delayed in this range (age at the time of assessment), `
       + `${formatList(nonZeroParts)}. ${leadSentence} `
-      + 'This is a descriptive count of recorded screenings only and does not indicate that any age range causes, or has a higher risk of, developmental delay.';
+      + 'This is a descriptive count of recorded assessments only and does not indicate that any age range causes, or has a higher risk of, developmental delay.';
   }
 
   /**

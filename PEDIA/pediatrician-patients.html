@@ -123,7 +123,7 @@
                     <label style="font-weight:600;" for="clinical-outcome">Clinical outcome <span style="font-weight:400;color:var(--text-light);">(optional)</span></label>
                     <p style="font-size:0.78rem;color:var(--text-light);margin:0.25rem 0 0.5rem;line-height:1.5;">
                         Your structured conclusion, recorded separately from the notes above. This is the
-                        only field that can later be used to check the screening scores against real
+                        only field that can later be used to check the assessment scores against real
                         clinical judgement. Leave blank if you cannot conclude — do not guess.
                     </p>
                     <select id="clinical-outcome" onchange="onOutcomeChange()" style="width:100%;padding:0.85rem 1rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.95rem;background:white;">
@@ -262,7 +262,7 @@
                         <select id="checkup-linked-assessment" style="width:100%;padding:0.8rem;border:2px solid var(--border);border-radius:8px;">
                             <option value="">— None —</option>
                         </select>
-                        <p style="font-size:0.76rem;color:var(--text-light);margin-top:0.35rem;">Only link this visit to an assessment when it is based on one — a routine follow-up with no new screening should stay unlinked. This never recalculates or duplicates the assessment's score.</p>
+                        <p style="font-size:0.76rem;color:var(--text-light);margin-top:0.35rem;">Only link this visit to an assessment when it is based on one — a routine follow-up with no new assessment should stay unlinked. This never recalculates or duplicates the assessment's score.</p>
                     </div>
                     <div style="display:flex;justify-content:flex-end;gap:0.8rem;margin-top:1rem;">
                         <button type="button" class="btn btn-secondary" onclick="cancelAddCheckup()" style="padding:0.75rem 1.2rem;">Cancel</button>

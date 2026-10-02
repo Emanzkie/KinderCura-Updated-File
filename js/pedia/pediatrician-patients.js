@@ -559,7 +559,7 @@ const API = window.location.origin + '/api';
             });
             alert(clinicalOutcome
                 ? '✅ Diagnosis submitted with a recorded clinical outcome. The parent will be notified.'
-                : '✅ Diagnosis submitted! The parent will be notified.\n\nNote: no clinical outcome was recorded, so this screening cannot be used to validate the scoring.');
+                : '✅ Diagnosis submitted! The parent will be notified.\n\nNote: no clinical outcome was recorded, so this assessment cannot be used to validate the scoring.');
             closeDiagnosisModal();
             loadPatients();
         } catch (err) {
