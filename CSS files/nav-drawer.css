@@ -48,6 +48,12 @@
        takes the row's own colour: dark text at rest, dark green when the row
        is the current page, red on Log Out. No new image files, and no markup
        change on any page — each rule matches the module's own href.
+       Matched as a substring, not a suffix: the parent pages append
+       ?childId=/&assessmentId= to five of these links at runtime
+       (updateParentNavLinks in recommendations.js and custom-questions.js),
+       and a suffix match drops the icon the moment a query string lands.
+       The leading slash is what keeps secretary-/pedia- prefixed hrefs
+       from matching these rules.
 
        Drawn in the Lucide geometry the project's other line icons follow:
        24x24 box, 1.8 stroke, round caps and joins, no fills. One family, so
@@ -56,31 +62,31 @@
        Parent modules.
        ---------------------------------------------------------------------- */
 
-    .top-nav.nav-drawer .main-nav .nav-link[href$="/dashboard.html"] {
+    .top-nav.nav-drawer .main-nav .nav-link[href*="/dashboard.html"] {
         --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 10 9-7 9 7v9a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z'/%3E%3C/svg%3E");
     }
 
-    .top-nav.nav-drawer .main-nav .nav-link[href$="/results.html"] {
+    .top-nav.nav-drawer .main-nav .nav-link[href*="/results.html"] {
         --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 20h18'/%3E%3Cpath d='M6 20v-7'/%3E%3Cpath d='M12 20V5'/%3E%3Cpath d='M18 20v-11'/%3E%3C/svg%3E");
     }
 
-    .top-nav.nav-drawer .main-nav .nav-link[href$="/reports.html"] {
+    .top-nav.nav-drawer .main-nav .nav-link[href*="/reports.html"] {
         --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z'/%3E%3Cpath d='M14 3v5h5'/%3E%3Cpath d='M9 13h6'/%3E%3Cpath d='M9 17h4'/%3E%3C/svg%3E");
     }
 
-    .top-nav.nav-drawer .main-nav .nav-link[href$="/recommendations.html"] {
+    .top-nav.nav-drawer .main-nav .nav-link[href*="/recommendations.html"] {
         --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.5 18h5'/%3E%3Cpath d='M10 21h4'/%3E%3Cpath d='M12 3a6 6 0 0 0-3.5 10.9c.6.4.9 1.1 1 1.6h5c.1-.5.4-1.2 1-1.6A6 6 0 0 0 12 3z'/%3E%3C/svg%3E");
     }
 
-    .top-nav.nav-drawer .main-nav .nav-link[href$="/appointments.html"] {
+    .top-nav.nav-drawer .main-nav .nav-link[href*="/appointments.html"] {
         --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M8 3v4'/%3E%3Cpath d='M16 3v4'/%3E%3Cpath d='M3 11h18'/%3E%3C/svg%3E");
     }
 
-    .top-nav.nav-drawer .main-nav .nav-link[href$="/chat.html"] {
+    .top-nav.nav-drawer .main-nav .nav-link[href*="/chat.html"] {
         --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 11.5a8.4 8.4 0 0 1-12.8 7.3L3.5 20.5l1.7-4.6A8.4 8.4 0 1 1 21 11.5z'/%3E%3C/svg%3E");
     }
 
-    .top-nav.nav-drawer .main-nav .nav-link[href$="/custom-questions.html"] {
+    .top-nav.nav-drawer .main-nav .nav-link[href*="/custom-questions.html"] {
         --kc-nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M9.2 9.3a3 3 0 0 1 5.8 1c0 2-3 2.4-3 4'/%3E%3Cpath d='M12 17.4h.01'/%3E%3C/svg%3E");
     }
 
