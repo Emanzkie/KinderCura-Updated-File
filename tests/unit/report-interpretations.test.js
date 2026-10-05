@@ -256,7 +256,7 @@ function testTrendTwoAssessments() {
   assert.ok(/September 3, 2026/.test(text));
   assert.ok(/increased by 8 percentage points/.test(text));
   assert.ok(/from 62% to 70%/.test(text));
-  assert.ok(/screening result/i.test(text), 'must include the "does not explain cause" disclaimer');
+  assert.ok(/assessment result/i.test(text), 'must include the "does not explain cause" disclaimer');
 }
 
 function testTrendManyAssessmentsIncreasing() {

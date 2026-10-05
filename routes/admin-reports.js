@@ -670,7 +670,7 @@ router.get('/children', authMiddleware, adminOnly, async (req, res) => {
     res.json({
       success: true,
       filters: filtersEcho(filters),
-      filtersApplied: { dateRange: 'screening coverage only', gender: true, ageBand: true },
+      filtersApplied: { dateRange: 'assessment coverage only', gender: true, ageBand: true },
       vocabulary: vocabulary(),
       ageBasis: 'current',
       totals: { children: facetCount(facet.total) },
@@ -1208,7 +1208,7 @@ router.get('/concordance', authMiddleware, adminOnly, async (req, res) => {
         suppressed,
       },
       methodsNote:
-        'This measures agreement between the rule-based screening bands and the '
+        'This measures agreement between the rule-based assessment bands and the '
         + 'reviewing pediatrician\'s recorded outcome. It is not a validation against a '
         + 'diagnostic reference standard.',
     });

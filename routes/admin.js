@@ -1348,7 +1348,7 @@ function computeDatasetProvenance(d) {
   const imitates = [];
   if (/ecdi\s*2030|ecdi2030/.test(n)) imitates.push('ECDI2030 (UNICEF)');
   if (/dscore|d-score|childdevdata/.test(n)) imitates.push('D-score / childdevdata');
-  if (/kindercura/.test(n)) imitates.push('KinderCura screening export');
+  if (/kindercura/.test(n)) imitates.push('KinderCura assessment export');
 
   const sourceType = (recordedSourceType && recordedSourceType !== 'unknown')
     ? recordedSourceType

@@ -159,7 +159,7 @@ function renderPediatricianReview(reportData) {
             <p class="card-sub">What the pediatrician documented after reviewing this child's assessment results.</p>
             <dl class="review-fields">
                 <div><dt>Initial assessment</dt><dd>${escapeHtml(fmtDate(initial.completedAt) || 'Date not recorded')}</dd></div>
-                <div><dt>Initial screening result</dt><dd>${screeningResult}</dd></div>
+                <div><dt>Initial assessment result</dt><dd>${screeningResult}</dd></div>
                 <div><dt>Reviewed by</dt><dd>${escapeHtml(initial.review.pediatricianName || 'Pediatrician')}</dd></div>
                 <div><dt>Reviewed on</dt><dd>${escapeHtml(fmtDate(initial.review.reviewedAt) || 'Not recorded')}</dd></div>
                 <div class="review-field-wide"><dt>Pediatrician recommendation</dt><dd>${initial.review.recommendations ? escapeHtml(initial.review.recommendations) : 'No recommendation has been documented for this review.'}</dd></div>
@@ -533,7 +533,7 @@ function renderCheckupHistory(checkups, loadError) {
             <p class="card-sub">
                 Your pediatrician's recorded clinical visit history for this child, most recent
                 first. This is separate from the assessment scores above — it is the
-                pediatrician's own clinical record of each visit, not a screening result, and it
+                pediatrician's own clinical record of each visit, not an assessment result, and it
                 cannot be edited from this page.
             </p>
             <div class="interp-block" style="margin-bottom:1.2rem;">

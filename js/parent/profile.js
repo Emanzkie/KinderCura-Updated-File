@@ -296,7 +296,7 @@ async function loadProfile() {
                             ${field('Gender', c.gender ? c.gender.charAt(0).toUpperCase()+c.gender.slice(1) : '—')}
                             ${field('Relationship', c.relationship || '—')}
                         </div>
-                        <button class="btn btn-primary btn-full-small" onclick="localStorage.setItem('kc_childId','${c.id}');window.location.href='/parent/screening.html'">Start Screening</button>
+                        <button class="btn btn-primary btn-full-small" onclick="localStorage.setItem('kc_childId','${c.id}');window.location.href='/parent/screening.html'">Start Assessment</button>
                     </div>
                 </div>`;
             });

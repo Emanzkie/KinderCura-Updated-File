@@ -202,9 +202,9 @@ const CLINIC_SUFFIX = ['Children\'s Clinic', 'Pediatric Center', 'Family Health 
 const CITIES = ['Iloilo City', 'Bacolod City', 'Cebu City', 'Davao City', 'Quezon City', 'Cagayan de Oro', 'Baguio City', 'Legazpi City'];
 
 const APPOINTMENT_REASONS = [
-  'Developmental screening follow-up',
+  'Developmental assessment follow-up',
   'Routine well-child check-up',
-  'Discuss screening results',
+  'Discuss assessment results',
   'Speech and language concern',
   'Motor development concern',
   'Behavioural consultation',

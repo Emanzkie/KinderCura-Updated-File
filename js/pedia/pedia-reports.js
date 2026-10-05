@@ -609,7 +609,7 @@ function progressionRowHtml(child, index) {
     const latest = child.latestScreening || {};
 
     const warn = child.bandComparabilityWarning
-        ? '<span class="warn-chip" title="These screenings use different scoring baselines. Scores are presented consistently based on recorded data.">historical baseline</span>'
+        ? '<span class="warn-chip" title="These assessments use different scoring baselines. Scores are presented consistently based on recorded data.">historical baseline</span>'
         : '';
 
     return `
@@ -965,7 +965,7 @@ async function exportScreeningsCsv() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'kindercura-screenings.csv';
+        a.download = 'kindercura-assessments.csv';
         document.body.appendChild(a);
         a.click();
         a.remove();

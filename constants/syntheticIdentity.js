@@ -99,13 +99,13 @@ const LAST_NAMES = [
 // does not already carry in its structured fields.
 const PEDIATRICIAN_BIOS = [
   'General pediatric practice with an interest in early childhood development and routine well-child care.',
-  'Focused on developmental screening and follow-up for preschool and early school-age children.',
+  'Focused on developmental assessment and follow-up for preschool and early school-age children.',
   'Community-based pediatrician; regular clinic hours for check-ups, immunisation and growth monitoring.',
   'Works with families on early developmental concerns, referrals and follow-up scheduling.',
   'Clinic practice covering well-child visits, developmental checks and parent guidance.',
   'Sees children from toddler through early school age, with a focus on developmental milestones.',
   'Routine paediatric consultations, growth tracking and developmental follow-up.',
-  'Practice centred on preventive care, developmental screening and family counselling.',
+  'Practice centred on preventive care, developmental assessment and family counselling.',
 ];
 
 // ── Deterministic randomness ────────────────────────────────────────────────
