@@ -367,6 +367,7 @@ function predictionSummary(careStageInfo) {
     consultationLevel: careStageInfo.consultationLevel,
     monitoringLevel: careStageInfo.monitoringLevel,
     probabilities: careStageInfo.probabilities,
+    mlUnavailableReason: careStageInfo.mlUnavailableReason ?? null,
   };
 }
 
@@ -864,9 +865,13 @@ router.post('/submit', authMiddleware, async (req, res) => {
     // ML model is trained in the meantime. Never blocks a valid assessment
     // result from saving: buildPredictionForStorage always resolves to a
     // complete rule-based OR ML record, never throws, never partial.
+    const coreAnswersByQuestion = Object.fromEntries(
+      storedCoreAnswers.map((a) => [String(a.questionId), String(a.answer ?? '')])
+    );
     const prediction = await assessmentProgress.buildPredictionForStorage(
       { communicationScore, socialScore, cognitiveScore, motorScore, overallScore },
-      childId
+      childId,
+      coreAnswersByQuestion
     );
 
     const result = await AssessmentResult.findOneAndUpdate(
@@ -935,12 +940,18 @@ router.get('/pedia-patients', authMiddleware, async (req, res) => {
 
     const patients = [];
     for (const appt of uniqueByChild.values()) {
-      const [child, parent, latestAssessment] = await Promise.all([
+      const [child, parent, latestAssessment, latestCompletedAssessment] = await Promise.all([
         Child.findById(appt.childId).lean(),
         User.findById(appt.parentId).lean(),
         Assessment.findOne({ childId: appt.childId }).sort({ startedAt: -1 }).lean(),
+        Assessment.findOne({ childId: appt.childId, status: 'complete' }).sort({ completedAt: -1, startedAt: -1 }).lean(),
       ]);
-      const latestResult = latestAssessment ? await AssessmentResult.findOne({ assessmentId: latestAssessment._id }).lean() : null;
+      // Scores and the stored prediction come from the latest COMPLETED
+      // assessment — the same record the parent Results page shows — so an
+      // in-progress reassessment never blanks the pediatrician's view.
+      const latestResult = latestCompletedAssessment
+        ? await AssessmentResult.findOne({ assessmentId: latestCompletedAssessment._id }).lean()
+        : null;
 
       const paymentConfirmed = appt.paymentStatus === 'Paid' || Boolean(appt.paymentOverride?.isOverridden);
 
@@ -1002,6 +1013,7 @@ router.get('/pedia-patients', authMiddleware, async (req, res) => {
         // never recomputed against whichever model is active now.
         developmentalBand: latestResult ? staging.getDevelopmentalBandFromScore(latestResult.overallScore) : null,
         prediction: latestResult ? predictionSummary(assessmentProgress.getStoredOrDerivedCareStage(latestResult)) : null,
+        resultAssessmentId: latestCompletedAssessment ? String(latestCompletedAssessment._id) : null,
       });
     }
 

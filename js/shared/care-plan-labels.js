@@ -73,9 +73,13 @@
   }
 
   // riskCategory ('Low'/'Medium'/'High') already arrives human-readable from
-  // the API — this just normalizes a missing value.
-  function riskCategoryLabel(riskCategory) {
-    return riskCategory || NOT_AVAILABLE;
+  // the API. A rule_based record has no ML classification by design, so say
+  // that rather than a generic "Not available".
+  const NO_ML_PREDICTION = 'No ML prediction';
+
+  function riskCategoryLabel(riskCategory, source) {
+    if (riskCategory) return riskCategory;
+    return source === 'rule_based' ? NO_ML_PREDICTION : NOT_AVAILABLE;
   }
 
   function careStageLabel(label) {

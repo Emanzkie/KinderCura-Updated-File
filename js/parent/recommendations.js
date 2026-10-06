@@ -234,7 +234,7 @@
 
             const bandLabel = CP.developmentalBandLabel(developmentalBand);
             const bandTone = stageBadgeSafe(CP.toneForDevelopmentalBand(developmentalBand));
-            const riskLabel = CP.riskCategoryLabel(carePlan.riskCategory);
+            const riskLabel = CP.riskCategoryLabel(carePlan.riskCategory, carePlan.source);
             const riskTone = stageBadgeSafe(CP.toneForRiskCategory(carePlan.riskCategory));
             const stageLabel = CP.careStageLabel(carePlan.careStageLabel);
             const stageTone = stageBadgeSafe(CP.toneForCareStage(carePlan.careStage));

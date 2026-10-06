@@ -176,7 +176,7 @@ const API = window.location.origin + '/api';
             <p style="font-size:0.8rem;font-weight:700;color:var(--primary);margin:0 0 .7rem;">Developmental Assessment &amp; Care Plan</p>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.9rem;">
                 ${chip('Developmental Band', `<span class="kc-badge kc-badge--${stageBadgeSafe(CP.toneForDevelopmentalBand(developmentalBand))}">${escapeHtml(CP.developmentalBandLabel(developmentalBand))}</span>`)}
-                ${chip('Risk Category', `<span class="kc-badge kc-badge--${stageBadgeSafe(CP.toneForRiskCategory(prediction.riskCategory))}">${escapeHtml(CP.riskCategoryLabel(prediction.riskCategory))}</span>`)}
+                ${chip('Risk Category', `<span class="kc-badge kc-badge--${stageBadgeSafe(CP.toneForRiskCategory(prediction.riskCategory))}">${escapeHtml(CP.riskCategoryLabel(prediction.riskCategory, prediction.source))}</span>`)}
                 ${chip('Care Stage', `<span class="kc-badge kc-badge--${stageBadgeSafe(CP.toneForCareStage(prediction.careStage))}">${escapeHtml(CP.careStageLabel(prediction.careStageLabel))}</span>`)}
                 ${chip('Consultation', `<p style="margin:0;font-size:.83rem;font-weight:600;color:var(--text-dark);">${escapeHtml(CP.consultationLevelLabel(prediction.consultationLevel))}</p>`)}
                 ${chip('Monitoring', `<p style="margin:0;font-size:.83rem;font-weight:600;color:var(--text-dark);">${escapeHtml(CP.monitoringLevelLabel(prediction.monitoringLevel))}</p>`)}
@@ -653,7 +653,7 @@ const API = window.location.origin + '/api';
             const bandStageLine = (a.overallScore != null && CP) ? `
                     <p style="font-size:0.78rem;color:var(--text-light);margin:0.35rem 0 0;">
                         Band: <strong style="color:var(--text-dark);">${escapeHtml(CP.developmentalBandLabel(a.developmentalBand))}</strong>
-                        &nbsp;·&nbsp; Risk: <strong style="color:var(--text-dark);">${escapeHtml(CP.riskCategoryLabel(a.prediction?.riskCategory))}</strong>
+                        &nbsp;·&nbsp; Risk: <strong style="color:var(--text-dark);">${escapeHtml(CP.riskCategoryLabel(a.prediction?.riskCategory, a.prediction?.source))}</strong>
                         &nbsp;·&nbsp; Care Stage: <strong style="color:var(--text-dark);">${escapeHtml(CP.careStageLabel(a.prediction?.careStageLabel))}</strong>
                     </p>` : '';
             return `

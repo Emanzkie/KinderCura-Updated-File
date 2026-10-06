@@ -375,9 +375,13 @@ async function loadDatasets() {
             const updatedAt = dataset.updatedAt || dataset.trainedAt || dataset.uploadedAt;
             const canProcess = dataset.status !== 'training' && !hasProcessedDataset(dataset);
             const actionLabel = dataset.status === 'failed' ? 'Try Again' : 'Process';
+            const canRetrain = hasProcessedDataset(dataset) && dataset.status !== 'training';
             const processButton = canProcess
                 ? `<button class="btn btn-primary dataset-action" onclick="processDataset('${escapeHtml(dataset.id)}')">${actionLabel}</button>`
                 : `<button class="btn btn-primary dataset-action" disabled>${dataset.status === 'training' ? 'Processing' : 'Processed'}</button>`;
+            const retrainButton = canRetrain
+                ? `<button class="btn btn-secondary dataset-action" onclick="retrainDataset('${escapeHtml(dataset.id)}')">Retrain</button>`
+                : '';
 
             // Synthetic warning, shown on every synthetic dataset row so it
             // travels with the data rather than living only in the summary.
@@ -415,6 +419,7 @@ async function loadDatasets() {
                     </td>
                     <td class="dataset-actions" data-label="Actions">
                         ${processButton}
+                        ${retrainButton}
                         <button class="btn btn-secondary dataset-action delete-action" onclick="deleteDataset('${escapeHtml(dataset.id)}')">Delete</button>
                     </td>
                 </tr>`;
@@ -483,6 +488,25 @@ async function processDataset(datasetId) {
         pollDatasetStatus();
     } catch (err) {
         alert('Could not process dataset: ' + err.message);
+        await loadDatasets();
+    }
+}
+
+async function retrainDataset(datasetId) {
+    const confirmed = confirm(
+        'Retrain this dataset?\n\n'
+        + 'A new model will be trained as a CANDIDATE — it will not replace the '
+        + 'currently active model. You can review its metrics and activate it '
+        + 'manually in the Trained Models section below.'
+    );
+    if (!confirmed) return;
+    try {
+        await apiFetch(`/admin/training/${datasetId}/train`, { method: 'POST' });
+        alert('Retraining started. The page will update when it finishes.');
+        await loadDatasets();
+        pollDatasetStatus();
+    } catch (err) {
+        alert('Could not retrain dataset: ' + err.message);
         await loadDatasets();
     }
 }

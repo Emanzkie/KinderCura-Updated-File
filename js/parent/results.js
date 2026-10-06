@@ -387,7 +387,7 @@ function renderCareStageColumn(heading, side) {
         <div>
             <p style="margin:0 0 .5rem;font-weight:700;color:var(--text-dark);">${escapeHtml(heading)}</p>
             <p style="margin:0 0 .3rem;font-size:.85rem;">Developmental Band: <strong>${escapeHtml(CP.developmentalBandLabel(side.developmentalBand))}</strong></p>
-            <p style="margin:0 0 .3rem;font-size:.85rem;">Developmental Risk Category: <strong>${escapeHtml(CP.riskCategoryLabel(side.riskCategory))}</strong></p>
+            <p style="margin:0 0 .3rem;font-size:.85rem;">Developmental Risk Category: <strong>${escapeHtml(CP.riskCategoryLabel(side.riskCategory, side.source))}</strong></p>
             <p style="margin:0;font-size:.85rem;">Care Stage: <strong>${escapeHtml(CP.careStageLabel(side.careStageLabel))}</strong></p>
         </div>`;
 }
@@ -586,7 +586,7 @@ function renderCarePlanCard(developmentalBand, prediction) {
 
     const bandLabel = CP.developmentalBandLabel(developmentalBand);
     const bandTone = CP.toneForDevelopmentalBand(developmentalBand);
-    const riskLabel = CP.riskCategoryLabel(prediction.riskCategory);
+    const riskLabel = CP.riskCategoryLabel(prediction.riskCategory, prediction.source);
     const riskTone = CP.toneForRiskCategory(prediction.riskCategory);
     const stageLabel = CP.careStageLabel(prediction.careStageLabel);
     const stageTone = CP.toneForCareStage(prediction.careStage);

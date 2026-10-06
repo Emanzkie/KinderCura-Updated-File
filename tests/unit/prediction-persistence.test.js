@@ -265,6 +265,56 @@ async function run() {
     assert.deepStrictEqual(careStageInfo.probabilities, { Low: 0.1, Medium: 0.1, High: 0.8 });
   }
 
+  // G. question_based active model: the assessment's own core-bank answers
+  // reach the predictor (predict.py would otherwise encode every absent
+  // Q column as "not administered" and classify a blank questionnaire).
+  {
+    const mocks = withCallCounters();
+    mocks.setFindOneResult({ version: 9, modelPath: '/fake/q.joblib', featuresUsed: ['Q01', 'Q02', 'age_months'] });
+    let seenInputs = null;
+    mocks.setPredictResult(async (_p, inputs) => {
+      seenInputs = inputs;
+      return { risk_category: 'Medium', consultation_needed: true, probabilities: { Low: 0.2, Medium: 0.6, High: 0.2 } };
+    });
+
+    const record = await assessmentProgress.buildPredictionForStorage(fakeScores(55), null, { Q01: 'Yes', Q02: 'sometimes' });
+    mocks.restore();
+
+    assert.strictEqual(seenInputs.Q01, 'yes');
+    assert.strictEqual(seenInputs.Q02, 'sometimes');
+    assert.strictEqual(record.source, 'ml');
+    assert.strictEqual(record.riskCategory, 'Medium');
+    assert.strictEqual(record.mlUnavailableReason, null);
+  }
+
+  // H. question_based active model but no answers supplied: never predicts
+  // on blank inputs — falls back, and records why.
+  {
+    const mocks = withCallCounters();
+    mocks.setFindOneResult({ version: 9, modelPath: '/fake/q.joblib', featuresUsed: ['Q01', 'Q02'] });
+    mocks.setPredictResult(async () => ({ risk_category: 'High' }));
+
+    const record = await assessmentProgress.buildPredictionForStorage(fakeScores(55), null);
+    mocks.restore();
+
+    assert.strictEqual(mocks.calls.predict, 0);
+    assert.strictEqual(record.source, 'rule_based');
+    assert.strictEqual(record.riskCategory, null);
+    assert.strictEqual(record.mlUnavailableReason, 'question_answers_unavailable');
+  }
+
+  // I. No active model: the fallback reason is persisted and read back.
+  {
+    const mocks = withCallCounters();
+    mocks.setFindOneResult(null);
+    const record = await assessmentProgress.buildPredictionForStorage(fakeScores(30), null);
+    mocks.restore();
+
+    assert.strictEqual(record.mlUnavailableReason, 'no_active_model');
+    const doc = new AssessmentResult({ assessmentId: '64b000000000000000000011', childId: '64b000000000000000000012', overallScore: 30, prediction: record });
+    assert.strictEqual(assessmentProgress.getStoredOrDerivedCareStage(doc).mlUnavailableReason, 'no_active_model');
+  }
+
   console.log('Prediction persistence tests OK');
 }
 
