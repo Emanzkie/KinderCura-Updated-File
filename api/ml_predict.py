@@ -12,6 +12,7 @@ Security:
 """
 
 import base64
+import hmac
 import io
 import json
 import os
@@ -49,12 +50,20 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        # Health check endpoint
+        # Health check. Also reports whether the caller's x-ml-secret matches
+        # this function's ML_SERVICE_SECRET (a boolean only — never the value),
+        # so the Node server can verify both sides share the same secret.
+        expected_secret = os.environ.get("ML_SERVICE_SECRET") or ""
+        provided_secret = self.headers.get("x-ml-secret")
         self._send_json(200, {
             "ok": True,
             "service": "kindercura-ml-predict",
             "status": "ready",
             "python": sys.version,
+            "secretConfigured": bool(expected_secret),
+            "authorized": None if provided_secret is None else bool(
+                expected_secret and hmac.compare_digest(provided_secret.encode("utf-8"), expected_secret.encode("utf-8"))
+            ),
         })
 
     def do_POST(self):

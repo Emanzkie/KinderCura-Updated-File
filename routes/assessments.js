@@ -899,6 +899,10 @@ router.post('/submit', authMiddleware, async (req, res) => {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
+    console.log(prediction.source === 'ml'
+      ? `[ml] Assessment ${assessmentId} saved with ML prediction: riskCategory=${prediction.riskCategory} (model v${prediction.modelVersion})`
+      : `[ml] Assessment ${assessmentId} saved with rule-based fallback: ${prediction.mlUnavailableReason}`);
+
     await Assessment.findByIdAndUpdate(assessmentId, {
       status: 'complete',
       currentProgress: 100,

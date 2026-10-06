@@ -277,6 +277,20 @@ async function existsStored(relDir, filename, { access = 'public' } = {}) {
     }
 }
 
+/** { size } of a stored file without reading it, or null when it does not exist. */
+async function statStored(relDir, filename) {
+    if (!USE_BLOB) {
+        const abs = path.join(PROJECT_ROOT, relDir, path.basename(filename));
+        return fs.existsSync(abs) ? { size: fs.statSync(abs).size } : null;
+    }
+    try {
+        const info = await store.head(blobKey(relDir, filename));
+        return info ? { size: info.size } : null;
+    } catch {
+        return null;
+    }
+}
+
 /** Read a stored file into a Buffer. Returns null when it does not exist. */
 async function readStored(relDir, filename, { access = 'public' } = {}) {
     if (!USE_BLOB) {
@@ -373,6 +387,7 @@ module.exports = {
     finalizeUploads,
     storeFile,
     existsStored,
+    statStored,
     readStored,
     serveStored,
     deleteStored,

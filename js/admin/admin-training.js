@@ -492,6 +492,35 @@ async function processDataset(datasetId) {
     }
 }
 
+// Production ML pipeline check (GET /api/ml/diagnostics?smoke=1): ML service
+// endpoints, secret match, object storage, active model artifact, datasets,
+// and one real prediction with the active model.
+async function runMlDiagnostics() {
+    const box = document.getElementById('mlDiagnostics');
+    if (!box) return;
+    box.style.display = 'block';
+    box.innerHTML = 'Checking the ML service, object storage and active model&hellip;';
+    try {
+        const d = await apiFetch('/ml/diagnostics?smoke=1');
+        const line = (ok, label, detail) => `<li style="margin:0.25rem 0;"><strong style="color:${ok ? 'var(--status-positive-fg)' : 'var(--status-attention-fg, #c0392b)'};">${ok ? 'OK' : 'FAIL'}</strong> ${escapeHtml(label)}${detail ? ` — <span style="color:var(--text-light);">${escapeHtml(detail)}</span>` : ''}</li>`;
+        const a = d.activeModel;
+        const pipelineDatasets = (d.datasets || []).filter((x) => x.rows);
+        box.innerHTML = `
+            <p style="margin:0 0 0.5rem;font-weight:700;">${d.ok ? 'ML pipeline is working.' : 'ML pipeline has problems:'}</p>
+            ${d.problems.length ? `<ul style="margin:0 0 0.8rem 1.1rem;">${d.problems.map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ul>` : ''}
+            <ul style="list-style:none;margin:0;padding:0;">
+                ${line(d.mlService.train.ok, `Training endpoint ${d.mlService.train.target || d.mlService.baseUrl || ''}`, d.mlService.train.ok ? (d.mlService.train.secretVerified ? 'JSON, secret verified' : 'JSON') : d.mlService.train.error)}
+                ${line(d.mlService.predict.ok, `Prediction endpoint ${d.mlService.predict.target || ''}`, d.mlService.predict.ok ? (d.mlService.predict.secretVerified ? 'JSON, secret verified' : 'JSON') : d.mlService.predict.error)}
+                ${line(d.objectStorage.ok, `Object storage${d.objectStorage.bucket ? ` (bucket ${d.objectStorage.bucket})` : ''}`, d.objectStorage.ok ? 'write/read/delete verified' : d.objectStorage.error)}
+                ${line(Boolean(a && a.artifact.found), a ? `Active model v${a.version} artifact ${a.artifact.key}` : 'Active model', a ? (a.artifact.found ? `${(a.artifact.sizeBytes / 1048576).toFixed(2)} MB in ${a.artifact.source}` : `not found (recorded path: ${a.recordedModelPath})`) : 'none active')}
+                ${d.smokeTest ? line(d.smokeTest.ok, 'Active model test prediction', d.smokeTest.ok ? `returned ${d.smokeTest.prediction && d.smokeTest.prediction.risk_category}` : d.smokeTest.error) : ''}
+                ${pipelineDatasets.map((x) => line(x.found, `Dataset "${x.name}" (${Number(x.rows).toLocaleString()} rows)`, x.found ? 'file available for retraining' : `file missing (${x.key})`)).join('')}
+            </ul>`;
+    } catch (err) {
+        box.innerHTML = `<p style="margin:0;">Could not run the check: ${escapeHtml(err.message)}</p>`;
+    }
+}
+
 async function retrainDataset(datasetId) {
     const confirmed = confirm(
         'Retrain this dataset?\n\n'

@@ -219,17 +219,163 @@ function isRemoteML() {
   return Boolean(process.env.VERCEL || process.env.NOW_REGION || process.env.ML_SERVICE_URL);
 }
 
+/** An ML pipeline failure with a stable `code` (persisted as the fallback reason prefix). */
+class MlError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+}
+
+// ML_SERVICE_URL must be the deployment's base URL. A value that already ends
+// in /api/py/train would otherwise become .../api/py/train/api/py/train.
+const ML_ENDPOINT_SUFFIX = /\/api\/py(\/(train|predict))?$/i;
+let warnedAboutUrlSuffix = false;
+
 /**
  * Base URL for the ML service.
  */
 function getMLServiceUrl() {
   if (process.env.ML_SERVICE_URL) {
-    return process.env.ML_SERVICE_URL.replace(/\/+$/, '');
+    let base = process.env.ML_SERVICE_URL.trim().replace(/\/+$/, '');
+    if (ML_ENDPOINT_SUFFIX.test(base)) {
+      base = base.replace(ML_ENDPOINT_SUFFIX, '');
+      if (!warnedAboutUrlSuffix) {
+        warnedAboutUrlSuffix = true;
+        console.warn(`[ml] ML_SERVICE_URL should be the base URL only; ignoring its /api/py path and using ${base}`);
+      }
+    }
+    return base;
   }
   if (process.env.VERCEL_URL) {
     return `https://${process.env.VERCEL_URL.replace(/\/+$/, '')}`;
   }
   return 'http://localhost:3000';
+}
+
+function hostOf(value) {
+  try {
+    return new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`).host.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * A configuration problem that guarantees every ML call fails, or null.
+ * On Vercel the functions share the app's deployment, so pointing at "self"
+ * is only wrong when the Node app runs elsewhere (e.g. Render).
+ */
+function mlServiceConfigProblem() {
+  const raw = (process.env.ML_SERVICE_URL || '').trim();
+  if (!raw) return null;
+  let parsed;
+  try {
+    parsed = new URL(getMLServiceUrl());
+  } catch {
+    return 'ML_SERVICE_URL is not a valid URL — it must look like https://<project>.vercel.app';
+  }
+  if (!/^https?:$/.test(parsed.protocol)) return 'ML_SERVICE_URL must start with https://';
+  if (!(process.env.VERCEL || process.env.NOW_REGION)) {
+    const selfHosts = [process.env.APP_URL, process.env.RENDER_EXTERNAL_URL, process.env.RENDER_EXTERNAL_HOSTNAME]
+      .filter(Boolean).map(hostOf).filter(Boolean);
+    if (selfHosts.includes(parsed.host.toLowerCase())) {
+      return `ML_SERVICE_URL points at this Node app (${parsed.host}), not at the Vercel deployment that runs api/ml_train.py and api/ml_predict.py`;
+    }
+  }
+  return null;
+}
+
+function pageTitle(text) {
+  const m = String(text || '').match(/<title[^>]*>([^<]{1,120})<\/title>/i);
+  return m ? m[1].trim() : '';
+}
+
+function looksLikeVercelProtection(status, text, location = '') {
+  return /vercel\.com/i.test(location) || /sso-api|_vercel_sso|Authentication Required|vercel\.com\/login/i.test(text || '')
+    || ((status === 401 || status === 403) && /vercel/i.test(text || ''));
+}
+
+const PROTECTION_HINT = ' This is Vercel Deployment Protection blocking a server-to-server request: point ML_SERVICE_URL at the '
+  + "project's public production domain, or create a Protection Bypass for Automation secret in Vercel and set it on this "
+  + 'server as VERCEL_AUTOMATION_BYPASS_SECRET.';
+
+/**
+ * One request to the Python ML service. Never follows redirects (a followed
+ * redirect to a login page is how an HTML page ended up being parsed as JSON),
+ * logs the target, status and content type (never headers or secrets), and
+ * throws MlError('ml_service_unreachable', ...) with a specific diagnosis
+ * whenever the answer is not JSON. Resolves { ok, status, data, target }.
+ */
+async function mlServiceRequest(endpoint, { method = 'GET', body = null, timeoutMs = 30000 } = {}) {
+  const problem = mlServiceConfigProblem();
+  if (problem) throw new MlError('ml_service_misconfigured', problem);
+
+  const url = `${getMLServiceUrl()}${endpoint}`;
+  let target = url;
+  try { const u = new URL(url); target = `${u.origin}${u.pathname}`; } catch { /* keep raw */ }
+
+  const headers = { Accept: 'application/json', 'x-ml-secret': getMLSecret() };
+  if (body) headers['Content-Type'] = 'application/json';
+  const bypass = (process.env.VERCEL_AUTOMATION_BYPASS_SECRET || '').trim();
+  if (bypass) headers['x-vercel-protection-bypass'] = bypass;
+
+  console.log(`[ml] ML service request: ${method} ${target}${body ? ` (body ${formatMB(Buffer.byteLength(body))})` : ''}`);
+  let res;
+  try {
+    res = await fetch(url, { method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
+  } catch (err) {
+    const reason = err.name === 'TimeoutError' ? `no response within ${Math.round(timeoutMs / 1000)}s` : (err.cause?.code || err.cause?.message || err.message);
+    console.warn(`[ml] ML service request failed: ${method} ${target}: ${reason}`);
+    throw new MlError('ml_service_unreachable', `ML service ${target} is unreachable: ${reason}`);
+  }
+
+  const contentType = res.headers.get('content-type') || '(none)';
+  console.log(`[ml] ML service response: ${method} ${target} -> HTTP ${res.status}, content-type ${contentType}`);
+
+  if (res.status >= 300 && res.status < 400) {
+    const location = res.headers.get('location') || '';
+    const where = hostOf(location) || 'another page';
+    throw new MlError('ml_service_unreachable', `ML service ${target} redirected (HTTP ${res.status}) to ${where} instead of answering.`
+      + (looksLikeVercelProtection(res.status, '', location) ? PROTECTION_HINT : ' ML_SERVICE_URL is not the Python ML deployment.'));
+  }
+
+  const text = await res.text();
+  let data = null;
+  try { data = JSON.parse(text); } catch { data = null; }
+  if (data === null || typeof data !== 'object') {
+    const html = /html/i.test(contentType) || /^\s*<(!doctype|html)/i.test(text);
+    const title = html ? pageTitle(text) : '';
+    let hint;
+    if (html && looksLikeVercelProtection(res.status, text)) hint = PROTECTION_HINT;
+    else if (res.status === 413) hint = ' The request body is larger than the ML service accepts.';
+    else if (res.status === 504 || /FUNCTION_INVOCATION_TIMEOUT/.test(text)) hint = ' The ML function timed out.';
+    else if (html) hint = ' ML_SERVICE_URL is serving a web page, not the KinderCura Python ML functions (api/ml_train.py / api/ml_predict.py).';
+    else hint = '';
+    throw new MlError('ml_service_unreachable', `ML service ${target} returned HTTP ${res.status} with content-type ${contentType} instead of JSON`
+      + (title ? ` (page title "${title}")` : '') + '.' + hint);
+  }
+  return { ok: res.ok, status: res.status, data, target };
+}
+
+/**
+ * GET health of one remote ML endpoint. Confirms it is the expected KinderCura
+ * function and that this server's ML_SERVICE_SECRET matches the function's.
+ */
+async function checkRemoteEndpoint(endpoint, expectedService) {
+  if (!getMLSecret()) return { ok: false, error: 'ML_SERVICE_SECRET is not set on this server.' };
+  try {
+    const { ok, status, data, target } = await mlServiceRequest(endpoint, { timeoutMs: 20000 });
+    if (!ok) return { ok: false, target, error: `ML service ${target} health check returned HTTP ${status}${data.error ? `: ${data.error}` : ''}` };
+    if (data.service !== expectedService) {
+      return { ok: false, target, error: `ML service ${target} answered, but not as ${expectedService} (service=${data.service || 'missing'}) — ML_SERVICE_URL is not the KinderCura ML deployment.` };
+    }
+    if (data.secretConfigured === false) return { ok: false, target, error: `ML_SERVICE_SECRET is not set on the Vercel ML service (${target}).` };
+    if (data.authorized === false) return { ok: false, target, error: `ML_SERVICE_SECRET on this server does not match the one on the Vercel ML service (${target}).` };
+    return { ok: true, target, service: data.service, python: data.python || 'remote-python', secretVerified: data.authorized === true };
+  } catch (err) {
+    return { ok: false, error: err.message, code: err.code };
+  }
 }
 
 /**
@@ -292,7 +438,7 @@ async function loadDatasetContent(datasetPathOrContent) {
   // Try reading via fileStorage (Blob or disk)
   if (typeof datasetPathOrContent === 'string') {
     const fileName = path.basename(datasetPathOrContent);
-    const stored = await fileStorage.readStored('uploads/datasets', fileName);
+    const stored = await fileStorage.readStored('public/uploads/datasets', fileName);
     if (stored) return stored.toString('utf8');
   }
   return null;
@@ -307,29 +453,9 @@ async function loadDatasetContent(datasetPathOrContent) {
  */
 async function checkPythonEnvironment() {
   if (isRemoteML()) {
-    try {
-      const url = `${getMLServiceUrl()}/api/py/train`;
-      const secret = getMLSecret();
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: { 'x-ml-secret': secret },
-        signal: AbortSignal.timeout(10000),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        return { ok: true, python: data.python || 'remote-python', mode: 'remote' };
-      }
-      return {
-        ok: false,
-        error: `Python ML service returned HTTP ${res.status}: ${res.statusText}`,
-      };
-    } catch (err) {
-      return {
-        ok: false,
-        error: `Python ML service is unreachable: ${err.message}`,
-      };
-    }
+    const health = await checkRemoteEndpoint('/api/py/train', 'kindercura-ml-train');
+    if (!health.ok) console.warn(`[ml] ML training service health check failed: ${health.error}`);
+    return health.ok ? { ...health, mode: 'remote' } : { ok: false, error: health.error, code: health.code };
   }
 
   // Local child_process.spawn verification
@@ -421,22 +547,16 @@ async function trainModel(datasetPath, datasetId, options = {}) {
       }
 
       const fileType = (typeof datasetPath === 'string' && datasetPath.toLowerCase().endsWith('.json')) ? 'json' : 'csv';
-      const secret = getMLSecret();
-      const url = `${getMLServiceUrl()}/api/py/train`;
-
-      const response = await fetch(url, {
+      const { ok, status, data } = await mlServiceRequest('/api/py/train', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-ml-secret': secret,
-        },
         body: JSON.stringify(buildRemoteTrainingPayload(datasetContent, fileType, featureSet)),
+        timeoutMs: 300000,
       });
-
-      const data = await parseServiceResponse(response, 'ML training service');
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || `ML training service returned HTTP ${response.status}`);
+      if (!ok || !data.success) {
+        throw new MlError(status === 401 ? 'ml_service_unauthorized' : 'training_failed',
+          `ML training service returned HTTP ${status}: ${data.error || 'training failed'}`);
       }
+      console.log(`[ml] Remote training succeeded: ${data.total_rows || '?'} rows, accuracy ${data.accuracy}, artifact ${formatMB(data.artifact_size_bytes || 0)}`);
       result = data;
 
       // The service trains in its own ephemeral /tmp — its model_path is
@@ -603,6 +723,7 @@ async function loadModelBuffer(modelPath) {
 
   let loaded = null;
   if (fileStorage.USE_BLOB) {
+    console.log(`[ml] Downloading model artifact from object storage: key=${key}`);
     const buffer = await fileStorage.readStored(MODEL_STORE_DIR, filename);
     loaded = buffer && buffer.length ? { buffer, source: 'object-storage', key } : fromDisk();
   } else {
@@ -617,6 +738,22 @@ async function loadModelBuffer(modelPath) {
   return loaded;
 }
 
+/**
+ * Where a recorded modelPath's artifact can be found, without downloading it
+ * (object-store HEAD, or a local stat). Resolves { key, found, source, sizeBytes }.
+ */
+async function artifactStatus(modelPath) {
+  const key = modelArtifactKey(modelPath);
+  if (!key) return { key: null, found: false, source: null, sizeBytes: null };
+  if (fileStorage.USE_BLOB) {
+    const info = await fileStorage.statStored(MODEL_STORE_DIR, modelArtifactFilename(modelPath));
+    if (info) return { key, found: true, source: 'object-storage', sizeBytes: info.size };
+  }
+  const local = resolveModelPath(modelPath);
+  if (local) return { key, found: true, source: 'local-disk', sizeBytes: fs.statSync(local).size };
+  return { key, found: false, source: null, sizeBytes: null };
+}
+
 function buildRemoteTrainingPayload(datasetContent, fileType, featureSet) {
   const payload = { file_type: fileType, feature_set: featureSet };
   const raw = Buffer.from(String(datasetContent), 'utf8');
@@ -628,15 +765,6 @@ function buildRemoteTrainingPayload(datasetContent, fileType, featureSet) {
   return payload;
 }
 
-/** JSON body of an ML service response, or a readable error (e.g. Vercel's plain-text 413). */
-async function parseServiceResponse(response, label) {
-  const text = await response.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error(`${label} returned HTTP ${response.status}: ${text.slice(0, 200) || '(empty body)'}`);
-  }
-}
 
 /**
  * B. getPrediction(modelPath, inputData)
@@ -650,38 +778,28 @@ async function getPrediction(modelPath, inputData) {
   if (isRemoteML() || (!resolvedLocalPath && fileStorage.USE_BLOB)) {
     const loaded = await loadModelBuffer(modelPath);
     if (!loaded) {
-      throw new Error(`Model artifact not found (key ${modelArtifactKey(modelPath) || '(none)'}) in ${fileStorage.USE_BLOB ? 'object storage' : 'local disk'}`);
+      throw new MlError('model_artifact_not_found', `Model artifact not found (key ${modelArtifactKey(modelPath) || '(none)'}) in ${fileStorage.USE_BLOB ? 'object storage' : 'local disk'}`);
     }
     if (loaded.buffer.length > MAX_REMOTE_ARTIFACT_BYTES) {
-      throw new Error(`Model artifact ${loaded.key} is ${formatMB(loaded.buffer.length)}, above the ${formatMB(MAX_REMOTE_ARTIFACT_BYTES)} the remote ML service accepts — retrain the model`);
+      throw new MlError('model_artifact_too_large', `Model artifact ${loaded.key} is ${formatMB(loaded.buffer.length)}, above the ${formatMB(MAX_REMOTE_ARTIFACT_BYTES)} the remote ML service accepts — retrain the model`);
     }
 
-    const artifactBase64 = loaded.buffer.toString('base64');
-    const secret = getMLSecret();
-    const url = `${getMLServiceUrl()}/api/py/predict`;
-
-    const response = await fetch(url, {
+    const { ok, status, data } = await mlServiceRequest('/api/py/predict', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-ml-secret': secret,
-      },
-      body: JSON.stringify({
-        model_artifact_base64: artifactBase64,
-        data: inputData,
-      }),
+      body: JSON.stringify({ model_artifact_base64: loaded.buffer.toString('base64'), data: inputData }),
+      timeoutMs: 60000,
     });
-
-    const result = await parseServiceResponse(response, 'Prediction service');
-    if (!response.ok || !result.success) {
-      throw new Error(result.error || `Prediction service returned HTTP ${response.status}`);
+    if (!ok || !data.success) {
+      const message = data.error || `Prediction service returned HTTP ${status}`;
+      const code = status === 401 ? 'ml_service_unauthorized' : /Could not load model/i.test(message) ? 'model_load_failed' : 'prediction_failed';
+      throw new MlError(code, message);
     }
-    return { ...result, artifact_source: loaded.source, artifact_key: loaded.key };
+    return { ...data, artifact_source: loaded.source, artifact_key: loaded.key };
   }
 
   // Local child_process.spawn execution
   if (!resolvedLocalPath) {
-    throw new Error(`Model file not found: ${modelPath}`);
+    throw new MlError('model_artifact_not_found', `Model artifact not found on local disk (key ${modelArtifactKey(modelPath) || '(none)'})`);
   }
 
   const dataArg = JSON.stringify(inputData);
@@ -706,7 +824,8 @@ async function getPrediction(modelPath, inputData) {
         if (result.success) {
           resolve({ ...result, artifact_source: 'local-disk', artifact_key: modelArtifactKey(modelPath) });
         } else {
-          reject(new Error(result.error || 'Prediction failed.'));
+          const message = result.error || 'Prediction failed.';
+          reject(new MlError(/Could not load model/i.test(message) ? 'model_load_failed' : 'prediction_failed', message));
         }
       } catch (parseErr) {
         reject(
@@ -778,6 +897,7 @@ module.exports = {
   modelArtifactExists,
   resolveModelPath,
   loadModelBuffer,
+  artifactStatus,
   persistModelArtifact,
   modelArtifactKey,
   modelArtifactFilename,
@@ -787,6 +907,10 @@ module.exports = {
   isRemoteML,
   getMLServiceUrl,
   getMLSecret,
+  mlServiceRequest,
+  mlServiceConfigProblem,
+  checkRemoteEndpoint,
+  MlError,
   MODEL_DIR,
   UNSUPPORTED_FEATURES,
 };

@@ -113,6 +113,7 @@ async function getMLCareStage(resultDoc, childId, options = {}) {
   try {
     const activeModel = await TrainedModel.findOne({ isActive: true, status: 'completed' }).lean();
     if (!activeModel) return skip('no_active_model');
+    console.log(`[ml] Active model selected: v${activeModel.version} (${activeModel.featureSetType || 'score_based'}) artifact key=${modelManager.modelArtifactKey(activeModel.modelPath) || '(none)'}`);
     if (!activeModel.modelPath) return skip('active_model_has_no_artifact');
 
     if (!modelManager.isModelCompatible(activeModel)) {
@@ -174,7 +175,7 @@ async function getMLCareStage(resultDoc, childId, options = {}) {
       modelVersion: activeModel.version,
     };
   } catch (err) {
-    return skip(`prediction_failed: ${err.message}`);
+    return skip(`${err.code || 'prediction_failed'}: ${err.message}`);
   }
 }
 

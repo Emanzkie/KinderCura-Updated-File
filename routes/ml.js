@@ -50,7 +50,7 @@ router.post('/train-model', authMiddleware, adminOnly, async (req, res) => {
       let datasetContent = null;
       if (!datasetPath) {
         const storedName = dataset.storedName || path.basename(dataset.filePath);
-        const storedBuffer = await fileStorage.readStored('uploads/datasets', storedName);
+        const storedBuffer = await fileStorage.readStored('public/uploads/datasets', storedName);
         if (storedBuffer) {
           datasetContent = storedBuffer.toString('utf8');
           datasetPath = `/uploads/datasets/${storedName}`;
@@ -515,6 +515,102 @@ async function performModelDeactivation() {
     previous: previouslyActive.map((m) => ({ version: m.version, modelPath: m.modelPath })),
   };
 }
+
+/** Write, stat, read back and delete a tiny object next to the model artifacts. */
+async function probeObjectStorage() {
+  if (!fileStorage.USE_BLOB) return { ok: false, enabled: false, error: 'Object storage is off (USE_BLOB not set or no backend configured) — model artifacts would only live on this server\'s local disk.' };
+  const name = '_diagnostics_probe.txt';
+  const body = Buffer.from(`kindercura ml diagnostics ${new Date().toISOString()}`);
+  try {
+    await fileStorage.storeFile(modelManager.MODEL_STORE_DIR, name, { buffer: Buffer.from(body), mimetype: 'text/plain' });
+    const stat = await fileStorage.statStored(modelManager.MODEL_STORE_DIR, name);
+    const read = await fileStorage.readStored(modelManager.MODEL_STORE_DIR, name);
+    await fileStorage.deleteStored(modelManager.MODEL_STORE_DIR, name);
+    const ok = Boolean(stat) && Boolean(read) && read.equals(body);
+    return { ok, enabled: true, error: ok ? null : 'Object storage accepted the write but the object could not be read back — check the R2 credentials have read access.' };
+  } catch (err) {
+    return { ok: false, enabled: true, error: `Object storage write failed: ${err.message}` };
+  }
+}
+
+/**
+ * GET /api/ml/diagnostics[?smoke=1]
+ *
+ * Verifies the production ML pipeline from THIS server's point of view:
+ * the Vercel ML endpoints answer JSON as the right service with a matching
+ * secret, object storage round-trips, the active model's artifact exists, and
+ * training datasets are retrievable. With ?smoke=1 it also runs one real
+ * prediction with the active model. Never returns secret values.
+ */
+router.get('/diagnostics', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const remote = modelManager.isRemoteML();
+    const [train, predict, storage] = await Promise.all([
+      remote ? modelManager.checkRemoteEndpoint('/api/py/train', 'kindercura-ml-train') : modelManager.checkPythonEnvironment(),
+      remote ? modelManager.checkRemoteEndpoint('/api/py/predict', 'kindercura-ml-predict') : Promise.resolve({ ok: true, local: true }),
+      probeObjectStorage(),
+    ]);
+
+    const models = await TrainedModel.find({ status: 'completed' }).sort({ version: -1 }).limit(10).lean();
+    const modelRows = await Promise.all(models.map(async (m) => {
+      const artifact = await modelManager.artifactStatus(m.modelPath);
+      return {
+        version: m.version,
+        isActive: Boolean(m.isActive),
+        featureSetType: m.featureSetType || 'score_based',
+        recordedModelPath: m.modelPath,
+        portableReference: m.modelPath === artifact.key,
+        artifact: {
+          ...artifact,
+          withinRemoteLimit: artifact.sizeBytes == null ? null : artifact.sizeBytes <= modelManager.MAX_REMOTE_ARTIFACT_BYTES,
+        },
+      };
+    }));
+    const active = models.find((m) => m.isActive) || null;
+
+    const datasets = await TrainingDataset.find({}).sort({ createdAt: -1 }).limit(10).lean();
+    const datasetRows = await Promise.all(datasets.map(async (d) => {
+      const storedName = d.storedName || path.basename(d.filePath || '');
+      const stat = storedName ? await fileStorage.statStored('public/uploads/datasets', storedName) : null;
+      return { id: String(d._id), name: d.name, rows: d.rowCount, status: d.status, key: `public/uploads/datasets/${storedName}`, found: Boolean(stat), sizeBytes: stat ? stat.size : null };
+    }));
+
+    let smokeTest = null;
+    if (req.query.smoke && active) smokeTest = await modelManager.smokeTestModel(active);
+
+    const activeRow = modelRows.find((m) => m.isActive) || null;
+    const problems = [];
+    if (!train.ok) problems.push(`ML training endpoint: ${train.error}`);
+    if (!predict.ok) problems.push(`ML prediction endpoint: ${predict.error}`);
+    if (!storage.ok) problems.push(storage.error);
+    if (!activeRow) problems.push('No active model — every assessment uses the rule-based fallback.');
+    else if (!activeRow.artifact.found) problems.push(`Active model v${activeRow.version} artifact is missing (key ${activeRow.artifact.key}) — retrain a dataset and activate the new candidate.`);
+    else if (activeRow.artifact.withinRemoteLimit === false) problems.push(`Active model v${activeRow.version} artifact is too large for the ML service — retrain and activate the new candidate.`);
+    if (smokeTest && !smokeTest.ok) problems.push(`Active model smoke test failed: ${smokeTest.error}`);
+
+    res.json({
+      success: true,
+      ok: problems.length === 0,
+      problems,
+      mlService: {
+        mode: remote ? 'remote' : 'local',
+        baseUrl: remote ? modelManager.getMLServiceUrl() : null,
+        configProblem: modelManager.mlServiceConfigProblem(),
+        protectionBypassConfigured: Boolean((process.env.VERCEL_AUTOMATION_BYPASS_SECRET || '').trim()),
+        train,
+        predict,
+      },
+      objectStorage: { ...storage, bucket: fileStorage.USE_BLOB ? (process.env.R2_BUCKET || null) : null },
+      activeModel: activeRow,
+      models: modelRows,
+      datasets: datasetRows,
+      smokeTest,
+    });
+  } catch (err) {
+    console.error('ML diagnostics error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 /**
  * POST /api/ml/models/:modelId/smoke-test

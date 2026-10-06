@@ -1588,26 +1588,36 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
       return res.status(409).json({ error: 'This dataset is already being trained.' });
     }
 
-    // Check Python environment before starting
-    const envCheck = await modelManager.checkPythonEnvironment();
-    if (!envCheck.ok) {
-      return res.status(503).json({ error: envCheck.error });
-    }
-
-    // Resolve the file on disk or in storage
-    let datasetPath = modelManager.resolveDatasetPath(dataset.filePath);
+    // Resolve the dataset first: on an ephemeral host it lives in object
+    // storage, and a missing file must be reported as such — not masked by
+    // (or masking) an ML service problem.
+    const storedName = dataset.storedName || path.basename(dataset.filePath);
+    let datasetPath = fileStorage.USE_BLOB ? null : modelManager.resolveDatasetPath(dataset.filePath);
     let datasetContent = null;
     if (!datasetPath) {
-      const storedName = dataset.storedName || path.basename(dataset.filePath);
       const storedBuffer = await fileStorage.readStored(DATASET_DIR, storedName, DATASET_ACCESS);
       if (storedBuffer) {
         datasetContent = storedBuffer.toString('utf8');
         datasetPath = `/uploads/datasets/${storedName}`;
+        console.log(`[ml] Training dataset loaded: key=${DATASET_DIR}/${storedName} (${(storedBuffer.length / 1048576).toFixed(2)} MB)`);
+      } else if (fileStorage.USE_BLOB) {
+        datasetPath = modelManager.resolveDatasetPath(dataset.filePath);
       }
     }
 
     if (!datasetPath && !datasetContent) {
-      return res.status(404).json({ error: `Dataset file not found: ${dataset.filePath}` });
+      const where = fileStorage.USE_BLOB ? 'object storage' : 'local disk';
+      console.warn(`[ml] Training dataset not found in ${where}: key=${DATASET_DIR}/${storedName}`);
+      return res.status(404).json({
+        error: `Dataset file not found in ${where} (key ${DATASET_DIR}/${storedName}). `
+          + 'A dataset generated or uploaded while object storage was off exists only on that machine — upload the CSV again or regenerate the dataset.',
+      });
+    }
+
+    // Check the Python ML service before starting
+    const envCheck = await modelManager.checkPythonEnvironment();
+    if (!envCheck.ok) {
+      return res.status(503).json({ error: envCheck.error });
     }
 
 

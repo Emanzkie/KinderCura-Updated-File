@@ -2,6 +2,12 @@
   "functions": {
     "api/index.js": {
       "includeFiles": "{SIGN-UP\\,LOGIN/**,PARENT/**,PEDIA/**,ADMIN/**,SECRETARY/**,CSS files/**,ICONS/**,js/**,assets/**,public/**,views/**,uploads/**,api.js,notifications-card-ui.js,notifications-card-ui.css,questions-database.json}"
+    },
+    "api/ml_train.py": {
+      "maxDuration": 60
+    },
+    "api/ml_predict.py": {
+      "maxDuration": 60
     }
   },
   "routes": [
