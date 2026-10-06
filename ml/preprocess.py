@@ -139,7 +139,11 @@ def load_dataset(filepath: str) -> pd.DataFrame:
     if ext == ".json":
         return pd.read_json(filepath)
     if ext == ".csv":
-        return pd.read_csv(filepath, keep_default_na=False, na_values=[""])
+        # low_memory=False: parse each column over the whole file. In chunks,
+        # a column could hold the string "2" in one chunk and the integer 2 in
+        # another, and drop_duplicates() then misses duplicates that span
+        # chunks (a 50,179-row run removed 217 of 734 exact duplicates).
+        return pd.read_csv(filepath, keep_default_na=False, na_values=[""], low_memory=False)
     raise CleaningError(f"Unsupported file extension '{ext}'. Only .csv and .json are accepted.")
 
 

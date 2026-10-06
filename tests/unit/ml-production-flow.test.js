@@ -123,7 +123,7 @@ async function startVercel(destPorts) {
 
 // ── in-memory Mongoose models ───────────────────────────────────────────────
 function installMemoryModels(mongoose, models) {
-  const same = (a, b) => (a == null && b == null) || (a != null && b != null && String(a) === String(b));
+  const same = (a, b) => (a == null && b == null) || (a != null && b != null && (a instanceof Date || b instanceof Date ? +a === +b : String(a) === String(b)));
   const get = (doc, key) => key.split('.').reduce((o, p) => (o == null ? o : o[p]), doc);
   const isOps = (c) => c && typeof c === 'object' && !(c instanceof Date) && !(c instanceof mongoose.Types.ObjectId)
     && Object.keys(c).length && Object.keys(c).every((k) => k.startsWith('$'));
@@ -259,13 +259,20 @@ async function run() {
     version: 4, status: 'completed', isActive: true, featureSetType: 'score_based', featuresUsed: scoreFeatures,
     modelPath: 'C:/Users/user/Documents/KinderCura-by-Dumzkie/KinderCura System Final/uploads/models/kindercura_model_20260903_014033_913914.joblib',
   });
-  const lines = fs.readFileSync(DATASET, 'utf8').trim().split('\n');
-  const datasetCsv = [lines[0], ...Array.from({ length: 200 }, () => lines.slice(1)).flat()].join('\n'); // > 1 MB -> gzip path
-  await fileStorage.storeFile('public/uploads/datasets', 'synthetic_clean.csv', { buffer: Buffer.from(datasetCsv), mimetype: 'text/csv' });
-  const dataset = M.TrainingDataset.__insert({
-    name: 'Synthetic Model Dataset', storedName: 'synthetic_clean.csv', filePath: '/uploads/datasets/synthetic_clean.csv',
-    rowCount: 12000, status: 'trained', modelId: v4._id, provenance: { sourceType: 'synthetic' },
+  // v4's dataset record survives, but its CSV never reached object storage.
+  const v4Dataset = M.TrainingDataset.__insert({
+    name: 'Synthetic Model Dataset — 49,311 records', storedName: '1756860000000_syn-20260903-50000_clean.csv',
+    filePath: '/uploads/datasets/1756860000000_syn-20260903-50000_clean.csv',
+    rowCount: 49311, status: 'trained', modelId: v4._id, provenance: { sourceType: 'synthetic' },
   });
+  // The CSV the admin uploads. KC_TEST_DATASET points at a real file (e.g. the
+  // generated 50,000-row dataset); the default repeats the canonical file past
+  // 1 MB so the gzip path to the trainer runs.
+  const lines = fs.readFileSync(DATASET, 'utf8').trim().split('\n');
+  const uploadCsv = process.env.KC_TEST_DATASET
+    ? fs.readFileSync(process.env.KC_TEST_DATASET)
+    : Buffer.from([lines[0], ...Array.from({ length: 200 }, () => lines.slice(1)).flat()].join('\n'));
+  const uploadRows = uploadCsv.toString('utf8').split(/\r?\n/).filter((l) => l.trim()).length - 1;
   const adminToken = tokenFor(admin._id, 'admin');
   const parentToken = tokenFor(parent._id, 'parent');
   const pediaToken = tokenFor(pedia._id, 'pediatrician');
@@ -300,7 +307,7 @@ async function run() {
     assert.strictEqual(before.body.activeModel.version, 4);
     assert.strictEqual(before.body.activeModel.artifact.found, false);
     assert.strictEqual(before.body.activeModel.portableReference, false);
-    assert.ok(before.body.datasets.find((d) => d.name === 'Synthetic Model Dataset').found, 'dataset must be reachable for retraining');
+    assert.strictEqual(before.body.datasets.find((d) => d.rows === 49311).found, false, 'the v4 dataset file is missing from object storage');
     assert.ok(before.body.problems.some((p) => /v4 artifact is missing/.test(p)));
 
     // Production symptom: a new assessment falls back, with the real reason.
@@ -310,7 +317,25 @@ async function run() {
     assert.match(fallback.prediction.mlUnavailableReason, /^model_artifact_not_found: .*key uploads\/models\/kindercura_model_20260903_014033_913914\.joblib/);
     assert.doesNotMatch(fallback.prediction.mlUnavailableReason, /opt\/render|C:\//);
 
-    // TEST B-E: Retrain the existing dataset through the admin endpoint.
+    // Retraining the v4 dataset fails, naming the missing object-storage key.
+    const lost = await call('POST', `/admin/training/${v4Dataset._id}/train`, adminToken, {});
+    assert.strictEqual(lost.status, 404);
+    assert.match(lost.body.error, /Dataset file not found in object storage \(key public\/uploads\/datasets\/1756860000000_syn-20260903-50000_clean\.csv\)/);
+
+    // TEST B-E: Admin -> Training -> Upload Dataset (the real multipart route), then Process.
+    const fd = new FormData();
+    fd.append('dataset', new Blob([uploadCsv], { type: 'text/csv' }), 'kindercura_synthetic_training_dataset_50000.csv');
+    fd.append('name', 'KinderCura Synthetic Training Dataset');
+    fd.append('targetModule', 'assessment');
+    fd.append('sourceType', 'synthetic');
+    const uploadRes = await fetch(`${base}/admin/training/upload`, { method: 'POST', headers: { Authorization: `Bearer ${adminToken}` }, body: fd });
+    const uploaded = await uploadRes.json();
+    assert.strictEqual(uploadRes.status, 201, JSON.stringify(uploaded));
+    const dataset = db.TrainingDataset.find((d) => String(d._id) === uploaded.datasetId);
+    assert.strictEqual(dataset.rowCount, uploadRows);
+    assert.strictEqual(dataset.status, 'uploaded');
+    assert.ok(r2.objects.get(`public/uploads/datasets/${dataset.storedName}`).equals(uploadCsv), 'uploaded CSV stored in R2 byte-for-byte');
+
     const retrain = await call('POST', `/admin/training/${dataset._id}/train`, adminToken, {});
     assert.strictEqual(retrain.status, 200, JSON.stringify(retrain.body));
     const v5 = await waitFor(() => db.TrainedModel.find((m) => m.version === 5 && m.status !== 'training'), 180000, 'v5 training');
@@ -322,6 +347,8 @@ async function run() {
     assert.notStrictEqual(v5.isActive, true, 'a new model is only a candidate');
     assert.strictEqual(v4.isActive, true, 'v4 stays active until a candidate is activated');
     assert.strictEqual(dataset.status, 'trained');
+    assert.strictEqual(v5.totalRows, uploadRows, 'every uploaded row reaches training');
+    assert.strictEqual(v5.rowsDropped, 0);
 
     // TEST F: candidate loads from R2 and passes the real smoke test, then activation.
     const smoke = await call('POST', `/ml/models/${v5._id}/smoke-test`, adminToken);

@@ -1529,6 +1529,14 @@ router.post('/training/upload', authMiddleware, adminOnly, (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'Dataset file is required.' });
 
     try {
+      // With object storage on, multer buffers the upload in memory and never
+      // runs datasetFilename, so req.file.filename is unset — name it the same
+      // way diskStorage would before it is stored.
+      if (!req.file.filename) {
+        req.file.filename = await new Promise((resolve, reject) => {
+          datasetFilename(req, req.file, (nameErr, name) => (nameErr ? reject(nameErr) : resolve(name)));
+        });
+      }
       const ext = path.extname(req.file.originalname).toLowerCase();
       // On blob-backed runs the bytes are still in memory; locally multer has
       // already written them. Parse first, then commit the file, so an

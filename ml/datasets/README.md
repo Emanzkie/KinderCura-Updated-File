@@ -182,3 +182,27 @@ Uses a fixed random seed (`20260819`), so re-running it reproduces the
 exact same file. Edit `n_rows`, `ANSWER_PROBS`, or `LABEL_NOISE_RATE` in the
 script (not this file) to change the dataset — never hand-edit generated
 rows without updating the generator to match.
+
+## Production training dataset (Admin → Training → Upload Dataset)
+
+```
+python ml/datasets/generate_kindercura_dataset.py --rows 50000 --seed 20261006 \
+  --max-age-months 107 --unique --app-rounding \
+  --out ml/datasets/generated/kindercura_synthetic_training_dataset_50000.csv
+```
+
+Same generator, same columns and label process as the canonical file, with
+three options that make the CSV match what the live app stores:
+
+- `--unique` — exactly `--rows` distinct observations (rows identical in every
+  column except `assessment_ref` are redrawn; ~0.7% at 50,000 rows, mostly
+  young children who answer only 8 questions).
+- `--max-age-months 107` — covers every age the app screens (3–8 years).
+- `--app-rounding` — scores rounded with `Math.round`, exactly as
+  `routes/assessments.js` POST /submit stores them (Python's `round()` rounds
+  halves to even, which moved ~19% of rows by one point).
+
+The file needs no cleaning: upload it as-is (source type **Synthetic**) and
+click **Process**; the upload path trains on the raw file. `ml/datasets/generated/`
+is git-ignored — the CSV is a dataset artifact, not source code.
+Synthetic data — for testing/training only — not clinically validated.

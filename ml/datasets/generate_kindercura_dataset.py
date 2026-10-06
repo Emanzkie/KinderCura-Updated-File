@@ -53,6 +53,7 @@ reviewed assessments exist).
 
 import argparse
 import csv
+import math
 import os
 import random
 
@@ -109,9 +110,23 @@ def sample_answer(true_class):
     return 'no'
 
 
-def generate_row(row_number, ref_width=3):
+# Default age range of the canonical file (3y0m-7y11m). The app screens
+# children aged 3 to 8 in whole years (routes/assessments.js getAgeInfo), i.e.
+# 36-107 months — pass max_age_months=107 to cover 8-year-olds too.
+DEFAULT_MAX_AGE_MONTHS = 95
+APP_MAX_AGE_MONTHS = 107
+
+
+def app_round(value):
+    """JavaScript Math.round for non-negative values — what routes/assessments.js
+    POST /submit uses. Python's round() rounds halves to even (62.5 -> 62),
+    while Math.round gives 63, so at exact halves the two disagree by 1 point."""
+    return math.floor(value + 0.5)
+
+
+def generate_row(row_number, ref_width=3, max_age_months=DEFAULT_MAX_AGE_MONTHS, app_rounding=False):
     true_class = random.choice(['Low', 'Medium', 'High'])
-    age_months = random.randint(36, 95)
+    age_months = random.randint(36, max_age_months)
 
     domain_earned = {k: 0 for k in DOMAIN_KEYS}
     domain_total = {k: 0 for k in DOMAIN_KEYS}
@@ -127,10 +142,14 @@ def generate_row(row_number, ref_width=3):
         domain_total[domain] += 2  # 2 points possible per question, per scoreAnswer()
         domain_earned[domain] += score
 
+    # app_rounding=True reproduces the stored scores exactly (Math.round). The
+    # default keeps Python's round() so existing seeds — including the committed
+    # canonical file — regenerate unchanged.
+    rnd = app_round if app_rounding else round
     domain_scores = {}
     for domain in DOMAIN_KEYS:
-        domain_scores[domain] = round(domain_earned[domain] / domain_total[domain] * 100) if domain_total[domain] else 0
-    overall_score = round(sum(domain_scores.values()) / len(DOMAIN_KEYS))
+        domain_scores[domain] = rnd(domain_earned[domain] / domain_total[domain] * 100) if domain_total[domain] else 0
+    overall_score = rnd(sum(domain_scores.values()) / len(DOMAIN_KEYS))
 
     # Label noise — see module docstring "WHY risk_category IS NOT A
     # THRESHOLD OF THE SCORES". Perturb a fraction of rows to a neighboring
@@ -227,18 +246,46 @@ def inject_defects(rows, defect_rate, seed):
     return injected
 
 
-def generate_dataset(n_rows=60, seed=20260819, defect_rate=0.0):
+def observation_key(row):
+    """What makes two rows the same observation: every column except
+    assessment_ref (identical to ml/preprocess.py's duplicate rule)."""
+    return tuple(str(row[c]) for c in fieldnames() if c != 'assessment_ref')
+
+
+def generate_dataset(n_rows=60, seed=20260819, defect_rate=0.0,
+                     max_age_months=DEFAULT_MAX_AGE_MONTHS, unique=False, stats=None,
+                     app_rounding=False):
     """Generate *n_rows* synthetic assessment rows.
 
-    Reproducible: the same (n_rows, seed, defect_rate) always yields the same
-    rows. This is the function ml/pipeline.py calls for the 50,000-record model
-    dataset; `main()` below is the thin CLI/canonical-file wrapper around it.
+    Reproducible: the same arguments always yield the same rows. This is the
+    function ml/pipeline.py calls for the 50,000-record model dataset;
+    `main()` below is the thin CLI/canonical-file wrapper around it.
+
+    unique=True keeps drawing rows from the same random stream, discarding any
+    row identical to one already kept (young children answer only 8 questions,
+    so identical rows occur naturally — about 1% at 50,000 rows), until exactly
+    *n_rows* distinct observations exist. Pass a dict as *stats* to receive the
+    number of rows drawn and discarded. app_rounding=True computes scores with
+    Math.round exactly as the app stores them (see app_round).
 
     Returns (rows, fieldnames, injected_defects).
     """
     random.seed(seed)
     ref_width = max(3, len(str(max(n_rows, 1))))
-    rows = [generate_row(i + 1, ref_width) for i in range(n_rows)]
+    if unique:
+        rows, seen, drawn = [], set(), 0
+        while len(rows) < n_rows:
+            drawn += 1
+            row = generate_row(len(rows) + 1, ref_width, max_age_months, app_rounding)
+            key = observation_key(row)
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append(row)
+        if stats is not None:
+            stats.update({'drawn': drawn, 'duplicates_discarded': drawn - n_rows})
+    else:
+        rows = [generate_row(i + 1, ref_width, max_age_months, app_rounding) for i in range(n_rows)]
     injected = inject_defects(rows, defect_rate, seed)
     return rows, fieldnames(), injected
 
@@ -256,8 +303,10 @@ def write_dataset(rows, columns, out_path):
 
 
 def main(n_rows=60, out_path='ml/datasets/kindercura_assessment_dataset.csv',
-         seed=20260819, defect_rate=0.0):
-    rows, columns, injected = generate_dataset(n_rows, seed, defect_rate)
+         seed=20260819, defect_rate=0.0, max_age_months=DEFAULT_MAX_AGE_MONTHS, unique=False,
+         app_rounding=False):
+    stats = {}
+    rows, columns, injected = generate_dataset(n_rows, seed, defect_rate, max_age_months, unique, stats, app_rounding)
     write_dataset(rows, columns, out_path)
 
     counts = {}
@@ -265,6 +314,8 @@ def main(n_rows=60, out_path='ml/datasets/kindercura_assessment_dataset.csv',
         counts[row['risk_category']] = counts.get(row['risk_category'], 0) + 1
     print(f'Wrote {len(rows)} synthetic rows to {out_path}')
     print(f'Class balance: {counts}')
+    if stats:
+        print(f"Drew {stats['drawn']} rows; discarded {stats['duplicates_discarded']} exact duplicates")
     if injected:
         print(f'Injected defects: {injected}')
     return rows, columns, injected
@@ -284,5 +335,12 @@ if __name__ == '__main__':
                         help='Fraction of rows to corrupt with realistic data-quality '
                              'defects, so the cleaning stage has something to find. '
                              'Default 0.0 keeps the canonical file clean.')
+    parser.add_argument('--max-age-months', type=int, default=DEFAULT_MAX_AGE_MONTHS,
+                        help=f'Oldest synthetic child, in months (default {DEFAULT_MAX_AGE_MONTHS}; '
+                             f'{APP_MAX_AGE_MONTHS} covers every age the app screens).')
+    parser.add_argument('--unique', action='store_true',
+                        help='Emit exactly --rows distinct observations (duplicates are redrawn).')
+    parser.add_argument('--app-rounding', action='store_true',
+                        help='Round scores with Math.round exactly as routes/assessments.js stores them.')
     cli = parser.parse_args()
-    main(cli.rows, cli.out, cli.seed, cli.defect_rate)
+    main(cli.rows, cli.out, cli.seed, cli.defect_rate, cli.max_age_months, cli.unique, cli.app_rounding)
