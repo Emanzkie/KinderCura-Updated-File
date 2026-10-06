@@ -590,7 +590,7 @@ router.post('/initialize', authMiddleware, async (req, res) => {
     }
 
     const ageInfo = getAgeInfo(child.dateOfBirth);
-    if (!ageInfo) return res.status(400).json({ error: 'Child must be between ages 3-8 for screening.' });
+    if (!ageInfo) return res.status(400).json({ error: 'Child must be between ages 3-8 for assessment.' });
 
     const assessment = await Assessment.create({
       childId: child._id,

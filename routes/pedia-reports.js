@@ -700,7 +700,7 @@ router.get('/export.csv', authMiddleware, pediatriciansOnly, async (req, res) =>
     const assessmentMap = await loadAssessments(results);
 
     const header = [
-      'child_name', 'date_of_birth', 'screened_at',
+      'child_name', 'date_of_birth', 'assessed_at',
       ...DOMAINS.flatMap((d) => [`${d.key}_score`, `${d.key}_band`]),
       'overall_score', 'overall_band',
       'scoring_bands_version', 'clinical_outcome', 'clinical_outcome_domains',
@@ -735,7 +735,7 @@ router.get('/export.csv', authMiddleware, pediatriciansOnly, async (req, res) =>
     const csv = `${lines.join('\r\n')}\r\n`;
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename="kindercura-screenings.csv"');
+    res.setHeader('Content-Disposition', 'attachment; filename="kindercura-assessments.csv"');
     res.send(csv);
   } catch (err) {
     console.error('pedia-reports export error:', err);

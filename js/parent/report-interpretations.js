@@ -278,7 +278,7 @@
       text += ` Note: ${excluded} assessment${excluded === 1 ? '' : 's'} in this child's history had incomplete or unavailable scores and ${excluded === 1 ? 'is' : 'are'} not included in this comparison.`;
     }
 
-    text += ' An assessment score is a result on its own — it does not by itself explain what may be causing a change.';
+    text += ' An assessment score is an assessment result on its own — it does not by itself explain what may be causing a change.';
     return text;
   }
 

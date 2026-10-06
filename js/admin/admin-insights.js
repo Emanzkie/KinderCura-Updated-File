@@ -608,7 +608,7 @@ function renderScreenings(data) {
     // The scored charts can only describe assessments that have a linked result.
     const scoredBlock = withResult === 0
         ? emptyBlock('No scored assessments in this selection',
-            'No assessments in this range have results available yet.')
+            'No assessments in this range have assessment results available yet.')
         : `
             <div class="chart-row">
                 <div>
@@ -645,7 +645,7 @@ function renderScreenings(data) {
                 <div class="insight-tile">
                     <p class="tile-label">With Results</p>
                     <p class="tile-value">${withResult}</p>
-                    <p class="tile-sub">Assessments with results.</p>
+                    <p class="tile-sub">Assessments with assessment results.</p>
                 </div>
                 <div class="insight-tile">
                     <p class="tile-label">Without Results</p>
@@ -845,7 +845,7 @@ function crossTabTable(matrix, bandRows, colKeys, colLabelFn, rowHeading) {
 function methodsNote() {
     return `
         <p class="card-sub" style="margin-top:1rem;font-size:0.82rem;">
-            Assessment results are intended to support evaluation and should be reviewed by a qualified pediatrician.
+            Assessment results are intended to support care planning and should be reviewed by a qualified pediatrician.
         </p>`;
 }
 
@@ -1007,7 +1007,7 @@ async function loadAll() {
     const results = await Promise.all([
         loadSection('users', 'usersSection', renderUsers, 'user demographics'),
         loadSection('children', 'childrenSection', renderChildren, 'child demographics'),
-        loadSection('screenings', 'screeningsSection', renderScreenings, 'screening reports'),
+        loadSection('screenings', 'screeningsSection', renderScreenings, 'assessment reports'),
         loadSection('concordance', 'concordanceSection', renderConcordance, 'concordance'),
     ]);
 
