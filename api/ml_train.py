@@ -12,6 +12,7 @@ Security:
 """
 
 import base64
+import gzip
 import json
 import os
 import sys
@@ -90,6 +91,16 @@ class handler(BaseHTTPRequestHandler):
             return
 
         dataset_content = payload.get("dataset_content")
+        gzipped_content = payload.get("dataset_content_gzip_base64")
+        if not dataset_content and gzipped_content:
+            try:
+                dataset_content = gzip.decompress(base64.b64decode(gzipped_content)).decode("utf-8")
+            except Exception as exc:
+                self._send_json(400, {
+                    "success": False,
+                    "error": f"Invalid 'dataset_content_gzip_base64': {exc}",
+                })
+                return
         if not dataset_content:
             self._send_json(400, {
                 "success": False,

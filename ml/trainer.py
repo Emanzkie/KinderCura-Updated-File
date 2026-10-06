@@ -92,6 +92,14 @@ VALID_LABELS = {"Low", "Medium", "High"}
 # prediction/recommendation field — those are not columns this trainer
 # reads from at all; only REQUIRED_SCORE_COLUMNS / QUESTION_COLUMNS /
 # OPTIONAL_COLUMNS / TARGET_COLUMN are ever touched.
+
+# Bounds every tree so the saved artifact stays ~2 MB regardless of dataset
+# size. Unbounded trees on ~49k rows produced a ~196 MB artifact — far above
+# the 4.5 MB body limit of the Vercel ML service that receives the artifact
+# for every prediction — and overfit (lower test accuracy on the same data).
+MAX_LEAF_NODES = 256
+ARTIFACT_COMPRESSION = 3
+
 FEATURE_SET_SCORE = "score_based"
 FEATURE_SET_QUESTION = "question_based"
 VALID_FEATURE_SETS = {FEATURE_SET_SCORE, FEATURE_SET_QUESTION}
@@ -410,6 +418,7 @@ def train_dataframe(df: pd.DataFrame, output_dir: str, feature_set: str = FEATUR
     clf = RandomForestClassifier(
         n_estimators=100,
         max_depth=None,
+        max_leaf_nodes=MAX_LEAF_NODES,
         min_samples_split=2,
         random_state=42,
         class_weight="balanced",  # handle imbalanced risk categories
@@ -452,7 +461,7 @@ def train_dataframe(df: pd.DataFrame, output_dir: str, feature_set: str = FEATUR
         "feature_set_type": feature_set,
         "featureSetType": feature_set,
     }
-    joblib.dump(artifact, model_path)
+    joblib.dump(artifact, model_path, compress=ARTIFACT_COMPRESSION)
 
     # Build per-class report for the admin UI
     report = classification_report(y_test, y_pred, target_names=class_names, output_dict=True, zero_division=0)

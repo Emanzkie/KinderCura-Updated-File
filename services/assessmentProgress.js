@@ -38,8 +38,6 @@
 // developmentalBand is NEVER persisted — see models/AssessmentResult.js for
 // why (it's fully derivable from the already-stored overallScore).
 
-const path = require('path');
-
 const Assessment = require('../models/Assessment');
 const Child = require('../models/Child');
 const TrainedModel = require('../models/TrainedModel');
@@ -122,10 +120,6 @@ async function getMLCareStage(resultDoc, childId, options = {}) {
       return skip('active_model_incompatible', false);
     }
 
-    let modelPath = activeModel.modelPath;
-    if (!path.isAbsolute(modelPath)) modelPath = path.join(__dirname, '..', modelPath);
-    modelPath = path.normalize(modelPath);
-
     const inputs = {
       communication_score: resultDoc.communicationScore || 0,
       social_score: resultDoc.socialScore || 0,
@@ -155,7 +149,10 @@ async function getMLCareStage(resultDoc, childId, options = {}) {
       }
     }
 
-    const prediction = await modelManager.predict(modelPath, inputs);
+    // modelPath is resolved to its object-store key inside ml/model_manager.js
+    // (R2 first when object storage is on) — never joined onto this server's
+    // filesystem, which turned a Windows path into /opt/render/.../C:/Users/...
+    const prediction = await modelManager.predict(activeModel.modelPath, inputs);
 
     // B -> C: ML risk category -> care stage. The ONLY translation used here.
     const careStage = staging.getCareStageFromRiskCategory(prediction.risk_category);
@@ -163,6 +160,7 @@ async function getMLCareStage(resultDoc, childId, options = {}) {
       return skip(`unrecognized_risk_category:${prediction.risk_category}`);
     }
     const definition = staging.getCareStageDefinition(careStage);
+    console.log(`[ml] Prediction succeeded: model v${activeModel.version} riskCategory=${prediction.risk_category} artifact=${prediction.artifact_source || 'unknown'}:${prediction.artifact_key || activeModel.modelPath}`);
 
     return {
       source: 'ml',

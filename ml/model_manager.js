@@ -19,6 +19,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const zlib = require('zlib');
 
 const TrainedModel = require('../models/TrainedModel');
 const fileStorage = require('../services/fileStorage');
@@ -30,6 +31,36 @@ const PREDICT_SCRIPT = path.join(__dirname, 'predict.py');
 
 // Feature names the current pipeline no longer supports.
 const UNSUPPORTED_FEATURES = ['gender_encoded'];
+
+// Object-store folder for model artifacts. A TrainedModel.modelPath is always
+// resolved to `${MODEL_STORE_DIR}/<filename>` — the R2 object key — no matter
+// what form it was recorded in (relative key, POSIX path, or a Windows path
+// like C:/Users/.../uploads/models/x.joblib from a model trained on a
+// developer machine).
+const MODEL_STORE_DIR = 'uploads/models';
+
+// Vercel Functions reject request/response bodies over 4.5 MB. Artifacts travel
+// base64-encoded (x4/3) inside JSON, so the raw artifact must stay well below it.
+const MAX_REMOTE_ARTIFACT_BYTES = Math.floor((4.5 * 1024 * 1024 - 64 * 1024) * 3 / 4);
+
+// Datasets above this size are gzip-compressed before being sent to the remote
+// trainer, keeping large datasets (e.g. 49k rows) under the same body limit.
+const DATASET_GZIP_THRESHOLD_BYTES = 1024 * 1024;
+
+/** Artifact filename from any recorded modelPath (handles / and \ separators). */
+function modelArtifactFilename(modelPath) {
+  return String(modelPath || '').split(/[\\/]/).filter(Boolean).pop() || '';
+}
+
+/** Stable object-store key for a recorded modelPath, e.g. 'uploads/models/x.joblib'. */
+function modelArtifactKey(modelPath) {
+  const filename = modelArtifactFilename(modelPath);
+  return filename ? `${MODEL_STORE_DIR}/${filename}` : '';
+}
+
+function formatMB(bytes) {
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
 
 /**
  * True when a TrainedModel document's feature set is still supported by the
@@ -98,10 +129,8 @@ function buildSmokeTestProbe(model) {
 /** True when the model's .joblib artifact can actually be read back. */
 async function modelArtifactExists(modelPath) {
   if (!modelPath) return false;
-  if (resolveModelPath(modelPath)) return true;
-  // Blob-backed deployments keep no local copy; readStored is the real check.
-  const buffer = await loadModelBuffer(modelPath);
-  return Boolean(buffer && buffer.length);
+  const loaded = await loadModelBuffer(modelPath);
+  return Boolean(loaded && loaded.buffer && loaded.buffer.length);
 }
 
 /**
@@ -401,31 +430,23 @@ async function trainModel(datasetPath, datasetId, options = {}) {
           'Content-Type': 'application/json',
           'x-ml-secret': secret,
         },
-        body: JSON.stringify({
-          dataset_content: datasetContent,
-          file_type: fileType,
-          feature_set: featureSet,
-        }),
+        body: JSON.stringify(buildRemoteTrainingPayload(datasetContent, fileType, featureSet)),
       });
 
-      const data = await response.json();
+      const data = await parseServiceResponse(response, 'ML training service');
       if (!response.ok || !data.success) {
         throw new Error(data.error || `ML training service returned HTTP ${response.status}`);
       }
       result = data;
 
-      // Persist model artifact via fileStorage
-      if (result.model_artifact_base64) {
-        const artifactBuffer = Buffer.from(result.model_artifact_base64, 'base64');
-        const filename = result.model_filename || `kindercura_model_${Date.now()}.joblib`;
-
-        await fileStorage.storeFile('uploads/models', filename, {
-          buffer: artifactBuffer,
-          mimetype: 'application/octet-stream',
-        });
-
-        result.model_path = `uploads/models/${filename}`;
+      // The service trains in its own ephemeral /tmp — its model_path is
+      // meaningless here. Without the artifact bytes there is nothing to keep.
+      if (!result.model_artifact_base64) {
+        throw new Error('ML training service returned no model artifact.');
       }
+      const artifactBuffer = Buffer.from(result.model_artifact_base64, 'base64');
+      const filename = modelArtifactFilename(result.model_filename) || `kindercura_model_${Date.now()}.joblib`;
+      result.model_path = await persistModelArtifact(filename, artifactBuffer);
     } else {
       // ── Local Python Subprocess Execution ────────────────────────────────
       result = await new Promise((resolve, reject) => {
@@ -464,6 +485,13 @@ async function trainModel(datasetPath, datasetId, options = {}) {
           reject(new Error(`Failed to start training process: ${err.message}`));
         });
       });
+
+      // trainer.py reports the absolute path on THIS machine (e.g. a Windows
+      // C:/Users/... path). Never record that: store the artifact under its
+      // portable key (uploaded to R2 when object storage is on).
+      const localArtifact = result.model_path;
+      const filename = modelArtifactFilename(result.model_filename || localArtifact);
+      result.model_path = await persistModelArtifact(filename, fs.readFileSync(localArtifact), { localCopy: localArtifact });
     }
 
     // ── Success: update candidate TrainedModel document ────────────────────
@@ -520,29 +548,94 @@ async function trainModel(datasetPath, datasetId, options = {}) {
  */
 function resolveModelPath(modelPath) {
   if (!modelPath) return null;
-  const fileName = path.basename(modelPath);
+  const fileName = modelArtifactFilename(modelPath);
+  if (!fileName) return null;
   const candidates = [
+    path.join(MODEL_DIR, fileName),
     modelPath,
-    path.join(__dirname, '..', 'uploads', 'models', fileName),
-    path.join(__dirname, '..', modelPath),
-    path.resolve(modelPath),
   ];
   for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
+    if (fs.existsSync(c) && fs.statSync(c).isFile()) return c;
   }
   return null;
 }
 
 /**
- * Load model file as a Buffer from disk or fileStorage.
+ * Upload (object storage on) or place (local disk) a trained artifact under
+ * its portable key and return that key — the only form ever recorded as
+ * TrainedModel.modelPath. Throws when the object store cannot confirm the
+ * upload, so a model is never saved pointing at an artifact that isn't there.
+ */
+async function persistModelArtifact(filename, buffer, { localCopy = null } = {}) {
+  const key = modelArtifactKey(filename);
+  if (!key || !buffer || !buffer.length) throw new Error('Cannot store an empty model artifact.');
+
+  if (fileStorage.USE_BLOB) {
+    await fileStorage.storeFile(MODEL_STORE_DIR, filename, { buffer, mimetype: 'application/octet-stream' });
+    const stored = await fileStorage.existsStored(MODEL_STORE_DIR, filename);
+    if (!stored) throw new Error(`Model artifact upload could not be verified in object storage (key ${key}).`);
+    console.log(`[ml] Model artifact stored in object storage: key=${key} size=${formatMB(buffer.length)}`);
+  } else {
+    const target = path.join(ensureModelDir(), filename);
+    if (!localCopy || path.resolve(localCopy) !== path.resolve(target)) fs.writeFileSync(target, buffer);
+    console.log(`[ml] Model artifact stored on local disk (object storage off): key=${key} size=${formatMB(buffer.length)}`);
+  }
+  if (buffer.length > MAX_REMOTE_ARTIFACT_BYTES) {
+    console.warn(`[ml] Model artifact ${key} is ${formatMB(buffer.length)} — larger than the remote ML service can accept (${formatMB(MAX_REMOTE_ARTIFACT_BYTES)}).`);
+  }
+  return key;
+}
+
+/**
+ * Load a model artifact. With object storage on, the object store (R2) is the
+ * source of truth and is read first; local disk is the fallback (and the only
+ * source when object storage is off). Resolves { buffer, source, key } or null.
  */
 async function loadModelBuffer(modelPath) {
-  const resolved = resolveModelPath(modelPath);
-  if (resolved && fs.existsSync(resolved)) {
-    return fs.readFileSync(resolved);
+  const key = modelArtifactKey(modelPath);
+  const filename = modelArtifactFilename(modelPath);
+  if (!key) return null;
+
+  const fromDisk = () => {
+    const resolved = resolveModelPath(modelPath);
+    return resolved ? { buffer: fs.readFileSync(resolved), source: 'local-disk', key, localPath: resolved } : null;
+  };
+
+  let loaded = null;
+  if (fileStorage.USE_BLOB) {
+    const buffer = await fileStorage.readStored(MODEL_STORE_DIR, filename);
+    loaded = buffer && buffer.length ? { buffer, source: 'object-storage', key } : fromDisk();
+  } else {
+    loaded = fromDisk();
   }
-  const fileName = path.basename(modelPath);
-  return fileStorage.readStored('uploads/models', fileName);
+
+  if (loaded) {
+    console.log(`[ml] Model artifact loaded: source=${loaded.source} key=${key} size=${formatMB(loaded.buffer.length)}`);
+  } else {
+    console.warn(`[ml] Model artifact not found: key=${key} (looked in ${fileStorage.USE_BLOB ? 'object storage, then local disk' : 'local disk'}; recorded modelPath=${modelPath})`);
+  }
+  return loaded;
+}
+
+function buildRemoteTrainingPayload(datasetContent, fileType, featureSet) {
+  const payload = { file_type: fileType, feature_set: featureSet };
+  const raw = Buffer.from(String(datasetContent), 'utf8');
+  if (raw.length > DATASET_GZIP_THRESHOLD_BYTES) {
+    payload.dataset_content_gzip_base64 = zlib.gzipSync(raw).toString('base64');
+  } else {
+    payload.dataset_content = datasetContent;
+  }
+  return payload;
+}
+
+/** JSON body of an ML service response, or a readable error (e.g. Vercel's plain-text 413). */
+async function parseServiceResponse(response, label) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`${label} returned HTTP ${response.status}: ${text.slice(0, 200) || '(empty body)'}`);
+  }
 }
 
 /**
@@ -553,14 +646,17 @@ async function loadModelBuffer(modelPath) {
  */
 async function getPrediction(modelPath, inputData) {
   const resolvedLocalPath = resolveModelPath(modelPath);
-  const modelBuffer = await loadModelBuffer(modelPath);
 
   if (isRemoteML() || (!resolvedLocalPath && fileStorage.USE_BLOB)) {
-    if (!modelBuffer) {
-      throw new Error(`Model file not found: ${modelPath}`);
+    const loaded = await loadModelBuffer(modelPath);
+    if (!loaded) {
+      throw new Error(`Model artifact not found (key ${modelArtifactKey(modelPath) || '(none)'}) in ${fileStorage.USE_BLOB ? 'object storage' : 'local disk'}`);
+    }
+    if (loaded.buffer.length > MAX_REMOTE_ARTIFACT_BYTES) {
+      throw new Error(`Model artifact ${loaded.key} is ${formatMB(loaded.buffer.length)}, above the ${formatMB(MAX_REMOTE_ARTIFACT_BYTES)} the remote ML service accepts — retrain the model`);
     }
 
-    const artifactBase64 = modelBuffer.toString('base64');
+    const artifactBase64 = loaded.buffer.toString('base64');
     const secret = getMLSecret();
     const url = `${getMLServiceUrl()}/api/py/predict`;
 
@@ -576,11 +672,11 @@ async function getPrediction(modelPath, inputData) {
       }),
     });
 
-    const result = await response.json();
+    const result = await parseServiceResponse(response, 'Prediction service');
     if (!response.ok || !result.success) {
       throw new Error(result.error || `Prediction service returned HTTP ${response.status}`);
     }
-    return result;
+    return { ...result, artifact_source: loaded.source, artifact_key: loaded.key };
   }
 
   // Local child_process.spawn execution
@@ -608,7 +704,7 @@ async function getPrediction(modelPath, inputData) {
       try {
         const result = JSON.parse(stdout.trim());
         if (result.success) {
-          resolve(result);
+          resolve({ ...result, artifact_source: 'local-disk', artifact_key: modelArtifactKey(modelPath) });
         } else {
           reject(new Error(result.error || 'Prediction failed.'));
         }
@@ -681,6 +777,13 @@ module.exports = {
   buildSmokeTestProbe,
   modelArtifactExists,
   resolveModelPath,
+  loadModelBuffer,
+  persistModelArtifact,
+  modelArtifactKey,
+  modelArtifactFilename,
+  buildRemoteTrainingPayload,
+  MAX_REMOTE_ARTIFACT_BYTES,
+  MODEL_STORE_DIR,
   isRemoteML,
   getMLServiceUrl,
   getMLSecret,

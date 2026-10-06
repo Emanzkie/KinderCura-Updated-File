@@ -252,13 +252,9 @@ router.post('/predict', authMiddleware, async (req, res) => {
       });
     }
 
-    // Resolve model path (it may be stored as a relative unix-style path)
-    let modelPath = activeModel.modelPath;
-    if (!path.isAbsolute(modelPath)) {
-      modelPath = path.join(__dirname, '..', modelPath);
-    }
-    // Normalise forward slashes to the OS separator
-    modelPath = path.normalize(modelPath);
+    // ml/model_manager.js resolves the recorded modelPath to its object-store
+    // key (R2 first when object storage is on), whatever form it was saved in.
+    const modelPath = activeModel.modelPath;
 
     const scores = {
       communication_score: req.body.communication_score,
