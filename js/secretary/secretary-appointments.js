@@ -115,7 +115,7 @@
                         ${walkInBtn}
                         <button class="btn-approve"    onclick="updateStatus(${a.id},'approved')">&#10003; Approve</button>
                         <button class="btn-reschedule" onclick="openReschedule(${a.id})"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reschedule</button>
-                        <button class="btn-reject"     onclick="updateStatus(${a.id},'rejected')">&#215; Reject</button>`;
+                        <button class="btn-reject"     onclick="updateStatus(${a.id},'rejected')"><img src="/icons/reject_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reject</button>`;
                 } else if (a.status === 'approved') {
                     actions = `
                         <button class="btn-reschedule" onclick="openReschedule(${a.id})"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reschedule</button>

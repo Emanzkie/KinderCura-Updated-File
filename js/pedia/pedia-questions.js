@@ -1203,7 +1203,7 @@
 
                 ${answeredAssignments.length > 0 ? `
                     <div style="border-top:1px solid var(--border);padding-top:1.5rem;margin-top:1.5rem;">
-                        <h3 style="margin:0 0 1rem;font-size:.95rem;font-weight:600;color:var(--status-positive-fg);">📋 Parent's Answers</h3>
+                        <h3 style="margin:0 0 1rem;font-size:.95rem;font-weight:600;color:var(--status-positive-fg);"><img src="/icons/parent_answer_tracker.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Parent's Answers</h3>
                         <div style="display:flex;flex-direction:column;gap:.8rem;">
                             ${answeredAssignments.map(a => `
                                 <div style="background:var(--status-positive-bg);border:1px solid #86efac;border-radius:8px;padding:1rem;">

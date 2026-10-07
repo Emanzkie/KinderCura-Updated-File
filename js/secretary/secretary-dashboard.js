@@ -124,7 +124,7 @@
                     <div class="req-actions">
                         <span class="pill pill-pending">Pending</span>
                         <button class="btn-approve" onclick="updateStatus(${a.id}, 'approved')">&#10003; Approve</button>
-                        <button class="btn-reject"  onclick="updateStatus(${a.id}, 'rejected')">&#215; Reject</button>
+                        <button class="btn-reject"  onclick="updateStatus(${a.id}, 'rejected')"><img src="/icons/reject_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reject</button>
                         <!-- Link to full Appointments page for more detail -->
                         <a href="/secretary/secretary-approval.html">View queue</a>
                     </div>
