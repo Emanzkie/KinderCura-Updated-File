@@ -102,25 +102,30 @@ function scoreAnswer(answer) {
 //
 // `insight` keeps the exact clinician wording /review-answers already returned.
 // `parentInsight` is the same three states in parent-facing words; the states
-// and their boundaries are identical, only the vocabulary differs.
+// and their boundaries are identical, only the vocabulary differs. The parent
+// vocabulary follows the pediatrician's reading of each answer:
+//   Yes       → "Can"            — shown consistently / at the expected level
+//   Sometimes → "Still learning" — shown to some degree, not yet consistent;
+//                                  this is NOT the same as "cannot"
+//   No        → "Cannot"         — the behavior was not demonstrated
 // ---------------------------------------------------------------------------
 function interpretAnswer(answer) {
   const score = scoreAnswer(answer);
   if (score === 2) {
-    return { score, insight: 'On Track', parentInsight: 'On Track', insightLevel: 'positive' };
+    return { score, insight: 'On Track', parentInsight: 'Can do this', insightLevel: 'positive' };
   }
   if (score === 1) {
     return {
       score,
       insight: 'Developing — may need monitoring',
-      parentInsight: 'Developing',
+      parentInsight: 'Still learning',
       insightLevel: 'warning',
     };
   }
   return {
     score,
     insight: 'Concern — not yet demonstrated',
-    parentInsight: 'Needs Support',
+    parentInsight: 'Cannot do this',
     insightLevel: 'concern',
   };
 }
@@ -141,6 +146,9 @@ const PARENT_ANSWER_FALLBACK = 'Assessment item not recorded';
 // into a short bullet — a mechanical transform of the saved wording, never a
 // generated statement. Anything that does not match the pattern (e.g. a
 // pediatrician's custom question) is shown verbatim instead of being guessed at.
+//
+// Yes → "Can …", Sometimes → "Still learning to …", No → "Cannot …"
+// (see interpretAnswer() above for what each state means).
 function describeItem(questionText, kind) {
   const raw = String(questionText || '').trim().replace(/\s+/g, ' ');
   if (!raw) return PARENT_ANSWER_FALLBACK;
@@ -150,33 +158,43 @@ function describeItem(questionText, kind) {
 
   const phrase = match[1].charAt(0).toLowerCase() + match[1].slice(1);
   if (kind === 'strength') return `Can ${phrase}`;
-  if (kind === 'developing') return `Beginning to ${phrase}`;
-  return `Still learning to ${phrase}`;
+  if (kind === 'developing') return `Still learning to ${phrase}`;
+  return `Cannot ${phrase}`;
 }
 
 // Neutral screening language only — these sentences describe what was answered,
 // they never diagnose. Counts come from the stored answers; the percentage is
 // NOT recomputed here (the stored result stays authoritative).
-function buildDomainExplanation({ totalItems, achievedItems, developingItems }) {
-  const items = totalItems === 1 ? 'assessment item' : 'assessment items';
-  const skills = totalItems === 1 ? 'skill' : 'skills';
-
+function buildDomainExplanation({ totalItems, achievedItems, developingItems, concernItems }) {
   if (totalItems === 0) return 'No assessment items were recorded for this area.';
   if (achievedItems === totalItems) {
     return totalItems === 1
-      ? 'Your child consistently demonstrated the single assessment item in this area.'
-      : `Your child consistently demonstrated all ${totalItems} ${items} in this area.`;
+      ? 'Your child can consistently do the single assessment item in this area.'
+      : `Your child can consistently do all ${totalItems} assessment items in this area.`;
   }
-  if (achievedItems > 0) {
-    const rest = developingItems > 0
-      ? ', and is beginning to show some of the remaining items.'
-      : ', with the remaining items still needing practice.';
-    return `Your child consistently demonstrated ${achievedItems} of ${totalItems} ${items} in this area${rest}`;
-  }
+
+  // Older callers may not pass concernItems; everything that is neither
+  // achieved nor developing is a "No".
+  const cannot = Number.isFinite(concernItems)
+    ? concernItems
+    : Math.max(totalItems - achievedItems - developingItems, 0);
+
+  const parts = [];
+  if (achievedItems > 0) parts.push(`can consistently do ${achievedItems}`);
+  if (developingItems > 0) parts.push(`is still learning ${developingItems}`);
+  if (cannot > 0) parts.push(`cannot yet do ${cannot}`);
+
+  const list = parts.length > 1
+    ? `${parts.slice(0, -1).join(', ')}${parts.length > 2 ? ',' : ''} and ${parts[parts.length - 1]}`
+    : parts[0];
+  const items = totalItems === 1 ? 'assessment item' : 'assessment items';
+  let sentence = `Of the ${totalItems} ${items} in this area, your child ${list}.`;
+
+  // "Sometimes" must not read like "No": the skill is already showing.
   if (developingItems > 0) {
-    return `Your child is beginning to show some of the ${totalItems} ${skills} assessed in this area, but none were demonstrated consistently yet.`;
+    sentence += ' "Still learning" means your child is already showing the skill, but not yet consistently.';
   }
-  return `Your child has not yet consistently demonstrated the ${totalItems} ${skills} assessed in this area.`;
+  return sentence;
 }
 
 // Builds the per-domain evidence behind each stored percentage.
@@ -251,7 +269,7 @@ function buildDomainDetails(answers, result) {
       achievedItems,
       developingItems,
       concernItems,
-      explanation: buildDomainExplanation({ totalItems, achievedItems, developingItems }),
+      explanation: buildDomainExplanation({ totalItems, achievedItems, developingItems, concernItems }),
       strengths,
       developing,
       needsSupport,
@@ -1791,4 +1809,7 @@ module.exports = router;
 // Exposed for tests only (see tests/unit/reviewed-assessment-export.test.js).
 // Attaching to the router function is inert for Express — app.use() only
 // ever calls it as a request handler, so this does not affect routing.
-router.__testables = { ML_LABEL_VALUES, getMlLabelValidationError, reviewAssessmentMlLabel };
+router.__testables = {
+  ML_LABEL_VALUES, getMlLabelValidationError, reviewAssessmentMlLabel,
+  scoreAnswer, interpretAnswer, describeItem, buildDomainExplanation, buildDomainDetails,
+};

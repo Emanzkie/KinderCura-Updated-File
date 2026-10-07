@@ -201,7 +201,7 @@ function renderDomainCardInner(vm, index, view) {
             <p>${escapeHtml(details.explanation || '')}</p>
         </section>
         ${renderDomainBullets('Strengths', details.strengths, 'strength')}
-        ${renderDomainBullets('Developing', details.developing, 'developing')}
+        ${renderDomainBullets('Still Learning', details.developing, 'developing')}
         ${renderDomainBullets('Needs Support', details.needsSupport, 'support')}
         ${renderDomainDetailsPanel(panelId, details.items)}`
         : `<p class="domain-fallback">Detailed assessment information is not available for this ${hasPrevious ? (view === 'previous' ? 'previous ' : 'present ') : ''}result.</p>`;
