@@ -354,7 +354,7 @@ const API = window.location.origin + '/api';
                     </button>
                     <button class="btn btn-secondary" onclick="openDiagnosis('${p.childId}','${childNameEsc}','${diagEsc}','${recEsc}','${nextDateEsc}','${nextReasonEsc}','${overallScore}','${p.assessmentId||''}')"
                         style="flex:1;min-width:130px;padding:0.7rem;">
-                        ${hasDiag ? '<img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">️ Edit Diagnosis' : '<img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Provide Diagnosis'}
+                        ${hasDiag ? '<img src="/icons/edit_pedia.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">️ Edit Diagnosis' : '<img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Provide Diagnosis'}
                     </button>
                     <button class="btn btn-secondary" onclick="openProgressModal('${p.childId}','${childNameEsc}')"
                         style="flex:1;min-width:130px;padding:0.7rem;border-color:var(--primary-dark);color:var(--primary-dark);">

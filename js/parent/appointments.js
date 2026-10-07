@@ -330,7 +330,7 @@ function renderSelectedPediatrician() {
                 <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(ped.clinicName || ped.institution || 'Clinic not set')}</p>
                 <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/address.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(ped.clinicAddress || 'Clinic address not available')}</p>
                 ${ped.phoneNumber ? `<p class="mini" style="margin:0 0 .2rem;"><img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(ped.phoneNumber)}</p>` : ''}
-                ${ped.consultationFee != null ? `<p class="mini" style="margin:0;">💳 Consultation Fee: ₱${Number(ped.consultationFee).toLocaleString()}</p>` : ''}
+                ${ped.consultationFee != null ? `<p class="mini" style="margin:0;"><img src="/icons/consultation_fee.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Consultation Fee: ₱${Number(ped.consultationFee).toLocaleString()}</p>` : ''}
             </div>
             <div>
                 ${ped.isSuggested ? '<span class="pill green">Suggested Match</span>' : '<span class="pill gold">Available</span>'}

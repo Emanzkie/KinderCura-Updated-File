@@ -360,7 +360,7 @@ requireAuth();
                                 style="padding:0.45rem 1rem;border-radius:8px;border:none;cursor:pointer;font-size:0.82rem;font-weight:600;
                                 background:${s.status === 'active' ? '#F0EFE8' : '#EDF3EE'};
                                 color:${s.status === 'active' ? '#5A7560' : '#5A7560'};">        
-                                ${s.status === 'active' ? '⏸ Deactivate' : '▶ Reactivate'}
+                                ${s.status === 'active' ? '<img src="/icons/deactivate_pedia.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Deactivate' : '▶ Reactivate'}
                             </button>
                         </div>
 

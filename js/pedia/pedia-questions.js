@@ -522,10 +522,10 @@
                     </div>
 
                     <div class="q-actions">
-                        <button class="btn-outline" onclick="openEditModal(${q.id})" style="font-size:.78rem;padding:.3rem .7rem;"><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">️ Edit</button>
+                        <button class="btn-outline" onclick="openEditModal(${q.id})" style="font-size:.78rem;padding:.3rem .7rem;"><img src="/icons/edit_pedia.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">️ Edit</button>
                         <button class="btn-outline" onclick="openAssignModal(${q.id})" style="font-size:.78rem;padding:.3rem .7rem;"><img src="/icons/profile_icon.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Assign</button>
                         <button class="btn-outline" onclick="toggleActive(${q.id}, ${!q.isActive})" style="font-size:.78rem;padding:.3rem .7rem;">${q.isActive ? 'Deactivate' : 'Activate'}</button>
-                        <button class="btn-danger" onclick="deleteQuestion(${q.id})"><img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Delete</button>
+                        <button class="btn-danger" onclick="deleteQuestion(${q.id})"><img src="/icons/delete_pedia.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Delete</button>
                     </div>
                 </div>
             `;

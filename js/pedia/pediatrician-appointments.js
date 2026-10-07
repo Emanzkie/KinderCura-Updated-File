@@ -289,7 +289,7 @@ function renderUpcoming(apts) {
 
 function renderCompleted(apts) {
     const el = document.getElementById('completed-pane');
-    if (!apts.length) { el.innerHTML = emptyState('No completed appointments','✅'); return; }
+    if (!apts.length) { el.innerHTML = emptyState('No completed appointments','<img src="/icons/finished_closed_appointments.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">'); return; }
     el.innerHTML = apts.map(a => {
         const info = getDisplayInfo(a);
         return `<div class="appt-card" id="appt-card-${a.id}">
