@@ -197,7 +197,7 @@
                                     <p class="mini" style="margin:0 0 .2rem;">${escapeHtml(p.specialization || 'Pediatrician')}</p>
                                     <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/pediatrician.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(p.clinicName || p.institution || 'Clinic not set')}</p>
                                     <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/address.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(p.clinicAddress || 'Clinic address not available')}</p>
-                                    ${p.phoneNumber ? `<p class="mini" style="margin:0 0 .2rem;">📞 ${escapeHtml(p.phoneNumber)}</p>` : ''}
+                                    ${p.phoneNumber ? `<p class="mini" style="margin:0 0 .2rem;"><img src="/icons/mobile_number.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(p.phoneNumber)}</p>` : ''}
                                     ${p.consultationFee != null ? `<p class="mini" style="margin:0 0 .2rem;"><img src="/icons/consultation_fee.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Consultation Fee: ₱${Number(p.consultationFee).toLocaleString()}</p>` : ''}
                                     <p class="mini" style="margin:0;">Why suggested: ${escapeHtml(p.suggestedReason || 'Good clinic match')}</p>
                                 </div>
@@ -210,7 +210,7 @@
                             </div>
                             <div class="clinic-grid" style="margin-top:.9rem;">
                                 <div class="mini"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Available Days: ${Array.isArray(p.availability?.days) && p.availability.days.length ? escapeHtml(p.availability.days.join(', ')) : 'Not set'}</div>
-                                <div class="mini">⏰ Hours: ${fmtTime(p.availability?.startTime)} - ${fmtTime(p.availability?.endTime)}</div>
+                                <div class="mini"><img src="/icons/pedia_hours.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Hours: ${fmtTime(p.availability?.startTime)} - ${fmtTime(p.availability?.endTime)}</div>
                             </div>
                         </div>`).join('')}
                 </div>`;

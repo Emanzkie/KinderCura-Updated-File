@@ -476,7 +476,7 @@
                     </div>
 
                     <div class="q-actions">
-                        <button class="btn-outline" onclick="openAssignSetModal('${set.setId}')" style="font-size:.78rem;padding:.3rem .7rem;"><img src="/icons/profile_icon.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Assign Set</button>
+                        <button class="btn-outline" onclick="openAssignSetModal('${set.setId}')" style="font-size:.78rem;padding:.3rem .7rem;"><img src="/icons/parent_assign.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Assign Set</button>
                         <button class="btn-outline" onclick="viewSetDetails('${set.setId}')" style="font-size:.78rem;padding:.3rem .7rem;">View Details</button>
                     </div>
                 </div>
@@ -523,7 +523,7 @@
 
                     <div class="q-actions">
                         <button class="btn-outline" onclick="openEditModal(${q.id})" style="font-size:.78rem;padding:.3rem .7rem;"><img src="/icons/edit_pedia.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">️ Edit</button>
-                        <button class="btn-outline" onclick="openAssignModal(${q.id})" style="font-size:.78rem;padding:.3rem .7rem;"><img src="/icons/profile_icon.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Assign</button>
+                        <button class="btn-outline" onclick="openAssignModal(${q.id})" style="font-size:.78rem;padding:.3rem .7rem;"><img src="/icons/parent_assign.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Assign</button>
                         <button class="btn-outline" onclick="toggleActive(${q.id}, ${!q.isActive})" style="font-size:.78rem;padding:.3rem .7rem;">${q.isActive ? 'Deactivate' : 'Activate'}</button>
                         <button class="btn-danger" onclick="deleteQuestion(${q.id})"><img src="/icons/delete_pedia.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Delete</button>
                     </div>
@@ -570,7 +570,7 @@
                         <p class="tcard-parent"><span class="tcard-parent-label">Parent:</span>${esc(sample.parentName || 'Parent')}</p>
                     </div>
                     <span class="tracker-badge tcard-status ${answeredView ? 'badge-answered' : 'tcard-status--pending badge-pending'}">
-                        ${answeredView ? '✓ Answered' : '⏳ Pending'}
+                        ${answeredView ? '✓ Answered' : '<img src="/icons/pending_request.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Pending'}
                     </span>
                 </div>
             `;
@@ -636,7 +636,7 @@
                             ` : answeredView ? `
                                 <p class="tcard-q-note">No answer provided</p>
                             ` : `
-                                <p class="tcard-q-note tcard-q-note--pending">⏳ Waiting for parent answer</p>
+                                <p class="tcard-q-note tcard-q-note--pending"><img src="/icons/pending_request.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Waiting for parent answer</p>
                             `}
                         </div>
                     `).join('')}
@@ -729,7 +729,7 @@
                                 <p class="tcard-answer-value">${esc(item.answer || 'No answer text')}</p>
                             </div>
                         ` : `
-                            <p class="tcard-q-note tcard-q-note--pending">⏳ Waiting for the parent to submit an answer.</p>
+                            <p class="tcard-q-note tcard-q-note--pending"><img src="/icons/pending_request.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Waiting for the parent to submit an answer.</p>
                         `}
                     </div>
                 </div>

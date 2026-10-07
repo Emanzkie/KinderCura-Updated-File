@@ -329,7 +329,7 @@ function renderSelectedPediatrician() {
                 <p class="mini" style="margin:0 0 .2rem;">${escapeHtml(ped.specialization || 'Pediatrician')}</p>
                 <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(ped.clinicName || ped.institution || 'Clinic not set')}</p>
                 <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/address.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(ped.clinicAddress || 'Clinic address not available')}</p>
-                ${ped.phoneNumber ? `<p class="mini" style="margin:0 0 .2rem;"><img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(ped.phoneNumber)}</p>` : ''}
+                ${ped.phoneNumber ? `<p class="mini" style="margin:0 0 .2rem;"><img src="/icons/mobile_number.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(ped.phoneNumber)}</p>` : ''}
                 ${ped.consultationFee != null ? `<p class="mini" style="margin:0;"><img src="/icons/consultation_fee.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Consultation Fee: ₱${Number(ped.consultationFee).toLocaleString()}</p>` : ''}
             </div>
             <div>
@@ -338,9 +338,9 @@ function renderSelectedPediatrician() {
         </div>
         <div class="clinic-grid" style="margin-top:.8rem;">
             <div class="mini"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Available Days: ${escapeHtml(availability.days)}</div>
-            <div class="mini">⏰ Hours: ${escapeHtml(availability.hours)}</div>
+            <div class="mini"><img src="/icons/pedia_hours.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Hours: ${escapeHtml(availability.hours)}</div>
         </div>
-        ${availability.max != null ? `<div class="mini" style="margin-top:.45rem;">👥 Maximum Patients Per Day: ${availability.max}</div>` : ''}
+        ${availability.max != null ? `<div class="mini" style="margin-top:.45rem;"><img src="/icons/maximum_patients.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Maximum Patients Per Day: ${availability.max}</div>` : ''}
         ${hasConfiguredAvailability(ped) ? '' : '<div class="mini" style="margin-top:.55rem;color:var(--status-attention-fg);font-weight:600;">Availability has not been configured yet.</div>'}`;
 
     applyTimeFieldConstraints();
@@ -907,7 +907,7 @@ function renderActive(list) {
                 <span class="badge ${a.status}">${a.status.charAt(0).toUpperCase() + a.status.slice(1)}</span>
                 ${a.isRescheduled && a.reschedule ? `<span class="badge rescheduled" style="background:var(--surface-muted,#eef2ee);color:var(--primary-dark);">Rescheduled</span>` : ''}
             </div>
-            ${a.status === 'pending' ? '<p style="font-size:0.82rem;color:var(--status-caution-fg);margin:0;">⏳ Your request is being reviewed by the clinic staff.</p>' : ''}
+            ${a.status === 'pending' ? '<p style="font-size:0.82rem;color:var(--status-caution-fg);margin:0;"><img src="/icons/pending_request.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Your request is being reviewed by the clinic staff.</p>' : ''}
             ${a.status === 'approved' ? `<p style="font-size:0.82rem;color:var(--status-positive-fg);margin:0;"><img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Confirmed by clinic staff on behalf of Dr. ${escapeHtml(a.pediatricianName || 'Pediatrician')}</p>` : ''}
             ${renderPaymentSummary(a)}
             <div style="margin-top:.7rem;display:flex;gap:.5rem;flex-wrap:wrap;">
