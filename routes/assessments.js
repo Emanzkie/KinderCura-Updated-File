@@ -100,10 +100,10 @@ function scoreAnswer(answer) {
 // in the codebase, for the same reason there must not be two sets of band
 // cutoffs (see constants/scoring.js).
 //
-// `insight` keeps the exact clinician wording /review-answers already returned.
-// `parentInsight` is the same three states in parent-facing words; the states
-// and their boundaries are identical, only the vocabulary differs. The parent
-// vocabulary follows the pediatrician's reading of each answer:
+// `insight` (pediatrician /review-answers modal) and `parentInsight` (parent
+// Results page) use the SAME wording, so both views read an answer the same
+// way. Both fields are kept so existing callers keep working. The wording
+// follows the pediatrician's reading of each answer:
 //   Yes       → "Can"            — shown consistently / at the expected level
 //   Sometimes → "Still learning" — shown to some degree, not yet consistent;
 //                                  this is NOT the same as "cannot"
@@ -112,19 +112,19 @@ function scoreAnswer(answer) {
 function interpretAnswer(answer) {
   const score = scoreAnswer(answer);
   if (score === 2) {
-    return { score, insight: 'On Track', parentInsight: 'Can do this', insightLevel: 'positive' };
+    return { score, insight: 'Can do this', parentInsight: 'Can do this', insightLevel: 'positive' };
   }
   if (score === 1) {
     return {
       score,
-      insight: 'Developing — may need monitoring',
+      insight: 'Still learning',
       parentInsight: 'Still learning',
       insightLevel: 'warning',
     };
   }
   return {
     score,
-    insight: 'Concern — not yet demonstrated',
+    insight: 'Cannot do this',
     parentInsight: 'Cannot do this',
     insightLevel: 'concern',
   };
