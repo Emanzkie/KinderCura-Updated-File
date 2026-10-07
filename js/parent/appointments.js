@@ -328,7 +328,7 @@ function renderSelectedPediatrician() {
                 <p style="font-weight:700;color:var(--text-dark);margin:0 0 .25rem;">Dr. ${escapeHtml(ped.firstName)} ${escapeHtml(ped.lastName)}</p>
                 <p class="mini" style="margin:0 0 .2rem;">${escapeHtml(ped.specialization || 'Pediatrician')}</p>
                 <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(ped.clinicName || ped.institution || 'Clinic not set')}</p>
-                <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(ped.clinicAddress || 'Clinic address not available')}</p>
+                <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/address.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(ped.clinicAddress || 'Clinic address not available')}</p>
                 ${ped.phoneNumber ? `<p class="mini" style="margin:0 0 .2rem;"><img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(ped.phoneNumber)}</p>` : ''}
                 ${ped.consultationFee != null ? `<p class="mini" style="margin:0;">💳 Consultation Fee: ₱${Number(ped.consultationFee).toLocaleString()}</p>` : ''}
             </div>
@@ -407,7 +407,7 @@ function renderRecommendedPediatricians() {
                         <p style="font-weight:700;margin:0 0 .2rem;color:var(--text-dark);">Dr. ${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</p>
                         <p class="mini" style="margin:0 0 .2rem;">${escapeHtml(p.specialization || 'Pediatrician')}</p>
                         <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(p.clinicName || p.institution || 'Clinic not set')}</p>
-                        <p class="mini" style="margin:0;"><img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(p.clinicAddress || 'Clinic address not available')}</p>
+                        <p class="mini" style="margin:0;"><img src="/icons/address.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(p.clinicAddress || 'Clinic address not available')}</p>
                     </div>
                     <button class="btn btn-secondary" onclick="choosePediatrician('${p.id}')">Choose This</button>
                 </div>`).join('')}
@@ -898,17 +898,17 @@ function renderActive(list) {
                 <div>
                     <p style="font-weight:700;color:var(--text-dark);margin:0 0 0.25rem;">${a.pediatricianName ? 'Dr. ' + escapeHtml(a.pediatricianName) : 'Pediatrician TBD'}</p>
                     <p class="mini" style="margin:0;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.clinicName || 'Clinic not set')}</p>
-                    <p class="mini" style="margin:.15rem 0 0;"><img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.clinicAddress || 'Clinic address not available')}</p>
+                    <p class="mini" style="margin:.15rem 0 0;"><img src="/icons/address.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.clinicAddress || 'Clinic address not available')}</p>
                     <p class="mini" style="margin:.15rem 0 0;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${fmtDate(a.appointmentDate)} at ${fmtTime(a.appointmentTime)}</p>
                     ${a.isRescheduled && a.reschedule ? `<p class="mini" style="margin:.15rem 0 0;color:var(--text-light);">Rescheduled from ${fmtDate(a.reschedule.originalDate)} at ${fmtTime(a.reschedule.originalTime)}${a.reschedule.reason ? ` — ${escapeHtml(a.reschedule.reason)}` : ''}</p>` : ''}
                     <p class="mini" style="margin:.15rem 0 0;"><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.reason || 'General checkup')}</p>
-                    ${a.childName ? `<p class="mini" style="margin:.15rem 0 0;"><img src="/icons/parent.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.childName)}</p>` : ''}
+                    ${a.childName ? `<p class="mini" style="margin:.15rem 0 0;"><img src="/icons/child.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.childName)}</p>` : ''}
                 </div>
                 <span class="badge ${a.status}">${a.status.charAt(0).toUpperCase() + a.status.slice(1)}</span>
                 ${a.isRescheduled && a.reschedule ? `<span class="badge rescheduled" style="background:var(--surface-muted,#eef2ee);color:var(--primary-dark);">Rescheduled</span>` : ''}
             </div>
             ${a.status === 'pending' ? '<p style="font-size:0.82rem;color:var(--status-caution-fg);margin:0;">⏳ Your request is being reviewed by the clinic staff.</p>' : ''}
-            ${a.status === 'approved' ? `<p style="font-size:0.82rem;color:var(--status-positive-fg);margin:0;">✅ Confirmed by clinic staff on behalf of Dr. ${escapeHtml(a.pediatricianName || 'Pediatrician')}</p>` : ''}
+            ${a.status === 'approved' ? `<p style="font-size:0.82rem;color:var(--status-positive-fg);margin:0;"><img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Confirmed by clinic staff on behalf of Dr. ${escapeHtml(a.pediatricianName || 'Pediatrician')}</p>` : ''}
             ${renderPaymentSummary(a)}
             <div style="margin-top:.7rem;display:flex;gap:.5rem;flex-wrap:wrap;">
                 ${['pending', 'approved'].includes(a.status) ? `<button type="button" onclick="openReschedule(${a.id})" style="background:var(--surface-muted,#eef2ee);color:var(--text-dark);border:1px solid var(--border,#d8e0d8);padding:.45rem 1.1rem;border-radius:20px;font-size:.8rem;cursor:pointer;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reschedule</button>` : ''}
@@ -929,9 +929,9 @@ function renderPast(list) {
                 <div>
                     <p style="font-weight:700;color:var(--text-dark);margin:0 0 0.25rem;">${a.pediatricianName ? 'Dr. ' + escapeHtml(a.pediatricianName) : 'Pediatrician'}</p>
                     <p class="mini" style="margin:0;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.clinicName || 'Clinic not set')}</p>
-                    <p class="mini" style="margin:.15rem 0 0;"><img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.clinicAddress || 'Clinic address not available')}</p>
+                    <p class="mini" style="margin:.15rem 0 0;"><img src="/icons/address.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.clinicAddress || 'Clinic address not available')}</p>
                     <p class="mini" style="margin:.15rem 0 0;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${fmtDate(a.appointmentDate)} at ${fmtTime(a.appointmentTime)}</p>
-                    ${a.childName ? `<p class="mini" style="margin:.15rem 0 0;"><img src="/icons/parent.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.childName)}</p>` : ''}
+                    ${a.childName ? `<p class="mini" style="margin:.15rem 0 0;"><img src="/icons/child.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.childName)}</p>` : ''}
                     ${a.reason ? `<p class="mini" style="margin:.15rem 0 0;"><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.reason)}</p>` : ''}
                 </div>
                 <span class="badge ${a.status}">${a.status.charAt(0).toUpperCase() + a.status.slice(1)}</span>

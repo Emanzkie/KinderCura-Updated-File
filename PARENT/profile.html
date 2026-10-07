@@ -68,10 +68,10 @@
                 <h2 class="profile-section-title">Your Profile</h2>
                 <div class="profile-photo-upload">
                     <img id="parentProfilePic" src="/icons/profile.png">
-                    <label for="parentPhotoUpload" class="profile-photo-edit" title="Change photo">📷</label>
+                    <label for="parentPhotoUpload" class="profile-photo-edit" title="Change photo"><img src="/icons/change_photo.png" alt="Change photo" style="width:16px;height:16px;object-fit:contain;border:0;border-radius:0;display:block;"></label>
                     <input type="file" id="parentPhotoUpload" accept="image/*" style="display:none;" onchange="uploadProfilePhoto(this,'parent')">
                 </div>
-                <p class="profile-photo-hint">Click 📷 to change photo</p>
+                <p class="profile-photo-hint">Click <img src="/icons/change_photo.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> to change photo</p>
                 <div id="parentFields"></div>
                 <button class="btn btn-primary btn-full" onclick="toggleEditParent()" id="editParentBtn">Edit Profile</button>
                 <button class="btn btn-secondary btn-full" onclick="toggleChangePassword()">Change Password</button>

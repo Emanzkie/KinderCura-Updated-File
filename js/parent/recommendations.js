@@ -196,7 +196,7 @@
                                     <h3 style="margin:0 0 .3rem;">Dr. ${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</h3>
                                     <p class="mini" style="margin:0 0 .2rem;">${escapeHtml(p.specialization || 'Pediatrician')}</p>
                                     <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/pediatrician.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(p.clinicName || p.institution || 'Clinic not set')}</p>
-                                    <p class="mini" style="margin:0 0 .2rem;">📍 ${escapeHtml(p.clinicAddress || 'Clinic address not available')}</p>
+                                    <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/address.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(p.clinicAddress || 'Clinic address not available')}</p>
                                     ${p.phoneNumber ? `<p class="mini" style="margin:0 0 .2rem;">📞 ${escapeHtml(p.phoneNumber)}</p>` : ''}
                                     ${p.consultationFee != null ? `<p class="mini" style="margin:0 0 .2rem;">💳 Consultation Fee: ₱${Number(p.consultationFee).toLocaleString()}</p>` : ''}
                                     <p class="mini" style="margin:0;">Why suggested: ${escapeHtml(p.suggestedReason || 'Good clinic match')}</p>

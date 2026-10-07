@@ -276,12 +276,12 @@ function renderUpcoming(apts) {
             ${paymentSection(a)}
             ${a.notes ? `<p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem;"><img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${a.notes}</p>` : ''}
             <div class="action-row">
-                ${isPending  ? `<button class="btn btn-primary btn-sm" onclick="updateStatus('${a.id}','approved','${info.child}')">✅ Approve</button>` : ''}
+                ${isPending  ? `<button class="btn btn-primary btn-sm" onclick="updateStatus('${a.id}','approved','${info.child}')"><img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Approve</button>` : ''}
                 ${isPending  ? `<button class="btn btn-secondary btn-sm" style="color:var(--danger,#e74c3c);border-color:var(--danger,#e74c3c);" onclick="openStatusModal('${a.id}','rejected','${info.child}')">❌ Reject</button>` : ''}
-                ${isApproved ? `<button class="btn btn-primary btn-sm" onclick="openStatusModal('${a.id}','completed','${info.child}')">✅ Mark Completed</button>` : ''}
+                ${isApproved ? `<button class="btn btn-primary btn-sm" onclick="openStatusModal('${a.id}','completed','${info.child}')"><img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Mark Completed</button>` : ''}
                 ${isApproved ? `<button class="btn btn-secondary btn-sm" onclick="window.location.href='/pedia/pedia-chat.html?appointmentId=${a.id}'"> Chat</button>` : ''}
                 <button class="btn btn-secondary btn-sm" onclick="openReschedule('${a.id}','${encodeURIComponent(info.child)}','${encodeURIComponent(info.parent)}')"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reschedule</button>
-                <button class="btn btn-secondary btn-sm" onclick="cancelConfirm('${a.id}','${encodeURIComponent(info.child)}')">🚫 Cancel</button>
+                <button class="btn btn-secondary btn-sm" onclick="cancelConfirm('${a.id}','${encodeURIComponent(info.child)}')"><img src="/icons/cancelled_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Cancel</button>
             </div>
         </div>`;
     }).join('');
