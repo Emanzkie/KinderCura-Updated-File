@@ -8,6 +8,8 @@ const trainingDatasetSchema = new mongoose.Schema(
     originalName: { type: String, required: true, trim: true },
     storedName: { type: String, required: true, trim: true },
     filePath: { type: String, required: true, trim: true },
+    // Exact object-storage key of the file (e.g. public/uploads/datasets/<storedName>).
+    storageKey: { type: String, default: null, trim: true },
     fileType: { type: String, required: true, trim: true },
     fileSize: { type: Number, required: true },
     rowCount: { type: Number, default: 0 },

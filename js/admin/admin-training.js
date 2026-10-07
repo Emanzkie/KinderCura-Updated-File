@@ -377,10 +377,10 @@ async function loadDatasets() {
             const actionLabel = dataset.status === 'failed' ? 'Try Again' : 'Process';
             const canRetrain = hasProcessedDataset(dataset) && dataset.status !== 'training';
             const processButton = canProcess
-                ? `<button class="btn btn-primary dataset-action" onclick="processDataset('${escapeHtml(dataset.id)}')">${actionLabel}</button>`
-                : `<button class="btn btn-primary dataset-action" disabled>${dataset.status === 'training' ? 'Processing' : 'Processed'}</button>`;
+                ? `<button class="btn btn-primary dataset-action" onclick="processDataset('${escapeHtml(dataset.id)}', this)">${actionLabel}</button>`
+                : `<button class="btn btn-primary dataset-action" disabled>${dataset.status === 'training' ? 'Training…' : 'Processed'}</button>`;
             const retrainButton = canRetrain
-                ? `<button class="btn btn-secondary dataset-action" onclick="retrainDataset('${escapeHtml(dataset.id)}')">Retrain</button>`
+                ? `<button class="btn btn-secondary dataset-action" onclick="retrainDataset('${escapeHtml(dataset.id)}', this)">Retrain</button>`
                 : '';
 
             // Synthetic warning, shown on every synthetic dataset row so it
@@ -420,7 +420,7 @@ async function loadDatasets() {
                     <td class="dataset-actions" data-label="Actions">
                         ${processButton}
                         ${retrainButton}
-                        <button class="btn btn-secondary dataset-action delete-action" onclick="deleteDataset('${escapeHtml(dataset.id)}')">Delete</button>
+                        <button class="btn btn-secondary dataset-action delete-action" onclick="deleteDataset('${escapeHtml(dataset.id)}', this)"${dataset.status === 'training' ? ' disabled title="Wait for training to finish"' : ''}>Delete</button>
                     </td>
                 </tr>`;
         }).join('');
@@ -479,49 +479,77 @@ async function uploadDataset() {
     }
 }
 
-async function processDataset(datasetId) {
-    if (!confirm('Process this dataset now?')) return;
+// Runs one button action at a time: the button is disabled and relabelled
+// while the request is in flight, so a double click cannot send it twice.
+async function withBusy(button, busyLabel, action) {
+    if (button && button.dataset.busy === '1') return undefined;
+    const original = button ? button.textContent : '';
+    if (button) { button.dataset.busy = '1'; button.disabled = true; button.textContent = busyLabel; }
     try {
-        await apiFetch(`/admin/training/${datasetId}/train`, { method: 'POST' });
-        alert('Dataset processing started. The page will update when it finishes.');
-        await loadDatasets();
-        pollDatasetStatus();
-    } catch (err) {
-        alert('Could not process dataset: ' + err.message);
-        await loadDatasets();
+        return await action();
+    } finally {
+        if (button && button.isConnected) { button.dataset.busy = ''; button.disabled = false; button.textContent = original; }
     }
+}
+
+function trainingStartedMessage(res, verb) {
+    const v = res && res.validation;
+    const rows = v ? ` on ${Number(v.rows).toLocaleString()} rows (${Object.entries(v.labelCounts || {}).map(([k, n]) => `${k} ${Number(n).toLocaleString()}`).join(', ')})` : '';
+    return `${verb} started${rows}. Model v${res.version} is training on the ML service; it will appear in Trained Models as a candidate when it finishes.`;
+}
+
+async function processDataset(datasetId, button) {
+    if (!confirm('Process this dataset now?\n\nIt will be validated, sent to the ML training service, and the trained model saved as a CANDIDATE (the active model is not changed).')) return;
+    await withBusy(button, 'Starting training…', async () => {
+        try {
+            const res = await apiFetch(`/admin/training/${datasetId}/train`, { method: 'POST' });
+            alert(trainingStartedMessage(res, 'Training'));
+            await loadDatasets();
+            pollDatasetStatus(datasetId);
+        } catch (err) {
+            alert('Could not process dataset: ' + err.message);
+            await loadDatasets();
+        }
+    });
 }
 
 // Production ML pipeline check (GET /api/ml/diagnostics?smoke=1): ML service
 // endpoints, secret match, object storage, active model artifact, datasets,
 // and one real prediction with the active model.
-async function runMlDiagnostics() {
+async function runMlDiagnostics(button) {
     const box = document.getElementById('mlDiagnostics');
     if (!box) return;
-    box.style.display = 'block';
-    box.innerHTML = 'Checking the ML service, object storage and active model&hellip;';
-    try {
-        const d = await apiFetch('/ml/diagnostics?smoke=1');
-        const line = (ok, label, detail) => `<li style="margin:0.25rem 0;"><strong style="color:${ok ? 'var(--status-positive-fg)' : 'var(--status-attention-fg, #c0392b)'};">${ok ? 'OK' : 'FAIL'}</strong> ${escapeHtml(label)}${detail ? ` — <span style="color:var(--text-light);">${escapeHtml(detail)}</span>` : ''}</li>`;
-        const a = d.activeModel;
-        const pipelineDatasets = (d.datasets || []).filter((x) => x.rows);
-        box.innerHTML = `
-            <p style="margin:0 0 0.5rem;font-weight:700;">${d.ok ? 'ML pipeline is working.' : 'ML pipeline has problems:'}</p>
-            ${d.problems.length ? `<ul style="margin:0 0 0.8rem 1.1rem;">${d.problems.map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ul>` : ''}
-            <ul style="list-style:none;margin:0;padding:0;">
-                ${line(d.mlService.train.ok, `Training endpoint ${d.mlService.train.target || d.mlService.baseUrl || ''}`, d.mlService.train.ok ? (d.mlService.train.secretVerified ? 'JSON, secret verified' : 'JSON') : d.mlService.train.error)}
-                ${line(d.mlService.predict.ok, `Prediction endpoint ${d.mlService.predict.target || ''}`, d.mlService.predict.ok ? (d.mlService.predict.secretVerified ? 'JSON, secret verified' : 'JSON') : d.mlService.predict.error)}
-                ${line(d.objectStorage.ok, `Object storage${d.objectStorage.bucket ? ` (bucket ${d.objectStorage.bucket})` : ''}`, d.objectStorage.ok ? 'write/read/delete verified' : d.objectStorage.error)}
-                ${line(Boolean(a && a.artifact.found), a ? `Active model v${a.version} artifact ${a.artifact.key}` : 'Active model', a ? (a.artifact.found ? `${(a.artifact.sizeBytes / 1048576).toFixed(2)} MB in ${a.artifact.source}` : `not found (recorded path: ${a.recordedModelPath})`) : 'none active')}
-                ${d.smokeTest ? line(d.smokeTest.ok, 'Active model test prediction', d.smokeTest.ok ? `returned ${d.smokeTest.prediction && d.smokeTest.prediction.risk_category}` : d.smokeTest.error) : ''}
-                ${pipelineDatasets.map((x) => line(x.found, `Dataset "${x.name}" (${Number(x.rows).toLocaleString()} rows)`, x.found ? 'file available for retraining' : `file missing (${x.key})`)).join('')}
-            </ul>`;
-    } catch (err) {
-        box.innerHTML = `<p style="margin:0;">Could not run the check: ${escapeHtml(err.message)}</p>`;
-    }
+    await withBusy(button, 'Checking…', async () => {
+        box.style.display = 'block';
+        box.innerHTML = 'Checking the ML service, Cloudflare R2, datasets and the active model&hellip;';
+        try {
+            const d = await apiFetch('/ml/diagnostics?smoke=1');
+            const s = d.sections || {};
+            const row = (label, section, warnOnly) => {
+                if (!section) return '';
+                const status = section.ok ? 'OK' : (warnOnly ? 'ATTENTION' : 'FAIL');
+                const color = section.ok ? 'var(--status-positive-fg)' : 'var(--status-attention-fg, #c0392b)';
+                return `<li style="margin:0.3rem 0;"><strong style="color:${color};">${status}</strong> <strong>${escapeHtml(label)}</strong> — <span style="color:var(--text-light);">${escapeHtml(section.detail || '')}</span></li>`;
+            };
+            const r = d.readiness || {};
+            const yesNo = (v) => (v ? '<strong style="color:var(--status-positive-fg);">yes</strong>' : '<strong style="color:var(--status-attention-fg, #c0392b);">no</strong>');
+            box.innerHTML = `
+                <p style="margin:0 0 0.4rem;font-weight:700;">${d.ok ? 'ML pipeline is working.' : 'ML pipeline status'}</p>
+                <ul style="list-style:none;margin:0 0 0.6rem;padding:0;">
+                    ${row('ML Training Service', s.trainingService)}
+                    ${row('ML Prediction Service', s.predictionService)}
+                    ${row('Cloudflare R2', s.objectStorage)}
+                    ${row('Datasets', s.datasets)}
+                    ${row('Active Model', s.activeModel, true)}
+                </ul>
+                <p style="margin:0;">Ready to train a new model: ${yesNo(r.canTrain)} &nbsp;·&nbsp; New assessments get ML predictions: ${yesNo(r.canPredict)}${(r.candidatesReadyToActivate || []).length ? ` &nbsp;·&nbsp; Candidates ready to switch to: v${r.candidatesReadyToActivate.join(', v')}` : ''}</p>`;
+        } catch (err) {
+            box.innerHTML = `<p style="margin:0;">Could not run the check: ${escapeHtml(err.message)}</p>`;
+        }
+    });
 }
 
-async function retrainDataset(datasetId) {
+async function retrainDataset(datasetId, button) {
     const confirmed = confirm(
         'Retrain this dataset?\n\n'
         + 'A new model will be trained as a CANDIDATE — it will not replace the '
@@ -529,19 +557,23 @@ async function retrainDataset(datasetId) {
         + 'manually in the Trained Models section below.'
     );
     if (!confirmed) return;
-    try {
-        await apiFetch(`/admin/training/${datasetId}/train`, { method: 'POST' });
-        alert('Retraining started. The page will update when it finishes.');
-        await loadDatasets();
-        pollDatasetStatus();
-    } catch (err) {
-        alert('Could not retrain dataset: ' + err.message);
-        await loadDatasets();
-    }
+    await withBusy(button, 'Starting training…', async () => {
+        try {
+            const res = await apiFetch(`/admin/training/${datasetId}/train`, { method: 'POST' });
+            alert(trainingStartedMessage(res, 'Retraining'));
+            await loadDatasets();
+            pollDatasetStatus(datasetId);
+        } catch (err) {
+            alert('Could not retrain dataset: ' + err.message);
+            await loadDatasets();
+        }
+    });
 }
 
 let _pollTimer = null;
-function pollDatasetStatus() {
+const _watchedDatasets = new Set();
+function pollDatasetStatus(datasetId) {
+    if (datasetId) _watchedDatasets.add(String(datasetId));
     if (_pollTimer) clearInterval(_pollTimer);
     _pollTimer = setInterval(async () => {
         const data = await apiFetch('/admin/training/datasets').catch(() => null);
@@ -549,6 +581,15 @@ function pollDatasetStatus() {
         if (data && Array.isArray(data.datasets) && !data.datasets.some((dataset) => dataset.status === 'training')) {
             clearInterval(_pollTimer);
             _pollTimer = null;
+            // Say how the run(s) this page started ended, instead of going quiet.
+            const finished = data.datasets.filter((d) => _watchedDatasets.has(String(d.id)));
+            _watchedDatasets.clear();
+            const failed = finished.filter((d) => d.status === 'failed');
+            if (failed.length) {
+                alert(`Training failed:\n${failed.map((d) => d.errorMessage || 'No error was recorded.').join('\n')}`);
+            } else if (finished.length) {
+                alert('Training finished. The new model is listed in Trained Models as a candidate — use "Switch to This" to run its safety checks and activate it.');
+            }
             await loadModels(); // training just finished — surface the new candidate
             // …and the metrics it produced, so the status panel above is not
             // left showing "Not trained" after a run that has just completed.
@@ -557,14 +598,16 @@ function pollDatasetStatus() {
     }, 4000);
 }
 
-async function deleteDataset(datasetId) {
-    if (!confirm('Delete this dataset?')) return;
-    try {
-        await apiFetch(`/admin/training/${datasetId}`, { method: 'DELETE' });
-        await loadDatasets();
-    } catch (err) {
-        alert('Could not delete dataset: ' + err.message);
-    }
+async function deleteDataset(datasetId, button) {
+    if (!confirm('Delete this dataset?\n\nIts stored file is removed. Trained models are kept.')) return;
+    await withBusy(button, 'Deleting…', async () => {
+        try {
+            await apiFetch(`/admin/training/${datasetId}`, { method: 'DELETE' });
+            await loadDatasets();
+        } catch (err) {
+            alert('Could not delete dataset: ' + err.message);
+        }
+    });
 }
 
 // Template rows are neutral, made-up placeholder values used only to show
@@ -619,6 +662,7 @@ const MODEL_STATE_CHIP = {
     incompatible: { className: 'status-review',     text: 'Incompatible' },
     training:     { className: 'status-processing', text: 'Training' },
     failed:       { className: 'status-review',     text: 'Failed' },
+    artifact_missing: { className: 'status-review', text: 'Artifact unavailable' },
 };
 
 function modelStateChip(lifecycleState) {
@@ -691,10 +735,12 @@ async function loadModels() {
             let actionCell;
             if (m.lifecycleState === 'active') {
                 actionCell = '<button class="btn btn-secondary dataset-action" disabled>Active</button>'
-                    + `<button class="btn btn-secondary dataset-action delete-action" onclick="deactivateModel(${m.version})" title="Stop using ML for new predictions and fall back to the rule-based path. Nothing is deleted.">Deactivate</button>`;
+                    + `<button class="btn btn-secondary dataset-action delete-action" onclick="deactivateModel(${m.version}, this)" title="Stop using ML for new predictions and fall back to the rule-based path. Nothing is deleted.">Deactivate</button>`;
             } else if (m.lifecycleState === 'candidate') {
                 const label = hasActiveModel ? 'Switch to This' : 'Activate';
                 actionCell = `<button class="btn btn-primary dataset-action" onclick="openActivationModal('${escapeHtml(m.id)}', ${m.version})">${label}</button>`;
+            } else if (m.lifecycleState === 'artifact_missing') {
+                actionCell = `<button class="btn btn-secondary dataset-action" disabled title="${escapeHtml(m.activationBlocker || 'Model artifact not found.')}">Artifact unavailable</button>`;
             } else if (m.lifecycleState === 'incompatible') {
                 actionCell = `<button class="btn btn-secondary dataset-action" disabled title="${escapeHtml(m.activationBlocker || 'Incompatible with the current prediction pipeline.')}">Cannot Activate</button>`;
             } else {
@@ -708,7 +754,7 @@ async function loadModels() {
                         ${escapeHtml(m.datasetName)}
                         ${sourceLabel}
                     </td>
-                    <td data-label="Status">${modelStateChip(m.lifecycleState)}</td>
+                    <td data-label="Status">${modelStateChip(m.lifecycleState)}${m.legacy ? '<div class="dataset-meta">Legacy model — recorded with a local file path</div>' : ''}${m.lifecycleState === 'active' && m.artifactAvailable === false ? '<div class="dataset-meta" style="color:var(--danger);">Artifact unavailable — new assessments use the rule-based fallback</div>' : ''}</td>
                     <td data-label="Compatibility">${compatCell}</td>
                     <td data-label="Metrics">${metrics}</td>
                     <td data-label="Feature Columns"><div class="dataset-fields">${featureSetBadge}${features}</div></td>
@@ -754,9 +800,12 @@ function renderActiveModelBanner(active, errored) {
         ? ' <strong style="color:var(--danger);">Trained on synthetic data — not clinically validated.</strong>'
         : '';
     el.className = 'active-model-banner is-active';
+    const unavailable = active.artifactAvailable === false;
     el.innerHTML = `
         <div>
-            <p class="amb-title">Active model: v${active.version} — serving new ML predictions</p>
+            <p class="amb-title">${unavailable
+                ? `Active model: v${active.version}${active.legacy ? ' (legacy)' : ''} — artifact unavailable, so new assessments use the rule-based fallback. Train a new model and switch to it.`
+                : `Active model: v${active.version} — serving new ML predictions`}</p>
             <p class="amb-detail">
                 ${escapeHtml(active.datasetName || 'Unknown dataset')} ·
                 ${escapeHtml(active.featureSetType || 'score_based')} ·
@@ -765,7 +814,7 @@ function renderActiveModelBanner(active, errored) {
             </p>
         </div>
         <div class="amb-actions">
-            <button class="btn btn-secondary" onclick="deactivateModel(${active.version})">Deactivate (use rule-based)</button>
+            <button class="btn btn-secondary" onclick="deactivateModel(${active.version}, this)">Deactivate (use rule-based)</button>
         </div>`;
 }
 
@@ -917,7 +966,7 @@ async function confirmActivation() {
     if (typeof loadPipelineSummary === 'function') await loadPipelineSummary();
 }
 
-async function deactivateModel(version) {
+async function deactivateModel(version, button) {
     const message = `Deactivate model v${version}?\n\n`
         + 'New assessments will use the rule-based fallback instead of ML.\n'
         + 'Nothing is deleted — the model, its metrics and its model file are kept, '
@@ -925,12 +974,14 @@ async function deactivateModel(version) {
         + 'Already-completed assessments are not affected.';
     if (!confirm(message)) return;
 
-    try {
-        const res = await apiFetch('/ml/models/deactivate', { method: 'POST' });
-        alert(res.message || 'Model deactivated.');
-    } catch (err) {
-        alert('Could not deactivate model: ' + err.message);
-    }
+    await withBusy(button, 'Deactivating…', async () => {
+        try {
+            const res = await apiFetch('/ml/models/deactivate', { method: 'POST' });
+            alert(res.message || 'Model deactivated.');
+        } catch (err) {
+            alert('Could not deactivate model: ' + err.message);
+        }
+    });
     await loadModels();
     if (typeof loadPipelineSummary === 'function') await loadPipelineSummary();
 }

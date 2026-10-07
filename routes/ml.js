@@ -311,12 +311,13 @@ router.post('/predict', authMiddleware, async (req, res) => {
 // `isActive` + compatibility flags underneath. "completed" alone does NOT
 // mean "ready for production" — only "training finished without error".
 // Reused by both /models below and the activation endpoint's response.
-function modelLifecycleState(m, compatible) {
+function modelLifecycleState(m, compatible, artifact) {
   if (m.status === 'training') return 'training';
   if (m.status === 'failed') return 'failed';
   if (m.status !== 'completed') return m.status;
   if (m.isActive) return 'active';
-  return compatible ? 'candidate' : 'incompatible';
+  if (!compatible) return 'incompatible';
+  return artifact && artifact.found === false ? 'artifact_missing' : 'candidate';
 }
 
 /**
@@ -333,10 +334,21 @@ router.get('/models', authMiddleware, adminOnly, async (req, res) => {
       .populate('datasetId', 'name originalName provenance')
       .lean();
 
+    // Where each completed model's artifact is, by HEAD request (no download),
+    // so a model whose file is gone is shown as unavailable instead of
+    // offering a switch that can only fail.
+    const artifacts = await Promise.all(models.map((m) => (m.status === 'completed' && m.modelPath
+      ? modelManager.artifactStatus(m.modelPath).catch(() => ({ key: null, found: false }))
+      : Promise.resolve(null))));
+
     res.json({
       success: true,
-      models: models.map((m) => {
+      models: models.map((m, i) => {
+        const artifact = artifacts[i];
         const compatible = m.status === 'completed' ? modelManager.isModelCompatible(m) : null;
+        const artifactBlocker = artifact && !artifact.found
+          ? `Model artifact not found in ${fileStorage.USE_BLOB ? 'object storage' : 'local storage'} (key ${artifact.key || 'none'}). Train a new model instead.`
+          : null;
         // Step 13: the dataset's own structured provenance — never
         // re-derived here, just read from what POST /training/upload
         // recorded (routes/admin.js). 'unknown' for datasets uploaded
@@ -366,7 +378,13 @@ router.get('/models', authMiddleware, adminOnly, async (req, res) => {
           status: m.status,
           isActive: m.isActive,
           compatible,
-          lifecycleState: modelLifecycleState(m, compatible),
+          lifecycleState: modelLifecycleState(m, compatible, artifact),
+          artifactKey: artifact ? artifact.key : null,
+          artifactAvailable: artifact ? artifact.found : null,
+          artifactSizeBytes: artifact ? artifact.sizeBytes : null,
+          // Recorded with a machine-local path (e.g. C:/Users/...) instead of
+          // its object-storage key: a model trained before artifacts went to R2.
+          legacy: Boolean(m.modelPath) && Boolean(artifact) && m.modelPath !== artifact.key,
           // The SERVER's reason this model cannot be activated, or null when
           // it can. Sent so the admin UI shows the actual rule that would
           // reject it rather than a second copy of the rules that could drift
@@ -374,8 +392,8 @@ router.get('/models', authMiddleware, adminOnly, async (req, res) => {
           // cheap document-level check only — the artifact/prediction smoke
           // test runs on demand via POST /models/:modelId/smoke-test, because
           // it spawns Python and must not run once per row on every page load.
-          activationBlocker: m.isActive ? null : getModelActivationBlocker(m),
-          canActivate: !m.isActive && getModelActivationBlocker(m) === null,
+          activationBlocker: m.isActive ? null : (getModelActivationBlocker(m) || artifactBlocker),
+          canActivate: !m.isActive && getModelActivationBlocker(m) === null && !artifactBlocker,
           trainedBy: m.trainedBy
             ? `${m.trainedBy.firstName} ${m.trainedBy.lastName}`
             : 'Admin',
@@ -472,9 +490,11 @@ async function runActivationPreflight(model) {
  * and its .joblib artifact, which is what makes rollback possible.
  */
 async function performModelActivation(model) {
-  await TrainedModel.updateMany({ _id: { $ne: model._id }, isActive: true }, { $set: { isActive: false } });
+  // Activate first, then deactivate the rest: if saving the new model fails,
+  // the previously active model is still active (never zero active models).
   model.isActive = true;
   await model.save();
+  await TrainedModel.updateMany({ _id: { $ne: model._id }, isActive: true }, { $set: { isActive: false } });
 
   const activeCount = await TrainedModel.countDocuments({ isActive: true });
   if (activeCount !== 1) {
@@ -588,10 +608,49 @@ router.get('/diagnostics', authMiddleware, adminOnly, async (req, res) => {
     else if (activeRow.artifact.withinRemoteLimit === false) problems.push(`Active model v${activeRow.version} artifact is too large for the ML service — retrain and activate the new candidate.`);
     if (smokeTest && !smokeTest.ok) problems.push(`Active model smoke test failed: ${smokeTest.error}`);
 
+    // Separate verdicts, so a broken legacy model never hides that a new one
+    // can be trained (or the reverse).
+    const pipelineDatasets = datasetRows.filter((d) => d.rows);
+    const readyCandidates = modelRows.filter((m) => !m.isActive && m.artifact.found && m.artifact.withinRemoteLimit !== false);
+    let activeState = 'none';
+    if (activeRow) {
+      if (!activeRow.artifact.found) activeState = 'artifact_missing';
+      else if (activeRow.artifact.withinRemoteLimit === false) activeState = 'artifact_too_large';
+      else if (smokeTest && !smokeTest.ok) activeState = 'smoke_test_failed';
+      else activeState = smokeTest ? 'verified' : 'artifact_present';
+    }
+    const sections = {
+      trainingService: { ok: train.ok, detail: train.ok ? `${train.target} answered${train.secretVerified ? ', secret verified' : ''}` : train.error },
+      predictionService: { ok: predict.ok, detail: predict.ok ? `${predict.target || 'local'} answered${predict.secretVerified ? ', secret verified' : ''}` : predict.error },
+      objectStorage: { ok: storage.ok, detail: storage.ok ? `bucket ${process.env.R2_BUCKET || '(local)'}: write/read/delete verified` : storage.error },
+      datasets: {
+        ok: pipelineDatasets.some((d) => d.found),
+        detail: pipelineDatasets.length
+          ? `${pipelineDatasets.filter((d) => d.found).length} of ${pipelineDatasets.length} dataset file(s) available`
+          : 'No dataset uploaded',
+      },
+      activeModel: {
+        ok: activeState === 'verified' || activeState === 'artifact_present',
+        state: activeState,
+        detail: !activeRow ? 'No active model — assessments use the rule-based fallback'
+          : activeState === 'artifact_missing' ? `v${activeRow.version}${activeRow.portableReference ? '' : ' (legacy model)'}: artifact unavailable (key ${activeRow.artifact.key})`
+            : activeState === 'smoke_test_failed' ? `v${activeRow.version}: ${smokeTest.error}`
+              : activeState === 'artifact_too_large' ? `v${activeRow.version}: artifact too large for the ML service`
+                : `v${activeRow.version}: ${activeState === 'verified' ? `test prediction returned ${smokeTest.prediction && smokeTest.prediction.risk_category}` : 'artifact present'}`,
+      },
+    };
+    const readiness = {
+      canTrain: sections.trainingService.ok && sections.objectStorage.ok && sections.datasets.ok,
+      canPredict: sections.predictionService.ok && sections.activeModel.ok,
+      candidatesReadyToActivate: readyCandidates.map((m) => m.version),
+    };
+
     res.json({
       success: true,
       ok: problems.length === 0,
       problems,
+      sections,
+      readiness,
       mlService: {
         mode: remote ? 'remote' : 'local',
         baseUrl: remote ? modelManager.getMLServiceUrl() : null,

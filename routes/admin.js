@@ -1545,7 +1545,12 @@ router.post('/training/upload', authMiddleware, adminOnly, (req, res) => {
         ? req.file.buffer.toString('utf8')
         : fs.readFileSync(path.join(ensureDatasetDir(), req.file.filename), 'utf8');
       const parsed = parseDatasetContent(raw, ext);
+      const storageKey = `${DATASET_DIR}/${req.file.filename}`;
       await fileStorage.storeFile(DATASET_DIR, req.file.filename, req.file, DATASET_ACCESS);
+      // Never record a dataset whose file cannot be read back.
+      const stored = await fileStorage.statStored(DATASET_DIR, req.file.filename);
+      if (!stored) throw new Error(`Dataset upload could not be verified in ${fileStorage.USE_BLOB ? 'object storage' : 'local storage'} (key ${storageKey}).`);
+      console.log(`[ml] Dataset uploaded: key=${storageKey} (${(stored.size / 1048576).toFixed(2)} MB, ${parsed.rowCount} rows)`);
 
       // Step 13: structured provenance, set explicitly at upload time —
       // never inferred from the filename (that heuristic in GET
@@ -1559,6 +1564,7 @@ router.post('/training/upload', authMiddleware, adminOnly, (req, res) => {
         originalName: req.file.originalname,
         storedName: req.file.filename,
         filePath: `/uploads/datasets/${req.file.filename}`,
+        storageKey,
         fileType: ext.replace('.', '').toUpperCase(),
         fileSize: req.file.size,
         rowCount: parsed.rowCount,
@@ -1622,6 +1628,18 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
       });
     }
 
+    // Validate the CSV here so a malformed file is reported before the ML
+    // service is contacted.
+    const featureSet = req.body?.featureSet || 'score_based';
+    let validation = null;
+    const csvText = datasetContent
+      || (datasetPath && datasetPath.toLowerCase().endsWith('.csv') && fs.existsSync(datasetPath) ? fs.readFileSync(datasetPath, 'utf8') : null);
+    if (csvText) {
+      validation = modelManager.validateTrainingCsv(csvText, featureSet);
+      console.log(`[ml] Training dataset check: ${validation.ok ? 'ok' : 'failed'} — ${validation.rows} rows, ${validation.columns || '?'} columns, labels ${JSON.stringify(validation.labelCounts || {})}, invalid labels ${validation.invalidLabels || 0}`);
+      if (!validation.ok) return res.status(400).json({ error: `Dataset cannot be trained: ${validation.error}`, validation });
+    }
+
     // Check the Python ML service before starting
     const envCheck = await modelManager.checkPythonEnvironment();
     if (!envCheck.ok) {
@@ -1639,15 +1657,20 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
     }
     const qualityWarnings = gate.warnings;
 
-    // Mark as training
+    // Claim the dataset atomically so a double-click (or two admins) cannot
+    // start two training runs for it.
+    const claimed = await TrainingDataset.findOneAndUpdate(
+      { _id: dataset._id, status: { $ne: 'training' } },
+      { $set: { status: 'training', errorMessage: null } },
+      { new: true }
+    );
+    if (!claimed) return res.status(409).json({ error: 'This dataset is already being trained.' });
     dataset.status = 'training';
     dataset.errorMessage = null;
-    await dataset.save();
 
     // Determine next model version
     const lastModel = await TrainedModel.findOne().sort({ version: -1 }).lean();
     const nextVersion = (lastModel?.version || 0) + 1;
-    const featureSet = req.body?.featureSet || 'score_based';
 
     // Create placeholder model doc
     const modelDoc = await TrainedModel.create({
@@ -1667,6 +1690,7 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
       message: 'Training started. The page will update when training completes.',
       modelId: String(modelDoc._id),
       version: nextVersion,
+      validation,
     });
 
     // Run training in the background (async, no await in request handler).

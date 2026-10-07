@@ -81,6 +81,46 @@ async function run() {
   assert.doesNotMatch(r.error, /other-secret|test-ml-secret/);
   process.env.ML_SERVICE_SECRET = 'test-ml-secret';
 
+  // 6b. The production 401: Vercel answers a JSON Accept with a JSON error
+  //     object before the function runs. It used to print "[object Object]".
+  const vercelBlock = await serve((req, res) => {
+    res.statusCode = 401;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ error: { code: 'unauthorized', message: 'Authentication Required' } }));
+  });
+  r = await healthWith(vercelBlock.url);
+  assert.strictEqual(r.ok, false);
+  assert.doesNotMatch(r.error, /\[object Object\]/);
+  assert.match(r.error, /Vercel rejected GET .*\/api\/py\/train with HTTP 401 \(unauthorized: Authentication Required\) before it reached the KinderCura ML function/);
+  assert.match(r.error, /Deployment Protection/);
+  assert.match(r.error, /VERCEL_AUTOMATION_BYPASS_SECRET/);
+  process.env.VERCEL_AUTOMATION_BYPASS_SECRET = 'wrong-bypass';
+  r = await healthWith(vercelBlock.url);
+  assert.match(r.error, /VERCEL_AUTOMATION_BYPASS_SECRET is set on this server, but Vercel did not accept it/);
+  assert.doesNotMatch(r.error, /wrong-bypass/);
+  delete process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  vercelBlock.close();
+
+  // 6c. Our own function rejecting the secret on POST is reported as such.
+  const fnReject = await serve((req, res) => {
+    res.statusCode = 401;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ success: false, error: 'Unauthorized: invalid or missing ML_SERVICE_SECRET' }));
+  });
+  process.env.ML_SERVICE_URL = fnReject.url;
+  await assert.rejects(modelManager.mlServiceRequest('/api/py/train', { method: 'POST', body: '{}' }), (err) => {
+    assert.strictEqual(err.code, 'ml_service_unauthorized');
+    assert.match(err.message, /ML service authentication failed \(HTTP 401\).*Check that ML_SERVICE_SECRET is identical on Render and on Vercel/);
+    return true;
+  });
+  fnReject.close();
+
+  // 6d. Any other JSON error object is readable.
+  const objErr = await serve((req, res) => { res.statusCode = 500; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ error: { code: 'FUNCTION_INVOCATION_FAILED', message: 'crashed' } })); });
+  r = await healthWith(objErr.url);
+  assert.match(r.error, /health check returned HTTP 500: FUNCTION_INVOCATION_FAILED: crashed/);
+  objErr.close();
+
   // 7. JSON from something that is not the ML service.
   const other = await serve((req, res) => { res.setHeader('Content-Type', 'application/json'); res.end('{"error":"Not found: GET /api/py/train"}'); });
   r = await healthWith(other.url);

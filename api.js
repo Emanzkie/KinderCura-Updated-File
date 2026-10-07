@@ -59,7 +59,13 @@ async function apiFetch(endpoint, options = {}) {
         data = {};
     }
 
-    if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+    if (!res.ok) {
+        // `error` can be an object (e.g. { code, message }); never show "[object Object]".
+        const e = data.error;
+        const text = typeof e === 'string' ? e
+            : (e && typeof e === 'object' ? ([e.code, e.message].filter(Boolean).join(': ') || JSON.stringify(e)) : '');
+        throw new Error(text || `Error ${res.status}`);
+    }
     return data;
 }
 

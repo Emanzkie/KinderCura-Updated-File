@@ -17,10 +17,10 @@ const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
-const { spawn } = require('child_process');
+const os = require('os');
+const { spawn, spawnSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const DATASET = path.join(ROOT, 'ml', 'datasets', 'kindercura_assessment_dataset.csv');
 const BUCKET = 'kindercura-ml-models';
 const SECRET = 'test-ml-secret';
 const VERCEL_BODY_LIMIT = 4.5 * 1024 * 1024;
@@ -266,12 +266,18 @@ async function run() {
     rowCount: 49311, status: 'trained', modelId: v4._id, provenance: { sourceType: 'synthetic' },
   });
   // The CSV the admin uploads. KC_TEST_DATASET points at a real file (e.g. the
-  // generated 50,000-row dataset); the default repeats the canonical file past
-  // 1 MB so the gzip path to the trainer runs.
-  const lines = fs.readFileSync(DATASET, 'utf8').trim().split('\n');
-  const uploadCsv = process.env.KC_TEST_DATASET
-    ? fs.readFileSync(process.env.KC_TEST_DATASET)
-    : Buffer.from([lines[0], ...Array.from({ length: 200 }, () => lines.slice(1)).flat()].join('\n'));
+  // generated 50,000-row dataset); the default is a seeded 15,000-row file
+  // from the same generator (> 1 MB, so the gzip path to the trainer runs).
+  let uploadCsv;
+  if (process.env.KC_TEST_DATASET) {
+    uploadCsv = fs.readFileSync(process.env.KC_TEST_DATASET);
+  } else {
+    const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'kc-flow-')), 'dataset.csv');
+    const gen = spawnSync('python', [path.join(ROOT, 'ml/datasets/generate_kindercura_dataset.py'), '--rows', '15000', '--seed', '20261006',
+      '--max-age-months', '107', '--unique', '--app-rounding', '--out', out], { encoding: 'utf8' });
+    assert.strictEqual(gen.status, 0, gen.stderr);
+    uploadCsv = fs.readFileSync(out);
+  }
   const uploadRows = uploadCsv.toString('utf8').split(/\r?\n/).filter((l) => l.trim()).length - 1;
   const adminToken = tokenFor(admin._id, 'admin');
   const parentToken = tokenFor(parent._id, 'parent');
@@ -309,6 +315,16 @@ async function run() {
     assert.strictEqual(before.body.activeModel.portableReference, false);
     assert.strictEqual(before.body.datasets.find((d) => d.rows === 49311).found, false, 'the v4 dataset file is missing from object storage');
     assert.ok(before.body.problems.some((p) => /v4 artifact is missing/.test(p)));
+    assert.strictEqual(before.body.sections.trainingService.ok, true);
+    assert.strictEqual(before.body.sections.objectStorage.ok, true);
+    assert.strictEqual(before.body.sections.activeModel.state, 'artifact_missing');
+    assert.match(before.body.sections.activeModel.detail, /v4 \(legacy model\): artifact unavailable/);
+    assert.strictEqual(before.body.readiness.canPredict, false);
+    const modelsBefore = (await call('GET', '/ml/models', adminToken)).body.models;
+    const v4Row = modelsBefore.find((m) => m.version === 4);
+    assert.strictEqual(v4Row.legacy, true);
+    assert.strictEqual(v4Row.artifactAvailable, false);
+    assert.strictEqual(v4Row.artifactKey, 'uploads/models/kindercura_model_20260903_014033_913914.joblib');
 
     // Production symptom: a new assessment falls back, with the real reason.
     const fallback = await submitAssessment('no');
@@ -335,10 +351,22 @@ async function run() {
     assert.strictEqual(dataset.rowCount, uploadRows);
     assert.strictEqual(dataset.status, 'uploaded');
     assert.ok(r2.objects.get(`public/uploads/datasets/${dataset.storedName}`).equals(uploadCsv), 'uploaded CSV stored in R2 byte-for-byte');
+    assert.strictEqual(dataset.storageKey, `public/uploads/datasets/${dataset.storedName}`, 'MongoDB records the exact R2 key');
+    const ready = await call('GET', '/ml/diagnostics', adminToken);
+    assert.strictEqual(ready.body.readiness.canTrain, true, 'a broken legacy model must not block training');
 
-    const retrain = await call('POST', `/admin/training/${dataset._id}/train`, adminToken, {});
-    assert.strictEqual(retrain.status, 200, JSON.stringify(retrain.body));
+    // Process, double-clicked: exactly one training run starts.
+    const [first, second] = await Promise.all([
+      call('POST', `/admin/training/${dataset._id}/train`, adminToken, {}),
+      call('POST', `/admin/training/${dataset._id}/train`, adminToken, {}),
+    ]);
+    const statuses = [first.status, second.status].sort();
+    assert.deepStrictEqual(statuses, [200, 409], JSON.stringify([first.body, second.body]));
+    const retrain = first.status === 200 ? first : second;
+    assert.strictEqual(retrain.body.validation.rows, uploadRows);
+    assert.strictEqual(retrain.body.validation.invalidLabels, 0);
     const v5 = await waitFor(() => db.TrainedModel.find((m) => m.version === 5 && m.status !== 'training'), 180000, 'v5 training');
+    assert.strictEqual(db.TrainedModel.filter((m) => m.version >= 5).length, 1, 'the double click must not start a second run');
     assert.strictEqual(v5.status, 'completed', v5.errorMessage);
     assert.ok(vercel.seen.some((s) => s.method === 'POST' && s.pathname === '/api/py/train' && JSON.parse(s.body).dataset_content_gzip_base64), 'dataset sent gzipped to /api/py/train');
     assert.match(v5.modelPath, /^uploads\/models\/kindercura_model_\w+\.joblib$/, 'TrainedModel stores the R2 key, never a local path');
@@ -357,6 +385,34 @@ async function run() {
     assert.strictEqual(activate.status, 200, JSON.stringify(activate.body));
     assert.strictEqual(v5.isActive, true);
     assert.strictEqual(v4.isActive, false);
+    assert.strictEqual(db.TrainedModel.filter((m) => m.isActive).length, 1, 'exactly one active model');
+
+    // A candidate whose artifact is gone cannot be switched to, and the active model stays.
+    const broken = M.TrainedModel.__insert({ version: 0, status: 'completed', isActive: false, featureSetType: 'score_based', featuresUsed: scoreFeatures, modelPath: 'uploads/models/kindercura_model_missing.joblib' });
+    const brokenRow = (await call('GET', '/ml/models', adminToken)).body.models.find((m) => m.version === 0);
+    assert.strictEqual(brokenRow.lifecycleState, 'artifact_missing');
+    assert.strictEqual(brokenRow.canActivate, false);
+    const refused = await call('POST', `/ml/models/${broken._id}/activate`, adminToken);
+    assert.strictEqual(refused.status, 409);
+    assert.match(refused.body.error, /smoke test failed: Model file not found/i);
+    assert.strictEqual(v5.isActive, true, 'a failed switch leaves the active model active');
+    assert.notStrictEqual(broken.isActive, true);
+
+    // LOW / MEDIUM / HIGH profiles, predicted by the model through the real submit route.
+    const profiles = [
+      ['Low', (i) => (i % 9 === 0 ? 'no' : 'yes')],
+      ['Medium', (i) => ['yes', 'sometimes', 'no'][i % 3]],
+      ['High', (i) => (i % 9 === 0 ? 'yes' : 'no')],
+    ];
+    for (const [expected, answerFor] of profiles) {
+      const rec = await submitAssessment(answerFor);
+      assert.strictEqual(rec.prediction.source, 'ml', rec.prediction.mlUnavailableReason);
+      assert.strictEqual(rec.prediction.riskCategory, expected, `overall ${rec.overallScore}: ${JSON.stringify(rec.prediction.probabilities)}`);
+      const pv = await call('GET', `/assessments/${rec.assessmentId}/results`, parentToken);
+      const pp = (await call('GET', '/assessments/pedia-patients', pediaToken)).body.patients.find((p) => p.childId === String(child._id));
+      assert.strictEqual(pv.body.results.prediction.riskCategory, expected, 'parent API');
+      assert.strictEqual(pp.prediction.riskCategory, expected, 'pediatrician API');
+    }
 
     // TEST G-H: a NEW assessment is predicted by the model and persisted.
     const saved = await submitAssessment((i) => (i % 3 === 0 ? 'yes' : 'no'));

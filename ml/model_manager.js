@@ -196,6 +196,10 @@ async function smokeTestModel(model) {
       checks.push({ name: 'test_prediction', ok: false, detail: 'The prediction returned no risk_category.' });
       return finish(false, 'The test prediction returned no risk_category.');
     }
+    if (!['Low', 'Medium', 'High'].includes(category)) {
+      checks.push({ name: 'test_prediction', ok: false, detail: `The prediction returned "${category}", not Low, Medium or High.` });
+      return finish(false, `The test prediction returned "${category}", not Low, Medium or High.`);
+    }
     checks.push({
       name: 'test_prediction',
       ok: true,
@@ -301,6 +305,28 @@ const PROTECTION_HINT = ' This is Vercel Deployment Protection blocking a server
   + 'server as VERCEL_AUTOMATION_BYPASS_SECRET.';
 
 /**
+ * Readable text for an error field from any ML-service or Vercel response:
+ * a string, an object such as { code, message } (Vercel platform errors), or
+ * anything else. Never "[object Object]".
+ */
+function serviceErrorText(value) {
+  if (value == null || value === '') return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    const message = serviceErrorText(value.message || value.error || value.detail || '');
+    const code = value.code != null ? String(value.code) : '';
+    if (message || code) return [code, message].filter(Boolean).join(': ');
+    try { return JSON.stringify(value).slice(0, 200); } catch { return 'unreadable error object'; }
+  }
+  return String(value);
+}
+
+/** True for a JSON body produced by api/ml_train.py or api/ml_predict.py themselves. */
+function isMlFunctionBody(data) {
+  return Boolean(data) && (typeof data.success === 'boolean' || typeof data.service === 'string');
+}
+
+/**
  * One request to the Python ML service. Never follows redirects (a followed
  * redirect to a login page is how an HTML page ended up being parsed as JSON),
  * logs the target, status and content type (never headers or secrets), and
@@ -343,6 +369,21 @@ async function mlServiceRequest(endpoint, { method = 'GET', body = null, timeout
   const text = await res.text();
   let data = null;
   try { data = JSON.parse(text); } catch { data = null; }
+  // 401/403 with JSON: either our function rejected the secret (POST), or
+  // Vercel rejected the request before it ever reached the function — the
+  // health GET of our functions never answers 401 itself.
+  if ((res.status === 401 || res.status === 403) && data && typeof data === 'object') {
+    const detail = serviceErrorText(data.error) || serviceErrorText(data.message) || 'no detail';
+    if (isMlFunctionBody(data)) {
+      throw new MlError('ml_service_unauthorized', `ML service authentication failed (HTTP ${res.status}) at ${target}: ${detail}. `
+        + 'Check that ML_SERVICE_SECRET is identical on Render and on Vercel.');
+    }
+    const bypassNote = bypass
+      ? ' A VERCEL_AUTOMATION_BYPASS_SECRET is set on this server, but Vercel did not accept it — it must equal the Protection Bypass for Automation secret of this Vercel project.'
+      : PROTECTION_HINT;
+    throw new MlError('ml_service_blocked', `Vercel rejected ${method} ${target} with HTTP ${res.status} (${detail}) before it reached the KinderCura ML function.${bypassNote}`);
+  }
+
   if (data === null || typeof data !== 'object') {
     const html = /html/i.test(contentType) || /^\s*<(!doctype|html)/i.test(text);
     const title = html ? pageTitle(text) : '';
@@ -366,7 +407,10 @@ async function checkRemoteEndpoint(endpoint, expectedService) {
   if (!getMLSecret()) return { ok: false, error: 'ML_SERVICE_SECRET is not set on this server.' };
   try {
     const { ok, status, data, target } = await mlServiceRequest(endpoint, { timeoutMs: 20000 });
-    if (!ok) return { ok: false, target, error: `ML service ${target} health check returned HTTP ${status}${data.error ? `: ${data.error}` : ''}` };
+    if (!ok) {
+      const detail = serviceErrorText(data.error) || serviceErrorText(data.message);
+      return { ok: false, target, error: `ML service ${target} health check returned HTTP ${status}${detail ? `: ${detail}` : ''}` };
+    }
     if (data.service !== expectedService) {
       return { ok: false, target, error: `ML service ${target} answered, but not as ${expectedService} (service=${data.service || 'missing'}) — ML_SERVICE_URL is not the KinderCura ML deployment.` };
     }
@@ -554,7 +598,7 @@ async function trainModel(datasetPath, datasetId, options = {}) {
       });
       if (!ok || !data.success) {
         throw new MlError(status === 401 ? 'ml_service_unauthorized' : 'training_failed',
-          `ML training service returned HTTP ${status}: ${data.error || 'training failed'}`);
+          `ML training service returned HTTP ${status}: ${serviceErrorText(data.error) || 'training failed'}`);
       }
       console.log(`[ml] Remote training succeeded: ${data.total_rows || '?'} rows, accuracy ${data.accuracy}, artifact ${formatMB(data.artifact_size_bytes || 0)}`);
       result = data;
@@ -754,6 +798,45 @@ async function artifactStatus(modelPath) {
   return { key, found: false, source: null, sizeBytes: null };
 }
 
+// Mirrors ml/trainer.py: columns each feature set requires, and valid labels.
+const TRAINING_REQUIRED_COLUMNS = {
+  score_based: ['communication_score', 'social_score', 'cognitive_score', 'motor_score', 'overall_score', 'risk_category'],
+  question_based: [...Array.from({ length: 34 }, (_, i) => `Q${String(i + 1).padStart(2, '0')}`), 'risk_category'],
+};
+const VALID_RISK_LABELS = ['Low', 'Medium', 'High'];
+
+/**
+ * Check a CSV dataset before it is sent to the trainer: required columns,
+ * row count and risk_category labels (case-insensitive, as the trainer
+ * reads them). Resolves { ok, rows, columns, labelCounts, invalidLabels, error }.
+ * Rows with an invalid label are reported, not rejected here — the trainer
+ * drops them — but a file with no usable label at all is refused.
+ */
+function validateTrainingCsv(content, featureSet = 'score_based') {
+  const lines = String(content || '').split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) return { ok: false, rows: 0, error: 'The dataset has no data rows.' };
+  const header = lines[0].split(',').map((h) => h.trim().replace(/^"|"$/g, ''));
+  const required = TRAINING_REQUIRED_COLUMNS[featureSet] || TRAINING_REQUIRED_COLUMNS.score_based;
+  const missing = required.filter((c) => !header.includes(c));
+  if (missing.length) {
+    return { ok: false, rows: lines.length - 1, columns: header.length, error: `The dataset is missing required column(s) for ${featureSet} training: ${missing.join(', ')}.` };
+  }
+  const labelIndex = header.indexOf('risk_category');
+  const labelCounts = {};
+  let invalidLabels = 0;
+  for (const line of lines.slice(1)) {
+    const raw = (line.split(',')[labelIndex] || '').trim().replace(/^"|"$/g, '');
+    const label = raw ? raw[0].toUpperCase() + raw.slice(1).toLowerCase() : '';
+    if (VALID_RISK_LABELS.includes(label)) labelCounts[label] = (labelCounts[label] || 0) + 1;
+    else invalidLabels += 1;
+  }
+  const rows = lines.length - 1;
+  if (!Object.keys(labelCounts).length) {
+    return { ok: false, rows, columns: header.length, labelCounts, invalidLabels, error: 'No row has a valid risk_category (expected Low, Medium or High).' };
+  }
+  return { ok: true, rows, columns: header.length, labelCounts, invalidLabels, error: null };
+}
+
 function buildRemoteTrainingPayload(datasetContent, fileType, featureSet) {
   const payload = { file_type: fileType, feature_set: featureSet };
   const raw = Buffer.from(String(datasetContent), 'utf8');
@@ -790,7 +873,7 @@ async function getPrediction(modelPath, inputData) {
       timeoutMs: 60000,
     });
     if (!ok || !data.success) {
-      const message = data.error || `Prediction service returned HTTP ${status}`;
+      const message = serviceErrorText(data.error) || `Prediction service returned HTTP ${status}`;
       const code = status === 401 ? 'ml_service_unauthorized' : /Could not load model/i.test(message) ? 'model_load_failed' : 'prediction_failed';
       throw new MlError(code, message);
     }
@@ -902,6 +985,7 @@ module.exports = {
   modelArtifactKey,
   modelArtifactFilename,
   buildRemoteTrainingPayload,
+  validateTrainingCsv,
   MAX_REMOTE_ARTIFACT_BYTES,
   MODEL_STORE_DIR,
   isRemoteML,
@@ -910,6 +994,7 @@ module.exports = {
   mlServiceRequest,
   mlServiceConfigProblem,
   checkRemoteEndpoint,
+  serviceErrorText,
   MlError,
   MODEL_DIR,
   UNSUPPORTED_FEATURES,
