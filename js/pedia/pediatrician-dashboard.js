@@ -68,7 +68,7 @@ if (!getToken() || !_u) {
                 document.getElementById('statTotal').textContent=all.length;
                 document.getElementById('statPending').textContent=pending.length;
                 document.getElementById('statReviewed').textContent=approved.length;
-                document.getElementById('statTotalSub').textContent=all.length>0?`${all.length} total`:'No patients yet';
+                document.getElementById('statTotalSub').textContent=all.length>0?`${all.length} total, all statuses`:'No appointment requests yet';
 
                 const pSub=document.getElementById('statPendingSub');
                 if(pending.length>0){pSub.innerHTML='Needs attention';pSub.style.color='var(--accent-red)';}
@@ -90,6 +90,7 @@ if (!getToken() || !_u) {
                                 if (assessments.length > 0) {
                                     const latest = assessments[0];
                                     n.overallScore = Math.round(latest.overallScore || 0);
+                                    n.assessmentDate = latest.completedAt || null;
                                     n.communicationScore = Math.round(latest.communicationScore || 0);
                                     n.communicationStatus = latest.communicationStatus;
                                     n.socialScore = Math.round(latest.socialScore || 0);
@@ -116,6 +117,30 @@ if (!getToken() || !_u) {
             }
         }
 
+        // Clinician-facing band label for an overall score, straight from
+        // constants/scoring.js (window.KCScoring). Display only.
+        function overallBandText(score){
+            const S = window.KCScoring;
+            if(!S || score == null) return '';
+            return ` <span class="scores-band">(${escapeHtml(S.clinicalLabel(S.bandFor(score)))})</span>`;
+        }
+
+        // One explanation for every Assessment Results percentage in the
+        // pending list. The formula matches routes/assessments.js (Yes = 2,
+        // Sometimes = 1, No = 0 points; area % = earned / possible; overall =
+        // average of the four area scores); ranges come from KCScoring.
+        function renderScoreGuideNote(){
+            const el = document.getElementById('pendingScoreGuide');
+            const S = window.KCScoring;
+            if(!el) return;
+            const ranges = S && Array.isArray(S.ACTIVE_BANDS)
+                ? `<span class="score-guide-ranges">${S.ACTIVE_BANDS.map(b => `<span>${b.min}&ndash;${b.max}% ${escapeHtml(S.clinicalLabel(b.key))}</span>`).join('')}</span>`
+                : '';
+            el.innerHTML = `<strong>About the Assessment Results percentages:</strong> each request shows the child's latest completed assessment.
+                An area % is the share of possible points earned on that area's questions (Yes = 2, Sometimes = 1, No = 0).
+                Overall % is the average of the four area scores. Score ranges:${ranges}`;
+        }
+
         function renderPending(pending){
             pendingById = {};
             pending.forEach(function(p){ pendingById[String(p.id)] = p; });
@@ -137,7 +162,8 @@ if (!getToken() || !_u) {
                            Social: <strong>${n.socialScore||0}%</strong>${n.socialStatus?' ('+n.socialStatus+')':''} &nbsp;·&nbsp;
                            Cognitive: <strong>${n.cognitiveScore||0}%</strong>${n.cognitiveStatus?' ('+n.cognitiveStatus+')':''} &nbsp;·&nbsp;
                            Motor: <strong>${n.motorScore||0}%</strong>${n.motorStatus?' ('+n.motorStatus+')':''}<br>
-                           Overall: <strong style="color:var(--primary);font-size:1rem;">${n.overallScore||0}%</strong></div>`
+                           Overall: <strong style="color:var(--primary);font-size:1rem;">${n.overallScore||0}%</strong>${overallBandText(n.overallScore)}
+                           <span class="scores-caption">Latest completed assessment${n.assessmentDate ? ' (' + fmtDate(n.assessmentDate) + ')' : ''}. Area % = that area's recorded assessment score; Overall = average of the four area scores.</span></div>`
                         :`<p style="color:var(--text-light);font-size:.85rem;font-style:italic;margin:.5rem 0;">No assessment results on file yet.</p>`
                     }
                     <div class="apt-actions">
@@ -435,11 +461,54 @@ if (!getToken() || !_u) {
 
         let pediaApptChart, pediaReviewChart;
 
+        // Plain-language keys for both charts. Statuses and counts are exactly
+        // the GET /admin/analytics/pediatrician summaryTotals fields
+        // (routes/admin.js) — cancelled/rejected are not part of that data.
+        // Completed uses the brand pink (--accent-red) instead of a light green
+        // that was almost indistinguishable from Approved.
+        const APPT_LEGEND = [
+            { label:'Pending',   key:'pendingAppointments',   color:'#F4D89F', desc:'Requests waiting for you to accept, reschedule or decline.' },
+            { label:'Approved',  key:'approvedAppointments',  color:'#6B8E6F', desc:'Confirmed appointments that have not been marked completed yet.' },
+            { label:'Completed', key:'completedAppointments', color:'#E8A5A5', desc:'Appointments that took place and were marked as completed.' },
+        ];
+        const REVIEW_LEGEND = [
+            { label:'Reviewed',         key:'reviewedAssessments',   color:'#8BA98D', desc:'Completed assessments that you have reviewed.' },
+            { label:'Not yet reviewed', key:'unreviewedAssessments', color:'#F4D89F', desc:'Completed assessments of children with an appointment with you that no pediatrician has reviewed yet.' },
+        ];
+        const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+        const _legendSig = {};
+
+        function renderCountLegend(listId, items, summary, unitOne, unitMany, emptyText){
+            const list = document.getElementById(listId);
+            if(!list) return;
+            const counts = items.map(i => Number(summary[i.key]) || 0);
+            const sig = counts.join(',');
+            if(_legendSig[listId] === sig) return; // skip the 5-second poll when nothing changed
+            _legendSig[listId] = sig;
+            const total = counts.reduce((a,b)=>a+b,0);
+            list.innerHTML = items.map((i, idx) => `
+                <li>
+                    <span class="kc-swatch" style="background:${i.color};" aria-hidden="true"></span>
+                    <span><span class="kc-chart-legend-label">${i.label}</span>:
+                        <span class="kc-chart-legend-count">${plural(counts[idx], unitOne, unitMany)}</span>
+                        <span class="kc-chart-legend-desc">${i.desc}</span></span>
+                </li>`).join('')
+                + (total === 0 ? `<li><span></span><span class="kc-chart-legend-desc">${emptyText}</span></li>` : '');
+        }
+
         function initPediaCharts() {
             pediaApptChart = new Chart(document.getElementById('pediaApptChart'), {
                 type: 'doughnut',
-                data: { labels: ['Pending', 'Approved', 'Completed'], datasets: [{ data: [0,0,0], backgroundColor: ['#F4D89F','#6B8E6F','#8BA98D'] }] },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+                data: { labels: APPT_LEGEND.map(i => i.label), datasets: [{ data: [0,0,0], backgroundColor: APPT_LEGEND.map(i => i.color) }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        // The always-visible HTML legend below (counts + meanings)
+                        // replaces Chart.js's colour-only legend.
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${plural(ctx.parsed, 'appointment', 'appointments')}` } }
+                    }
+                }
             });
             // Both bars are ASSESSMENT counts over the same set of patients.
             // This chart previously plotted reviewedAssessments against
@@ -448,17 +517,21 @@ if (!getToken() || !_u) {
             // parts of a single whole. They are not.
             pediaReviewChart = new Chart(document.getElementById('pediaReviewChart'), {
                 type: 'bar',
-                data: { labels: ['Reviewed', 'Not yet reviewed'], datasets: [{ data: [0,0], backgroundColor: ['#8BA98D','#F4D89F'] }] },
+                data: { labels: REVIEW_LEGEND.map(i => i.label), datasets: [{ label: 'Completed assessments', data: [0,0], backgroundColor: REVIEW_LEGEND.map(i => i.color) }] },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     indexAxis: 'y',
-                    // The single dataset carries no label, so Chart.js was
-                    // drawing a legend that literally read "undefined". Each
-                    // bar is already named on the y-axis, so the legend is
-                    // redundant as well as wrong.
-                    plugins: { legend: { display: false } },
-                    scales: { x: { beginAtZero: true, title: { display: true, text: 'Completed assessments' } } }
+                    // Each bar is named on the y-axis and explained in the HTML
+                    // legend below, so Chart.js's own legend stays off.
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: (ctx) => ` ${plural(ctx.parsed.x, 'completed assessment', 'completed assessments')}` } }
+                    },
+                    scales: {
+                        x: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Number of completed assessments' } },
+                        y: { title: { display: true, text: 'Review status' } }
+                    }
                 }
             });
         }
@@ -472,6 +545,10 @@ if (!getToken() || !_u) {
                 pediaReviewChart.data.datasets[0].data = [summary.reviewedAssessments || 0, summary.unreviewedAssessments || 0];
                 pediaReviewChart.update();
             }
+            renderCountLegend('pediaApptLegend', APPT_LEGEND, summary, 'appointment', 'appointments',
+                'There are no pending, approved, or completed appointments yet, so the chart is empty.');
+            renderCountLegend('pediaReviewLegend', REVIEW_LEGEND, summary, 'assessment', 'assessments',
+                'No completed assessments to review yet.');
         }
 
         async function loadPediaAnalytics() {
@@ -489,4 +566,4 @@ if (!getToken() || !_u) {
         }
 
         document.addEventListener('click',e=>{if(!e.target.closest('.profile-btn'))document.getElementById('profileMenu').style.display='none';});
-        document.addEventListener('DOMContentLoaded',()=>{initPediaCharts();loadDashboard();loadPediaAnalytics();loadNotificationCount();setInterval(()=>{loadDashboard();loadPediaAnalytics();loadNotificationCount();},5000);});
+        document.addEventListener('DOMContentLoaded',()=>{renderScoreGuideNote();initPediaCharts();loadDashboard();loadPediaAnalytics();loadNotificationCount();setInterval(()=>{loadDashboard();loadPediaAnalytics();loadNotificationCount();},5000);});

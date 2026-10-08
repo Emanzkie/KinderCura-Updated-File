@@ -63,26 +63,37 @@ Purpose:
         </div>
 
         <div class="stats-grid">
-            <div class="stat-card"><p class="stat-label">Total Patients</p><p class="stat-num" id="statTotal">—</p><p class="stat-sub" id="statTotalSub"></p></div>
-            <div class="stat-card"><p class="stat-label">Pending Approvals</p><p class="stat-num red" id="statPending">—</p><p class="stat-sub" id="statPendingSub"></p></div>
-            <div class="stat-card"><p class="stat-label">Assessments Reviewed</p><p class="stat-num" id="statReviewed">—</p><p class="stat-sub">This month</p></div>
-            <div class="stat-card"><p class="stat-label">Upcoming Appointments</p><p class="stat-num" id="statUpcoming">—</p><p class="stat-sub">Next 7 days</p></div>
+            <!-- Labels describe exactly what js/pedia/pediatrician-dashboard.js
+                 counts from GET /appointments/pedia-notifications (one entry per
+                 appointment). "Total Patients" and "Assessments Reviewed / This
+                 month" were renamed: the values were always appointment counts
+                 (all statuses, and approved, all dates). The counts are unchanged. -->
+            <div class="stat-card"><p class="stat-label">Total Appointment Requests</p><p class="stat-num" id="statTotal">—</p><p class="stat-sub" id="statTotalSub"></p><p class="stat-desc">Every appointment booked with you, in any status. A child with several bookings is counted once per booking.</p></div>
+            <div class="stat-card"><p class="stat-label">Pending Approvals</p><p class="stat-num red" id="statPending">—</p><p class="stat-sub" id="statPendingSub"></p><p class="stat-desc">Appointment requests waiting for you to accept, reschedule or decline.</p></div>
+            <div class="stat-card"><p class="stat-label">Approved Appointments</p><p class="stat-num" id="statReviewed">—</p><p class="stat-sub">All dates</p><p class="stat-desc">Appointments currently confirmed (status: Approved), past and upcoming.</p></div>
+            <div class="stat-card"><p class="stat-label">Upcoming Appointments</p><p class="stat-num" id="statUpcoming">—</p><p class="stat-sub">Next 7 days</p><p class="stat-desc">Approved appointments scheduled within the next 7 days.</p></div>
         </div>
 
         <div class="two-col" style="margin-top:2rem;">
             <div class="panel">
                 <h2><img src="/icons/analytics.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Appointment Overview</h2>
-                <div style="height:220px;"><canvas id="pediaApptChart"></canvas></div>
+                <p class="panel-note">Number of your appointments in each status. Each slice's size is that status's share of the counted appointments; the exact counts are listed below.</p>
+                <div style="height:220px;"><canvas id="pediaApptChart" role="img" aria-label="Appointment status chart. The counts are listed below."></canvas></div>
+                <ul class="kc-chart-legend" id="pediaApptLegend" aria-label="Appointment Overview legend"></ul>
+                <p class="kc-chart-footnote">Cancelled and rejected appointments are not counted in this chart.</p>
             </div>
             <div class="panel">
                 <h2><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Review Progress</h2>
-                <div style="height:220px;"><canvas id="pediaReviewChart"></canvas></div>
+                <p class="panel-note">Shows the <strong>number</strong> of completed assessments you have reviewed versus those still waiting for a review. These are counts, not percentages.</p>
+                <div style="height:220px;"><canvas id="pediaReviewChart" role="img" aria-label="Review progress bar chart. The counts are listed below."></canvas></div>
+                <ul class="kc-chart-legend" id="pediaReviewLegend" aria-label="Review Progress legend"></ul>
             </div>
         </div>
 
         <div class="two-col">
             <div class="panel">
                 <h2><img src="/icons/pending_request.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Pending Appointment Requests</h2>
+                <div class="score-guide-note" id="pendingScoreGuide"></div>
                 <div id="pendingList"><div class="empty-state"><span><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"></span>Loading…</div></div>
             </div>
             <div class="panel">
@@ -111,6 +122,8 @@ Purpose:
 <script src="/api.js"></script>
 <script src="/notifications-card-ui.js"></script>
 <script src="/js/shared/mobile-nav.js"></script>
+<!-- Must load before pediatrician-dashboard.js — provides window.KCScoring (score ranges in the Assessment Results explanation). -->
+<script src="/constants/scoring.js"></script>
 <script src="/js/pedia/pediatrician-dashboard.js"></script>
 
 <!-- Reschedule dialog. Deliberately outside #pendingList: loadDashboard() rewrites

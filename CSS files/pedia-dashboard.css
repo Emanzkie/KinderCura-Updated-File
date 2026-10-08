@@ -390,3 +390,65 @@
         padding: 0.5rem;
     }
 }
+
+/* ==================== DASHBOARD LEGENDS & NUMBER EXPLANATIONS ====================
+   Plain-language context for the stat cards, both charts and the Assessment
+   Results percentages (js/pedia/pediatrician-dashboard.js). Display only.
+   Legend primitives (.kc-chart-legend, .kc-swatch) live in
+   dashboard-new-styles.css. */
+.stat-desc {
+    margin-top: 0.5rem;
+    font-size: 0.76rem;
+    line-height: 1.45;
+    color: var(--text-light);
+}
+
+.panel-note {
+    margin: -0.9rem 0 1rem;
+    font-size: var(--fs-small, 0.85rem);
+    line-height: 1.5;
+    color: var(--text-light);
+}
+
+.score-guide-note {
+    margin: -0.6rem 0 1.2rem;
+    padding: 0.75rem 0.9rem;
+    background: var(--bg-primary);
+    border-radius: 10px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-light);
+}
+
+.score-guide-note strong {
+    color: var(--text-dark);
+}
+
+.score-guide-ranges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 0.45rem;
+    margin-top: 0.4rem;
+}
+
+.score-guide-ranges span {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill, 999px);
+    padding: 0.1rem 0.55rem;
+    color: var(--text-dark);
+    font-size: 0.75rem;
+}
+
+.scores-band {
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+.scores-caption {
+    display: block;
+    margin-top: 0.45rem;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: var(--text-light);
+}
