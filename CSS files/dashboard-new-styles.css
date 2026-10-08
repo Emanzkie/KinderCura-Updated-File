@@ -1160,10 +1160,123 @@ body {
     max-width: 100%;
 }
 
+/* Fixed-height box for each chart. Chart.js (responsive, no aspect ratio)
+   sizes its drawing to the parent, which used to be the whole card — so the
+   doughnut/pie were drawn taller than the 180px canvas and squashed into
+   ellipses. */
+.parent-chart-canvas {
+    position: relative;
+    height: 180px;
+}
+
 @media(max-width: 768px) {
     .parent-charts {
         grid-template-columns: 1fr;
     }
+}
+
+/* ==================== CHART LEGENDS & SCORE NOTES ====================
+   Plain-language keys for the parent Dashboard and Results charts/percentages.
+   Always visible (never hover-only) so they also work on phones. Display only —
+   the values they describe come straight from the existing API responses. */
+
+.kc-card-note {
+    margin: -0.75rem 0 1.1rem;
+    color: var(--text-light);
+    font-size: var(--fs-small);
+    line-height: 1.5;
+}
+
+.parent-chart-card .kc-card-note {
+    margin: -0.5rem 0 0.9rem;
+}
+
+.kc-chart-legend {
+    list-style: none;
+    margin: 1rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+
+.kc-chart-legend li {
+    display: grid;
+    grid-template-columns: 14px 1fr;
+    column-gap: 0.6rem;
+    align-items: start;
+    font-size: var(--fs-small);
+    line-height: 1.45;
+    color: var(--text-dark);
+}
+
+.kc-swatch {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    margin-top: 0.15em;
+    flex-shrink: 0;
+}
+
+.kc-chart-legend-label {
+    font-weight: 600;
+}
+
+.kc-chart-legend-count {
+    font-weight: 700;
+    color: var(--primary-dark);
+}
+
+.kc-chart-legend-desc {
+    display: block;
+    color: var(--text-light);
+    font-size: var(--fs-tiny);
+}
+
+.kc-chart-footnote {
+    margin: 0.8rem 0 0;
+    color: var(--text-light);
+    font-size: var(--fs-tiny);
+    line-height: 1.5;
+}
+
+.kc-score-guide {
+    margin-top: 1.2rem;
+    padding: 0.75rem 0.9rem;
+    background: var(--bg-primary);
+    border-radius: 10px;
+    font-size: var(--fs-tiny);
+    color: var(--text-light);
+    line-height: 1.5;
+}
+
+.kc-score-guide-title {
+    margin: 0 0 0.4rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    font-size: var(--fs-small);
+}
+
+.kc-score-guide-list {
+    list-style: none;
+    margin: 0 0 0.4rem;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.5rem;
+}
+
+.kc-score-guide-list li {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    padding: 0.15rem 0.6rem;
+    color: var(--text-dark);
+}
+
+.kc-score-guide p {
+    margin: 0;
 }
 
 /* ============================================================================

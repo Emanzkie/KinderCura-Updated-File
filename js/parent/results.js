@@ -64,6 +64,47 @@ const OVERALL_BLURB = {
 };
 
 // ---------------------------------------------------------------------------
+// Score guide — one shared legend for every percentage colour and label on
+// this page. Built entirely from constants/scoring.js (ranges, per-area
+// labels, overall labels, colours) and js/shared/care-plan-labels.js (the
+// Developmental Band wording), so it can never drift from the real cutoffs.
+// Display only: nothing here scores anything.
+// ---------------------------------------------------------------------------
+function renderScoreGuide() {
+    const S = window.KCScoring;
+    const CP = window.KCCarePlan;
+    if (!S || !Array.isArray(S.ACTIVE_BANDS)) return '';
+
+    return `
+        <div class="score-guide">
+            <p class="score-guide-title">Score guide</p>
+            <p class="score-guide-intro">How KinderCura labels a score. The colour of each percentage on this page follows these ranges.</p>
+            <div class="score-guide-scroll">
+                <table class="score-guide-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Score range</th>
+                            <th scope="col">Area label</th>
+                            <th scope="col">Overall label</th>
+                            <th scope="col">Developmental Band</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${S.ACTIVE_BANDS.map((b) => `
+                        <tr>
+                            <td><span class="kc-swatch" style="background:${S.colorForBand(b.key)};" aria-hidden="true"></span> ${b.min}&ndash;${b.max}%</td>
+                            <td>${escapeHtml(S.PARENT_DOMAIN_LABELS[b.key])}</td>
+                            <td>${escapeHtml(S.PARENT_OVERALL_LABELS[b.key])}</td>
+                            <td>${escapeHtml(CP ? CP.developmentalBandLabel(b.key) : b.key)}</td>
+                        </tr>`).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <p class="score-guide-note">These ranges are KinderCura's current assessment scoring rules. They describe the assessment score only and are not a medical diagnosis.</p>
+        </div>`;
+}
+
+// ---------------------------------------------------------------------------
 // Domain evidence ("Why this score?")
 //
 // Everything below renders `results.domainDetails` from
@@ -215,6 +256,7 @@ function renderDomainCardInner(vm, index, view) {
              aria-label="${escapeHtml(vm.label)} ${view === 'previous' ? 'previous' : 'present'} score ${score} percent">
             <div class="domain-progress-fill" style="width:${score}%;"></div>
         </div>
+        <p class="domain-score-caption">Your child's recorded ${escapeHtml(vm.label)} score in ${hasPrevious ? `the ${view === 'previous' ? 'previous' : 'present (latest)'} assessment` : 'this assessment'}.</p>
         ${dateLine}
         ${body}`;
 }
@@ -427,26 +469,47 @@ function renderProgressionChartBlock(compare) {
         monitoringLabel,
     });
 
+    const S = window.KCScoring;
+
     return `
         <div class="progression-block">
-            <h4 style="margin:0 0 .8rem;color:var(--text-dark);font-size:1rem;">Assessment Progression</h4>
-            <div class="progression-chart-wrap"><canvas id="progressionChart"></canvas></div>
+            <h4 style="margin:0 0 .4rem;color:var(--text-dark);font-size:1rem;">Assessment Progress</h4>
+            <p class="progression-note">This graph compares your child's overall assessment score between the previous and current completed assessments.</p>
+            <div class="progression-chart-wrap"><canvas id="progressionChart" role="img"
+                aria-label="Overall assessment score: previous ${overall.previous} percent, current ${overall.current} percent"></canvas></div>
+            <ul class="kc-chart-legend progression-legend" aria-label="Assessment Progress chart legend">
+                <li>
+                    <span class="kc-swatch" style="background:${S.colorForScore(overall.previous)};" aria-hidden="true"></span>
+                    <span><span class="kc-chart-legend-label">Previous</span>: ${overall.previous}%
+                        <span class="kc-chart-legend-desc">Overall score from the previous completed assessment (${escapeHtml(fmtDate(compare.previous && compare.previous.date))}).</span></span>
+                </li>
+                <li>
+                    <span class="kc-swatch" style="background:${S.colorForScore(overall.current)};" aria-hidden="true"></span>
+                    <span><span class="kc-chart-legend-label">Current</span>: ${overall.current}%
+                        <span class="kc-chart-legend-desc">Overall score from the latest completed assessment (${escapeHtml(fmtDate(compare.current && compare.current.date))}).</span></span>
+                </li>
+            </ul>
+            <p class="kc-chart-footnote" style="margin-bottom:1.2rem;">Bar height is the overall assessment score (0&ndash;100%). Bar colour follows the ranges in the Score guide above.</p>
             <div class="progression-stats-grid">
                 <div class="progression-stat">
                     <p class="progression-stat-label">Current</p>
                     <p class="progression-stat-value">${overall.current}%</p>
+                    <p class="progression-stat-hint">Latest completed assessment</p>
                 </div>
                 <div class="progression-stat">
                     <p class="progression-stat-label">Previous</p>
                     <p class="progression-stat-value">${overall.previous}%</p>
+                    <p class="progression-stat-hint">Previous completed assessment</p>
                 </div>
                 <div class="progression-stat">
                     <p class="progression-stat-label">Change</p>
                     <p class="progression-stat-value" style="color:${diffColor(overall.difference)};">${KPI.formatSignedPoints(overall.difference)} pts</p>
+                    <p class="progression-stat-hint">Current minus previous, in percentage points</p>
                 </div>
                 <div class="progression-stat">
                     <p class="progression-stat-label">Direction</p>
                     <p class="progression-stat-value"><span class="kc-badge kc-badge--${stageBadgeSafe(directionTone)}">${escapeHtml(KPI.directionWord(direction))}</span></p>
+                    <p class="progression-stat-hint">Whether the overall score went up, down, or stayed the same</p>
                 </div>
             </div>
             <div class="progression-interp">
@@ -492,7 +555,7 @@ function drawProgressionChart(compare) {
                     min: 0,
                     max: 100,
                     ticks: { callback: (v) => `${v}%` },
-                    title: { display: true, text: 'Overall score' },
+                    title: { display: true, text: 'Overall assessment score' },
                 },
             },
             plugins: {
@@ -537,10 +600,13 @@ function renderComparisonSection(compare) {
                 ${renderCareStageColumn('Previous', compare.previous)}
                 ${renderCareStageColumn('Current', compare.current)}
             </div>
-            <p style="margin:0 0 1.2rem;font-size:.9rem;">
-                <strong>Progress:</strong>
+            <p style="margin:0 0 .3rem;font-size:.9rem;">
+                <strong>Care Stage Progress:</strong>
                 <span class="kc-badge kc-badge--${directionTone}" style="margin-left:.4rem;">${escapeHtml(CP.directionLabel(direction))}</span>
             </p>
+            <p class="kc-chart-footnote" style="margin:0 0 1.4rem;">Compares the previous and current Care Stage shown above &mdash; not the point totals in the table below.</p>
+            <h4 style="margin:0 0 .3rem;color:var(--text-dark);font-size:1rem;">Scores by Developmental Area</h4>
+            <p class="progression-note">Each row compares one area's recorded score between the two completed assessments.</p>
             <div style="overflow-x:auto;">
                 <table style="width:100%;border-collapse:collapse;font-size:.9rem;min-width:420px;">
                     <thead>
@@ -560,9 +626,37 @@ function renderComparisonSection(compare) {
                     </tbody>
                 </table>
             </div>
-            <p style="margin:.7rem 0 0;font-size:.75rem;color:var(--text-light);">
-                Progress shows how each domain's score moved since the previous assessment, in percentage points (pts) &mdash; a positive value means the score went up. The <strong>Progress</strong> badge above reflects the change in overall care stage, not these point totals.
+            ${renderProgressTableLegend(s.overall)}
+        </div>`;
+}
+
+// Column key + "pts" key for the domain progress table. The worked example
+// uses the table's own Overall row as-is (no recalculation): it only restates
+// the already-computed difference in words.
+function renderProgressTableLegend(overall) {
+    const KPI = window.KCProgressionInterpretation;
+    let example = '';
+    if (overall && overall.previous != null && overall.current != null && overall.difference != null) {
+        const n = Math.abs(overall.difference);
+        const unit = `percentage point${n === 1 ? '' : 's'}`;
+        const meaning = overall.difference > 0 ? `an increase of ${n} ${unit}`
+            : overall.difference < 0 ? `a decrease of ${n} ${unit}`
+            : 'no change';
+        example = `<p class="progress-legend-example">Example from this result: the overall score went from ${overall.previous}% to ${overall.current}%, so Progress is <strong>${KPI.formatSignedPoints(overall.difference)} pts</strong> &mdash; ${meaning}.</p>`;
+    }
+    return `
+        <div class="progress-legend">
+            <dl class="progress-legend-terms">
+                <div><dt>Previous</dt><dd>Score from the previous completed assessment.</dd></div>
+                <div><dt>Current</dt><dd>Score from the latest completed assessment.</dd></div>
+                <div><dt>Progress</dt><dd>Current minus previous, measured in percentage points (pts).</dd></div>
+            </dl>
+            <p class="progress-legend-signs">
+                <span style="color:${diffColor(1)};font-weight:700;">+ pts</span> = score increased &middot;
+                <span style="color:${diffColor(-1)};font-weight:700;">&minus; pts</span> = score decreased &middot;
+                <strong>0 pts</strong> = no change
             </p>
+            ${example}
         </div>`;
 }
 
@@ -594,23 +688,43 @@ function renderCarePlanCard(developmentalBand, prediction) {
     const monitoringLabel = CP.monitoringLevelLabel(prediction.monitoringLevel);
     const interpretation = CP.interpretationLine(prediction.source);
 
-    const field = (label, valueHtml) => `
+    // Plain-language "what is this?" line under each value. Describes how the
+    // backend already decided each field (constants/developmental-staging.js);
+    // it never re-derives anything. The care-stage path depends on `source`:
+    // ML risk category when a model prediction exists, otherwise the
+    // developmental band (rule-based fallback).
+    const hasRisk = Boolean(prediction.riskCategory);
+    const riskHint = hasRisk
+        ? 'Low, Medium or High &mdash; generated by KinderCura\'s assessment prediction model from this assessment. It supports follow-up discussion with your pediatrician and is not a medical diagnosis.'
+        : (prediction.source === 'rule_based'
+            ? 'No prediction-model result was available for this assessment, so the Care Stage follows the standard scoring rules instead.'
+            : 'Not available for this assessment.');
+    const stageHint = prediction.source === 'rule_based'
+        ? 'Follow-up level from KinderCura\'s care-plan rules, based on the Developmental Band (On-Track or Developing &rarr; Low Concern, At-Risk &rarr; Intermediate Concern, Delayed &rarr; Severe Concern).'
+        : 'Follow-up level from KinderCura\'s care-plan rules, based on the risk category (Low &rarr; Low Concern, Medium &rarr; Intermediate Concern, High &rarr; Severe Concern).';
+
+    const field = (label, valueHtml, hintHtml) => `
         <div>
             <p style="margin:0 0 .4rem;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-light);">${escapeHtml(label)}</p>
             ${valueHtml}
+            ${hintHtml ? `<p class="care-plan-hint">${hintHtml}</p>` : ''}
         </div>`;
 
     return `
     <div class="comparison-card" style="background:white;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
-        <h3 style="margin:0 0 1.2rem;color:var(--primary);">Developmental Assessment &amp; Care Plan</h3>
+        <h3 style="margin:0 0 .4rem;color:var(--primary);">Developmental Assessment &amp; Care Plan</h3>
+        <p style="margin:0 0 1.2rem;font-size:.85rem;color:var(--text-light);line-height:1.5;">A summary of how KinderCura's existing rules classify this assessment, and the follow-up they suggest.</p>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1.4rem;">
-            ${field('Developmental Band', `<span class="kc-badge kc-badge--${stageBadgeSafe(bandTone)}">${escapeHtml(bandLabel)}</span>`)}
-            ${field('Developmental Risk Category', `<span class="kc-badge kc-badge--${stageBadgeSafe(riskTone)}">${escapeHtml(riskLabel)}</span>`)}
-            ${field('Care Stage', `<span class="kc-badge kc-badge--${stageBadgeSafe(stageTone)}">${escapeHtml(stageLabel)}</span>`)}
-            ${field('Consultation', `<p style="margin:0;font-weight:600;color:var(--text-dark);">${escapeHtml(consultationLabel)}</p>`)}
-            ${field('Monitoring', `<p style="margin:0;font-weight:600;color:var(--text-dark);">${escapeHtml(monitoringLabel)}</p>`)}
+            ${field('Developmental Band', `<span class="kc-badge kc-badge--${stageBadgeSafe(bandTone)}">${escapeHtml(bandLabel)}</span>`,
+                'Set from the overall assessment score using the ranges in the Score guide above.')}
+            ${field('Developmental Risk Category', `<span class="kc-badge kc-badge--${stageBadgeSafe(riskTone)}">${escapeHtml(riskLabel)}</span>`, riskHint)}
+            ${field('Care Stage', `<span class="kc-badge kc-badge--${stageBadgeSafe(stageTone)}">${escapeHtml(stageLabel)}</span>`, stageHint)}
+            ${field('Consultation', `<p style="margin:0;font-weight:600;color:var(--text-dark);">${escapeHtml(consultationLabel)}</p>`,
+                'Suggested consultation level for this Care Stage.')}
+            ${field('Monitoring', `<p style="margin:0;font-weight:600;color:var(--text-dark);">${escapeHtml(monitoringLabel)}</p>`,
+                'Suggested monitoring level for this Care Stage.')}
         </div>
-        <p style="margin:1.3rem 0 0;font-size:.8rem;color:var(--text-light);">${escapeHtml(interpretation)}</p>
+        <p style="margin:1.3rem 0 0;font-size:.8rem;color:var(--text-light);">${escapeHtml(interpretation)}. These results support follow-up discussion with your pediatrician and are not a medical diagnosis.</p>
     </div>`;
 }
 
@@ -869,13 +983,19 @@ async function loadResults() {
                         <span class="overall-score-caption">Overall Score</span>
                         <span class="overall-score-value">${overall}%</span>
                     </div>
+                    <p class="overall-score-note">Average of the 4 area scores</p>
                 </div>
                 <div>
                     <h2 style="color:var(--primary);margin-bottom:0.5rem;">${getOverallStatus(overall)}</h2>
-                    <p style="color:var(--text-light);line-height:1.6;margin-bottom:1.5rem;">
+                    <p style="color:var(--text-light);line-height:1.6;margin-bottom:1rem;">
                         ${OVERALL_BLURB[window.KCScoring.bandFor(overall)]}
                         ${riskFlags.length ? ' Note: ' + escapeHtml(riskFlags.join('; ')) + '.' : ''}
                     </p>
+                    <div class="score-explain">
+                        <p class="score-explain-title">What does ${overall}% mean?</p>
+                        <p>Your child's overall assessment score is ${overall}%. It summarizes the recorded results across the four developmental areas below &mdash; it is the average of their area scores. It is an assessment score, not a percentage of delay and not a diagnosis.</p>
+                    </div>
+                    <p class="results-domain-intro">Area scores &mdash; your child's recorded score in each developmental area in this assessment:</p>
                     <div class="results-domain-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;">
                         ${domains.map((d) => `
                             <div style="background:var(--bg-primary);padding:1rem;border-radius:8px;text-align:center;">
@@ -884,12 +1004,12 @@ async function loadResults() {
                                 <div style="font-size:0.8rem;color:var(--text-light);">${d.label}</div>
                             </div>`).join('')}
                     </div>
-                    ${hasAnyDomainDetails ? `
                     <p class="scoring-legend">
-                        How each score is worked out: every answer of <strong>Yes</strong> earns full credit,
+                        How each area score is worked out: every answer of <strong>Yes</strong> earns full credit,
                         <strong>Sometimes</strong> earns partial credit, and <strong>No</strong> earns none.
-                        Each card below shows the answers behind its percentage.
-                    </p>` : ''}
+                        ${hasAnyDomainDetails ? 'Each card below shows the answers behind its percentage.' : ''}
+                    </p>
+                    ${renderScoreGuide()}
                 </div>
             </div>
 

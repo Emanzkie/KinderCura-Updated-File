@@ -185,6 +185,23 @@ function renderSkills(a) {
             <div class="skill-name"><span>${s.label}</span><span class="skill-percent">${s.val}%</span></div>
             <div class="skill-bar"><div class="skill-fill" style="width:${s.val}%"></div></div>
         </div>`).join('');
+    renderSkillScoreGuide();
+}
+
+// Score ranges + labels come straight from constants/scoring.js (the same
+// ranges and per-area labels the Results page chips use). Nothing is scored
+// here — this only lists the existing ranges so the percentages have context.
+function renderSkillScoreGuide() {
+    const guide = document.getElementById('skillScoreGuide');
+    const S = window.KCScoring;
+    if (!guide || !S || !Array.isArray(S.ACTIVE_BANDS)) return;
+    guide.innerHTML = `
+        <p class="kc-score-guide-title">Score guide</p>
+        <ul class="kc-score-guide-list">
+            ${S.ACTIVE_BANDS.map(b => `<li>${b.min}&ndash;${b.max}%: <strong>${escapeHtml(S.PARENT_DOMAIN_LABELS[b.key])}</strong></li>`).join('')}
+        </ul>
+        <p>These are the labels shown for each area on the Results page. They describe the assessment score only and are not a medical diagnosis.</p>`;
+    guide.hidden = false;
 }
 
 function renderAssessment(a) {
@@ -415,16 +432,93 @@ async function loadNotifPreview() {
 
 let parentApptChart, parentChildrenChart;
 
+// Plain-language key for the Appointment Overview chart. Statuses are exactly
+// the three /admin/analytics/parent counts (routes/admin.js) — cancelled and
+// rejected appointments are not part of that data, so they are not listed.
+// Wording follows the parent Appointments page ("being reviewed by the clinic
+// staff" / "Confirmed by clinic staff").
+// Completed uses the brand pink (--accent-red) instead of the previous light
+// green, which was almost indistinguishable from Approved in the legend.
+const APPT_STATUS_LEGEND = [
+    { label: 'Pending',   key: 'pendingAppointments',   color: '#F4D89F', desc: 'Appointment requests still waiting to be confirmed by the clinic.' },
+    { label: 'Approved',  key: 'approvedAppointments',  color: '#6B8E6F', desc: 'Appointments confirmed by the clinic and scheduled to take place.' },
+    { label: 'Completed', key: 'completedAppointments', color: '#E8A5A5', desc: 'Appointments that have already taken place and were marked as completed.' },
+];
+const CHILDREN_CHART_COLOR = '#6B8E6F';
+// Skip re-rendering the legends on the 5-second poll when nothing changed.
+let _apptLegendSignature = null;
+let _childrenLegendSignature = null;
+
+function plural(n, one, many) {
+    return `${n} ${n === 1 ? one : many}`;
+}
+
+function renderApptLegend(summary) {
+    const list = document.getElementById('parentApptLegend');
+    if (!list) return;
+    const counts = APPT_STATUS_LEGEND.map(s => Number(summary[s.key]) || 0);
+    const signature = counts.join(',');
+    if (signature === _apptLegendSignature) return;
+    _apptLegendSignature = signature;
+
+    const total = counts.reduce((a, b) => a + b, 0);
+    list.innerHTML = APPT_STATUS_LEGEND.map((s, i) => `
+        <li>
+            <span class="kc-swatch" style="background:${s.color};" aria-hidden="true"></span>
+            <span>
+                <span class="kc-chart-legend-label">${s.label}</span>:
+                <span class="kc-chart-legend-count">${plural(counts[i], 'appointment', 'appointments')}</span>
+                <span class="kc-chart-legend-desc">${s.desc}</span>
+            </span>
+        </li>`).join('')
+        + (total === 0 ? '<li><span></span><span class="kc-chart-legend-desc">There are no pending, approved, or completed appointments yet, so the chart is empty.</span></li>' : '');
+}
+
+function renderChildrenLegend(summary) {
+    const list = document.getElementById('parentChildrenLegend');
+    if (!list) return;
+    const total = Number(summary.totalChildren) || 0;
+    if (String(total) === _childrenLegendSignature) return;
+    _childrenLegendSignature = String(total);
+
+    list.innerHTML = total > 0 ? `
+        <li>
+            <span class="kc-swatch" style="background:${CHILDREN_CHART_COLOR};" aria-hidden="true"></span>
+            <span>
+                <span class="kc-chart-legend-label">Registered children</span>:
+                <span class="kc-chart-legend-count">${plural(total, 'child', 'children')}</span>
+                <span class="kc-chart-legend-desc">The full circle represents ${total === 1 ? 'your one registered child' : `all ${total} of your registered children together`}. It is a count, not a percentage or a score.</span>
+            </span>
+        </li>` : `
+        <li><span></span><span class="kc-chart-legend-desc">No children are registered under your account yet. Add a child from your Profile page.</span></li>`;
+}
+
         function initParentCharts() {
             parentApptChart = new Chart(document.getElementById('parentApptChart'), {
                 type: 'doughnut',
-                data: { labels: ['Pending', 'Approved', 'Completed'], datasets: [{ data: [0,0,0], backgroundColor: ['#F4D89F','#6B8E6F','#8BA98D'] }] },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+                data: { labels: APPT_STATUS_LEGEND.map(s => s.label), datasets: [{ data: [0,0,0], backgroundColor: APPT_STATUS_LEGEND.map(s => s.color) }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        // The always-visible HTML legend under the chart (with counts
+                        // and meanings) replaces Chart.js's colour-only legend.
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${plural(ctx.parsed, 'appointment', 'appointments')}` } }
+                    }
+                }
             });
             parentChildrenChart = new Chart(document.getElementById('parentChildrenChart'), {
                 type: 'pie',
-                data: { labels: ['Children'], datasets: [{ data: [0], backgroundColor: ['#6B8E6F'] }] },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                // borderWidth 0: a single-slice pie otherwise shows a stray white
+                // seam at 12 o'clock that reads like a second, empty slice.
+                data: { labels: ['Registered children'], datasets: [{ data: [0], backgroundColor: [CHILDREN_CHART_COLOR], borderWidth: 0 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: (ctx) => ` ${plural(ctx.parsed, 'registered child', 'registered children')}` } }
+                    }
+                }
             });
         }
 
@@ -437,6 +531,8 @@ let parentApptChart, parentChildrenChart;
                 parentChildrenChart.data.datasets[0].data = [summary.totalChildren || 0];
                 parentChildrenChart.update();
             }
+            renderApptLegend(summary);
+            renderChildrenLegend(summary);
         }
 
         async function loadParentAnalytics() {

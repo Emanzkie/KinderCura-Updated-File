@@ -85,12 +85,15 @@
     <div class="overview-grid">
         <div class="overview-card">
             <h3><img src="/icons/analytics.png" alt="" aria-hidden="true" class="icon-inline"> Skill Overview</h3>
+            <p class="kc-card-note">These percentages show your child's recorded score in each developmental area, based on the answers in the latest completed assessment. "Yes" answers earn full credit, "Sometimes" partial credit and "No" none, so a higher percentage means more of that area's skills were observed.</p>
             <div class="skill-list" id="skillList">
                 <p class="text-center text-muted">No assessment yet</p>
             </div>
+            <div class="kc-score-guide" id="skillScoreGuide" hidden></div>
         </div>
         <div class="overview-card">
             <h3><img src="/icons/clipboard.png" alt="" aria-hidden="true" class="icon-inline"> Latest Assessment</h3>
+            <p class="kc-card-note">The date and area scores of your child's most recent completed assessment. Each percentage is the recorded score for that developmental area &mdash; an assessment result, not a diagnosis.</p>
             <div class="assessment-box" id="assessmentBox">
                 <p class="text-center text-muted" style="padding:1rem;">No assessment yet</p>
             </div>
@@ -118,11 +121,20 @@
     <div class="parent-charts">
         <div class="parent-chart-card">
             <h3><img src="/icons/appointment.png" alt="" style="width:1em;vertical-align:-0.1em;"> Appointment Overview</h3>
-            <canvas id="parentApptChart"></canvas>
+            <p class="kc-card-note">This chart shows the current status of the appointments booked under your parent account. Each slice's size shows how many appointments have that status.</p>
+            <div class="parent-chart-canvas">
+                <canvas id="parentApptChart" role="img" aria-label="Appointment status chart. The counts are listed below."></canvas>
+            </div>
+            <ul class="kc-chart-legend" id="parentApptLegend" aria-label="Appointment status legend"></ul>
+            <p class="kc-chart-footnote">Cancelled and rejected appointments are not counted in this chart.</p>
         </div>
         <div class="parent-chart-card">
             <h3><img src="/icons/clipboard.png" alt="" style="width:1em;vertical-align:-0.1em;"> My Children</h3>
-            <canvas id="parentChildrenChart"></canvas>
+            <p class="kc-card-note">Shows how many children are registered under your parent account.</p>
+            <div class="parent-chart-canvas">
+                <canvas id="parentChildrenChart" role="img" aria-label="Registered children chart. The count is listed below."></canvas>
+            </div>
+            <ul class="kc-chart-legend" id="parentChildrenLegend" aria-label="My Children legend"></ul>
         </div>
     </div>
 
@@ -153,6 +165,8 @@
     <script src="/api.js"></script>
 <script src="/js/shared/mobile-nav.js"></script>
 <script src="/notifications-card-ui.js"></script>
+<!-- Must load before dashboard.js — provides window.KCScoring (score ranges shown in the Skill Overview score guide). -->
+<script src="/constants/scoring.js"></script>
 <script src="/js/parent/dashboard.js"></script>
 </body>
 </html>

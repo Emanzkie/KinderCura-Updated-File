@@ -757,6 +757,171 @@ body {
     white-space: nowrap;
 }
 
+/* ==================== SCORE EXPLANATIONS & LEGENDS ====================
+   Plain-language context for every percentage on the Results page
+   (js/parent/results.js). Display only — values come from the API. */
+
+.overall-score-note {
+    margin: 0.6rem 0 0;
+    font-size: 0.78rem;
+    color: var(--text-light);
+}
+
+.score-explain {
+    margin: 0 0 1.2rem;
+    padding: 0.8rem 1rem;
+    background: var(--surface-tint, #F3F7F3);
+    border-left: 3px solid var(--primary);
+    border-radius: 8px;
+    font-size: 0.85rem;
+    line-height: 1.55;
+    color: var(--text-dark);
+}
+
+.score-explain p {
+    margin: 0;
+}
+
+.score-explain .score-explain-title {
+    margin-bottom: 0.25rem;
+    font-weight: 700;
+    color: var(--primary-dark, #5A7560);
+}
+
+.results-domain-intro {
+    margin: 0 0 0.6rem;
+    font-size: 0.85rem;
+    color: var(--text-light);
+}
+
+.score-guide {
+    margin-top: 1rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 0.8rem;
+    color: var(--text-light);
+    line-height: 1.5;
+}
+
+.score-guide p {
+    margin: 0;
+}
+
+.score-guide .score-guide-title {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--text-dark);
+    margin-bottom: 0.15rem;
+}
+
+.score-guide-scroll {
+    overflow-x: auto;
+    margin: 0.6rem 0;
+}
+
+.score-guide-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: var(--text-dark);
+}
+
+.score-guide-table th {
+    text-align: left;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-light);
+    font-weight: 600;
+    padding: 0.3rem 0.4rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.score-guide-table td {
+    padding: 0.35rem 0.4rem;
+    border-bottom: 1px solid var(--bg-secondary, #F0EFE8);
+}
+
+.score-guide-table td:first-child {
+    white-space: nowrap;
+}
+
+/* Let the overview column shrink below its content width so the score guide
+   wraps inside the card instead of widening the page on phones. */
+.results-overview-grid > div {
+    min-width: 0;
+}
+
+.score-guide-table td .kc-swatch {
+    vertical-align: -2px;
+    margin-top: 0;
+}
+
+.domain-score-caption {
+    margin: 0.45rem 0 0;
+    font-size: 0.78rem;
+    color: var(--text-light);
+}
+
+.care-plan-hint {
+    margin: 0.45rem 0 0;
+    font-size: 0.76rem;
+    line-height: 1.45;
+    color: var(--text-light);
+}
+
+.progression-note {
+    margin: 0 0 0.6rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-light);
+}
+
+.progression-legend {
+    margin-top: 0;
+}
+
+.progression-stat-hint {
+    margin: 0.3rem 0 0;
+    font-size: 0.72rem;
+    line-height: 1.35;
+    color: var(--text-light);
+}
+
+.progress-legend {
+    margin-top: 0.9rem;
+    padding: 0.8rem 1rem;
+    background: var(--bg-primary);
+    border-radius: 10px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-light);
+}
+
+.progress-legend p {
+    margin: 0.45rem 0 0;
+}
+
+.progress-legend-terms {
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 0.4rem 1rem;
+}
+
+.progress-legend-terms dt {
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.progress-legend-terms dd {
+    margin: 0;
+}
+
+.progress-legend-example {
+    color: var(--text-dark);
+}
+
 .scoring-legend {
     margin-top: 1.2rem;
     padding: 0.85rem 1rem;
