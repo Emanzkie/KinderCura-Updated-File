@@ -137,8 +137,8 @@ if (!getToken() || !_u) {
                 ? `<span class="score-guide-ranges">${S.ACTIVE_BANDS.map(b => `<span>${b.min}&ndash;${b.max}% ${escapeHtml(S.clinicalLabel(b.key))}</span>`).join('')}</span>`
                 : '';
             el.innerHTML = `<strong>About the Assessment Results percentages:</strong> each request shows the child's latest completed assessment.
-                An area % is the share of possible points earned on that area's questions (Yes = 2, Sometimes = 1, No = 0).
-                Overall % is the average of the four area scores. Score ranges:${ranges}`;
+                A domain % is the domain assessment score: the share of possible points earned on that domain's questions (Yes = 2, Sometimes = 1, No = 0).
+                Overall % is the overall assessment score: the average of the four domain scores. Score ranges:${ranges}`;
         }
 
         function renderPending(pending){
@@ -163,7 +163,7 @@ if (!getToken() || !_u) {
                            Cognitive: <strong>${n.cognitiveScore||0}%</strong>${n.cognitiveStatus?' ('+n.cognitiveStatus+')':''} &nbsp;·&nbsp;
                            Motor: <strong>${n.motorScore||0}%</strong>${n.motorStatus?' ('+n.motorStatus+')':''}<br>
                            Overall: <strong style="color:var(--primary);font-size:1rem;">${n.overallScore||0}%</strong>${overallBandText(n.overallScore)}
-                           <span class="scores-caption">Latest completed assessment${n.assessmentDate ? ' (' + fmtDate(n.assessmentDate) + ')' : ''}. Area % = that area's recorded assessment score; Overall = average of the four area scores.</span></div>`
+                           <span class="scores-caption">Latest completed assessment${n.assessmentDate ? ' (' + fmtDate(n.assessmentDate) + ')' : ''}. Domain % = that domain's assessment score; Overall = overall assessment score (average of the four domain scores).</span></div>`
                         :`<p style="color:var(--text-light);font-size:.85rem;font-style:italic;margin:.5rem 0;">No assessment results on file yet.</p>`
                     }
                     <div class="apt-actions">

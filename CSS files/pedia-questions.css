@@ -912,3 +912,47 @@ body.modal-open {
         justify-content: stretch;
     }
 }
+
+/* ==================== ASSIGN LIST: SCORE CHIPS & KEY ====================
+   Domain assessment scores under each patient in the Assign modal
+   (js/pedia/pedia-questions.js renderAssignList / syncAssignScoreNote).
+   Dark text on a light chip with a colour dot, so the band is readable as
+   text and not by colour alone. Display only. */
+.assign-score-note {
+    margin: 0 0 0.75rem;
+    font-size: 0.76rem;
+    line-height: 1.5;
+    color: var(--text-light);
+}
+
+.assign-score-note:empty {
+    display: none;
+}
+
+.assign-score-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    padding: 2px 7px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-dark);
+}
+
+.assign-score-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-right: 0.5rem;
+    white-space: nowrap;
+}
+
+.assign-score-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}

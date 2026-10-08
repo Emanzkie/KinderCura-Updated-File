@@ -1282,12 +1282,22 @@
             list.innerHTML = patientList.map(p => {
                 const hasScores = p.scores && Object.values(p.scores).some(s => s != null);
                 const isSelected = selectedPatients.has(p.childId);
+                // Domain assessment scores from the child's latest assessment.
+                // Full domain names + the stored status as text (colour dot is a
+                // second cue, never the only one). Values are unchanged.
+                const scoreChip = (key, label) => {
+                    const v = p.scores[key];
+                    if (v == null) return '';
+                    const st = p.statuses?.[key];
+                    const stLabel = st ? window.KCScoring.clinicalLabel(st) : '';
+                    return `<span class="assign-score-chip"><span class="assign-score-dot" style="background:${statusColors[st] || '#ddd'};" aria-hidden="true"></span>${label}: <strong>${v}%</strong>${stLabel ? ` (${stLabel})` : ''}</span>`;
+                };
                 const scoresHtml = hasScores ? `
-                    <div style="display:flex;gap:0.5rem;margin-top:0.4rem;flex-wrap:wrap;">
-                        ${p.scores.motor != null ? `<span style="font-size:0.7rem;padding:2px 6px;background:${statusColors[p.statuses?.motor] || '#ddd'};color:white;border-radius:4px;">M:${p.scores.motor}%</span>` : ''}
-                        ${p.scores.communication != null ? `<span style="font-size:0.7rem;padding:2px 6px;background:${statusColors[p.statuses?.communication] || '#ddd'};color:white;border-radius:4px;">C:${p.scores.communication}%</span>` : ''}
-                        ${p.scores.social != null ? `<span style="font-size:0.7rem;padding:2px 6px;background:${statusColors[p.statuses?.social] || '#ddd'};color:white;border-radius:4px;">S:${p.scores.social}%</span>` : ''}
-                        ${p.scores.cognitive != null ? `<span style="font-size:0.7rem;padding:2px 6px;background:${statusColors[p.statuses?.cognitive] || '#ddd'};color:white;border-radius:4px;">Co:${p.scores.cognitive}%</span>` : ''}
+                    <div style="display:flex;gap:0.4rem;margin-top:0.4rem;flex-wrap:wrap;">
+                        ${scoreChip('motor', 'Motor Skills')}
+                        ${scoreChip('communication', 'Communication')}
+                        ${scoreChip('social', 'Social Skills')}
+                        ${scoreChip('cognitive', 'Cognitive')}
                     </div>
                 ` : '';
 
@@ -1616,6 +1626,18 @@
         // Rebuild the status filter from constants/scoring.js so the dropdown can
         // never drift from the bands the server actually filters on. The static
         // <option> list in the HTML is only the no-JS fallback.
+        // One explanation for every score chip in the Assign list. Ranges are
+        // KCScoring's, the same ones the status filter above lists.
+        function syncAssignScoreNote() {
+            const el = document.getElementById('assignScoreNote');
+            if (!el || !window.KCScoring) return;
+            const S = window.KCScoring;
+            el.innerHTML = 'Percentages under each patient are <strong>domain assessment scores</strong> from the child\'s latest assessment: '
+                + 'the share of possible points earned on that domain\'s questions (Yes = 2, Sometimes = 1, No = 0). '
+                + 'The label and dot show the classification: '
+                + S.ACTIVE_BANDS.map(b => `<span class="assign-score-key"><span class="assign-score-dot" style="background:${S.colorForBand(b.key)};" aria-hidden="true"></span>${S.clinicalLabel(b.key)} ${b.min}&ndash;${b.max}%</span>`).join(' ');
+        }
+
         function syncThresholdFilterOptions() {
             const sel = document.getElementById('filterThreshold');
             if (!sel || !window.KCScoring) return;
@@ -1629,6 +1651,7 @@
 
         document.addEventListener('DOMContentLoaded', async () => {
             syncThresholdFilterOptions();
+            syncAssignScoreNote();
             await refreshAll();
             await loadNotificationCount();
             

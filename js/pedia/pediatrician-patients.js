@@ -225,8 +225,8 @@ const API = window.location.origin + '/api';
         const overall = overallScore != null && Number.isFinite(Number(overallScore)) ? Math.round(Number(overallScore)) : null;
         return `
                     <p class="score-caption">
-                        ${overall != null ? `<strong>Overall assessment score: ${overall}% (${escapeHtml(scoreBandLabel(overall))})</strong> &mdash; the average of the four area scores; it sets the Developmental Band below.<br>` : ''}
-                        Each area % is the share of possible points earned on that area's questions in the latest completed assessment. It is an assessment score, not a probability or a diagnosis.
+                        ${overall != null ? `<strong>Overall assessment score: ${overall}% (${escapeHtml(scoreBandLabel(overall))})</strong> &mdash; the average of the four domain scores; it sets the Developmental Band below.<br>` : ''}
+                        Each domain % is the domain assessment score: the share of possible points earned on that domain's questions in the latest completed assessment. It is an assessment score, not a probability or a diagnosis.
                     </p>`;
     }
 
@@ -249,8 +249,8 @@ const API = window.location.origin + '/api';
         el.innerHTML = `
             <p class="score-guide-title">How to read the assessment percentages</p>
             <ul class="score-guide-points">
-                <li><strong>Area score (Communication, Social Skills, Cognitive, Motor Skills)</strong> &mdash; share of possible points earned on that area's questions in the child's latest completed assessment. Each answer earns Yes = 2, Sometimes = 1, No = 0 points.</li>
-                <li><strong>Overall assessment score</strong> &mdash; the average of the four area scores. The Developmental Band is set from this score.</li>
+                <li><strong>Domain assessment score (Communication, Social Skills, Cognitive, Motor Skills)</strong> &mdash; share of possible points earned on that domain's questions in the child's latest completed assessment. Each answer earns Yes = 2, Sometimes = 1, No = 0 points.</li>
+                <li><strong>Overall assessment score</strong> &mdash; the average of the four domain scores. The Developmental Band is set from this score.</li>
                 <li><strong>Risk Category &amp; Care Stage</strong> &mdash; Risk Category is the assessment prediction model's Low / Medium / High result ("No ML prediction" when none was available). Care Stage is the follow-up level KinderCura's care-plan rules set from the risk category, or from the Developmental Band when there is no prediction ("Standard scoring fallback").</li>
             </ul>
             <p class="score-guide-ranges-label">Score ranges (colour and label under each %):</p>
