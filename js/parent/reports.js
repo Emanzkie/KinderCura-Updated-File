@@ -517,6 +517,7 @@ function renderTimeline(assessments) {
                     <div class="timeline-overall-wrap">
                         <span class="timeline-overall-label">Overall score</span>
                         <div class="timeline-overall" style="color:${st.color};">${overall}%</div>
+                        <span class="timeline-overall-band">${escapeHtml(window.KCScoring.parentOverallLabel(overall))}</span>
                     </div>
                 </div>
                 <div class="timeline-domains">${domainBits}</div>
@@ -544,7 +545,7 @@ function renderTimeline(assessments) {
                     <div><dt>Date &amp; age</dt><dd>When the assessment was completed, and your child's age at that time.</dd></div>
                     <div><dt>Communication, Social Skills, Cognitive, Motor Skills</dt><dd>Recorded area score for each developmental area in that assessment.</dd></div>
                     <div><dt>Overall score</dt><dd>The overall assessment score for that assessment (average of the four area scores).</dd></div>
-                    <div><dt>Colour</dt><dd>The left border and overall % follow the overall score's range in the Score guide above.</dd></div>
+                    <div><dt>Colour &amp; label</dt><dd>The left border, overall % colour and the label under it follow the overall score's range in the Score guide above.</dd></div>
                     <div><dt>Interpretation</dt><dd>Compares the overall score with the previous completed assessment, in percentage points.</dd></div>
                     <div><dt>Review &amp; follow-up</dt><dd>Whether a pediatrician has reviewed that assessment, and any follow-up date they documented for it.</dd></div>
                 </dl>

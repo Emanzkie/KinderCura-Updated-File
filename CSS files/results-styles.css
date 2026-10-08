@@ -857,6 +857,13 @@ body {
     margin-top: 0;
 }
 
+.results-domain-tile-label {
+    margin-top: 0.25rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
 .domain-score-caption {
     margin: 0.45rem 0 0;
     font-size: 0.78rem;

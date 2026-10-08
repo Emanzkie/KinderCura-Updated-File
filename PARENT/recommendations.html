@@ -78,6 +78,8 @@
 <script src="/js/shared/mobile-nav.js"></script>
 <script src="/notifications-card-ui.js"></script>
 <!-- Must load before recommendations.js — provides window.KCCarePlan (care-plan label formatting). -->
+<!-- Must load before care-plan-labels.js / recommendations.js — provides window.KCScoring (score ranges shown in the explanations). -->
+<script src="/constants/scoring.js"></script>
 <script src="/js/shared/care-plan-labels.js"></script>
 <script src="/js/parent/recommendations.js"></script>
 </body>

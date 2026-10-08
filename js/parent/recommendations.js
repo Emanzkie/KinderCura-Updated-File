@@ -56,8 +56,47 @@
         requireAuth();
 
         const ICONS = { communication:'<img src="/icons/communication.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">', social:'<img src="/icons/social.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">', cognitive:'<img src="/icons/cognitive.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">', motor:'<img src="/icons/motor.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">' };
-        const PRIORITY_COLORS = { high:'var(--accent-red)', medium:'var(--primary)', low:'var(--primary)' };
+        // Medium and low used to share the same green, and white text on the
+        // light pink failed contrast. Each priority now has its own existing
+        // status tone (kc-tokens.css), and every chip keeps its text label.
+        const PRIORITY_COLORS = { high:'var(--status-attention-fg)', medium:'var(--status-caution-fg)', low:'var(--primary)' };
         const PRIORITY_LABELS = { high:'Needs Attention', medium:'Monitor Progress', low:'Keep Up Great Work' };
+        // Display-only mirror of RECOMMENDATION_LEVEL_BY_BAND in
+        // routes/recommendations.js (score band -> priority), used to build the
+        // label legend from window.KCScoring's ranges. It never assigns a
+        // priority — each card shows the priority stored by the server.
+        const PRIORITY_BY_BAND = { 'on-track':'low', developing:'medium', 'at-risk':'medium', delayed:'high' };
+        // r.skill -> area score field on GET /assessments/:id/results.
+        const SKILL_SCORE = {
+            communication: { field:'communicationScore', label:'Communication' },
+            social:        { field:'socialScore',        label:'Social Skills' },
+            cognitive:     { field:'cognitiveScore',     label:'Cognitive' },
+            motor:         { field:'motorScore',         label:'Motor Skills' },
+        };
+
+        // Legend for the priority chips: which area-score range each label covers,
+        // grouped from the current KCScoring bands.
+        function renderPriorityLegend() {
+            const S = window.KCScoring;
+            if (!S || !Array.isArray(S.ACTIVE_BANDS)) return '';
+            const items = ['high', 'medium', 'low'].map((priority) => {
+                const bands = S.ACTIVE_BANDS.filter((b) => PRIORITY_BY_BAND[b.key] === priority);
+                if (!bands.length) return '';
+                const min = Math.min(...bands.map((b) => b.min));
+                const max = Math.max(...bands.map((b) => b.max));
+                return `
+                    <li>
+                        <span class="kc-swatch" style="background:${PRIORITY_COLORS[priority]};" aria-hidden="true"></span>
+                        <span><span class="kc-chart-legend-label">${PRIORITY_LABELS[priority]}</span>: area score ${min}&ndash;${max}%</span>
+                    </li>`;
+            }).join('');
+            return `
+                <div style="background:white;border-radius:15px;padding:1.4rem 2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);margin-bottom:1.5rem;">
+                    <h3 style="margin:0 0 .3rem;color:var(--primary);font-size:1rem;">How the recommendation labels work</h3>
+                    <p style="margin:0;color:var(--text-light);font-size:.85rem;line-height:1.5;">Each card below is one developmental area. Its label comes from that area's recorded score in the latest assessment, using KinderCura's current score ranges:</p>
+                    <ul class="kc-chart-legend">${items}</ul>
+                </div>`;
+        }
 
         let allChildren = [];
         let activeChild = null;
@@ -216,6 +255,15 @@
                 </div>`;
         }
 
+        // "Communication area score: 50% in the latest assessment" — the stored
+        // score from the same /results response this page already loads.
+        function areaScoreLine(skill, result) {
+            const def = SKILL_SCORE[skill];
+            const raw = def && result ? result[def.field] : null;
+            if (raw == null || !Number.isFinite(Number(raw))) return '';
+            return `<p style="margin:0 0 .6rem;font-size:.85rem;color:var(--text-dark);">${escapeHtml(def.label)} area score: <strong>${Math.round(Number(raw))}%</strong> <span style="color:var(--text-light);">&mdash; recorded score for this area in the latest assessment</span></p>`;
+        }
+
         // kc-badge only defines positive/caution/attention/neutral/info — this is a
         // defensive pass-through so an unrecognized tone never emits a broken class.
         function stageBadgeSafe(tone) {
@@ -242,23 +290,28 @@
             const monitoringLabel = CP.monitoringLevelLabel(carePlan.monitoringLevel);
             const interpretation = CP.interpretationLine(carePlan.source);
 
-            const field = (label, valueHtml) => `
+            // Same plain-language lines as the Results page (shared helper).
+            const hints = CP.fieldHints(carePlan.riskCategory, carePlan.source);
+
+            const field = (label, valueHtml, hint) => `
                 <div>
                     <p style="margin:0 0 .4rem;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-light);">${escapeHtml(label)}</p>
                     ${valueHtml}
+                    ${hint ? `<p style="margin:.45rem 0 0;font-size:.76rem;line-height:1.45;color:var(--text-light);">${escapeHtml(hint)}</p>` : ''}
                 </div>`;
 
             return `
             <div style="background:white;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);margin-bottom:2rem;">
-                <h3 style="margin:0 0 1.2rem;color:var(--primary);">Developmental Assessment &amp; Care Plan</h3>
+                <h3 style="margin:0 0 .4rem;color:var(--primary);">Developmental Assessment &amp; Care Plan</h3>
+                <p style="margin:0 0 1.2rem;font-size:.85rem;color:var(--text-light);line-height:1.5;">A summary of how KinderCura's existing rules classify the latest assessment, and the follow-up they suggest.</p>
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1.4rem;">
-                    ${field('Developmental Band', `<span class="kc-badge kc-badge--${bandTone}">${escapeHtml(bandLabel)}</span>`)}
-                    ${field('Developmental Risk Category', `<span class="kc-badge kc-badge--${riskTone}">${escapeHtml(riskLabel)}</span>`)}
-                    ${field('Care Stage', `<span class="kc-badge kc-badge--${stageTone}">${escapeHtml(stageLabel)}</span>`)}
-                    ${field('Consultation', `<p style="margin:0;font-weight:600;color:var(--text-dark);">${escapeHtml(consultationLabel)}</p>`)}
-                    ${field('Monitoring', `<p style="margin:0;font-weight:600;color:var(--text-dark);">${escapeHtml(monitoringLabel)}</p>`)}
+                    ${field('Developmental Band', `<span class="kc-badge kc-badge--${bandTone}">${escapeHtml(bandLabel)}</span>`, hints.band)}
+                    ${field('Developmental Risk Category', `<span class="kc-badge kc-badge--${riskTone}">${escapeHtml(riskLabel)}</span>`, hints.risk)}
+                    ${field('Care Stage', `<span class="kc-badge kc-badge--${stageTone}">${escapeHtml(stageLabel)}</span>`, hints.stage)}
+                    ${field('Consultation', `<p style="margin:0;font-weight:600;color:var(--text-dark);">${escapeHtml(consultationLabel)}</p>`, hints.consultation)}
+                    ${field('Monitoring', `<p style="margin:0;font-weight:600;color:var(--text-dark);">${escapeHtml(monitoringLabel)}</p>`, hints.monitoring)}
                 </div>
-                <p style="margin:1.3rem 0 0;font-size:.8rem;color:var(--text-light);">${escapeHtml(interpretation)}</p>
+                <p style="margin:1.3rem 0 0;font-size:.8rem;color:var(--text-light);">${escapeHtml(interpretation)}. ${escapeHtml(hints.disclaimer)}</p>
             </div>`;
         }
 
@@ -323,6 +376,8 @@
 
                 html += renderSuggestedClinics(suggested, assessmentId, booked, data.suggestionSummary || 'KinderCura matched these clinics based on the latest assessment.');
 
+                if (recs.length) html += renderPriorityLegend();
+
                 recs.forEach((r) => {
                     const color = PRIORITY_COLORS[r.priority] || 'var(--primary)';
                     const label = PRIORITY_LABELS[r.priority] || '';
@@ -334,6 +389,7 @@
                             <h3>${icon} ${r.skill.charAt(0).toUpperCase() + r.skill.slice(1)} Development</h3>
                             <span style="background:${color};color:white;padding:0.5rem 1rem;border-radius:20px;font-size:0.8rem;font-weight:600;">${label}</span>
                         </div>
+                        ${areaScoreLine(r.skill, result)}
                         <p style="color:var(--text-light);margin-bottom:1rem;line-height:1.6;">${escapeHtml(r.suggestion)}</p>
                         ${activities.length ? `
                         <h4 style="font-weight:600;margin-bottom:0.5rem;">Recommended Activities:</h4>
