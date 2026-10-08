@@ -661,3 +661,64 @@
         font-size: 0.84rem;
     }
 }
+
+/* ==================== SCORE GUIDE, CHART TITLES & UNIT LABELS ====================
+   Plain-language keys for the charts, chips and percentages on this page
+   (js/pedia/pedia-reports.js scoreGuideHtml / overallLegendHtml). Display
+   only. .kc-chart-legend / .kc-swatch live in dashboard-new-styles.css. */
+.score-guide-box {
+    margin: 0 0 1.2rem;
+    padding: 0.85rem 1rem;
+    background: var(--bg-primary);
+    border-radius: 10px;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--text-light);
+}
+
+.score-guide-box-title {
+    margin: 0 0 0.4rem;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.score-guide-list {
+    list-style: none;
+    margin: 0 0 0.5rem;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 1.2rem;
+    color: var(--text-dark);
+}
+
+.score-guide-list li {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.1rem;
+}
+
+.score-guide-box-note {
+    margin: 0;
+}
+
+.chart-title {
+    margin: 0 0 0.4rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    text-align: center;
+}
+
+.overall-legend {
+    margin: 0.6rem auto 0;
+    max-width: 320px;
+}
+
+.th-sub {
+    font-size: 0.68rem;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-light);
+}

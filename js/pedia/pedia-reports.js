@@ -121,6 +121,29 @@ function bandChip(bandKey) {
     return `<span class="band-chip" style="background:${escapeHtml(color)};">${escapeHtml(label)}</span>`;
 }
 
+/**
+ * The colour key every chart and chip on this page shares: band colour, label,
+ * and the score range it covers — straight from KCScoring, so the legend can
+ * never disagree with the bands the server applied.
+ */
+function scoreGuideHtml() {
+    const S = window.KCScoring;
+    return `
+        <div class="score-guide-box">
+            <p class="score-guide-box-title">Score guide &mdash; colours and classifications used in this report</p>
+            <ul class="score-guide-list">
+                ${S.ACTIVE_BANDS.map((b) => `
+                    <li><span class="count-dot" style="background:${escapeHtml(S.colorForBand(b.key))};"></span><strong>${escapeHtml(S.clinicalLabel(b.key))}</strong> = score ${b.min}&ndash;${b.max}%</li>`).join('')}
+            </ul>
+            <p class="score-guide-box-note">
+                A <strong>score</strong> is a stored assessment score: the share of possible points earned on the
+                assessment questions (Yes = 2, Sometimes = 1, No = 0) for one domain, or the average of the four
+                domain scores for the overall score. Classifications are KinderCura's existing scoring bands
+                &mdash; not probabilities and not diagnoses.
+            </p>
+        </div>`;
+}
+
 // Wording chosen so the chip can be read without knowing what a "band" is.
 // The full sentence behind each one comes from
 // KCPediaReportsInterpretations.formatMovementDescription().
@@ -137,9 +160,11 @@ function deltaHtml(value) {
     if (value == null) return '<span class="delta delta-flat">—</span>';
     const n = Number(value);
     if (!Number.isFinite(n)) return '<span class="delta delta-flat">—</span>';
-    if (n > 0) return `<span class="delta delta-up">&#9650; +${n}</span>`;
-    if (n < 0) return `<span class="delta delta-down">&#9660; ${n}</span>`;
-    return '<span class="delta delta-flat">0</span>';
+    // "pts" = percentage points: the difference between two stored scores
+    // (latest minus first), never a relative % change.
+    if (n > 0) return `<span class="delta delta-up">&#9650; +${n} pts</span>`;
+    if (n < 0) return `<span class="delta delta-down">&#9660; ${n} pts</span>`;
+    return '<span class="delta delta-flat">0 pts</span>';
 }
 
 /**
@@ -350,6 +375,8 @@ function renderClassification(overview) {
     }).join('');
 
     const anyDomain = count(riskFlagged.anyDomain);
+    // Same constant routes/pedia-reports.js flags with (scoring.isRiskFlagged).
+    const flagThreshold = window.KCScoring.RISK_FLAG_THRESHOLD;
 
     // Dynamic, data-driven interpretation for each chart — built from the
     // SAME counts the chart itself renders (js/pedia/pedia-reports-interpretations.js),
@@ -401,7 +428,10 @@ function renderClassification(overview) {
                 Counts the most recent assessment for each of your ${withScreening}
                 assessed ${plural(withScreening, 'patient', 'patients')} — one patient, one count.
                 A patient assessed several times is counted once, on their latest result.
+                The numbers in the table and charts are <strong>counts of patients</strong>, not percentages.
             </p>
+
+            ${scoreGuideHtml()}
 
             ${countsTable}
 
@@ -413,16 +443,21 @@ function renderClassification(overview) {
 
             <div class="chart-row">
                 <div>
-                    <div class="chart-box"><canvas id="bandDomainChart"></canvas></div>
-                    <p class="chart-caption">The same counts as the table, by domain.</p>
+                    <p class="chart-title">Domain classification (number of patients)</p>
+                    <div class="chart-box"><canvas id="bandDomainChart" role="img"
+                        aria-label="Stacked bar chart: number of patients in each classification for each developmental domain. The same counts are in the table above."></canvas></div>
+                    <p class="chart-caption">One bar per developmental domain. Bar height = number of assessed patients (${withScreening}); each coloured segment = how many of them fall in that classification for the domain, on their latest assessment. Same counts as the table above.</p>
                     <div class="chart-interp">
                         <p class="chart-interp-label">Interpretation</p>
                         <p class="chart-interp-text">${escapeHtml(domainInterpretation)}</p>
                     </div>
                 </div>
                 <div>
-                    <div class="chart-box"><canvas id="overallBandChart"></canvas></div>
-                    <p class="chart-caption">Overall classification, latest assessment per patient.</p>
+                    <p class="chart-title">Overall classification (number of patients)</p>
+                    <div class="chart-box"><canvas id="overallBandChart" role="img"
+                        aria-label="Doughnut chart: number of patients in each overall classification. The counts are listed below."></canvas></div>
+                    <ul class="kc-chart-legend overall-legend" aria-label="Overall classification legend">${overallLegendHtml(overview.overallDistribution, withScreening)}</ul>
+                    <p class="chart-caption">Overall classification based on the latest assessment for each patient. Each slice is a count of patients; its size is their share of the ${withScreening} assessed ${plural(withScreening, 'patient')}.</p>
                     <div class="chart-interp">
                         <p class="chart-interp-label">Interpretation</p>
                         <p class="chart-interp-text">${escapeHtml(overallInterpretation)}</p>
@@ -430,10 +465,12 @@ function renderClassification(overview) {
                 </div>
             </div>
 
-            <h3 class="sub-heading">Patients scoring below 40% in a domain</h3>
+            <h3 class="sub-heading">Patients scoring below ${flagThreshold}% in a domain</h3>
             <p class="section-lead">
-                A domain score under 40% is what KinderCura's existing rules flag for closer review.
-                "Any domain" counts each patient once, however many domains are flagged.
+                A domain score under ${flagThreshold}% is what KinderCura's existing rules flag for closer review.
+                Each number is a <strong>count of patients</strong> whose latest assessment has a domain
+                assessment score below ${flagThreshold}% (the Delayed range) &mdash; a flag for closer review, not a
+                medical diagnosis. "Any domain" counts each patient once, however many domains are flagged.
             </p>
             <div class="risk-strip">
                 ${riskItems}
@@ -446,6 +483,21 @@ function renderClassification(overview) {
         </div>`;
 
     drawClassificationCharts(overview);
+}
+
+/** Doughnut legend with each band's count and its share of assessed patients. */
+function overallLegendHtml(dist, total) {
+    const d = dist || {};
+    return bandKeys().map((k) => {
+        const n = count(d[k]);
+        const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+        return `
+            <li>
+                <span class="kc-swatch" style="background:${escapeHtml(window.KCScoring.colorForBand(k))};" aria-hidden="true"></span>
+                <span><span class="kc-chart-legend-label">${escapeHtml(window.KCScoring.clinicalLabel(k))}</span>:
+                    ${n} of ${total} ${plural(total, 'patient')} (${pct}%)</span>
+            </li>`;
+    }).join('');
 }
 
 function drawClassificationCharts(overview) {
@@ -473,15 +525,22 @@ function drawClassificationCharts(overview) {
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    x: { stacked: true },
+                    x: { stacked: true, title: { display: true, text: 'Developmental domain' } },
                     y: {
                         stacked: true,
                         beginAtZero: true,
                         ticks: { precision: 0 },
-                        title: { display: true, text: 'Children' },
+                        title: { display: true, text: 'Number of patients' },
                     },
                 },
-                plugins: { legend: { position: 'bottom' } },
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y} ${ctx.parsed.y === 1 ? 'patient' : 'patients'}`,
+                        },
+                    },
+                },
             },
         });
     }
@@ -503,7 +562,9 @@ function drawClassificationCharts(overview) {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { position: 'bottom' },
+                    // The HTML legend under the chart lists each band with its
+                    // count and share, so Chart.js's colour-only legend is off.
+                    legend: { display: false },
                     tooltip: {
                         callbacks: {
                             label: (ctx) => `${ctx.label}: ${ctx.parsed} ${ctx.parsed === 1 ? 'child' : 'children'}`,
@@ -555,6 +616,12 @@ function renderProgression(progression) {
                 <strong>first</strong> assessment in range with their <strong>latest</strong>.
                 Select a row to see every assessment in between.
             </p>
+            <p class="section-lead">
+                <strong>Score change</strong> is the latest overall assessment score minus the first, in
+                <strong>percentage points (pts)</strong>: 100% &rarr; 50% is &minus;50 pts, a drop of 50 points on the
+                0&ndash;100 score scale. &#9650; = score went up, &#9660; = score went down. It is a change in an
+                assessment score, not a probability or a diagnosis.
+            </p>
 
             <div class="report-tiles" style="margin-bottom:1.4rem;">
                 <div class="report-tile">
@@ -585,9 +652,9 @@ function renderProgression(progression) {
                         <tr>
                             <th>Patient</th>
                             <th class="num">Assessments</th>
-                            <th>First assessment</th>
-                            <th>Latest assessment</th>
-                            <th class="num">Score change</th>
+                            <th>First assessment<br><span class="th-sub">overall score &amp; date</span></th>
+                            <th>Latest assessment<br><span class="th-sub">overall score &amp; date</span></th>
+                            <th class="num">Score change<br><span class="th-sub">percentage points</span></th>
                             <th>Current classification</th>
                             <th>What changed</th>
                         </tr>
@@ -683,20 +750,20 @@ function progressionDetailHtml(child) {
         <table>
             <thead>
                 <tr>
-                    <th>Domain</th><th class="num">First</th><th class="num">Latest</th>
-                    <th class="num">Change</th><th>Current classification</th><th>What changed</th>
+                    <th>Domain</th><th class="num">First score</th><th class="num">Latest score</th>
+                    <th class="num">Change (pts)</th><th>Current classification</th><th>What changed</th>
                 </tr>
             </thead>
             <tbody>${perDomain}</tbody>
         </table>
 
-        <h4 style="margin-top:1.1rem;">Every assessment in range (${count(child.screeningCount)})</h4>
+        <h4 style="margin-top:1.1rem;">Every assessment in range (${count(child.screeningCount)}) &mdash; domain and overall assessment scores</h4>
         <table>
             <thead>
                 <tr>
                     <th>Assessed</th>
                     ${DOMAINS.map((d) => `<th class="num">${escapeHtml(d.label)}</th>`).join('')}
-                    <th class="num">Overall</th><th>Classification</th>
+                    <th class="num">Overall score</th><th>Classification</th>
                 </tr>
             </thead>
             <tbody>${history}</tbody>
@@ -781,7 +848,7 @@ function renderPatients(data) {
                             <th scope="col">Patient</th>
                             <th scope="col" class="num">Assessments</th>
                             <th scope="col">Latest assessment</th>
-                            <th scope="col" class="num">Overall score</th>
+                            <th scope="col" class="num">Overall score<br><span class="th-sub">latest assessment</span></th>
                             <th scope="col">Overall classification</th>
                             ${DOMAINS.map((d) => `<th scope="col">${escapeHtml(d.label)}</th>`).join('')}
                         </tr>
@@ -792,6 +859,9 @@ function renderPatients(data) {
                 </table>
             </div>
             <p class="table-note">
+                <strong>Overall score</strong> is the latest assessment's overall assessment score (average of the four
+                domain scores). The domain columns show the classification of each domain score in that same
+                assessment, using the Score guide above.
                 Classifications come from KinderCura's existing scoring rules applied to the stored
                 score. They describe recorded assessment results and are not medical diagnoses.
             </p>
@@ -825,7 +895,16 @@ function renderActivity(overview) {
                 How many assessments your patients completed each month. This counts activity only —
                 it says nothing about the results.
             </p>
-            <div class="chart-box chart-box-wide"><canvas id="activityChart"></canvas></div>
+            <p class="chart-title">Assessments completed per month (count)</p>
+            <div class="chart-box chart-box-wide"><canvas id="activityChart" role="img"
+                aria-label="Bar chart: number of assessments completed each month."></canvas></div>
+            <ul class="kc-chart-legend activity-legend" aria-label="Assessment activity legend">
+                <li>
+                    <span class="kc-swatch" style="background:${escapeHtml(window.KCScoring.colorForBand(window.KCScoring.BAND.ON_TRACK))};" aria-hidden="true"></span>
+                    <span><span class="kc-chart-legend-label">Assessments completed</span>
+                        <span class="kc-chart-legend-desc">Each bar is the number of assessments your patients completed in that month (horizontal axis). The bar colour carries no classification meaning.</span></span>
+                </li>
+            </ul>
             <div class="chart-interp">
                 <p class="chart-interp-label">Interpretation</p>
                 <p class="chart-interp-text">${escapeHtml(KCPI.formatActivityInterpretation(byMonth))}</p>
@@ -850,9 +929,17 @@ function renderActivity(overview) {
             responsive: true,
             maintainAspectRatio: false,
             scales: {
-                y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Assessments' } },
+                x: { title: { display: true, text: 'Month' } },
+                y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Number of assessments' } },
             },
-            plugins: { legend: { display: false } },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => ` ${ctx.parsed.y} ${ctx.parsed.y === 1 ? 'assessment' : 'assessments'} completed`,
+                    },
+                },
+            },
         },
     });
 }
