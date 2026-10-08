@@ -111,6 +111,54 @@ function goToScreening() {
 
 // ── Section renderers ───────────────────────────────────────────────────────
 
+// "How to read the scores" — one shared key for every percentage, colour and
+// label on this page, shown once above the sections that use it. Ranges,
+// labels and colours come straight from window.KCScoring (constants/scoring.js);
+// the scoring description matches routes/assessments.js (Yes = 2, Sometimes =
+// 1, No = 0 points per item; area % = points earned / points possible; overall
+// = average of the four area scores). Display only — nothing is scored here.
+function renderScoreKey() {
+    const S = window.KCScoring;
+    const rows = S.ACTIVE_BANDS.map((b) => `
+        <tr>
+            <td><span class="kc-swatch" style="background:${S.colorForBand(b.key)};" aria-hidden="true"></span> ${b.min}&ndash;${b.max}%</td>
+            <td>${escapeHtml(S.PARENT_DOMAIN_LABELS[b.key])}</td>
+            <td>${escapeHtml(S.PARENT_OVERALL_LABELS[b.key])}</td>
+        </tr>`).join('');
+
+    return `
+        <div class="report-card score-key-card">
+            <h2>How to read the scores</h2>
+            <ul class="score-key-points">
+                <li><strong>Area score (%)</strong> &mdash; your child's recorded score for one developmental area (Communication, Social Skills, Cognitive or Motor Skills) in one completed assessment. Each "Yes" answer earns full credit, "Sometimes" partial credit and "No" none.</li>
+                <li><strong>Overall score (%)</strong> &mdash; the average of the four area scores for that assessment.</li>
+                <li><strong>Percentage points (pts)</strong> &mdash; the difference between two scores. For example, 61% &rarr; 50% is a decrease of 11 percentage points.</li>
+            </ul>
+            <p class="score-key-title">Score guide &mdash; the colours and labels used on this page</p>
+            <div class="score-key-scroll">
+                <table class="score-key-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Score range &amp; colour</th>
+                            <th scope="col">Area label</th>
+                            <th scope="col">Overall label</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+            <p class="score-key-note">These ranges are KinderCura's current assessment scoring rules. Scores describe the recorded assessment answers only &mdash; they are not a percentage of delay and not a diagnosis.</p>
+        </div>`;
+}
+
+// "Fair = 40–59%" style hint for one score, from the same KCScoring ranges.
+function rangeHint(score, labelFn) {
+    const S = window.KCScoring;
+    const band = S.bandFor(score);
+    const range = S.THRESHOLD_RANGES[band];
+    return range ? `"${escapeHtml(labelFn(score))}" = ${range.min}&ndash;${range.max}% range` : '';
+}
+
 // Pediatrician Review & Next Follow-up. Two related but distinct pieces of
 // stored data, shown together but never conflated:
 //   (1) the INITIAL pediatrician review — the earliest completed assessment
@@ -159,7 +207,7 @@ function renderPediatricianReview(reportData) {
             <p class="card-sub">What the pediatrician documented after reviewing this child's assessment results.</p>
             <dl class="review-fields">
                 <div><dt>Initial assessment</dt><dd>${escapeHtml(fmtDate(initial.completedAt) || 'Date not recorded')}</dd></div>
-                <div><dt>Initial assessment result</dt><dd>${screeningResult}</dd></div>
+                <div><dt>Initial assessment result</dt><dd>${screeningResult}${overall != null ? '<span class="field-hint">Overall assessment score for that assessment, with its Score guide label.</span>' : ''}</dd></div>
                 <div><dt>Reviewed by</dt><dd>${escapeHtml(initial.review.pediatricianName || 'Pediatrician')}</dd></div>
                 <div><dt>Reviewed on</dt><dd>${escapeHtml(fmtDate(initial.review.reviewedAt) || 'Not recorded')}</dd></div>
                 <div class="review-field-wide"><dt>Pediatrician recommendation</dt><dd>${initial.review.recommendations ? escapeHtml(initial.review.recommendations) : 'No recommendation has been documented for this review.'}</dd></div>
@@ -198,10 +246,34 @@ function renderTrend(assessments, trendAvailable) {
 
     const interpretation = window.KCReportInterpretations.getTrendInterpretation(assessments);
 
+    const S = window.KCScoring;
+    const usedBands = new Set(scored.map((a) => S.bandFor(a.overallScore)));
+
     return `
         <div class="report-card">
             <h2>Score over time</h2>
-            <div class="trend-chart-wrap"><canvas id="trendChart"></canvas></div>
+            <p class="card-sub" style="margin-bottom:1rem;">Each dot is one completed assessment, placed at its date (left = oldest, right = newest) and at its overall assessment score (0&ndash;100%).</p>
+            <div class="trend-chart-wrap"><canvas id="trendChart" role="img"
+                aria-label="Line chart of the overall assessment score for ${scored.length} completed assessments. The scores are also listed in the Assessment history below."></canvas></div>
+            <div class="trend-legend" aria-label="Score over time legend">
+                <p class="trend-legend-title">Legend</p>
+                <ul class="kc-chart-legend">
+                    <li>
+                        <span class="trend-legend-line" aria-hidden="true"></span>
+                        <span><span class="kc-chart-legend-label">Assessment score</span>
+                            <span class="kc-chart-legend-desc">Each dot is your child's overall recorded score for one completed assessment. The line joins the dots in date order.</span></span>
+                    </li>
+                    <li>
+                        <span class="kc-swatch" style="background:${S.colorForBand(S.BAND.DEVELOPING)};border-radius:50%;" aria-hidden="true"></span>
+                        <span><span class="kc-chart-legend-label">Dot colour</span>
+                            <span class="kc-chart-legend-desc">Shows the score range of that result, using the Score guide above:</span>
+                            <span class="trend-legend-bands">
+                                ${S.ACTIVE_BANDS.map((b) => `<span class="trend-legend-band${usedBands.has(b.key) ? '' : ' is-unused'}"><span class="kc-swatch" style="background:${S.colorForBand(b.key)};border-radius:50%;" aria-hidden="true"></span>${b.min}&ndash;${b.max}% ${escapeHtml(S.PARENT_OVERALL_LABELS[b.key])}</span>`).join('')}
+                            </span></span>
+                    </li>
+                </ul>
+                <p class="kc-chart-footnote"><strong>Vertical axis:</strong> overall assessment score (%). <strong>Horizontal axis:</strong> date each assessment was completed. A line going up means the overall score increased from one assessment to the next; going down means it decreased. Changes are measured in percentage points.</p>
+            </div>
             <div class="interp-block">
                 <p class="interp-label">What this shows</p>
                 <p class="interp-text">
@@ -226,12 +298,15 @@ function drawTrendChart(assessments) {
 
     if (trendChart) trendChart.destroy();
 
+    // Full dates for the tooltip title; the axis keeps the short labels.
+    const fullDates = scored.map((a) => fmtDate(a.completedAt) || 'Date not recorded');
+
     trendChart = new Chart(canvas, {
         type: 'line',
         data: {
             labels: scored.map((a) => fmtShortDate(a.completedAt)),
             datasets: [{
-                label: 'Overall score',
+                label: 'Assessment score',
                 data: scored.map((a) => a.overallScore),
                 borderColor: '#6B8E6F',
                 backgroundColor: 'rgba(107, 142, 111, 0.12)',
@@ -242,7 +317,13 @@ function drawTrendChart(assessments) {
                 pointHoverRadius: 7,
                 borderWidth: 2,
                 fill: true,
-                tension: 0.25,
+                // Straight segments: a smoothed curve overshot between points
+                // (e.g. drawing ~74% between recorded 72% and 69%), implying
+                // scores that were never recorded.
+                tension: 0,
+                // Draw dots at 0% / 100% in full instead of cutting them in half
+                // at the chart edge — the legend explains the dot colours.
+                clip: false,
             }],
         },
         options: {
@@ -253,14 +334,20 @@ function drawTrendChart(assessments) {
                     min: 0,
                     max: 100,
                     ticks: { callback: (v) => `${v}%` },
-                    title: { display: true, text: 'Overall score' },
+                    title: { display: true, text: 'Overall assessment score (%)' },
+                },
+                x: {
+                    title: { display: true, text: 'Assessment date' },
                 },
             },
             plugins: {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        label: (ctx) => `${ctx.parsed.y}% — ${window.KCScoring.parentOverallLabel(ctx.parsed.y)}`,
+                        title: (items) => `Assessment date: ${fullDates[items[0].dataIndex]}`,
+                        label: (ctx) => `Overall assessment score: ${ctx.parsed.y}%`,
+                        afterLabel: (ctx) => `Score range: ${window.KCScoring.parentOverallLabel(ctx.parsed.y)}`,
+                        footer: () => 'Recorded overall score for this completed assessment.',
                     },
                 },
             },
@@ -315,6 +402,7 @@ function renderLatestDomains(latest) {
                 </div>
                 <div class="domain-bar"><span style="width:${score}%;background:${st.color};"></span></div>
                 <p class="domain-score">Score: <strong>${score}%</strong></p>
+                <p class="domain-score-hint">Recorded ${escapeHtml(d.label)} score in this assessment. ${rangeHint(score, (v) => window.KCScoring.parentDomainStatus(v).label)}.</p>
                 <div class="interp-block domain-interp">
                     <p class="interp-label">Interpretation</p>
                     <p class="interp-text">${escapeHtml(domainInterpretation)}</p>
@@ -326,8 +414,9 @@ function renderLatestDomains(latest) {
         <div class="report-card">
             <h2>Most recent assessment${dateStr ? ` &mdash; ${escapeHtml(dateStr)}` : ''}</h2>
             <p class="card-sub">
-                Overall score <strong>${overall}%</strong> (${escapeHtml(overallLabel)}).
-                Each area shows how your child performed in that part of the assessment.
+                Overall score <strong>${overall}%</strong> (${escapeHtml(overallLabel)}) &mdash; the average of
+                the four area scores below; ${rangeHint(overall, (v) => window.KCScoring.parentOverallLabel(v))} in the Score guide.
+                Each area card shows your child's recorded score for that part of the assessment and its Score guide label.
             </p>
             <div class="interp-block">
                 <p class="interp-label">Interpretation</p>
@@ -425,7 +514,10 @@ function renderTimeline(assessments) {
                         <div class="timeline-date">${escapeHtml(dateStr || 'Date not recorded')}</div>
                         ${ageStr ? `<div class="timeline-age">${escapeHtml(ageStr)}</div>` : ''}
                     </div>
-                    <div class="timeline-overall" style="color:${st.color};">${overall}%</div>
+                    <div class="timeline-overall-wrap">
+                        <span class="timeline-overall-label">Overall score</span>
+                        <div class="timeline-overall" style="color:${st.color};">${overall}%</div>
+                    </div>
                 </div>
                 <div class="timeline-domains">${domainBits}</div>
                 <div class="interp-block">
@@ -446,6 +538,17 @@ function renderTimeline(assessments) {
                 Every completed assessment for this child, most recent first. Each entry is
                 interpreted using only that assessment's own recorded scores.
             </p>
+            <div class="history-legend" aria-label="How to read each assessment entry">
+                <p class="trend-legend-title">How to read each entry</p>
+                <dl class="history-legend-terms">
+                    <div><dt>Date &amp; age</dt><dd>When the assessment was completed, and your child's age at that time.</dd></div>
+                    <div><dt>Communication, Social Skills, Cognitive, Motor Skills</dt><dd>Recorded area score for each developmental area in that assessment.</dd></div>
+                    <div><dt>Overall score</dt><dd>The overall assessment score for that assessment (average of the four area scores).</dd></div>
+                    <div><dt>Colour</dt><dd>The left border and overall % follow the overall score's range in the Score guide above.</dd></div>
+                    <div><dt>Interpretation</dt><dd>Compares the overall score with the previous completed assessment, in percentage points.</dd></div>
+                    <div><dt>Review &amp; follow-up</dt><dd>Whether a pediatrician has reviewed that assessment, and any follow-up date they documented for it.</dd></div>
+                </dl>
+            </div>
             <div class="timeline-list">${rows}</div>
         </div>`;
 }
@@ -633,6 +736,7 @@ async function loadReport() {
             || assessments[assessments.length - 1];
 
         content.innerHTML = `
+            ${renderScoreKey()}
             ${renderTrend(assessments, reportData.trendAvailable)}
             ${renderLatestDomains(latest)}
             ${renderDiscussPrompt(latest)}

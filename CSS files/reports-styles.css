@@ -396,6 +396,175 @@
     margin-top: 1rem;
 }
 
+/* ── Score explanations & legends ──────────────────────────────────────────
+   Plain-language keys for the percentages, colours and chart on this page
+   (js/parent/reports.js renderScoreKey / renderTrend / renderTimeline).
+   Display only. Shared swatch/legend primitives (.kc-swatch, .kc-chart-legend)
+   live in dashboard-new-styles.css. */
+.score-key-points {
+    margin: 0.4rem 0 1rem;
+    padding-left: 1.1rem;
+    color: var(--text-dark);
+    font-size: 0.9rem;
+    line-height: 1.55;
+}
+
+.score-key-points li + li {
+    margin-top: 0.35rem;
+}
+
+.score-key-title {
+    margin: 0 0 0.3rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    font-size: 0.9rem;
+}
+
+.score-key-scroll {
+    overflow-x: auto;
+}
+
+.score-key-table {
+    width: 100%;
+    max-width: 560px;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    color: var(--text-dark);
+}
+
+.score-key-table th {
+    text-align: left;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-light);
+    font-weight: 600;
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.score-key-table td {
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid var(--bg-secondary);
+}
+
+.score-key-table td:first-child {
+    white-space: nowrap;
+}
+
+.score-key-table .kc-swatch {
+    vertical-align: -2px;
+    margin-top: 0;
+}
+
+.score-key-note {
+    margin: 0.7rem 0 0;
+    font-size: 0.8rem;
+    color: var(--text-light);
+    line-height: 1.5;
+}
+
+.trend-legend,
+.history-legend {
+    margin-top: 1rem;
+    padding: 0.85rem 1rem;
+    background: var(--bg-primary);
+    border-radius: var(--radius-panel);
+}
+
+.history-legend {
+    margin: 0 0 1.2rem;
+}
+
+.trend-legend .kc-chart-legend {
+    margin-top: 0.3rem;
+}
+
+.trend-legend-title {
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--primary);
+}
+
+.trend-legend-line {
+    display: inline-block;
+    width: 14px;
+    height: 3px;
+    margin-top: 0.55em;
+    border-radius: 2px;
+    background: #6B8E6F;
+}
+
+.trend-legend-bands {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 0.9rem;
+    margin-top: 0.3rem;
+    font-size: 0.8rem;
+    color: var(--text-dark);
+}
+
+.trend-legend-band {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.trend-legend-band .kc-swatch {
+    margin-top: 0;
+    width: 11px;
+    height: 11px;
+}
+
+/* A range no point on this chart falls in — kept for completeness, dimmed. */
+.trend-legend-band.is-unused {
+    opacity: 0.55;
+}
+
+.history-legend-terms {
+    margin: 0.4rem 0 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.45rem 1.2rem;
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.history-legend-terms dt {
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.history-legend-terms dd {
+    margin: 0;
+    color: var(--text-light);
+}
+
+.timeline-overall-wrap {
+    text-align: right;
+}
+
+.timeline-overall-label {
+    display: block;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-light);
+}
+
+.domain-score-hint,
+.field-hint {
+    display: block;
+    margin: 0.2rem 0 0;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-light);
+    font-weight: 400;
+}
+
 /* ── Responsive ────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
     .report-header {
@@ -419,6 +588,10 @@
         flex-direction: column;
         align-items: flex-start;
         gap: 0.3rem;
+    }
+
+    .timeline-overall-wrap {
+        text-align: left;
     }
 
     .review-fields {
