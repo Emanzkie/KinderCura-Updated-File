@@ -206,6 +206,59 @@ const API = window.location.origin + '/api';
             .replace(/\n/g, '\\n'));
     }
 
+    // ── Score explanations (display only) ─────────────────────────────────────
+    // Every percentage on this page is a stored AssessmentResult score. The
+    // wording below matches routes/assessments.js: each answer earns Yes = 2,
+    // Sometimes = 1, No = 0 points; an area % is round(earned / possible x 100)
+    // for that area's questions; overall % is the average of the four area
+    // scores. Ranges and labels come from window.KCScoring (constants/
+    // scoring.js) — nothing here scores or classifies anything itself.
+
+    /** Clinician band label for a score, e.g. 50 -> "At-Risk". */
+    function scoreBandLabel(score) {
+        const S = window.KCScoring;
+        return S ? S.clinicalLabel(S.bandFor(score)) : '';
+    }
+
+    /** One-line caption under a card's four area scores. */
+    function renderScoreCaption(overallScore) {
+        const overall = overallScore != null && Number.isFinite(Number(overallScore)) ? Math.round(Number(overallScore)) : null;
+        return `
+                    <p class="score-caption">
+                        ${overall != null ? `<strong>Overall assessment score: ${overall}% (${escapeHtml(scoreBandLabel(overall))})</strong> &mdash; the average of the four area scores; it sets the Developmental Band below.<br>` : ''}
+                        Each area % is the share of possible points earned on that area's questions in the latest completed assessment. It is an assessment score, not a probability or a diagnosis.
+                    </p>`;
+    }
+
+    /** " (−11 pts vs previous assessment)" for a newest-first history list. */
+    function historyChangeText(items, entry) {
+        const idx = items.indexOf(entry);
+        const prev = items.slice(idx + 1).find(x => x.overallScore != null);
+        if (!prev) return '';
+        const diff = Math.round(Number(entry.overallScore)) - Math.round(Number(prev.overallScore));
+        if (!Number.isFinite(diff)) return '';
+        const signed = diff > 0 ? `+${diff}` : `${diff}`;
+        return ` (${signed} pts vs previous assessment)`;
+    }
+
+    /** Page-level guide shown once above the patient cards. */
+    function renderScoreGuidePanel() {
+        const el = document.getElementById('scoreGuidePanel');
+        const S = window.KCScoring;
+        if (!el || !S || !Array.isArray(S.ACTIVE_BANDS)) return;
+        el.innerHTML = `
+            <p class="score-guide-title">How to read the assessment percentages</p>
+            <ul class="score-guide-points">
+                <li><strong>Area score (Communication, Social Skills, Cognitive, Motor Skills)</strong> &mdash; share of possible points earned on that area's questions in the child's latest completed assessment. Each answer earns Yes = 2, Sometimes = 1, No = 0 points.</li>
+                <li><strong>Overall assessment score</strong> &mdash; the average of the four area scores. The Developmental Band is set from this score.</li>
+                <li><strong>Risk Category &amp; Care Stage</strong> &mdash; Risk Category is the assessment prediction model's Low / Medium / High result ("No ML prediction" when none was available). Care Stage is the follow-up level KinderCura's care-plan rules set from the risk category, or from the Developmental Band when there is no prediction ("Standard scoring fallback").</li>
+            </ul>
+            <p class="score-guide-ranges-label">Score ranges (colour and label under each %):</p>
+            <ul class="score-guide-ranges" aria-label="Score ranges">
+                ${S.ACTIVE_BANDS.map(b => `<li><span class="kc-swatch" style="background:${S.colorForBand(b.key)};" aria-hidden="true"></span>${b.min}&ndash;${b.max}% ${escapeHtml(S.clinicalLabel(b.key))}</li>`).join('')}
+            </ul>`;
+    }
+
     // ── Render ────────────────────────────────────────────────────────────────
     let _allPatients = [];
 
@@ -304,7 +357,7 @@ const API = window.location.origin + '/api';
                 ${hasScores ? `
                 <div style="background:var(--bg-primary);padding:1.2rem 1.5rem;border-radius:10px;margin-bottom:1.2rem;">
                     <p style="font-weight:600;color:var(--primary);margin-bottom:0.8rem;font-size:0.9rem;"><img src="/icons/analytics.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Assessment Results
-                        <span style="float:right;font-size:0.78rem;color:var(--text-light);font-weight:400;">Last: ${lastAssess}</span>
+                        <span style="float:right;font-size:0.78rem;color:var(--text-light);font-weight:400;">Latest assessment: ${lastAssess}</span>
                     </p>
                     <div class="score-grid">
                         ${Object.entries(scores).map(([k,v]) => {
@@ -312,9 +365,11 @@ const API = window.location.origin + '/api';
                             return `<div class="score-item">
                                 <div class="score-val" style="color:${color};">${v}%</div>
                                 <div class="score-lbl">${k}</div>
+                                <div class="score-band">${escapeHtml(scoreBandLabel(v))}</div>
                             </div>`;
                         }).join('')}
                     </div>
+                    ${renderScoreCaption(p.overallScore)}
                     ${renderCarePlanRow(p.developmentalBand, p.prediction)}
                     ${hasDiag ? `
                     <div style="margin-top:1rem;padding:0.8rem 1rem;background:white;border-radius:8px;border-left:3px solid var(--primary);">
@@ -450,7 +505,7 @@ const API = window.location.origin + '/api';
         if (reasonInput) reasonInput.value = existingNextReason || '';
         if (suggestionText) {
             suggestionText.textContent = suggestedDate
-                ? `Suggested from latest score${overallScore !== '' ? ` (${Math.round(Number(overallScore))}%)` : ''}: ${formatDisplayDate(suggestedDate)}.`
+                ? `Suggested from latest overall assessment score${overallScore !== '' ? ` (${Math.round(Number(overallScore))}%)` : ''}: ${formatDisplayDate(suggestedDate)}.`
                 : 'No score-based suggestion available yet.';
         }
 
@@ -642,7 +697,9 @@ const API = window.location.origin + '/api';
         wrap.innerHTML = items.map(a => {
             const when = a.completedAt || a.startedAt;
             const dateText = when ? new Date(when).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}) : '—';
-            const score = a.overallScore != null ? `${a.overallScore}% overall` : 'Assessment started';
+            const score = a.overallScore != null
+                ? `Overall assessment score: ${a.overallScore}%${historyChangeText(items, a)}`
+                : 'Assessment started';
             // Step 14: developmentalBand + prediction (careStage) already ride
             // along on every entry from GET /assessments/:childId/history
             // (routes/assessments.js buildHistoryForChild, Step 5/8) — this is
@@ -730,7 +787,7 @@ const API = window.location.origin + '/api';
             .filter(a => a.completedAt)
             .map(a => {
                 const dateText = new Date(a.completedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-                const scoreText = a.overallScore != null ? ` — ${Math.round(a.overallScore)}% overall` : '';
+                const scoreText = a.overallScore != null ? ` — overall assessment score ${Math.round(a.overallScore)}%` : '';
                 return `<option value="${a.id}">${dateText}${scoreText}</option>`;
             }).join('');
         sel.innerHTML = '<option value="">— None —</option>' + options;
@@ -1391,5 +1448,6 @@ function toggleProfileMenu() {
     }
 
     // Init
+    renderScoreGuidePanel();
     loadPatients();
     loadNotificationCount();

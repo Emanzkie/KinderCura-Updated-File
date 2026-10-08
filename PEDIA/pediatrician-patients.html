@@ -93,6 +93,10 @@
             </div>
         </div>
 
+        <!-- Score guide: what every percentage on the patient cards means.
+             Filled by js/pedia/pediatrician-patients.js from KCScoring. -->
+        <div class="score-guide-panel" id="scoreGuidePanel"></div>
+
         <!-- Patient List -->
         <div id="patientsList" style="display:grid;gap:1.5rem;">
             <div class="empty-state">
@@ -314,7 +318,8 @@
                         </div>
                     </div>
                     <div style="background:white;">
-                        <h4 style="margin-bottom:0.8rem;color:var(--primary);">Assessment History</h4>
+                        <h4 style="margin-bottom:0.3rem;color:var(--primary);">Assessment History</h4>
+                        <p class="history-note">Newest first. Each percentage is that assessment's overall assessment score (average of the four area scores) &mdash; not a probability or a diagnosis. The change is in percentage points (pts) versus the previous completed assessment.</p>
                         <div id="assessmentHistoryList" style="display:grid;gap:0.8rem;">
                             <p style="text-align:center;color:var(--text-light);padding:1rem;">Loading assessment history...</p>
                         </div>

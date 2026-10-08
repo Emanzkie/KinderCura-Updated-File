@@ -220,3 +220,107 @@
         width: 100%;
     }
 }
+
+/* ==================== ASSESSMENT PERCENTAGE EXPLANATIONS ====================
+   Context for every score on the My Patients cards and the Assessment History
+   modal (js/pedia/pediatrician-patients.js). Display only. .kc-swatch lives in
+   dashboard-new-styles.css. */
+/* The "Latest assessment: …" date floats right in the heading above; on a
+   phone it is long enough to wrap, and without clearing it the grid (a new
+   block formatting context) shrinks beside it. */
+.score-grid {
+    clear: both;
+}
+
+.score-band {
+    margin-top: 0.15rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+.score-caption {
+    margin: 0.8rem 0 0;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--text-light);
+}
+
+.score-caption strong {
+    color: var(--text-dark);
+}
+
+.score-guide-panel {
+    background: white;
+    border-radius: var(--radius-card);
+    padding: 1.2rem 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--text-light);
+}
+
+.score-guide-panel:empty {
+    display: none;
+}
+
+.score-guide-title {
+    margin: 0 0 0.4rem;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--primary);
+}
+
+.score-guide-points {
+    margin: 0 0 0.7rem;
+    padding-left: 1.1rem;
+}
+
+.score-guide-points li + li {
+    margin-top: 0.3rem;
+}
+
+.score-guide-points strong {
+    color: var(--text-dark);
+}
+
+.score-guide-ranges-label {
+    margin: 0 0 0.35rem;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+.score-guide-ranges {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.5rem;
+}
+
+.score-guide-ranges li {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill, 999px);
+    padding: 0.15rem 0.6rem;
+    color: var(--text-dark);
+    font-size: 0.78rem;
+}
+
+.score-guide-ranges .kc-swatch {
+    margin-top: 0;
+    width: 11px;
+    height: 11px;
+}
+
+.history-note {
+    margin: 0 0 0.8rem;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-light);
+}
