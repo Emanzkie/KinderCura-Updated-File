@@ -145,10 +145,16 @@ Purpose:
             </dl>
 
             <label class="reschedule-label" for="rsDate">New Date</label>
-            <input type="date" id="rsDate" class="reschedule-input" required>
+            <input type="date" id="rsDate" class="reschedule-input" required onchange="loadRsAvailability()">
+            <p class="reschedule-help" id="rsDateHelp"></p>
 
             <label class="reschedule-label" for="rsTime">New Time</label>
-            <input type="time" id="rsTime" class="reschedule-input" required>
+            <div id="rsTimeField">
+                <select id="rsTime" class="reschedule-input" required disabled>
+                    <option value="">Select a date first</option>
+                </select>
+            </div>
+            <p class="reschedule-help" id="rsTimeHelp"></p>
 
             <label class="reschedule-label" for="rsReason">Reason <span class="reschedule-optional">(optional)</span></label>
             <textarea id="rsReason" class="reschedule-input reschedule-textarea" rows="3"

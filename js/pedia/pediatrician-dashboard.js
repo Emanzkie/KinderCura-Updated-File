@@ -182,6 +182,106 @@ if (!getToken() || !_u) {
 
         const rsEl = (id) => document.getElementById(id);
 
+        // Date / time choices come from GET /appointments/availability/check, the
+        // same evaluateAvailability() rules parent booking uses and the reschedule
+        // route re-checks on save. excludeAppointmentId stops the appointment being
+        // moved from blocking its own slot.
+        const RS_WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+        let rsSlotMode = true;      // admin "enforce 1-hour start times" setting
+        let rsAvailableDays = [];   // the pediatrician's configured weekdays
+
+        // Weekday of a YYYY-MM-DD string, read in UTC like the backend's dayName.
+        function rsWeekday(dateStr){
+            const p = String(dateStr).split('-').map(Number);
+            return RS_WEEKDAYS[new Date(Date.UTC(p[0], p[1]-1, p[2])).getUTCDay()];
+        }
+
+        async function rsCheck(date){
+            const appt = pendingById[String(rsEl('rsApptId').value)] || {};
+            const params = new URLSearchParams({
+                pediatricianId: appt.pediatricianId || (_u && (_u.id || _u._id)) || '',
+                date,
+                excludeAppointmentId: rsEl('rsApptId').value,
+            });
+            const data = await apiFetch('/appointments/availability/check?' + params.toString());
+            return data.availability || {};
+        }
+
+        function renderRsTimeField(){
+            rsEl('rsTimeField').innerHTML = rsSlotMode
+                ? '<select id="rsTime" class="reschedule-input" required disabled><option value="">Select a date first</option></select>'
+                : '<input type="time" id="rsTime" class="reschedule-input" step="60" required>';
+            rsEl('rsTimeHelp').textContent = rsSlotMode ? '' : 'Manual time selection is currently allowed by the admin setting.';
+        }
+
+        function populateRsTimes(slots){
+            const field = rsEl('rsTime');
+            if(!field || field.tagName !== 'SELECT') return;
+            const date = rsEl('rsDate').value;
+            field.innerHTML = `<option value="">${!date ? 'Select a date first' : (slots.length ? 'Select a start time' : 'No open start times')}</option>`
+                + slots.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(fmtTime(s))}</option>`).join('');
+            field.disabled = !slots.length;
+        }
+
+        // Runs when the modal opens: reads the configured days fresh from the
+        // server so a change in Settings > Availability shows up immediately.
+        async function loadRsSchedule(){
+            const id = rsEl('rsApptId').value;
+            rsEl('rsDateHelp').textContent = 'Loading your available days...';
+            try{
+                const info = await rsCheck(rsEl('rsDate').min);
+                if(rsEl('rsApptId').value !== id) return;
+                rsSlotMode = Boolean(info.slotSettings ? info.slotSettings.enforceThirtyMinuteSlots : true);
+                rsAvailableDays = Array.isArray(info.availableDays) ? info.availableDays : [];
+                renderRsTimeField();
+                rsEl('rsDateHelp').textContent = rsAvailableDays.length
+                    ? 'Your available days: ' + rsAvailableDays.join(', ')
+                        + (info.startTime && info.endTime ? ' (' + fmtTime(info.startTime) + ' – ' + fmtTime(info.endTime) + ')' : '')
+                    : 'Your available days are not set yet. Update them in Settings > Availability.';
+                // A date picked while this was loading needs its times re-read.
+                if(rsEl('rsDate').value) loadRsAvailability();
+            }catch(e){
+                rsEl('rsDateHelp').textContent = e.message || 'Could not load your availability.';
+            }
+        }
+
+        async function loadRsAvailability(){
+            const date = rsEl('rsDate').value;
+            rescheduleError('');
+            populateRsTimes([]);
+            if(!date){ rsEl('rsTimeHelp').textContent = ''; return; }
+
+            // A native date picker cannot grey out weekdays, so an unavailable day
+            // is refused the moment it is picked and never produces time choices.
+            if(rsAvailableDays.length && !rsAvailableDays.includes(rsWeekday(date))){
+                rsEl('rsDate').value = '';
+                rescheduleError('You are not available on ' + rsWeekday(date) + '. Choose one of your available days: ' + rsAvailableDays.join(', ') + '.');
+                return;
+            }
+
+            if(rsSlotMode) rsEl('rsTimeHelp').textContent = 'Loading available start times...';
+            try{
+                const info = await rsCheck(date);
+                if(rsEl('rsDate').value !== date) return;
+                if(info.isDayAvailable === false){
+                    rsEl('rsDate').value = '';
+                    rsEl('rsTimeHelp').textContent = '';
+                    rescheduleError(info.message || 'That date is not available. Choose another date.');
+                    return;
+                }
+                if(!rsSlotMode) return;
+                // Start times already passed today are not offered either.
+                const now = new Date();
+                const slots = (info.availableSlots || []).filter(s => new Date(date + 'T' + s) >= now);
+                populateRsTimes(slots);
+                rsEl('rsTimeHelp').textContent = slots.length
+                    ? 'One-hour start times within your schedule. Booked times are not shown.'
+                    : (info.available === false && info.message ? info.message : 'No open start times on this date. Choose another date.');
+            }catch(e){
+                rsEl('rsTimeHelp').textContent = e.message || 'Could not load available start times.';
+            }
+        }
+
         function openReschedule(id){
             const appt = pendingById[String(id)];
             if(!appt){ alert('That request is no longer on screen. Refreshing...'); loadDashboard(); return; }
@@ -195,13 +295,14 @@ if (!getToken() || !_u) {
             dateEl.value = '';
             // The backend refuses a past date; do not offer one in the picker either.
             dateEl.min = new Date().toISOString().slice(0,10);
-            rsEl('rsTime').value = '';
+            renderRsTimeField();
             rsEl('rsReason').value = '';
             rescheduleError('');
             rsEl('rsConfirm').disabled = false;
             rsEl('rsConfirm').textContent = 'Confirm Reschedule';
 
             rsEl('rescheduleModal').style.display = 'flex';
+            loadRsSchedule();
             setTimeout(function(){ dateEl.focus(); }, 50);
         }
 

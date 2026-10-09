@@ -112,18 +112,36 @@ async function loadRescheduleAvailability() {
             pediatricianId: currentPediatricianId(),
             date,
         });
+        // The appointment being moved must not block its own slot.
+        if (_rescheduleId) params.set('excludeAppointmentId', _rescheduleId);
         const data = await apiFetch(`/appointments/availability/check?${params.toString()}`);
+        if (document.getElementById('rDate').value !== date) return;
         appointmentSlotSettings = data.availability?.slotSettings || appointmentSlotSettings;
+        // A native date picker cannot grey out weekdays, so a day outside the
+        // configured availability is cleared as soon as it is picked.
+        if (data.availability?.isDayAvailable === false) {
+            document.getElementById('rDate').value = '';
+            populateRescheduleTimeOptions([]);
+            const days = data.availability.availableDays || [];
+            setRescheduleTimeHelp((data.availability.message || 'That date is not available.')
+                + (days.length ? ` Your available days: ${days.join(', ')}.` : ''));
+            return;
+        }
         if (!useStartTimeSlots()) {
             renderRescheduleTimeField();
             setRescheduleTimeHelp('Manual time selection is currently allowed by the admin setting.');
             return;
         }
-        populateRescheduleTimeOptions(data.availability?.availableSlots || []);
+        // Start times already passed today are not offered either.
+        const now = new Date();
+        const slots = (data.availability?.availableSlots || []).filter((slot) => new Date(`${date}T${slot}`) >= now);
+        populateRescheduleTimeOptions(slots);
         setRescheduleTimeHelp(
-            Array.isArray(data.availability?.breakRanges) && data.availability.breakRanges.length
-                ? 'Break periods are skipped automatically.'
-                : 'Choose one of the available start times.'
+            !slots.length
+                ? (data.availability?.available === false && data.availability.message ? data.availability.message : 'No open start times on this date. Choose another date.')
+                : Array.isArray(data.availability?.breakRanges) && data.availability.breakRanges.length
+                    ? 'Break periods are skipped automatically.'
+                    : 'Choose one of the available start times.'
         );
     } catch (err) {
         populateRescheduleTimeOptions([]);

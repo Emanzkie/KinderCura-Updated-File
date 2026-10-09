@@ -1377,11 +1377,24 @@ router.get('/availability/check', authMiddleware, async (req, res) => {
       return res.status(403).json({ error: 'You can only view your own availability.' });
     }
 
-    const summary = await evaluateAvailability({ pediatrician, appointmentDate, appointmentTime });
+    // Pediatrician reschedule preview: the appointment being moved must not
+    // block its own slot. Same exclusion the reschedule route applies on save,
+    // honoured only for an appointment this pediatrician owns.
+    let excludeAppointmentMongoId = null;
+    const excludeAppointmentId = Number(req.query.excludeAppointmentId);
+    if (req.user.role === 'pediatrician' && Number.isFinite(excludeAppointmentId)) {
+      const own = await Appointment.findOne({ id: excludeAppointmentId, pediatricianId: pediatrician._id }).select('_id').lean();
+      if (own) excludeAppointmentMongoId = own._id;
+    }
+
+    const summary = await evaluateAvailability({ pediatrician, appointmentDate, appointmentTime, excludeAppointmentMongoId });
     res.json({
       success: true,
       availability: {
         ...summary,
+        // Configured weekdays, from the same normalizer evaluateAvailability uses,
+        // so the reschedule date picker can refuse days the doctor does not work.
+        availableDays: normalizeAvailability(pediatrician).days,
         clinicName: clinicNameFor(pediatrician),
         clinicAddress: clinicAddressFor(pediatrician),
         pediatricianName: `Dr. ${pediatrician.firstName} ${pediatrician.lastName}`,

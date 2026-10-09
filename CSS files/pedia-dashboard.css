@@ -323,6 +323,16 @@
     outline-offset: -1px;
 }
 
+.reschedule-help {
+    margin: -0.55rem 0 0.9rem;
+    font-size: 0.78rem;
+    color: var(--text-light);
+}
+
+.reschedule-help:empty {
+    display: none;
+}
+
 .reschedule-textarea {
     resize: vertical;
     min-height: 68px;
