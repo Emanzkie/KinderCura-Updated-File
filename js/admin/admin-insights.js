@@ -107,7 +107,9 @@ function fmtShortDate(value) {
     if (!value) return '—';
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return '—';
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    // UTC: the API applies the range in UTC (a date-only `to` becomes
+    // 23:59:59.999Z), so local formatting showed "Sep 30" as "Oct 1" east of UTC.
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
 
 /** 'YYYY-MM' → 'Aug 2026', for chart axes. */
@@ -210,6 +212,80 @@ function drawChart(canvasId, config) {
 /** True when every value in a counts object is zero. */
 function allZero(counts) {
     return Object.values(counts || {}).every((v) => count(v) === 0);
+}
+
+// ── Shares, partial months and chart labelling ──────────────────────────────
+
+/** part ÷ whole as "12.3%", "<0.1%" for a non-zero share under 0.05%, or null. */
+function sharePct(part, whole) {
+    const p = count(part);
+    const w = count(whole);
+    if (w <= 0 || p > w) return null;
+    const pct = (p / w) * 100;
+    if (pct > 0 && pct < 0.05) return '<0.1%';
+    return `${pct.toFixed(1)}%`;
+}
+
+/** "12.3% of 1,720 <noun>", or "N/A (no <noun>)" when there is no denominator. */
+function shareOf(part, whole, noun) {
+    const s = sharePct(part, whole);
+    return s == null ? `N/A (no ${noun})` : `${s} of ${fmtN(whole)} ${noun}`;
+}
+
+function fmtN(value) {
+    return count(value).toLocaleString('en-US');
+}
+
+/**
+ * Month keys ('YYYY-MM', UTC — the server buckets with $dateToString) that the
+ * selected range covers only partly: the first month when the range starts
+ * after the 1st, the last when it ends before the month does. Their bars and
+ * points are drawn differently so a short month is not read as a drop.
+ */
+function partialMonthKeys(rows, filters) {
+    const keys = new Set();
+    if (!rows.length || !filters) return keys;
+    const from = filters.from ? new Date(filters.from) : null;
+    const to = filters.to ? new Date(filters.to) : null;
+    if (from && !Number.isNaN(from.getTime()) && from.getUTCDate() !== 1) keys.add(rows[0].month);
+    if (to && !Number.isNaN(to.getTime())) {
+        const monthEnd = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+        if (to < monthEnd) keys.add(rows[rows.length - 1].month);
+    }
+    return keys;
+}
+
+function monthLabel(row, partial) {
+    return partial.has(row.month) ? `${fmtMonth(row.month)} (partial)` : fmtMonth(row.month);
+}
+
+function partialNote(partial) {
+    return partial.size
+        ? ` Months marked "(partial)" are only partly inside the selected range, so they are not comparable with full months.`
+        : '';
+}
+
+/** Axis title config for Chart.js. */
+function axisTitle(text) {
+    return { display: true, text, font: { size: 11 } };
+}
+
+/** Doughnut tooltip: "Label: 1,218 (80.9% of 1,506 <noun>)". */
+function shareTooltip(noun) {
+    return {
+        callbacks: {
+            label: (ctx) => {
+                const total = ctx.dataset.data.reduce((a, b) => a + count(b), 0);
+                return `${ctx.label}: ${fmtN(ctx.parsed)} (${shareOf(ctx.parsed, total, noun)})`;
+            },
+        },
+    };
+}
+
+/** Score range for a band key from constants/scoring.js, e.g. "80–100". */
+function bandRange(key) {
+    const b = window.KCScoring && window.KCScoring.THRESHOLD_RANGES && window.KCScoring.THRESHOLD_RANGES[key];
+    return b ? `${b.min}–${b.max}` : '';
 }
 
 // ── Filter state (query string is the source of truth) ──────────────────────
@@ -358,58 +434,71 @@ function renderUsers(data) {
     const total = count(totals.users);
     const guardians = data.guardianAccounts || {};
 
+    // routes/admin-reports.js GET /users: role, status and guardian totals are
+    // CURRENT state and ignore every filter; only the registrations timeline
+    // follows the date range. Sex/age filters never apply to accounts.
     const roleRows = (data.byRole || []).length
         ? (data.byRole || []).map((r) => `
             <tr>
                 <td>${escapeHtml(roleLabel(r.role))}</td>
-                <td class="num">${count(r.count)}</td>
-                <td class="num">${total ? Math.round((count(r.count) / total) * 100) : 0}%</td>
+                <td class="num">${fmtN(r.count)}</td>
+                <td class="num">${sharePct(r.count, total) ?? 'N/A'}</td>
             </tr>`).join('')
+            + `<tr class="total-row"><td>All accounts</td><td class="num">${fmtN(total)}</td><td class="num">${total ? '100%' : 'N/A'}</td></tr>`
         : '<tr><td colspan="3" style="color:var(--text-light);">No user accounts on file.</td></tr>';
 
     const guardianTotal = count(guardians.withChildren) + count(guardians.withoutChildren);
+    const statusText = (data.byStatus || [])
+        .filter((s) => s.status !== (totals.activeValue || 'active') && count(s.count) > 0)
+        .map((s) => `${fmtN(s.count)} ${escapeHtml(s.status)}`)
+        .join(' · ');
+
+    const reg = data.registrations || [];
+    const regPartial = partialMonthKeys(reg, data.filters);
+    const regTotal = reg.reduce((sum, r) => sum + count(r.count), 0);
 
     section.innerHTML = `
         <div class="insight-card">
             <h2>User Overview</h2>
             <p class="card-sub">Overview of registered KinderCura users.</p>
+            <p class="scope-note">The four tiles, the role chart and the role table are <strong>current totals for every account</strong>; the date range does not change them, and the sex and age filters do not apply to user accounts. Only the registration chart follows the date range.</p>
 
             <div class="insight-tiles">
                 <div class="insight-tile">
                     <p class="tile-label">Total Users</p>
-                    <p class="tile-value">${total}</p>
-                    <p class="tile-sub">All registered accounts.</p>
+                    <p class="tile-value">${fmtN(total)}</p>
+                    <p class="tile-sub">All registered accounts, every role and status.</p>
                 </div>
                 <div class="insight-tile">
                     <p class="tile-label">Active Users</p>
-                    <p class="tile-value">${count(totals.active)}</p>
-                    <p class="tile-sub">Currently active accounts.</p>
+                    <p class="tile-value">${fmtN(totals.active)}</p>
+                    <p class="tile-sub">Account status active: ${shareOf(totals.active, total, 'accounts')}.</p>
                 </div>
                 <div class="insight-tile">
                     <p class="tile-label">Inactive Users</p>
-                    <p class="tile-value">${count(totals.inactive)}</p>
-                    <p class="tile-sub">Currently inactive accounts.</p>
+                    <p class="tile-value">${fmtN(totals.inactive)}</p>
+                    <p class="tile-sub">Any status other than active${statusText ? ` (${statusText})` : ''}: ${shareOf(totals.inactive, total, 'accounts')}.</p>
                 </div>
                 <div class="insight-tile">
                     <p class="tile-label">Guardians with Children</p>
-                    <p class="tile-value">${count(guardians.withChildren)}</p>
-                    <p class="tile-sub">Guardian accounts with at least one child.</p>
+                    <p class="tile-value">${fmtN(guardians.withChildren)}</p>
+                    <p class="tile-sub">Parent and guardian-role accounts with at least one child record: ${shareOf(guardians.withChildren, guardianTotal, 'guardian accounts')}.</p>
                 </div>
             </div>
 
             <div class="chart-row">
                 <div>
-                    <div class="chart-box"><canvas id="usersRoleChart"></canvas></div>
-                    <p class="chart-caption">Accounts by role.</p>
+                    <div class="chart-box"><canvas id="usersRoleChart" role="img" aria-label="Doughnut chart: user accounts by role"></canvas></div>
+                    <p class="chart-caption">Accounts by role (current, all ${fmtN(total)} accounts). Hover a slice for its share.</p>
                 </div>
                 <div>
-                    <div class="chart-box"><canvas id="usersRegistrationChart"></canvas></div>
-                    <p class="chart-caption">Registration trend.</p>
+                    <div class="chart-box"><canvas id="usersRegistrationChart" role="img" aria-label="Line chart: new accounts per month"></canvas></div>
+                    <p class="chart-caption">New accounts per month by account creation date (${fmtN(regTotal)} in the selected range).${partialNote(regPartial)}</p>
                 </div>
             </div>
 
             <h3>Accounts by Role</h3>
-            <p class="card-sub" style="margin-bottom:0.6rem;">Distribution of registered users by role.</p>
+            <p class="card-sub" style="margin-bottom:0.6rem;">Share = accounts with that role ÷ all ${fmtN(total)} accounts (current, every status).</p>
             <div class="insight-table-wrap">
                 <table class="insight-table">
                     <thead><tr><th>Role</th><th class="num">Count</th><th class="num">Share</th></tr></thead>
@@ -425,37 +514,52 @@ function renderUsers(data) {
             labels: roleData.map((r) => roleLabel(r.role)),
             datasets: [{
                 data: roleData.map((r) => count(r.count)),
-                backgroundColor: ['#6B8E6F', '#8BA98D', '#F4D89F', '#E8A5A5', '#A8C49D', '#D4897A', '#B0A8C4'],
+                // KinderCura palette only: greens, yellow, pink, red-brown,
+                // light brown, gray (the former lavender was off-palette).
+                backgroundColor: ['#6B8E6F', '#8BA98D', '#F4D89F', '#E8A5A5', '#A8C49D', '#D4897A', '#C9A27E'],
                 borderWidth: 0,
             }],
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } } },
+            plugins: {
+                legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },
+                tooltip: shareTooltip('accounts'),
+            },
         },
     });
 
-    const reg = data.registrations || [];
+    // Straight segments: a smoothed curve invents values between months and
+    // can dip below zero. The segment into a partial month is dashed.
     drawChart('usersRegistrationChart', {
         type: 'line',
         data: {
-            labels: reg.map((r) => fmtMonth(r.month)),
+            labels: reg.map((r) => monthLabel(r, regPartial)),
             datasets: [{
-                label: 'Registrations',
+                label: 'New accounts',
                 data: reg.map((r) => count(r.count)),
                 borderColor: '#6B8E6F',
                 backgroundColor: 'rgba(107,142,111,0.15)',
                 fill: true,
-                tension: 0.3,
+                tension: 0,
                 pointRadius: 2,
+                segment: {
+                    borderDash: (ctx) => ((regPartial.has(reg[ctx.p1DataIndex]?.month) || regPartial.has(reg[ctx.p0DataIndex]?.month)) ? [6, 4] : undefined),
+                },
             }],
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+            plugins: {
+                legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+                tooltip: { callbacks: { label: (ctx) => `${fmtN(ctx.parsed.y)} new account${ctx.parsed.y === 1 ? '' : 's'}` } },
+            },
+            scales: {
+                x: { title: axisTitle('Month account was created (UTC)') },
+                y: { beginAtZero: true, ticks: { precision: 0 }, title: axisTitle('New accounts') },
+            },
         },
     });
 }
@@ -475,8 +579,7 @@ function renderChildren(data) {
     if (total === 0) {
         section.innerHTML = `
             <div class="insight-card">
-                <span class="section-label">Section 2</span>
-                <h2>Child demographics</h2>
+                <h2>Child Overview</h2>
                 ${emptyBlock('No children match these filters',
                     'No child record matches the selected sex and age band. Widen the filters, or reset them, to see the full roster.')}
             </div>`;
@@ -490,53 +593,56 @@ function renderChildren(data) {
         <div class="insight-card">
             <h2>Child Overview</h2>
             <p class="card-sub">Overview of registered children and their assessment activity.</p>
+            <p class="scope-note">The sex and age filters apply to every figure here, using each child's <strong>current age</strong> (today), not age at assessment. The date range applies only to Assessed / Not Assessed in Range.</p>
 
             <div class="insight-tiles">
                 <div class="insight-tile">
                     <p class="tile-label">Total Children</p>
-                    <p class="tile-value">${total}</p>
-                    <p class="tile-sub">Registered children matching current filters.</p>
+                    <p class="tile-value">${fmtN(total)}</p>
+                    <p class="tile-sub">Child records matching the sex and age filters (not narrowed by dates).</p>
                 </div>
                 <div class="insight-tile">
                     <p class="tile-label">Assessed in Range</p>
-                    <p class="tile-value">${count(coverage.withScreening)}</p>
-                    <p class="tile-sub">Children with at least one completed assessment.</p>
+                    <p class="tile-value">${fmtN(coverage.withScreening)}</p>
+                    <p class="tile-sub">Children with at least one completed assessment in the date range: ${shareOf(coverage.withScreening, total, 'children')}.</p>
                 </div>
                 <div class="insight-tile">
                     <p class="tile-label">Not Assessed in Range</p>
-                    <p class="tile-value">${count(coverage.withoutScreening)}</p>
-                    <p class="tile-sub">Children without a completed assessment in this period.</p>
+                    <p class="tile-value">${fmtN(coverage.withoutScreening)}</p>
+                    <p class="tile-sub">No completed assessment in the date range (they may have one outside it): ${shareOf(coverage.withoutScreening, total, 'children')}.</p>
                 </div>
                 <div class="insight-tile">
                     <p class="tile-label">Sex Not Recorded</p>
-                    <p class="tile-value">${count(byGender[vocabUnknown()])}</p>
-                    <p class="tile-sub">Children without sex information on file.</p>
+                    <p class="tile-value">${fmtN(byGender[vocabUnknown()])}</p>
+                    <p class="tile-sub">Child records with no sex on file.</p>
                 </div>
             </div>
 
             <div class="chart-row">
                 <div>
-                    <div class="chart-box"><canvas id="childrenGenderChart"></canvas></div>
-                    <p class="chart-caption">Sex distribution of registered children.</p>
+                    <div class="chart-box"><canvas id="childrenGenderChart" role="img" aria-label="Doughnut chart: children by sex"></canvas></div>
+                    <p class="chart-caption">Children by sex (${fmtN(total)} child records). Hover a slice for its share.</p>
                 </div>
                 <div>
-                    <div class="chart-box"><canvas id="childrenAgeChart"></canvas></div>
-                    <p class="chart-caption">Age distribution of registered children.</p>
+                    <div class="chart-box"><canvas id="childrenAgeChart" role="img" aria-label="Bar chart: children by current age band"></canvas></div>
+                    <p class="chart-caption">Children by current age band (${fmtN(total)} child records).</p>
                 </div>
             </div>
 
             <h3>Children per Guardian</h3>
-            <p class="card-sub" style="margin-bottom:0.6rem;">Number of children associated with each guardian account.</p>
+            <p class="card-sub" style="margin-bottom:0.6rem;">How many child records share the same owner account, counted from the child records matching the filters.</p>
             <div class="insight-table-wrap">
                 <table class="insight-table">
-                    <thead><tr><th>Children on the account</th><th class="num">Guardians</th></tr></thead>
+                    <thead><tr><th>Children on the account</th><th class="num">Owner accounts</th></tr></thead>
                     <tbody>
-                        <tr><td>1 child</td><td class="num">${count(perParent['1'])}</td></tr>
-                        <tr><td>2 children</td><td class="num">${count(perParent['2'])}</td></tr>
-                        <tr><td>3 or more</td><td class="num">${count(perParent['3+'])}</td></tr>
+                        <tr><td>1 child</td><td class="num">${fmtN(perParent['1'])}</td></tr>
+                        <tr><td>2 children</td><td class="num">${fmtN(perParent['2'])}</td></tr>
+                        <tr><td>3 or more</td><td class="num">${fmtN(perParent['3+'])}</td></tr>
+                        <tr class="total-row"><td>All owner accounts</td><td class="num">${fmtN(count(perParent['1']) + count(perParent['2']) + count(perParent['3+']))}</td></tr>
                     </tbody>
                 </table>
             </div>
+            <p class="card-sub" id="guardianReconciliation" style="margin-top:0.6rem;"></p>
         </div>`;
 
     drawChart('childrenGenderChart', {
@@ -552,7 +658,10 @@ function renderChildren(data) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } } },
+            plugins: {
+                legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },
+                tooltip: shareTooltip('children'),
+            },
         },
     });
 
@@ -561,7 +670,7 @@ function renderChildren(data) {
         data: {
             labels: ageKeys.map(ageBandLabel),
             datasets: [{
-                label: 'Children',
+                label: 'Children (current age)',
                 data: ageKeys.map((k) => count(byAge[k])),
                 backgroundColor: '#8BA98D',
                 borderWidth: 0,
@@ -570,10 +679,39 @@ function renderChildren(data) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+            plugins: {
+                legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+                tooltip: { callbacks: { label: (ctx) => `${fmtN(ctx.parsed.y)} children (${shareOf(ctx.parsed.y, total, 'children')})` } },
+            },
+            scales: {
+                x: { title: axisTitle('Current age band') },
+                y: { beginAtZero: true, ticks: { precision: 0 }, title: axisTitle('Children') },
+            },
         },
     });
+}
+
+/**
+ * "Guardians with Children" (users section: existing parent/guardian-role
+ * accounts with a child) and Children per Guardian (children section: every
+ * owner id on a child record) use different populations. Explains the gap
+ * instead of forcing them to match. Only meaningful with no sex/age filter,
+ * because those narrow the child records but not the accounts.
+ */
+function annotateGuardianReconciliation(usersData, childrenData) {
+    const el = document.getElementById('guardianReconciliation');
+    if (!el || !usersData || !childrenData) return;
+    const f = currentFilters();
+    const perParent = childrenData.childrenPerParent || {};
+    const owners = count(perParent['1']) + count(perParent['2']) + count(perParent['3+']);
+    const guardians = count(usersData.guardianAccounts?.withChildren);
+    if ((f.gender && f.gender !== 'all') || (f.ageBand && f.ageBand !== 'all')) {
+        el.textContent = 'With a sex or age filter applied, this table counts only the owners of the matching children, so it is not comparable with Guardians with Children above.';
+        return;
+    }
+    el.textContent = owners === guardians
+        ? `These ${fmtN(owners)} owner accounts match Guardians with Children above.`
+        : `${fmtN(owners)} owner accounts here vs ${fmtN(guardians)} Guardians with Children above: this table counts every owner recorded on a child record, while the tile counts only existing parent and guardian-role accounts. The difference of ${fmtN(Math.abs(owners - guardians))} is owners recorded on child records that are not a current parent or guardian account.`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -601,6 +739,13 @@ function renderScreenings(data) {
     }
 
     const overTime = data.overTime || [];
+    const overTimePartial = partialMonthKeys(overTime, data.filters);
+    // Domain bars only show the four score bands; a result with no stored
+    // band for a domain lands in the server's unknown bucket and is left out.
+    const domainUnknown = DOMAINS.reduce((sum, d) => sum + count((data.domainBands || {})[d.key]?.[vocabUnknown()]), 0);
+    const domainCaption = domainUnknown === 0
+        ? `Each bar is all ${fmtN(withResult)} scored assessments split by that domain's own band, so every assessment appears once in every bar. Counts are assessments, not children.`
+        : `Each bar splits the ${fmtN(withResult)} scored assessments by that domain's own band; ${fmtN(domainUnknown)} domain result(s) have no stored band and are not shown. Counts are assessments, not children.`;
     const overallBands = data.overallBands || {};
     const ageKeys = [...(vocab?.ageBands || []).map((b) => b.key), vocabUnknown()];
     const genderKeys = [...(vocab?.genders || []), vocabUnknown()];
@@ -612,21 +757,23 @@ function renderScreenings(data) {
         : `
             <div class="chart-row">
                 <div>
-                    <div class="chart-box"><canvas id="screeningsOverallChart"></canvas></div>
-                    <p class="chart-caption">Overall assessment results (${withResult} assessed).</p>
+                    <div class="chart-box"><canvas id="screeningsOverallChart" role="img" aria-label="Bar chart: scored assessments by overall score band"></canvas></div>
+                    <p class="chart-caption">Scored assessments by overall score band (${fmtN(withResult)} with a result). Bands are screening ranges of the overall score, not diagnoses.</p>
                 </div>
                 <div>
-                    <div class="chart-box"><canvas id="screeningsDomainChart"></canvas></div>
-                    <p class="chart-caption">Results by developmental area.</p>
+                    <div class="chart-box"><canvas id="screeningsDomainChart" role="img" aria-label="Stacked bar chart: scored assessments by band in each developmental domain"></canvas></div>
+                    <p class="chart-caption">${domainCaption}</p>
                 </div>
             </div>
 
             <h3>Overall Results by Age Band</h3>
+            <p class="card-sub" style="margin-bottom:0.6rem;">Scored assessments by overall band and the child's <strong>age at the assessment</strong> (unlike Child Overview, which uses current age).</p>
             <div class="insight-table-wrap">
                 ${crossTabTable(data.bandByAgeBand, keys, ageKeys, ageBandLabel, 'Band')}
             </div>
 
             <h3>Overall Results by Sex</h3>
+            <p class="card-sub" style="margin-bottom:0.6rem;">Scored assessments by overall band and the child's recorded sex. These are counts, not rates: they are not adjusted for how many children of each sex were assessed.</p>
             <div class="insight-table-wrap">
                 ${crossTabTable(data.bandByGender, keys, genderKeys, genderLabel, 'Band')}
             </div>`;
@@ -635,42 +782,43 @@ function renderScreenings(data) {
         <div class="insight-card">
             <h2>Assessment Overview</h2>
             <p class="card-sub">Overview of completed and ongoing child assessments.</p>
+            <p class="scope-note">Counts <strong>assessment sessions of any status</strong> (in progress, submitted or complete) dated inside the range — by completion date, or start date if not completed — for children matching the sex filter and, for age, the child's age at the assessment. One child can have several sessions.</p>
 
             <div class="insight-tiles">
                 <div class="insight-tile">
                     <p class="tile-label">Assessments</p>
-                    <p class="tile-value">${total}</p>
-                    <p class="tile-sub">Assessments in the selected period.</p>
+                    <p class="tile-value">${fmtN(total)}</p>
+                    <p class="tile-sub">Sessions of any status in the selected range.</p>
                 </div>
                 <div class="insight-tile">
                     <p class="tile-label">With Results</p>
-                    <p class="tile-value">${withResult}</p>
-                    <p class="tile-sub">Assessments with assessment results.</p>
+                    <p class="tile-value">${fmtN(withResult)}</p>
+                    <p class="tile-sub">Sessions with a scored result: ${shareOf(withResult, total, 'sessions')}.</p>
                 </div>
                 <div class="insight-tile">
                     <p class="tile-label">Without Results</p>
-                    <p class="tile-value">${withoutResult}</p>
+                    <p class="tile-value">${fmtN(withoutResult)}</p>
                     <p class="tile-sub">
                         ${withoutResult > 0
-                            ? 'Assessments still awaiting results.'
-                            : 'Every assessment in range has a result.'}
+                            ? `No scored result: sessions still in progress, or submitted without a stored result (${shareOf(withoutResult, total, 'sessions')}).`
+                            : 'Every session in range has a scored result.'}
                     </p>
                 </div>
                 <div class="insight-tile">
                     <p class="tile-label">Reviewed</p>
-                    <p class="tile-value">${count(review.reviewed)}</p>
-                    <p class="tile-sub">Assessments reviewed by a pediatrician.</p>
+                    <p class="tile-value">${fmtN(review.reviewed)}</p>
+                    <p class="tile-sub">Sessions with a recorded pediatrician review: ${shareOf(review.reviewed, total, 'sessions')}.</p>
                 </div>
             </div>
 
             <div class="chart-row">
                 <div>
-                    <div class="chart-box"><canvas id="screeningsOverTimeChart"></canvas></div>
-                    <p class="chart-caption">Assessments per month.</p>
+                    <div class="chart-box"><canvas id="screeningsOverTimeChart" role="img" aria-label="Bar chart: assessment sessions per month"></canvas></div>
+                    <p class="chart-caption">Assessment sessions per month, any status (${fmtN(total)} in range).${partialNote(overTimePartial)}</p>
                 </div>
                 <div>
-                    <div class="chart-box"><canvas id="screeningsLinkageChart"></canvas></div>
-                    <p class="chart-caption">Assessments with results.</p>
+                    <div class="chart-box"><canvas id="screeningsLinkageChart" role="img" aria-label="Doughnut chart: sessions with and without a scored result"></canvas></div>
+                    <p class="chart-caption">Sessions with and without a scored result (${fmtN(total)} sessions). Hover a slice for its share.</p>
                 </div>
             </div>
 
@@ -680,8 +828,8 @@ function renderScreenings(data) {
             <div class="insight-tiles" style="margin-bottom:0;">
                 <div class="insight-tile">
                     <p class="tile-label">Reviewed</p>
-                    <p class="tile-value">${count(review.reviewed)} / ${total}</p>
-                    <p class="tile-sub">Assessments reviewed by a pediatrician.</p>
+                    <p class="tile-value">${fmtN(review.reviewed)} / ${fmtN(total)}</p>
+                    <p class="tile-sub">Sessions in range with a recorded pediatrician review, out of all sessions in range.</p>
                 </div>
                 <div class="insight-tile">
                     <p class="tile-label">Median Review Time</p>
@@ -689,27 +837,29 @@ function renderScreenings(data) {
                     <p class="tile-sub">
                         ${count(review.medianSampleSize) === 0
                             ? 'No review data available yet.'
-                            : `Typical time between submission and review.`}
+                            : `Median days from the session's completion (or start) date to its review, based on ${fmtN(review.medianSampleSize)} reviewed session${count(review.medianSampleSize) === 1 ? '' : 's'}${count(review.medianSampleSize) < 10 ? ' — too few to describe a typical review time' : ''}.`}
                     </p>
                 </div>
                 <div class="insight-tile">
                     <p class="tile-label">Follow-up Scheduled</p>
-                    <p class="tile-value">${data.nextAssessment?.rate?.percent == null ? '—' : `${data.nextAssessment.rate.percent}%`}</p>
-                    <p class="tile-sub">Assessments with a follow-up date.</p>
+                    <p class="tile-value">${data.nextAssessment?.rate?.percent == null ? 'N/A' : `${data.nextAssessment.rate.percent}%`}</p>
+                    <p class="tile-sub">${data.nextAssessment?.rate?.percent == null
+                        ? 'No sessions in range to divide by.'
+                        : `Sessions with a next-assessment date set: ${fmtN(data.nextAssessment.set)} of ${fmtN(total)} sessions in range.`}</p>
                 </div>
             </div>
 
             <h3>Custom Questions</h3>
             <p class="card-sub" style="margin-bottom:0.8rem;">
-                Track custom questions assigned by pediatricians.
+                Pediatrician-written questions sent to a child, created in the selected range. One question sent to one child is one assignment; the sex and age filters do not apply here.
             </p>
             <div class="insight-table-wrap">
                 <table class="insight-table">
-                    <thead><tr><th>Custom Questions</th><th class="num">Count</th></tr></thead>
+                    <thead><tr><th>Question assignments</th><th class="num">Count</th></tr></thead>
                     <tbody>
-                        <tr><td>Assigned</td><td class="num">${count(custom.assigned)}</td></tr>
-                        <tr><td>Answered</td><td class="num">${count(custom.answered)}</td></tr>
-                        <tr><td>Awaiting an Answer</td><td class="num">${Math.max(0, count(custom.assigned) - count(custom.answered))}</td></tr>
+                        <tr><td>Assigned</td><td class="num">${fmtN(custom.assigned)}</td></tr>
+                        <tr><td>Answered</td><td class="num">${fmtN(custom.answered)}</td></tr>
+                        <tr><td>Awaiting an Answer</td><td class="num">${fmtN(Math.max(0, count(custom.assigned) - count(custom.answered)))}</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -718,26 +868,33 @@ function renderScreenings(data) {
     drawChart('screeningsOverTimeChart', {
         type: 'bar',
         data: {
-            labels: overTime.map((r) => fmtMonth(r.month)),
+            labels: overTime.map((r) => monthLabel(r, overTimePartial)),
             datasets: [{
-                label: 'Assessments',
+                label: 'Assessment sessions (any status)',
                 data: overTime.map((r) => count(r.count)),
-                backgroundColor: '#6B8E6F',
+                // A partial month is drawn lighter so it is not read as a drop.
+                backgroundColor: overTime.map((r) => (overTimePartial.has(r.month) ? 'rgba(107,142,111,0.4)' : '#6B8E6F')),
                 borderWidth: 0,
             }],
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+            plugins: {
+                legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+                tooltip: { callbacks: { label: (ctx) => `${fmtN(ctx.parsed.y)} session${ctx.parsed.y === 1 ? '' : 's'}` } },
+            },
+            scales: {
+                x: { title: axisTitle('Month (completion date, or start date if not completed; UTC)') },
+                y: { beginAtZero: true, ticks: { precision: 0 }, title: axisTitle('Assessment sessions') },
+            },
         },
     });
 
     drawChart('screeningsLinkageChart', {
         type: 'doughnut',
         data: {
-            labels: ['With a scored result', 'Without a result'],
+            labels: ['With a scored result', 'Without a scored result'],
             datasets: [{
                 data: [withResult, withoutResult],
                 backgroundColor: ['#6B8E6F', '#D4897A'],
@@ -747,7 +904,10 @@ function renderScreenings(data) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } } },
+            plugins: {
+                legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },
+                tooltip: shareTooltip('sessions'),
+            },
         },
     });
 
@@ -755,9 +915,9 @@ function renderScreenings(data) {
         drawChart('screeningsOverallChart', {
             type: 'bar',
             data: {
-                labels: keys.map(bandLabel),
+                labels: keys.map((k) => (bandRange(k) ? `${bandLabel(k)} (${bandRange(k)})` : bandLabel(k))),
                 datasets: [{
-                    label: 'Assessments',
+                    label: 'Scored assessments',
                     data: keys.map((k) => count(overallBands[k])),
                     backgroundColor: keys.map(bandColor),
                     borderWidth: 0,
@@ -766,8 +926,18 @@ function renderScreenings(data) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+                plugins: {
+                    // Categories are named on the x-axis with their score
+                    // ranges; the bar colour repeats the band colour used in
+                    // the tables below, so a single-series legend would add
+                    // nothing.
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: (ctx) => `${fmtN(ctx.parsed.y)} assessments (${shareOf(ctx.parsed.y, withResult, 'scored')})` } },
+                },
+                scales: {
+                    x: { title: axisTitle('Overall score band (score range)') },
+                    y: { beginAtZero: true, ticks: { precision: 0 }, title: axisTitle('Scored assessments') },
+                },
             },
         });
 
@@ -777,7 +947,7 @@ function renderScreenings(data) {
             data: {
                 labels: DOMAINS.map((d) => d.label),
                 datasets: keys.map((bandKey) => ({
-                    label: bandLabel(bandKey),
+                    label: bandRange(bandKey) ? `${bandLabel(bandKey)} (${bandRange(bandKey)})` : bandLabel(bandKey),
                     data: DOMAINS.map((d) => count(domainBands[d.key]?.[bandKey])),
                     backgroundColor: bandColor(bandKey),
                     borderWidth: 0,
@@ -786,10 +956,13 @@ function renderScreenings(data) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } },
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } },
+                    tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${fmtN(ctx.parsed.y)} (${shareOf(ctx.parsed.y, withResult, 'scored')})` } },
+                },
                 scales: {
-                    x: { stacked: true },
-                    y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } },
+                    x: { stacked: true, title: axisTitle('Developmental domain') },
+                    y: { stacked: true, beginAtZero: true, ticks: { precision: 0 }, title: axisTitle('Scored assessments') },
                 },
             },
         });
@@ -877,7 +1050,8 @@ function renderConcordance(data) {
 
     const header = `
         <h2>Pediatrician Review & Outcomes</h2>
-        <p class="card-sub">Summary of assessments reviewed by pediatricians.</p>`;
+        <p class="card-sub">Summary of assessments reviewed by pediatricians.</p>
+        <p class="scope-note">The four counts below are assessment sessions in the selected range at each stage: all sessions, those with a scored result, those reviewed, and those with a pediatrician-recorded outcome. Rates appear only once at least ${fmtN(minimum)} sessions can be compared.</p>`;
 
     // ── Empty state: no usable labelled records.
     if (comparable === 0) {
@@ -942,7 +1116,8 @@ function renderConcordance(data) {
                     <p class="rate-value">${rateText(agreement.screeningRatedWorse, false)}</p>
                     <p class="rate-label">Assessment showed higher concern than the pediatrician.</p>
                 </div>
-            </div>`;
+            </div>
+            <p class="card-sub" style="margin-top:0.6rem;">Each percentage is out of n = ${fmtN(comparable)} reviewed sessions in range that have both a scored overall band and a pediatrician-recorded outcome. They describe agreement in this recorded data, not the accuracy of either the assessment or the pediatrician.</p>`;
 
     section.innerHTML = `
         <div class="insight-card">
@@ -1011,6 +1186,8 @@ async function loadAll() {
         loadSection('concordance', 'concordanceSection', renderConcordance, 'concordance'),
     ]);
 
+    annotateGuardianReconciliation(results[0], results[1]);
+
     if (!meta) return;
     const applied = results.find((r) => r && r.filters);
     if (!applied) {
@@ -1021,9 +1198,14 @@ async function loadAll() {
     const bits = [`${fmtShortDate(f.from)} – ${fmtShortDate(f.to)}`];
     if (f.gender && f.gender !== 'all') bits.push(`sex: ${genderLabel(f.gender)}`);
     if (f.ageBand && f.ageBand !== 'all') bits.push(`age: ${ageBandLabel(f.ageBand)}`);
+    const f0 = currentFilters();
+    const defaultRange = !f0.from && !f0.to;
     meta.innerHTML = `View system activity, child assessments, and assessment results.<br>
         <span style="font-size:0.85em; opacity:0.8; display:inline-block; margin-top:0.3rem;">
-            Data for: ${bits.join(' · ')} &nbsp;|&nbsp; Updated: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+            Data for: ${escapeHtml(bits.join(' · '))}${defaultRange ? ' (default: last 12 months)' : ''} &nbsp;|&nbsp; Updated: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+        </span><br>
+        <span style="font-size:0.8em; opacity:0.75; display:inline-block; margin-top:0.2rem;">
+            Each section states which filters apply to it. Analytics shows all-time totals, so its numbers can differ from a date-limited view here.
         </span>`;
 }
 
