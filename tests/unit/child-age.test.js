@@ -210,7 +210,7 @@ async function routeTests() {
   const parent = {
     role: 'parent', firstName: 'Ana', lastName: 'Reyes', username: 'ana_reyes', email: 'ana.reyes@example.invalid',
     password: 'a-long-enough-pw', acceptTerms: true, acknowledgePrivacy: true,
-    childFirstName: 'Justine', childLastName: 'Dayak', gender: 'female',
+    childFirstName: 'Justine', childLastName: 'Dayak', gender: 'female', relationship: 'mother',
   };
 
   try {
@@ -238,16 +238,17 @@ async function routeTests() {
       assert.strictEqual(r.body.error, childAge.MESSAGES[reason]);
       assert.strictEqual(calls.userCreate.length + calls.childCreate.length, 0, `register ${label}: nothing created`);
     }
-    // Existing behaviour: a parent who sends no child at all still registers without one.
+    // Parent sign-up requires the child: a request that leaves it out is refused, nothing created.
     reset();
     let r = await post('/api/auth/register', { ...parent, childFirstName: '', childLastName: '' });
-    assert.strictEqual(r.status, 201); assert.strictEqual(calls.childCreate.length, 0);
+    assert.strictEqual(r.status, 400); assert.match(r.body.error, /Missing: childFirstName, childLastName, dateOfBirth\./);
+    assert.strictEqual(calls.userCreate.length + calls.childCreate.length, 0);
     // Pediatrician sign-up never carries a child, and the age rule does not apply to it.
     reset();
     r = await post('/api/auth/register', { ...parent, role: 'pediatrician', dateOfBirth: bornAgo(today, { years: 1 }), licenseNumber: '' });
     assert.strictEqual(r.status, 400);
     assert.match(r.body.error, /license number is required/, 'pediatrician reaches its own PRC checks, not the age rule');
-    ok('/api/auth/register: ineligible, impossible or future child DOB refused (400, rule message) before any user or child record; eligible ages create both; parent-without-child and pediatrician paths unchanged');
+    ok('/api/auth/register: ineligible, impossible or future child DOB refused (400, rule message) before any user or child record; eligible ages create both; parent without a child refused; pediatrician path unchanged');
 
     // /api/children/register (Add Child on the parent profile)
     const token = jwt.sign({ userId: '64b000000000000000000001', role: 'parent', email: 'ana.reyes@example.invalid' }, process.env.JWT_SECRET);
@@ -416,6 +417,7 @@ function toChildInfo(env) {
     env.run('go(3)');
     assert.deepStrictEqual(env.active(), ['sp3'], 'corrected date continues');
     // Later steps navigate as before, including Back to Your Information (also go(3)).
+    Object.entries({ pFirst: 'Ana', pLast: 'Dayak', relationship: 'mother' }).forEach(([k, v]) => { env.el(k).value = v; });
     env.run('go(4)'); assert.deepStrictEqual(env.active(), ['sp4']);
     env.run('go(3)'); assert.deepStrictEqual(env.active(), ['sp3']);
     env.run('go(2)'); assert.deepStrictEqual(env.active(), ['sp2']);
@@ -429,6 +431,7 @@ function toChildInfo(env) {
     env.run("selectedRole = 'pediatrician'");
     env.el('dob').value = bornAgo(today, { years: 1 });
     env.run('go(2)'); assert.deepStrictEqual(env.active(), ['sd2']);
+    env.el('dFirst').value = 'Ben'; env.el('dLast').value = 'Cruz';
     env.run('go(3)'); assert.deepStrictEqual(env.active(), ['sd3'], 'pediatrician Continue unaffected');
     assert.strictEqual(env.els.ageDialog.open, false);
   }

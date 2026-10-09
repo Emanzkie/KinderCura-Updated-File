@@ -11,6 +11,13 @@ function valueOf(id) {
     return el ? String(el.value || '').trim() : '';
 }
 
+// Passwords are read exactly as typed: login.js sends the password untrimmed, so
+// trimming it here would store a different password from the one used to sign in.
+function rawValueOf(id) {
+    const el = byId(id);
+    return el ? String(el.value || '') : '';
+}
+
 function setMessage(id, message) {
     const el = byId(id);
     if (el) el.textContent = message || '';
@@ -44,30 +51,215 @@ function go(step) {
 
     setMessage('e1', '');
 
-    if (role === 'parent') {
-        // Continue on Child Information: the child must be 3 to 8 years old.
-        // Back buttons on later steps also call go(3), but sp2 is not active then.
-        if (step === 3 && isStepActive('sp2') && !validateChildAge()) return;
+    const flow = SIGNUP_FLOWS[role] || SIGNUP_FLOWS.pediatrician;
+    const target = flow[step - 1] ? step - 1 : 0;
 
-        const parentSteps = {
-            1: 's1',
-            2: 'sp2',
-            3: 'sp3',
-            4: 'sp4',
-            5: 'sp5',
-        };
-        show(parentSteps[step] || 's1');
-        return;
+    // Moving forward: every step before the target must pass its required-field
+    // checks, so no call to go() can skip one. Back buttons also call go() but
+    // only ever move backwards, which is never blocked.
+    if (target > flow.findIndex(isStepActive)) {
+        for (let i = 1; i < target; i += 1) {
+            if (!canLeaveStep(flow[i])) return;
+        }
     }
+    show(flow[target]);
+}
 
-    const doctorSteps = {
-        1: 's1',
-        2: 'sd2',
-        3: 'sd3',
-        4: 'sd4',
-        5: 'sd5',
+const SIGNUP_FLOWS = {
+    parent: ['s1', 'sp2', 'sp3', 'sp4', 'sp5'],
+    pediatrician: ['s1', 'sd2', 'sd3', 'sd4', 'sd5'],
+};
+
+// ── Required fields ──────────────────────────────────────────────────────────
+// Every field on a step is required unless its label says "(optional)": the
+// middle names, the profile pictures and Hospital / Institution have no rule
+// here. Each rule returns '' when its field is acceptable, otherwise the message.
+const requireText = (id, message) => ({ id, check: () => (valueOf(id) ? '' : message) });
+// A <select> left on its placeholder option ("Select gender", ...) has the value ''.
+const requireChoice = requireText;
+
+function credentialRules(prefix) {
+    const passwordId = `${prefix}Password`;
+    return [
+        requireText(`${prefix}Username`, 'Please enter a username.'),
+        {
+            id: `${prefix}Email`,
+            check: () => {
+                const email = valueOf(`${prefix}Email`);
+                if (!email) return 'Please enter your email address.';
+                return validateEmail(email) ? '' : 'Please enter a valid email address.';
+            },
+        },
+        {
+            id: passwordId,
+            check: () => {
+                const password = rawValueOf(passwordId);
+                if (!password.trim()) return 'Please enter your password.';
+                return password.length < 8 ? 'Password must be at least 8 characters long.' : '';
+            },
+        },
+        {
+            id: `${prefix}Confirm`,
+            check: () => {
+                const confirm = rawValueOf(`${prefix}Confirm`);
+                if (!confirm.trim()) return 'Please confirm your password.';
+                return confirm === rawValueOf(passwordId) ? '' : 'Passwords do not match.';
+            },
+        },
+    ];
+}
+
+// Missing, malformed or future dates only. Under 3 / over 8 is validateChildAge()'s
+// notice, which runs once every required field on the step is filled in.
+function childDobError() {
+    const ageRule = window.KCChildAge;
+    if (!ageRule) return valueOf('dob') ? '' : "Please enter your child's date of birth.";
+    const check = ageRule.checkChildAge(valueOf('dob'));
+    return check.ok || check.reason === 'too_young' || check.reason === 'too_old' ? '' : check.message;
+}
+
+function licenseExpiryError() {
+    const value = valueOf('licenseExpiry');
+    if (!value) return 'PRC License Expiry Date is required.';
+    const expiry = new Date(value);
+    if (Number.isNaN(expiry.getTime())) return 'Please enter a valid PRC License Expiry Date.';
+    return expiry <= new Date() ? 'License expiry must be a future date.' : '';
+}
+
+const STEP_RULES = {
+    sp2: {
+        error: 'ep2',
+        allMessage: 'Please complete all required fields before continuing.',
+        rules: [
+            requireText('childFirst', "Please enter your child's first name."),
+            requireText('childLast', "Please enter your child's last name."),
+            { id: 'dob', check: childDobError },
+            requireChoice('childGender', "Please select your child's gender."),
+        ],
+    },
+    sp3: {
+        error: 'ep3',
+        allMessage: 'Please complete all required fields before continuing.',
+        rules: [
+            requireText('pFirst', 'Please enter your first name.'),
+            requireText('pLast', 'Please enter your last name.'),
+            requireChoice('relationship', 'Please select your relationship to the child.'),
+        ],
+    },
+    sp4: {
+        error: 'ep4',
+        allMessage: 'Please complete all parent login credentials.',
+        rules: credentialRules('p'),
+    },
+    sd2: {
+        error: 'ed2',
+        allMessage: 'Please complete all required fields before continuing.',
+        rules: [
+            requireText('dFirst', 'Please enter your first name.'),
+            requireText('dLast', 'Please enter your last name.'),
+        ],
+    },
+    sd3: {
+        error: 'ed3',
+        allMessage: 'Please complete all pediatrician login credentials.',
+        rules: credentialRules('d'),
+    },
+    sd5: {
+        error: 'ed5',
+        allMessage: 'Please complete all required fields before continuing.',
+        rules: [
+            { id: 'docIdInput', check: () => (byId('docIdInput')?.files?.[0] ? '' : 'Please upload your PRC ID Card for verification.') },
+            requireText('license', 'PRC License Number is required.'),
+            requireText('clinicName', 'Please enter your clinic name.'),
+            requireText('clinicAddress', 'Please enter your clinic address.'),
+            {
+                id: 'pediaPhone',
+                check: () => {
+                    // Same rule routes/auth.js applies on /register.
+                    const phone = valueOf('pediaPhone').replace(/[\s-]/g, '');
+                    if (!phone) return 'Phone number is required.';
+                    return /^(09|\+639)\d{9}$/.test(phone) ? '' : 'Please enter a valid Philippine mobile number (e.g., 09123456789).';
+                },
+            },
+            { id: 'licenseExpiry', check: licenseExpiryError },
+            requireChoice('specialization', 'Please select your specialization.'),
+            {
+                id: 'customSpecialization',
+                check: () => (valueOf('specialization') === 'Other' && !valueOf('customSpecialization') ? 'Please specify your specialization.' : ''),
+            },
+        ],
+    },
+};
+
+// null when every rule on the step passes; otherwise the failing field ids (in
+// on-screen order) and the message: the field's own one when a single field is
+// wrong, the step's "complete all" message when several are.
+function checkStep(stepId) {
+    const step = STEP_RULES[stepId];
+    if (!step) return null;
+    const failed = step.rules
+        .map((rule) => ({ id: rule.id, message: rule.check() }))
+        .filter((result) => result.message);
+    if (!failed.length) return null;
+    return {
+        ids: failed.map((result) => result.id),
+        message: failed.length > 1 ? step.allMessage : failed[0].message,
     };
-    show(doctorSteps[step] || 's1');
+}
+
+function markInvalidFields(stepId, invalidIds) {
+    const step = STEP_RULES[stepId];
+    if (!step) return;
+    step.rules.forEach((rule) => {
+        const el = byId(rule.id);
+        if (el && typeof el.setAttribute === 'function') {
+            el.setAttribute('aria-invalid', invalidIds.includes(rule.id) ? 'true' : 'false');
+        }
+    });
+}
+
+// Shows a problem in the step's own error line, marks the fields it names and
+// (with focus) moves the cursor to the first of them. Nothing typed is cleared.
+function reportStepProblem(stepId, problem, { focus = true } = {}) {
+    const step = STEP_RULES[stepId];
+    markInvalidFields(stepId, problem ? problem.ids : []);
+    setMessage(step.error, problem ? problem.message : '');
+    if (!problem || !focus) return;
+    const errorEl = byId(step.error);
+    if (errorEl && typeof errorEl.scrollIntoView === 'function') {
+        errorEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    const first = problem.ids.length ? byId(problem.ids[0]) : null;
+    if (first && typeof first.focus === 'function') first.focus({ preventScroll: true });
+}
+
+// True when every required field on the step is acceptable.
+function validateStep(stepId, options) {
+    const problem = checkStep(stepId);
+    reportStepProblem(stepId, problem, options);
+    return !problem;
+}
+
+// Whether go() may move past this step. A failing step is put on screen first, so
+// its message is never shown on a step the user cannot see.
+function canLeaveStep(stepId) {
+    if (!STEP_RULES[stepId]) return true;
+    const ageOk = stepId !== 'sp2' || !window.KCChildAge || window.KCChildAge.checkChildAge(valueOf('dob')).ok;
+    if (!checkStep(stepId) && ageOk) {
+        reportStepProblem(stepId, null);
+        return true;
+    }
+    if (!isStepActive(stepId)) show(stepId);
+    if (!validateStep(stepId)) return false;
+    // Child Information: every field is filled in, so now the 3 to 8 year rule.
+    return stepId !== 'sp2' || validateChildAge();
+}
+
+// Once a step has told the user what is missing, keep that message in step with
+// what they correct (the same way the consent message behaves).
+function refreshStepMessage(stepId) {
+    const errorEl = byId(STEP_RULES[stepId].error);
+    if (errorEl && errorEl.textContent) validateStep(stepId, { focus: false });
 }
 
 // Child age requirement (js/shared/child-age.js; routes/auth.js enforces the same
@@ -254,56 +446,29 @@ function setButtonLoading(buttonId, loadingText) {
 // the email the user is about to read.
 const otpSendInFlight = { parent: false, pediatrician: false };
 
+// The Login Credentials checks: the step's own fields (STEP_RULES.sp4 / sd3) plus
+// the name from the earlier step. Returns null or { ids, message } like checkStep().
+function credentialProblem(kind) {
+    if (kind === 'parent') {
+        // Still checked here, the single gate before the OTP is sent: a blank name
+        // would otherwise only fail at /register, after the code had been spent.
+        return checkStep('sp4') || (!valueOf('pFirst') || !valueOf('pLast')
+            ? { ids: [], message: 'Please go back and enter your first and last name.' }
+            : null);
+    }
+    return (!valueOf('dFirst') || !valueOf('dLast')
+        ? { ids: [], message: 'Please enter your first and last name.' }
+        : null) || checkStep('sd3');
+}
+
 function validateParentCredentials() {
-    const email = valueOf('pEmail').toLowerCase();
-    const password = valueOf('pPassword');
-    const confirm = valueOf('pConfirm');
-
-    if (!valueOf('pUsername') || !email || !password || !confirm) {
-        return 'Please complete all parent login credentials.';
-    }
-    if (!validateEmail(email)) {
-        return 'Please enter a valid email address.';
-    }
-    if (password.length < 8) {
-        return 'Password must be at least 8 characters long.';
-    }
-    if (password !== confirm) {
-        return 'Passwords do not match.';
-    }
-    // Checked here, the single gate before the OTP is sent, exactly as
-    // validateDoctorCredentials() checks dFirst/dLast. go() moves the parent
-    // between steps without validating, so a blank name on step 3 otherwise
-    // travelled all the way to /register and failed there as a bare 400 —
-    // after the verification code had already been spent.
-    if (!valueOf('pFirst') || !valueOf('pLast')) {
-        return 'Please go back and enter your first and last name.';
-    }
-
-    return '';
+    const problem = credentialProblem('parent');
+    return problem ? problem.message : '';
 }
 
 function validateDoctorCredentials() {
-    const email = valueOf('dEmail').toLowerCase();
-    const password = valueOf('dPassword');
-    const confirm = valueOf('dConfirm');
-
-    if (!valueOf('dFirst') || !valueOf('dLast')) {
-        return 'Please enter your first and last name.';
-    }
-    if (!valueOf('dUsername') || !email || !password || !confirm) {
-        return 'Please complete all pediatrician login credentials.';
-    }
-    if (!validateEmail(email)) {
-        return 'Please enter a valid email address.';
-    }
-    if (password.length < 8) {
-        return 'Password must be at least 8 characters long.';
-    }
-    if (password !== confirm) {
-        return 'Passwords do not match.';
-    }
-    return '';
+    const problem = credentialProblem('pediatrician');
+    return problem ? problem.message : '';
 }
 
 // ── Terms of Service & consent (sign-up only) ────────────────────────────────
@@ -438,13 +603,9 @@ function closeConsentDialog(kind) {
 // Back to Registration finds them as they were.
 function continueToConsent(kind) {
     const steps = SIGNUP_STEPS[kind];
-    const error = kind === 'parent' ? validateParentCredentials() : validateDoctorCredentials();
-    setMessage(steps.credentialsError, error);
-    if (error) {
-        const errorEl = byId(steps.credentialsError);
-        if (errorEl) errorEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        return false;
-    }
+    const problem = credentialProblem(kind);
+    reportStepProblem(steps.credentials, problem);
+    if (problem) return false;
     // A failure message from an earlier send attempt no longer applies.
     setMessage(steps.consentError, '');
     return openConsentDialog(kind);
@@ -655,7 +816,7 @@ async function verifyAndRegister() {
             lastName: valueOf('pLast'),
             username: valueOf('pUsername'),
             email,
-            password: valueOf('pPassword'),
+            password: rawValueOf('pPassword'),
             childFirstName: valueOf('childFirst'),
             childMiddleName: valueOf('childMiddle') || null,
             childLastName: valueOf('childLast'),
@@ -780,40 +941,18 @@ async function verifyDoctorOTP() {
     }
 }
 
-function validatePediatricianProfessionalInfo() {
-    const docIdInput = byId('docIdInput');
-
-    if (!docIdInput?.files?.[0]) {
-        return 'Please upload your PRC ID Card for verification.';
-    }
-    if (!valueOf('license')) {
-        return 'PRC License Number is required.';
-    }
-    if (!valueOf('pediaPhone')) {
-        return 'Phone number is required.';
-    }
-    if (!valueOf('licenseExpiry')) {
-        return 'PRC License Expiry Date is required.';
-    }
-    if (new Date(valueOf('licenseExpiry')) <= new Date()) {
-        return 'License expiry must be a future date.';
-    }
-    if (valueOf('specialization') === 'Other' && !valueOf('customSpecialization')) {
-        return 'Please specify your specialization.';
-    }
-    return '';
-}
-
 async function registerPedia() {
     const submitBtn = byId('dSubmitBtn');
     const originalText = submitBtn?.textContent || 'Submit for Verification';
 
     try {
         const credentialError = validateDoctorCredentials();
-        const professionalError = validatePediatricianProfessionalInfo();
-
-        if (credentialError || professionalError) {
-            setMessage('ed5', credentialError || professionalError);
+        if (credentialError) {
+            setMessage('ed5', credentialError);
+            return;
+        }
+        // Professional Information & PRC Verification (STEP_RULES.sd5).
+        if (!validateStep('sd5')) {
             return;
         }
         // Final guard: nothing is sent to the server unless both REQUIRED boxes are ticked.
@@ -836,8 +975,8 @@ async function registerPedia() {
         formData.append('lastName', valueOf('dLast'));
         formData.append('username', valueOf('dUsername'));
         formData.append('email', valueOf('dEmail').toLowerCase());
-        formData.append('password', valueOf('dPassword'));
-        formData.append('confirmPassword', valueOf('dConfirm'));
+        formData.append('password', rawValueOf('dPassword'));
+        formData.append('confirmPassword', rawValueOf('dConfirm'));
         formData.append('prcLicenseNumber', licenseNumber);
         formData.append('licenseNumber', licenseNumber);
         formData.append('institution', valueOf('institution'));
@@ -937,6 +1076,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 const errorEl = byId(ids.error);
                 if (errorEl && errorEl.textContent) validateConsent(kind, { focus: false });
             });
+        });
+    });
+
+    // Required fields: once a step has said what is missing, correcting a field
+    // updates (or clears) that message. 'input' fires for text, date, select and
+    // file inputs alike.
+    Object.keys(STEP_RULES).forEach((stepId) => {
+        STEP_RULES[stepId].rules.forEach((rule) => {
+            const field = byId(rule.id);
+            if (field) field.addEventListener('input', () => refreshStepMessage(stepId));
         });
     });
 

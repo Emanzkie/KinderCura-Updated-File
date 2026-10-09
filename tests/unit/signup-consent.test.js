@@ -105,9 +105,10 @@ async function routeTests() {
   process.env.JWT_SECRET = process.env.JWT_SECRET || ('unit-test-only-' + Math.random());
   const express = require('express');
   const OtpCode = require('../../models/OtpCode');
+  const Child = require('../../models/Child');
   const authRouter = require('../../routes/auth');
 
-  const orig = { log: console.log, warn: console.warn, uFindOne: User.findOne, uCreate: User.create, oFindOne: OtpCode.findOne };
+  const orig = { log: console.log, warn: console.warn, uFindOne: User.findOne, uCreate: User.create, oFindOne: OtpCode.findOne, cCreate: Child.create };
   // The route logs the request body (including the password) — keep it out of test output.
   console.log = () => {}; console.warn = () => {};
 
@@ -117,6 +118,7 @@ async function routeTests() {
   User.findOne = () => { calls.findOne += 1; return chain(existing); };
   OtpCode.findOne = () => chain(otpVerified ? { email: 'x', used: true } : null);
   User.create = async (doc) => { calls.create.push(doc); return { ...doc, _id: doc._id, save: async () => {} }; };
+  Child.create = async (doc) => ({ ...doc, _id: 'child-1', save: async () => {} });
 
   const app = express();
   app.use(express.json());
@@ -125,7 +127,11 @@ async function routeTests() {
   await new Promise((r) => srv.once('listening', r));
   const base = `http://127.0.0.1:${srv.address().port}`;
 
-  const account = { role: 'parent', firstName: 'Test', lastName: 'Parent', username: 'test_parent', email: 'test.parent@example.invalid', password: 'a-long-enough-pw' };
+  // Parent sign-up always carries the Child Information step (a 4-5 year old here).
+  const account = {
+    role: 'parent', firstName: 'Test', lastName: 'Parent', username: 'test_parent', email: 'test.parent@example.invalid', password: 'a-long-enough-pw',
+    childFirstName: 'Luz', childLastName: 'Parent', dateOfBirth: `${new Date().getFullYear() - 5}-01-15`, gender: 'female', relationship: 'mother',
+  };
   const post = async (body) => {
     const r = await fetch(`${base}/api/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     return { status: r.status, body: await r.json().catch(() => ({})) };
@@ -184,7 +190,7 @@ async function routeTests() {
   } finally {
     srv.close();
     console.log = orig.log; console.warn = orig.warn;
-    User.findOne = orig.uFindOne; User.create = orig.uCreate; OtpCode.findOne = orig.oFindOne;
+    User.findOne = orig.uFindOne; User.create = orig.uCreate; OtpCode.findOne = orig.oFindOne; Child.create = orig.cCreate;
   }
   ok('/register route: A/B/C refused before any DB work, D/E create the account with the recorded consents; OTP/role/email/password/duplicate checks unchanged');
 }
@@ -399,6 +405,7 @@ async function clientTests() {
     Object.entries(typed).forEach(([k, v]) => { env2.el(k).value = v; });
     Object.assign(env2.el('docIdInput'), { files: [{ name: 'prc.png', size: 10, type: 'image/png' }] });
     env2.el('license').value = '0123456'; env2.el('pediaPhone').value = '09123456789'; env2.el('licenseExpiry').value = '2099-01-01';
+    env2.el('clinicName').value = 'Cruz Pediatric Clinic'; env2.el('clinicAddress').value = '1 Rizal St, Manila'; env2.el('specialization').value = 'General Pediatrician';
     setConsent(env2, 'pediatrician', c);
     await env2.run('registerPedia')();
     const reg = env2.fetchCalls.find((f) => f.url.endsWith('/register'));

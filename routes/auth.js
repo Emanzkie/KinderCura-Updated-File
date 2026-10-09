@@ -340,6 +340,11 @@ function generateOTP() {
   return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
+// Accepted values for the parent sign-up selects: the options on signup.html
+// (relationship) and the Child model's gender enum.
+const SIGNUP_CHILD_GENDERS = ['male', 'female', 'other'];
+const SIGNUP_RELATIONSHIPS = ['mother', 'father', 'guardian', 'grandparent', 'other'];
+
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || ''));
 }
@@ -856,6 +861,24 @@ router.post('/register', handleProfileUpload, async (req, res) => {
       return fail(400, consent.error);
     }
 
+    // Parent sign-up (signup.html) always sends the child from the Child Information
+    // step and the parent's relationship to them; the page will not continue without
+    // them, so a request that skips the page must not either. Middle names stay optional.
+    if (cleanRole === 'parent') {
+      const missingChildFields = Object.entries({
+        childFirstName, childLastName, dateOfBirth, gender, relationship,
+      }).filter(([, value]) => !String(value == null ? '' : value).trim()).map(([key]) => key);
+      if (missingChildFields.length) {
+        return fail(400, `All required fields must be filled. Missing: ${missingChildFields.join(', ')}.`);
+      }
+      if (!SIGNUP_CHILD_GENDERS.includes(String(gender).trim().toLowerCase())) {
+        return fail(400, "Please select your child's gender.");
+      }
+      if (!SIGNUP_RELATIONSHIPS.includes(String(relationship).trim().toLowerCase())) {
+        return fail(400, 'Please select your relationship to the child.');
+      }
+    }
+
     // Children aged 3 to 8 only. Checked before the account exists, so an
     // ineligible date of birth creates neither the user nor the child record.
     // Pediatrician sign-up never sends a child, so it is not affected.
@@ -907,6 +930,13 @@ router.post('/register', handleProfileUpload, async (req, res) => {
       const parsedExpiry = new Date(licenseExpiry);
       if (isNaN(parsedExpiry.getTime()) || parsedExpiry <= new Date()) {
         return fail(400, 'License expiry must be a valid future date.');
+      }
+      // Required on the Professional Information step (only Hospital / Institution
+      // is optional there).
+      const missingPracticeFields = Object.entries({ clinicName, clinicAddress, specialization })
+        .filter(([, value]) => !String(value == null ? '' : value).trim()).map(([key]) => key);
+      if (missingPracticeFields.length) {
+        return fail(400, `All required fields must be filled. Missing: ${missingPracticeFields.join(', ')}.`);
       }
     } else if (req.file) {
       deleteUploadedPrcFile(req.file);
@@ -1010,7 +1040,7 @@ router.post('/register', handleProfileUpload, async (req, res) => {
     }
 
     let child = null;
-    // Child information is optional for parent/guardian registration
+    // Child information is required for parents (checked above) and optional for legal_guardian
     if ((cleanRole === 'parent' || cleanRole === 'legal_guardian') && childFirstName && childLastName && dateOfBirth) {
       child = await Child.create({
         parentId: user._id,

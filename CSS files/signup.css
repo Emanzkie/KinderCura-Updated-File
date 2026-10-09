@@ -392,6 +392,12 @@
     box-shadow: 0 0 0 4px rgba(107, 142, 111, 0.14);
 }
 
+/* A required field the Continue button flagged (signup.js sets aria-invalid). */
+.signup-page .onboarding-step .form-group input[aria-invalid="true"],
+.signup-page .onboarding-step .form-group select[aria-invalid="true"] {
+    border-color: var(--danger);
+}
+
 .signup-page .onboarding-step .form-group input::placeholder {
     color: #8b9787;
     opacity: 1;
