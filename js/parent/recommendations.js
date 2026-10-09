@@ -56,10 +56,10 @@
         requireAuth();
 
         const ICONS = { communication:'<img src="/icons/communication.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">', social:'<img src="/icons/social.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">', cognitive:'<img src="/icons/cognitive.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">', motor:'<img src="/icons/motor.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">' };
-        // Medium and low used to share the same green, and white text on the
-        // light pink failed contrast. Each priority now has its own existing
-        // status tone (kc-tokens.css), and every chip keeps its text label.
-        const PRIORITY_COLORS = { high:'var(--status-attention-fg)', medium:'var(--status-caution-fg)', low:'var(--primary)' };
+        // Same colours as the results-page score guide: --accent-red,
+        // --accent, --success. They are light fills, so chips use dark text,
+        // and every chip keeps its text label.
+        const PRIORITY_COLORS = { high:'var(--accent-red)', medium:'var(--accent)', low:'var(--success)' };
         const PRIORITY_LABELS = { high:'Needs Attention', medium:'Monitor Progress', low:'Keep Up Great Work' };
         // Display-only mirror of RECOMMENDATION_LEVEL_BY_BAND in
         // routes/recommendations.js (score band -> priority), used to build the
@@ -387,7 +387,7 @@
                     <div style="background:#FAFAF6;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);border-left:4px solid ${color};margin-bottom:1.5rem;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;gap:1rem;flex-wrap:wrap;">
                             <h3>${icon} ${r.skill.charAt(0).toUpperCase() + r.skill.slice(1)} Development</h3>
-                            <span style="background:${color};color:#FAFAF6;padding:0.5rem 1rem;border-radius:20px;font-size:0.8rem;font-weight:600;">${label}</span>
+                            <span style="background:${color};color:var(--text-dark);padding:0.5rem 1rem;border-radius:20px;font-size:0.8rem;font-weight:600;">${label}</span>
                         </div>
                         ${areaScoreLine(r.skill, result)}
                         <p style="color:var(--text-light);margin-bottom:1rem;line-height:1.6;">${escapeHtml(r.suggestion)}</p>
