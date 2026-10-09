@@ -508,7 +508,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
 
-            <div class="prc-action-buttons" style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid #dee2e6;">
+            <div class="prc-action-buttons" style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--border);">
                 <button type="button" class="prc-btn prc-btn--cancel" data-bs-dismiss="modal">Close</button>
                 <div style="display:flex;gap:0.5rem;">
                     <button class="prc-btn prc-btn--reject" onclick="handlePrcAction('${pedia._id}', 'rejected')">Reject</button>

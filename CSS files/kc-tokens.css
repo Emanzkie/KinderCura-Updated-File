@@ -91,9 +91,23 @@
     --status-attention-fg: #9C4F43;
     --status-neutral-bg: #EFEEE7;
     --status-neutral-fg: #6B7967;
-    --status-info-bg: #E8EFF1;
-    --status-info-fg: #4A6470;
+    /* Info was a slate blue; blue is not a KinderCura colour. Info now uses
+       the soft green callout wash with the dark brand green. */
+    --status-info-bg: #F3F7F3;
+    --status-info-fg: #5A7560;
 
     /* Focus ring — one visible, accessible treatment everywhere */
     --focus-ring: 0 0 0 3px rgba(107, 142, 111, 0.35);
+}
+
+/* Browser defaults are blue: unstyled links (#0000EE / visited purple) and
+   native checkboxes, radios, range sliders and progress bars. Point them at
+   the brand green. accent-color is inherited and :where() has zero
+   specificity, so every existing component rule still wins. */
+:root {
+    accent-color: var(--primary);
+}
+
+:where(a:link, a:visited) {
+    color: var(--primary-dark);
 }

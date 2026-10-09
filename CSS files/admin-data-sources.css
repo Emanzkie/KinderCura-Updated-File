@@ -303,7 +303,7 @@
 .prov-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 .prov-detail > td {
-  background: #faf7fc;
+  background: var(--bg-primary);
   padding: 0.85rem 1.1rem !important;
   border-top: 0;
 }

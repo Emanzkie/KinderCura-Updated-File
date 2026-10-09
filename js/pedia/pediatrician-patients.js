@@ -87,16 +87,16 @@ const API = window.location.origin + '/api';
     // Small helper so progress notes are easier to scan in the card and modal.
     function progressStatusMeta(status) {
         const map = {
-            initial_review: { label: 'Initial Review', color: '#3b82f6', bg: '#dbeafe' },
-            monitoring:      { label: 'Monitoring',     color: '#7c3aed', bg: '#ede9fe' },
+            initial_review: { label: 'Initial Review', color: '#6B7967', bg: '#EFEEE7' },
+            monitoring:      { label: 'Monitoring',     color: '#8A6A1F', bg: '#FBF0D8' },
             follow_up:       { label: 'Follow-up',      color: '#d97706', bg: '#fef3c7' },
             improving:       { label: 'Improving',      color: '#15803d', bg: '#dcfce7' },
-            stable:          { label: 'Stable',         color: '#0f766e', bg: '#ccfbf1' },
+            stable:          { label: 'Stable',         color: '#5A7560', bg: '#F3F7F3' },
             needs_attention: { label: 'Needs Attention',color: '#b91c1c', bg: '#fee2e2' },
-            referred:        { label: 'Referred',       color: '#1d4ed8', bg: '#dbeafe' },
+            referred:        { label: 'Referred',       color: '#9C4F43', bg: '#F8E4E4' },
             completed:       { label: 'Completed',      color: '#166534', bg: '#dcfce7' },
         };
-        return map[status] || { label: status || 'Monitoring', color: '#7c3aed', bg: '#ede9fe' };
+        return map[status] || { label: status || 'Monitoring', color: '#8A6A1F', bg: '#FBF0D8' };
     }
 
     function toDateInputValue(value) {
@@ -377,7 +377,7 @@ const API = window.location.origin + '/api';
                         <p style="font-size:0.85rem;color:var(--text-dark);">${p.diagnosis}</p>
                     </div>` : ''}
                     ${nextDateDisplay ? `
-                    <div style="margin-top:1rem;padding:0.85rem 1rem;background:white;border-radius:8px;border-left:3px solid #0891b2;">
+                    <div style="margin-top:1rem;padding:0.85rem 1rem;background:white;border-radius:8px;border-left:3px solid var(--primary);">
                         <p style="font-size:0.8rem;font-weight:700;color:var(--status-info-fg);margin:0 0 0.3rem;">Next Assessment</p>
                         <p style="font-size:0.85rem;color:var(--text-dark);margin:0;">${nextDateDisplay}</p>
                         ${p.nextAssessmentReason ? `<p style="font-size:0.8rem;color:var(--text-light);margin:0.35rem 0 0;line-height:1.45;">${escapeHtml(p.nextAssessmentReason)}</p>` : ''}
@@ -755,16 +755,16 @@ const API = window.location.origin + '/api';
     // scoring threshold — the pediatrician always chooses the status explicitly.
     function checkupStatusMeta(status) {
         const map = {
-            initial_review:    { label: 'Initial Review',       color: '#3b82f6', bg: '#dbeafe' },
-            monitoring:        { label: 'Monitoring',           color: '#7c3aed', bg: '#ede9fe' },
+            initial_review:    { label: 'Initial Review',       color: '#6B7967', bg: '#EFEEE7' },
+            monitoring:        { label: 'Monitoring',           color: '#8A6A1F', bg: '#FBF0D8' },
             improving:         { label: 'Improving',            color: '#15803d', bg: '#dcfce7' },
-            stable:            { label: 'Stable',                color: '#0f766e', bg: '#ccfbf1' },
+            stable:            { label: 'Stable',                color: '#5A7560', bg: '#F3F7F3' },
             needs_attention:   { label: 'Needs Attention',      color: '#b91c1c', bg: '#fee2e2' },
-            referred:          { label: 'Referred',             color: '#1d4ed8', bg: '#dbeafe' },
+            referred:          { label: 'Referred',             color: '#9C4F43', bg: '#F8E4E4' },
             resolved:          { label: 'Resolved / Ruled Out', color: '#166534', bg: '#dcfce7' },
             parent_monitoring: { label: 'Parent Monitoring',    color: '#a16207', bg: '#fef3c7' },
         };
-        return map[status] || { label: status || 'Monitoring', color: '#7c3aed', bg: '#ede9fe' };
+        return map[status] || { label: status || 'Monitoring', color: '#8A6A1F', bg: '#FBF0D8' };
     }
 
     function checkupVisitTypeLabel(visitType) {

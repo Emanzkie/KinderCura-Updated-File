@@ -563,16 +563,16 @@ function renderTimeline(assessments) {
 // pediatrician follow-up statuses, not an automated diagnosis.
 function checkupStatusMeta(status) {
     const map = {
-        initial_review:    { label: 'Initial Review',       color: '#3b82f6', bg: '#dbeafe' },
-        monitoring:        { label: 'Monitoring',           color: '#7c3aed', bg: '#ede9fe' },
+        initial_review:    { label: 'Initial Review',       color: '#6B7967', bg: '#EFEEE7' },
+        monitoring:        { label: 'Monitoring',           color: '#8A6A1F', bg: '#FBF0D8' },
         improving:         { label: 'Improving',            color: '#15803d', bg: '#dcfce7' },
-        stable:            { label: 'Stable',                color: '#0f766e', bg: '#ccfbf1' },
+        stable:            { label: 'Stable',                color: '#5A7560', bg: '#F3F7F3' },
         needs_attention:   { label: 'Needs Attention',      color: '#b91c1c', bg: '#fee2e2' },
-        referred:          { label: 'Referred',             color: '#1d4ed8', bg: '#dbeafe' },
+        referred:          { label: 'Referred',             color: '#9C4F43', bg: '#F8E4E4' },
         resolved:          { label: 'Resolved / Ruled Out', color: '#166534', bg: '#dcfce7' },
         parent_monitoring: { label: 'Parent Monitoring',    color: '#a16207', bg: '#fef3c7' },
     };
-    return map[status] || { label: status || 'Recorded', color: '#7c3aed', bg: '#ede9fe' };
+    return map[status] || { label: status || 'Recorded', color: '#8A6A1F', bg: '#FBF0D8' };
 }
 
 function checkupVisitTypeLabel(visitType) {

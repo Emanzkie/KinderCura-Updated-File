@@ -908,7 +908,7 @@
 }
 
 .consent-input:focus-visible {
-    outline: 3px solid #1a56db;
+    outline: 3px solid var(--primary-dark, #5A7560);
     outline-offset: 3px;
 }
 
@@ -989,7 +989,7 @@
 .terms-dialog-close:focus-visible,
 .terms-dialog-footer a:focus-visible,
 .terms-open-link:focus-visible {
-    outline: 3px solid #1a56db;
+    outline: 3px solid var(--primary-dark, #5A7560);
     outline-offset: 2px;
 }
 
@@ -1002,7 +1002,7 @@
 }
 
 .terms-dialog-body:focus-visible {
-    outline: 3px solid #1a56db;
+    outline: 3px solid var(--primary-dark, #5A7560);
     outline-offset: -3px;
 }
 
@@ -1076,7 +1076,7 @@
 }
 
 .terms-dialog-body .terms-section-heading:focus {
-    outline: 2px solid #1a56db;
+    outline: 2px solid var(--primary-dark, #5A7560);
     outline-offset: 3px;
 }
 

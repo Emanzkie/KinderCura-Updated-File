@@ -459,7 +459,7 @@
 }
 
 .move-improved  { background: rgba(168, 196, 157, 0.25); color: var(--primary-dark); }
-.move-unchanged { background: #eef0f2; color: #55606a; }
+.move-unchanged { background: var(--status-neutral-bg); color: var(--status-neutral-fg); }
 .move-declined  { background: rgba(232, 165, 165, 0.2); color: var(--danger); }
 
 .delta {

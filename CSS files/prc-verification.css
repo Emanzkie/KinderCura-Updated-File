@@ -936,3 +936,21 @@
     justify-content: center;
   }
 }
+
+/* Bootstrap 5 is loaded on this page only for its modal. Point its theme
+   variables at the KinderCura palette so its defaults are not Bootstrap
+   blue: link colour, the .text-primary loading spinner and the close
+   button's focus ring. This file loads after Bootstrap, so these win. */
+:root {
+  --bs-primary: #6B8E6F;
+  --bs-primary-rgb: 107, 142, 111;
+  --bs-link-color: #5A7560;
+  --bs-link-color-rgb: 90, 117, 96;
+  --bs-link-hover-color: #6B8E6F;
+  --bs-link-hover-color-rgb: 107, 142, 111;
+  --bs-focus-ring-color: rgba(107, 142, 111, 0.35);
+}
+
+#prcVerificationModal .btn-close {
+  --bs-btn-close-focus-shadow: var(--focus-ring);
+}
