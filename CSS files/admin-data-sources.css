@@ -646,3 +646,54 @@
 .pipeline-chip--warn { background: #fff4d6; color: #5c4600; }
 .pipeline-chip--bad { background: #fde8e8; color: var(--status-attention-fg); }
 .pipeline-chip--idle { background: var(--bg-primary, #f0f0f2); color: var(--text-light); }
+
+/* ── Count definitions and reconciliation ─────────────────────────── */
+
+.overview-card .card-share {
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary-dark);
+}
+
+.overview-card .card-def {
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--text-light);
+}
+
+.stats-def {
+  margin: 0.75rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  color: var(--text-light);
+}
+
+.stats-def strong {
+  color: var(--text-dark);
+  font-weight: 600;
+}
+
+/* Header cells for numeric columns line up with their right-aligned values. */
+.pipeline-table th.num { text-align: right; }
+
+.defect-table .defect-note {
+  margin-top: 0.2rem;
+  font-size: 0.74rem;
+  color: var(--text-light);
+}
+
+.pipeline-message.not-active-note {
+  margin: 0.4rem 0 0.6rem;
+  background: var(--status-caution-bg);
+  color: var(--status-caution-fg);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 600px) {
+  .defect-table th,
+  .defect-table td {
+    padding: 0.45rem 0.35rem;
+  }
+}

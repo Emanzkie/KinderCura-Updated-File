@@ -145,16 +145,16 @@ requireAuth();
 
         // ---- Data Sources state --------------------------------------------
         //
-        // Exactly TWO adviser-facing categories, never a third:
-        //   dataset_question       — system-provided (no pediatrician author).
-        //                            Combines the real origins core_bank
-        //                            (pediatrician interview) and
-        //                            dataset_question (external dataset) —
-        //                            see services/adminDataSourceView.js.
-        //   pediatrician_question  — authored by a pediatrician (pedia_entry),
-        //                            including any follow-up/additional
-        //                            question they add. There is no separate
-        //                            "Follow-up Question" bucket.
+        // Exactly TWO adviser-facing categories (routes/admin.js
+        // GET /data-origin/summary is the source of truth):
+        //   dataset_question       — the dataset_question origin ONLY: cited
+        //                            to a real external dataset.
+        //   pediatrician_question  — core_bank (pediatrician-sourced Core
+        //                            Question Bank, no individual owner) plus
+        //                            pedia_entry (authored by a pediatrician,
+        //                            including any follow-up question).
+        // Each question has one stored origin, so the two never overlap.
+        // Questions with no recognised origin are reported as Unclassified.
         let currentCategory = 'all';
         let currentPage = 1;
         const PAGE_LIMIT = 15;
@@ -232,18 +232,24 @@ requireAuth();
             if (!rd) return '';
             const ap = dq.approval || {};
             const n = rd.catalogueCount ?? 0;
-            const externalQuestions = dq.breakdown?.externalDataset?.questions ?? 0;
+            // The dataset_question documents actually stored in the database
+            // (datasetQuestion.questions). This used to read
+            // datasetQuestion.breakdown.externalDataset, which the API no
+            // longer sends, so the block always claimed "not yet written to
+            // the database" even after all 16 were stored and approved.
+            const externalQuestions = dq.questions ?? 0;
             const seeded = externalQuestions > 0;
             const pending = ap.pending ?? 0;
             const approvedCount = ap.approved ?? 0;
-            // "Approved" only once every seeded EXTERNAL-dataset question has
+            const rejectedCount = ap.rejected ?? 0;
+            // "Approved" only once every stored EXTERNAL-dataset question has
             // actually been signed off (the review workflow never applies to
             // the Core Question Bank sub-origin).
             const allApproved = seeded && pending === 0 && approvedCount === externalQuestions;
-            const pediaLabel = allApproved ? 'Approved' : 'Pending';
+            const pediaLabel = allApproved ? 'Approved' : (seeded && pending === 0 ? 'Not all approved' : 'Pending');
             const pediaCls = allApproved ? 'dqrs-v--ok' : 'dqrs-v--hold';
             const pediaTxt = seeded
-                ? `${approvedCount} of ${externalQuestions} approved by a pediatrician, ${pending} pending`
+                ? `${approvedCount} of ${externalQuestions} approved by a pediatrician, ${pending} pending${rejectedCount ? `, ${rejectedCount} rejected` : ''}`
                 : `all ${n} pending — not yet written to the database`;
             const activeTxt = seeded ? `${ap.active ?? 0} active` : 'none active';
             const openItems = rd.openMappingItems || [];
@@ -338,6 +344,14 @@ requireAuth();
                     <div class="dataset-stat"><span class="k">Answered at least once</span><span class="v">${escapeHtml(String(ds.questionsAnswered ?? 0))}</span></div>
                     <div class="dataset-stat"><span class="k">Assessment answers attributable</span><span class="v">${escapeHtml(String(ds.answers ?? 0))}</span></div>
                 </div>
+                <p class="stats-def">
+                    Figures count the ${escapeHtml(String(ds.questions ?? 0))} dataset question(s), except Sources cited (distinct sources) and Assessment answers attributable (answers).
+                    <strong>Pending / Approved</strong>: pediatrician sign-off status.
+                    <strong>Active</strong>: live in assessments; a question must be both approved and activated before any parent sees it, so approval alone does not make it active.
+                    <strong>Answered at least once</strong>: dataset questions with one or more recorded answers.
+                    <strong>Assessment answers attributable</strong>: answers linked to these questions.
+                    The reviewer decision below covers wording only and is separate from all of these.
+                </p>
                 ${reviewerStatusBlock(s)}
                 ${reviewLine}`;
         }
@@ -380,24 +394,59 @@ requireAuth();
                 </tr>`).join('');
         }
 
+        // How the answer total is made up. Category answers are counted from
+        // different stores (routes/admin.js GET /data-origin/summary):
+        // Dataset = assessment answers linked to a dataset question's id;
+        // Pediatrician = Core Question Bank assessment answers + answered
+        // pediatrician-question assignments; plus answers with no origin.
+        function answerReconciliation(s) {
+            const total = s.total?.answers ?? 0;
+            const dsA = s.datasetQuestion?.answers ?? 0;
+            const pqA = s.pediatricianQuestion?.answers ?? 0;
+            const noOrigin = s.unclassified?.answers ?? 0;
+            const other = s.other?.answers ?? 0;
+            const parts = [`${dsA} Dataset`, `${pqA} Pediatrician`];
+            if (noOrigin) parts.push(`${noOrigin} with no origin recorded`);
+            if (other) parts.push(`${other} with an unrecognised origin`);
+            const sum = dsA + pqA + noOrigin + other;
+            const text = `Answers: ${parts.join(' + ')}${sum === total ? ` = ${total}` : ''}.`;
+            return sum === total
+                ? text
+                : `${text} These add up to ${sum}, not ${total}: the total counts dataset answers by their origin tag, while the Dataset card counts answers linked to a dataset question.`;
+        }
+
         async function loadSummary() {
             try {
                 const s = await apiFetch('/admin/data-origin/summary');
                 lastSummary = s;
 
-                document.getElementById('sumTotal').textContent = s.total?.questions ?? 0;
-                document.getElementById('sumTotalAnswers').textContent = `${s.total?.answers ?? 0} answers`;
-
+                const totalQuestions = s.total?.questions ?? 0;
                 const ds = s.datasetQuestion || {};
+                const pq = s.pediatricianQuestion || {};
+                const pqBreakdown = pq.breakdown || {};
+                const noOriginAnswers = (s.unclassified?.answers ?? 0) + (s.other?.answers ?? 0);
+
+                // Each question document has exactly one stored origin, so the
+                // categories never overlap and a share of the question total
+                // is meaningful. N/A when there are no questions.
+                const shareOfQuestions = (n) => (totalQuestions > 0
+                    ? `${((n / totalQuestions) * 100).toFixed(1)}% of all ${totalQuestions} questions`
+                    : 'Share: N/A (no questions yet)');
+
+                document.getElementById('sumTotal').textContent = totalQuestions;
+                document.getElementById('sumTotalAnswers').textContent = `${s.total?.answers ?? 0} answers in total`;
+                document.getElementById('sumTotalBreakdown').textContent = answerReconciliation(s);
+
                 document.getElementById('sumDataset').textContent = ds.questions ?? 0;
+                document.getElementById('sumDatasetShare').textContent = shareOfQuestions(ds.questions ?? 0);
                 document.getElementById('sumDatasetAnswers').textContent = `${ds.answers ?? 0} answers`;
                 document.getElementById('sumDatasetBreakdown').textContent =
                     `${(ds.sources || []).length} external source${(ds.sources || []).length === 1 ? '' : 's'} cited`;
 
-                const pq = s.pediatricianQuestion || {};
-                const pqBreakdown = pq.breakdown || {};
                 document.getElementById('sumPedia').textContent = pq.questions ?? 0;
-                document.getElementById('sumPediaAnswers').textContent = `${pq.answers ?? 0} answers`;
+                document.getElementById('sumPediaShare').textContent = shareOfQuestions(pq.questions ?? 0);
+                document.getElementById('sumPediaAnswers').textContent =
+                    `${pq.answers ?? 0} answers (${pqBreakdown.coreBank?.answers ?? 0} Core Question Bank + ${pqBreakdown.pediaAuthored?.answers ?? 0} pediatrician-authored)`;
                 document.getElementById('sumPediaBreakdown').textContent =
                     `${pqBreakdown.coreBank?.questions ?? 0} Core Question Bank + ${pqBreakdown.pediaAuthored?.questions ?? 0} pediatrician-authored`;
                 document.getElementById('sumPediaAuthors').textContent =
@@ -409,19 +458,28 @@ requireAuth();
                     ? `Latest: ${fmtDateShort(latest.latestDate)}`
                     : 'No source recorded yet';
 
-                const unclassifiedQ = s.unclassified?.questions ?? 0;
-                const unclassifiedA = s.unclassified?.answers ?? 0;
+                // The card can appear because of answers alone (questions 0),
+                // so it always says which of the two it is counting.
+                const unclassifiedQ = (s.unclassified?.questions ?? 0) + (s.other?.questions ?? 0);
                 const card = document.getElementById('unclassifiedCard');
-                if (unclassifiedQ > 0 || unclassifiedA > 0) {
+                if (unclassifiedQ > 0 || noOriginAnswers > 0) {
                     card.classList.remove('is-hidden');
                     document.getElementById('sumUnclassified').textContent = unclassifiedQ;
+                    document.getElementById('sumUnclassifiedAnswers').textContent =
+                        `question${unclassifiedQ === 1 ? '' : 's'} with no recognised origin · ${shareOfQuestions(unclassifiedQ)}`;
+                    document.getElementById('sumUnclassifiedNote').textContent = noOriginAnswers > 0
+                        ? `${noOriginAnswers} assessment answer${noOriginAnswers === 1 ? '' : 's'} also ${noOriginAnswers === 1 ? 'has' : 'have'} no recorded origin. ${noOriginAnswers === 1 ? 'It counts' : 'They count'} toward Total Questions' answer total but toward neither category.`
+                        : '';
                 } else {
                     card.classList.add('is-hidden');
                 }
 
+                // The list shows Dataset + Pediatrician questions only, so the
+                // All tab counts exactly those; unclassified ones are named.
                 document.getElementById('tabCountDataset').textContent = ` (${ds.questions ?? 0})`;
                 document.getElementById('tabCountPedia').textContent = ` (${pq.questions ?? 0})`;
-                document.getElementById('tabCountAll').textContent = ` (${(ds.questions ?? 0) + (pq.questions ?? 0)})`;
+                document.getElementById('tabCountAll').textContent = ` (${(ds.questions ?? 0) + (pq.questions ?? 0)})`
+                    + (unclassifiedQ > 0 ? ` · ${unclassifiedQ} unclassified not listed` : '');
 
                 renderDatasetUsage(s);
                 renderPediaSummary(s);
@@ -429,6 +487,9 @@ requireAuth();
                 renderNotice(s);
             } catch (err) {
                 console.error('summary load failed', err);
+                // Never leave placeholder zeros looking like real counts.
+                ['sumTotal', 'sumDataset', 'sumPedia'].forEach((id) => { document.getElementById(id).textContent = '—'; });
+                document.getElementById('sumTotalBreakdown').textContent = 'Could not load question counts: ' + err.message;
             }
         }
 
@@ -896,8 +957,13 @@ requireAuth();
             return `
                 <div class="pipeline-section">
                     <h4>Cleaning &amp; preprocessing</h4>
-                    <p class="sub">Counted during the actual preprocessing run (<code>ml/preprocess.py</code>).</p>
+                    <p class="sub">Counted during the actual preprocessing run (<code>ml/preprocess.py</code>). All figures are rows.</p>
                     <div class="dataset-stats">${stats}</div>
+                    <p class="sub" style="margin-top:0.6rem;">
+                        Duplicates are removed first. Each later check drops a row once, under the first check it failed, so the reasons below add up to the invalid total.
+                        <strong>Valid</strong> = original − invalid, so it still includes the duplicates and is larger than the final count.
+                        Filled values are kept, not removed.
+                    </p>
                     <div class="pipeline-equation">
                         <code>${num(cleaning.originalRecords)} original − ${num(cleaning.duplicatesRemoved)} duplicates − ${num(cleaning.invalidRecords)} invalid = ${num(cleaning.finalRecords)} training-ready</code>
                         ${closes ? '' : ' <strong style="color:var(--status-attention-fg);">— these do not reconcile; investigate before using this dataset.</strong>'}
@@ -910,13 +976,46 @@ requireAuth();
                 </div>`;
         }
 
-        function renderGeneration(generator) {
+        // Each injected fault kind (ml/datasets/generate_kindercura_dataset.py
+        // DEFECT_KINDS) and the cleaning count that should find it
+        // (ml/preprocess.py). Pure lookup; every number shown is stored.
+        const DEFECT_TO_CLEANING = [
+            { kind: 'missing_score', label: 'Missing score', outcome: 'rejected', read: (c) => c.rejectionsByReason?.missing_or_non_numeric_score },
+            { kind: 'invalid_label', label: 'Invalid risk label', outcome: 'rejected', read: (c) => c.rejectionsByReason?.invalid_or_missing_risk_category },
+            { kind: 'out_of_range', label: 'Score outside 0–100', outcome: 'rejected', read: (c) => c.rejectionsByReason?.score_out_of_range_0_100 },
+            { kind: 'invalid_answer', label: 'Invalid answer value', outcome: 'rejected', read: (c) => c.rejectionsByReason?.unrecognized_answer_value },
+            { kind: 'missing_age', label: 'Missing age', outcome: 'filled with the median, row kept', read: (c) => c.missingValuesFilled?.age_months?.filled },
+            { kind: 'duplicate', label: 'Duplicate row', outcome: 'removed as a duplicate', read: (c) => c.duplicatesRemoved },
+        ];
+
+        function renderDefectReconciliation(injected, cleaning) {
+            if (!cleaning) return '';
+            const rows = DEFECT_TO_CLEANING.filter((d) => Number(injected[d.kind]) > 0).map((d) => {
+                const found = d.read(cleaning);
+                const inj = Number(injected[d.kind]);
+                let note = '';
+                if (Number.isFinite(Number(found)) && Number(found) !== inj) {
+                    note = d.kind === 'duplicate' && Number(found) > inj
+                        ? `${num(Number(found) - inj)} more than injected: rows the generator happened to produce identical by chance are removed too.`
+                        : 'Differs from the injected count — investigate.';
+                }
+                return `<tr><td>${escapeHtml(d.label)}</td><td class="num">${num(inj)}</td><td class="num">${num(found)}</td><td>${escapeHtml(d.outcome)}${note ? `<div class="defect-note">${escapeHtml(note)}</div>` : ''}</td></tr>`;
+            }).join('');
+            if (!rows) return '';
+            return `<table class="pipeline-table defect-table"><thead><tr><th>Injected fault</th><th class="num">Injected</th><th class="num">Found by cleaning</th><th>What cleaning did</th></tr></thead><tbody>${rows}</tbody></table>`;
+        }
+
+        function renderGeneration(generator, cleaning) {
             if (!generator) return '';
             const injected = generator.injectedDefects || {};
             const injectedTotal = Object.keys(injected).reduce((sum, k) => sum + Number(injected[k] || 0), 0);
             const injectedText = injectedTotal
                 ? Object.keys(injected).filter((k) => injected[k]).map((k) => `${escapeHtml(k.replace(/_/g, ' '))} ${num(injected[k])}`).join(' · ')
                 : 'none';
+            const extraRows = Number(generator.generatedRows) - Number(generator.requestedRows);
+            const rowsNote = Number.isFinite(extraRows) && extraRows > 0 && extraRows === Number(injected.duplicate || 0)
+                ? `Rows written = requested + ${num(extraRows)} injected duplicate copies, which are appended rather than replacing rows.`
+                : '';
             return `
                 <div class="pipeline-section">
                     <h4>Generation</h4>
@@ -926,10 +1025,12 @@ requireAuth();
                         <div class="dataset-stat"><span class="k">Rows written</span><span class="v">${num(generator.generatedRows)}</span></div>
                         <div class="dataset-stat"><span class="k">Seed</span><span class="v">${escapeHtml(String(generator.seed ?? '—'))}</span></div>
                     </div>
+                    ${rowsNote ? `<p class="sub" style="margin-top:0.6rem;">${rowsNote}</p>` : ''}
                     <p class="sub" style="margin-top:0.85rem;">
-                        Deliberately injected data-quality faults (${num(injectedTotal)} total): ${injectedText}.
-                        These exist so the cleaning counts above measure something real rather than always reading zero.
+                        Deliberately injected data-quality faults (${num(injectedTotal)} total, one per affected row): ${injectedText}.
+                        These exist so the cleaning counts below measure something real rather than always reading zero.
                     </p>
+                    ${renderDefectReconciliation(injected, cleaning)}
                 </div>`;
         }
 
@@ -952,7 +1053,12 @@ requireAuth();
             return `
                 <div class="pipeline-section">
                     <h4>Model v${escapeHtml(String(model.version))} ${statusChipFor(model.status)} ${model.isActive ? '<span class="pipeline-chip pipeline-chip--ok">Active</span>' : '<span class="pipeline-chip pipeline-chip--idle">Candidate</span>'}</h4>
-                    <p class="sub">Metrics measured by <code>ml/trainer.py</code> on its held-out test split. Feature set: ${escapeHtml(model.featureSetType || '—')}.</p>
+                    ${model.isActive ? '' : `<p class="pipeline-message not-active-note">
+                        <strong>v${escapeHtml(String(model.version))} is not the active model.</strong> These metrics describe the model trained from this generated dataset only.
+                        The model serving predictions is shown on the <a href="/admin/admin-training.html">Training</a> page.</p>`}
+                    <p class="sub">Metrics measured by <code>ml/trainer.py</code> on its held-out test split. Precision, recall and F1 are weighted averages across risk categories (each weighted by its number of test rows).
+                        They measure agreement with this synthetic dataset's labels, not clinical accuracy; definitions are on the <a href="/admin/admin-training.html">Training</a> page.
+                        Training and test rows are counts. Feature set: ${escapeHtml(model.featureSetType || '—')}.</p>
                     <div class="dataset-stats">
                         <div class="dataset-stat"><span class="k">Accuracy</span><span class="v">${pct(model.accuracy)}</span></div>
                         <div class="dataset-stat"><span class="k">Precision</span><span class="v">${pct(model.precision)}</span></div>
@@ -963,7 +1069,7 @@ requireAuth();
                     </div>
                     <p class="sub" style="margin-top:0.85rem;">
                         Trained ${escapeHtml(formatDateTime(model.trainedAt))} on ${num(model.totalRows)} rows.
-                        Classes: ${(model.classNames || []).map(escapeHtml).join(', ') || '—'}.
+                        Classes: ${['Low', 'Medium', 'High'].filter((c) => (model.classNames || []).includes(c)).concat((model.classNames || []).filter((c) => !['Low', 'Medium', 'High'].includes(c))).map(escapeHtml).join(', ') || '—'}.
                     </p>
                 </div>`;
         }
@@ -1013,7 +1119,7 @@ requireAuth();
                     </div>
                     ${dataset.errorMessage ? `<p class="pipeline-message is-error" style="margin-top:0.8rem;">${escapeHtml(dataset.errorMessage)}</p>` : ''}
                 </div>
-                ${renderGeneration(pipeline.generator)}
+                ${renderGeneration(pipeline.generator, pipeline.cleaning)}
                 ${renderCleaning(pipeline.cleaning)}
                 ${renderModel(data.model)}
                 <p class="sub" style="margin-top:1.2rem;">
