@@ -249,7 +249,7 @@ function renderDomainCardInner(vm, index, view) {
 
     return `
         <div class="domain-score-row">
-            <span class="domain-score-value" style="color:${st.color};">${score}%</span>
+            <span class="domain-score-value" style="color:var(--text-dark);">${score}%</span>
             ${countsRow}
         </div>
         <div class="domain-progress" role="img"
@@ -393,8 +393,8 @@ async function getLatestCompletedAssessment(childId) {
 
 function diffColor(diff) {
     if (diff == null) return 'var(--text-light)';
-    if (diff > 0) return '#27ae60';
-    if (diff < 0) return '#e74c3c';
+    if (diff > 0) return '#5A7560';
+    if (diff < 0) return '#3D4738';
     return 'var(--text-light)';
 }
 
@@ -578,7 +578,7 @@ function renderComparisonSection(compare) {
     // Never phrased as improved/worsened/no change — see Step 14 section 6.
     if (!compare.hasPrevious) {
         return `
-        <div class="comparison-card" style="background:white;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+        <div class="comparison-card" style="background:#FAFAF6;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);">
             <h3 style="margin:0 0 .5rem;color:var(--primary);">Progress Since Last Assessment</h3>
             <p style="margin:0;color:var(--text-light);">First completed assessment — there is no earlier assessment to compare yet. A progression chart needs at least two completed assessments.</p>
         </div>`;
@@ -590,7 +590,7 @@ function renderComparisonSection(compare) {
     const directionTone = stageBadgeSafe(CP.toneForDirection(direction));
 
     return `
-        <div class="comparison-card" style="background:white;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+        <div class="comparison-card" style="background:#FAFAF6;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);">
             <h3 style="margin:0 0 .3rem;color:var(--primary);">Progress Since Last Assessment</h3>
             <p style="margin:0 0 1.2rem;color:var(--text-light);font-size:.85rem;">
                 Previous: ${escapeHtml(fmtDate(compare.previous?.date))} &nbsp;→&nbsp; Current: ${escapeHtml(fmtDate(compare.current?.date))}
@@ -700,7 +700,7 @@ function renderCarePlanCard(developmentalBand, prediction) {
         </div>`;
 
     return `
-    <div class="comparison-card" style="background:white;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+    <div class="comparison-card" style="background:#FAFAF6;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);">
         <h3 style="margin:0 0 .4rem;color:var(--primary);">Developmental Assessment &amp; Care Plan</h3>
         <p style="margin:0 0 1.2rem;font-size:.85rem;color:var(--text-light);line-height:1.5;">A summary of how KinderCura's existing rules classify this assessment, and the follow-up they suggest.</p>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1.4rem;">
@@ -858,7 +858,7 @@ async function loadResults() {
         if (!assessmentId || !activeChild) {
             document.getElementById('resultsMeta').textContent = 'No completed assessment yet';
             document.getElementById('resultsContent').innerHTML = `
-                <div style="text-align:center;padding:3rem;background:white;border-radius:15px;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+                <div style="text-align:center;padding:3rem;background:#FAFAF6;border-radius:15px;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);">
                     <p style="font-size:1.1rem;font-weight:600;margin-bottom:1rem;">No assessment results yet</p>
                     <p style="color:var(--text-light);margin-bottom:1.5rem;">Complete an assessment first to view results for this child.</p>
                     <button class="btn btn-primary" onclick="window.location.href='/parent/screening.html'">Start Assessment</button>
@@ -963,7 +963,7 @@ async function loadResults() {
             ${followUpBanner}
             ${reviewBanner}
 
-            <div class="results-overview-grid" style="background:white;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);display:grid;grid-template-columns:200px 1fr;gap:3rem;align-items:center;">
+            <div class="results-overview-grid" style="background:#FAFAF6;border-radius:15px;padding:2rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);display:grid;grid-template-columns:200px 1fr;gap:3rem;align-items:center;">
                 <div style="text-align:center;">
                     <div class="overall-score-ring">
                         <span class="overall-score-caption">Overall Score</span>
@@ -986,7 +986,7 @@ async function loadResults() {
                         ${domains.map((d) => `
                             <div style="background:var(--bg-primary);padding:1rem;border-radius:8px;text-align:center;">
                                 <span style="display:block;font-size:1.2rem;margin-bottom:0.5rem;">${d.icon}</span>
-                                <div style="font-weight:700;color:${getStatusLabel(d.score).color};margin-bottom:0.3rem;">${d.score}%</div>
+                                <div style="font-weight:700;color:var(--text-dark);margin-bottom:0.3rem;">${d.score}%</div>
                                 <div style="font-size:0.8rem;color:var(--text-light);">${d.label}</div>
                                 <div class="results-domain-tile-label">${escapeHtml(getStatusLabel(d.score).label)}</div>
                             </div>`).join('')}
@@ -1008,7 +1008,7 @@ async function loadResults() {
 
             ${renderComparisonSection(compareData)}
 
-            <div id="nextStepsBlock" style="background:white;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+            <div id="nextStepsBlock" style="background:#FAFAF6;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);">
                 <h3 style="margin-bottom:1.5rem;color:var(--primary);">Next Steps</h3>
                 <div style="display:flex;gap:1rem;flex-wrap:wrap;">
                     <button class="btn btn-primary" onclick="openRecommendationsPage()">View Recommendations</button>
@@ -1027,7 +1027,7 @@ async function loadResults() {
         }
     } catch (e) {
         document.getElementById('resultsContent').innerHTML = `
-            <div style="text-align:center;padding:2rem;background:white;border-radius:15px;">
+            <div style="text-align:center;padding:2rem;background:#FAFAF6;border-radius:15px;">
                 <p style="color:red;">Failed to load results: ${escapeHtml(e.message)}</p>
                 <button class="btn btn-secondary" onclick="loadResults()" style="margin-top:1rem;">Retry</button>
             </div>`;

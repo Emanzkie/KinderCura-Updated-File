@@ -17,7 +17,7 @@
     align-items: center;
     justify-content: center;
     padding: 1.5rem;
-    background: rgba(0, 0, 0, 0.45);
+    background: rgba(61, 71, 56, 0.45);
     z-index: 3000;
 }
 
@@ -35,9 +35,9 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: white;
+    background: var(--bg-primary);
     border-radius: 12px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+    box-shadow: 0 20px 60px rgba(61, 71, 56, 0.28);
 }
 
 .notification-modal-header,
@@ -87,13 +87,13 @@
     padding: 0.85rem 1.5rem;
     text-align: right;
     border-bottom: 1px solid var(--border);
-    background: white;
+    background: var(--bg-primary);
 }
 
 .clear-all-btn {
-    border: 1px solid #e6b0b0;
-    background: white;
-    color: #c0392b;
+    border: 1px solid var(--accent-red);
+    background: var(--bg-primary);
+    color: var(--text-dark);
     padding: 0.45rem 0.85rem;
     border-radius: 8px;
     cursor: pointer;
@@ -103,9 +103,9 @@
 }
 
 .clear-all-btn:hover:not(:disabled) {
-    background: #fff4f2;
-    border-color: #d4897a;
-    color: #a93226;
+    background: var(--bg-tertiary);
+    border-color: var(--accent-red);
+    color: var(--text-dark);
 }
 
 .clear-all-btn:disabled {
@@ -152,11 +152,11 @@
     display: flex;
     align-items: flex-start;
     gap: 0.9rem;
-    background: white;
+    background: var(--bg-primary);
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 1rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 2px 8px rgba(61, 71, 56, 0.05);
     transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
@@ -165,13 +165,13 @@
 }
 
 .notification-card.unread {
-    background: #f0f7f1;
+    background: var(--bg-secondary);
     border-color: rgba(107, 142, 111, 0.35);
 }
 
 .notification-card:hover {
     border-color: rgba(107, 142, 111, 0.45);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 6px 18px rgba(61, 71, 56, 0.08);
 }
 
 .notification-card-main {
@@ -229,7 +229,7 @@
 }
 
 .notif-time {
-    color: #9a9a9a;
+    color: var(--text-light);
     font-size: 0.78rem;
     line-height: 1.3;
     margin: 0 0 0.45rem;
@@ -255,7 +255,7 @@
     border-radius: 50%;
     flex: 0 0 32px;
     background: transparent;
-    color: #c0392b;
+    color: var(--text-dark);
     cursor: pointer;
     font-size: 1rem;
     font-weight: 800;
@@ -264,8 +264,8 @@
 }
 
 .notif-delete:hover {
-    background: #fff0ed;
-    color: #922b21;
+    background: var(--bg-tertiary);
+    color: var(--text-dark);
 }
 
 @media (max-width: 768px) {

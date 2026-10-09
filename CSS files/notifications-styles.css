@@ -12,7 +12,7 @@
     --accent-light: #F8E5B5;
     --accent-red: #E8A5A5;
     --success: #A8C49D;
-    --danger: #D4897A;
+    --danger: var(--accent-red);
     --warning: #F4D89F;
     --bg-primary: #FAFAF6;
     --bg-secondary: #F0EFE8;
@@ -35,9 +35,9 @@ body {
 
 /* Header */
 .top-header {
-    background: white;
+    background: var(--bg-primary);
     padding: 1rem 0;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    box-shadow: 0 2px 10px rgba(61, 71, 56, 0.08);
     margin-bottom: 2rem;
 }
 
@@ -74,7 +74,7 @@ body {
 
 .btn-logout:hover {
     background: var(--primary);
-    color: white;
+    color: var(--bg-primary);
 }
 
 /* Breadcrumb */
@@ -112,7 +112,7 @@ body {
 .filter-btn {
     padding: 0.6rem 1.2rem;
     border: 2px solid var(--border);
-    background: white;
+    background: var(--bg-primary);
     color: var(--text-dark);
     border-radius: 20px;
     font-weight: 600;
@@ -128,7 +128,7 @@ body {
 
 .filter-btn.active {
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
-    color: white;
+    color: var(--bg-primary);
     border-color: var(--primary);
 }
 
@@ -142,20 +142,20 @@ body {
 
 /* Notification Item */
 .notification-item {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-panel);
     padding: 1.5rem;
     display: grid;
     grid-template-columns: 60px 1fr 40px;
     gap: 1rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    box-shadow: 0 2px 8px rgba(61, 71, 56, 0.06);
     border-left: 4px solid var(--border);
     transition: all 0.3s ease;
     position: relative;
 }
 
 .notification-item:hover {
-    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 16px rgba(61, 71, 56, 0.1);
     transform: translateX(4px);
 }
 
@@ -303,7 +303,7 @@ body {
 
 .btn-primary {
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
-    color: white;
+    color: var(--bg-primary);
 }
 
 .btn-primary:hover {
@@ -312,7 +312,7 @@ body {
 }
 
 .btn-secondary {
-    background: white;
+    background: var(--bg-primary);
     color: var(--primary);
     border: 2px solid var(--primary);
 }
@@ -343,11 +343,11 @@ body {
 
 /* Settings Section */
 .settings-section {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-panel);
     padding: 2rem;
     text-align: center;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    box-shadow: 0 2px 8px rgba(61, 71, 56, 0.06);
 }
 
 .settings-section h3 {

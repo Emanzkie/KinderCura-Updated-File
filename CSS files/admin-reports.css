@@ -8,9 +8,9 @@
 
 .report-card,
 .report-section {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
 }
 
 .report-card {
@@ -79,7 +79,7 @@
 
 .pill-red {
     background: rgba(232, 165, 165, 0.15);
-    color: var(--danger);
+    color: var(--text-dark);
 }
 
 .simple-table {
@@ -119,7 +119,7 @@
 
 .mini-bar-track {
     height: 10px;
-    background: #ece8dc;
+    background: var(--border);
     border-radius: var(--radius-pill);
     overflow: hidden;
 }
@@ -188,7 +188,7 @@
     flex-wrap: wrap;
     margin-bottom: 1.1rem;
     padding: 0.9rem 1rem;
-    background: var(--bg-primary, #f7f9f7);
+    background: var(--bg-primary, var(--bg-secondary));
     border-radius: 10px;
 }
 
@@ -216,7 +216,7 @@
     border-radius: 8px;
     font: inherit;
     font-size: 0.85rem;
-    background: #ffffff;
+    background: var(--bg-primary);
 }
 
 .pr-typeahead {
@@ -225,10 +225,10 @@
     left: 0;
     right: 0;
     z-index: 5;
-    background: #ffffff;
+    background: var(--bg-primary);
     border: 1px solid var(--border);
     border-radius: 8px;
-    box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+    box-shadow: 0 6px 16px rgba(61, 71, 56, 0.12);
     max-height: 220px;
     overflow-y: auto;
     margin-top: 0.2rem;
@@ -241,14 +241,14 @@
 }
 
 .pr-typeahead-item:hover {
-    background: var(--surface-tint, #f2f5f2);
+    background: var(--surface-tint, var(--bg-secondary));
 }
 
 .pr-notice {
-    background: #fff8e5;
-    border: 1px solid #e6cf8b;
-    border-left: 4px solid #d4a017;
-    color: #6b5200;
+    background: var(--accent-light);
+    border: 1px solid var(--accent);
+    border-left: 4px solid var(--accent);
+    color: var(--text-dark);
     padding: 0.9rem 1.1rem;
     border-radius: 8px;
     margin-bottom: 1.25rem;
@@ -257,10 +257,10 @@
 }
 
 .pr-notice.is-error {
-    background: #fde8e8;
+    background: var(--bg-tertiary);
     border-color: #e8a5a5;
-    border-left-color: var(--danger, #c0392b);
-    color: var(--danger, #c0392b);
+    border-left-color: var(--danger, var(--accent-red));
+    color: var(--text-dark);
 }
 
 .origin-pagination {
@@ -303,7 +303,7 @@
     }
     
     body {
-        background: white !important;
+        background: var(--bg-primary) !important;
     }
     
     .dashboard-container {
@@ -313,7 +313,7 @@
     .report-section,
     .report-card {
         box-shadow: none !important;
-        border: 1px solid #ddd;
+        border: 1px solid var(--border);
     }
 }
 

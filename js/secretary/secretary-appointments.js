@@ -58,7 +58,7 @@
                     banner.style.display = 'flex';
                 } else {
                     // Amber warning: not linked to a pediatrician yet
-                    banner.style.cssText = 'display:flex;border-color:#d97706;background:#fef3c7;color:#92400e;border-radius:8px;padding:0.65rem 1rem;align-items:center;gap:0.6rem;margin-bottom:1.2rem;font-size:0.88rem;';
+                    banner.style.cssText = 'display:flex;border-color:#f4d89f;background:#f8e5b5;color:#3d4738;border-radius:8px;padding:0.65rem 1rem;align-items:center;gap:0.6rem;margin-bottom:1.2rem;font-size:0.88rem;';
                     banner.innerHTML = '<img src="/icons/smart_notif.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">️ Your account is not yet linked to a pediatrician. Contact the system administrator.';
                 }
             } catch (e) {
@@ -76,7 +76,7 @@
                 renderList();
             } catch (e) {
                 document.getElementById('apptList').innerHTML =
-                    `<p class="empty-msg" style="color:var(--danger);">Could not load appointments: ${escapeHtml(e.message)}</p>`;
+                    `<p class="empty-msg" style="color:var(--text-dark);">Could not load appointments: ${escapeHtml(e.message)}</p>`;
             }
         }
 

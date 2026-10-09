@@ -1141,7 +1141,7 @@
                             <span style="display:inline-block;padding:.3rem .8rem;border-radius:999px;font-size:.8rem;font-weight:600;${
                                 isDraft ? 'background:var(--status-info-bg);color:var(--status-info-fg);' : 
                                 set.status === 'answered' ? 'background:var(--status-positive-bg);color:var(--status-positive-fg);' :
-                                'background:var(--status-caution-bg);color:#92400e;'
+                                'background:var(--status-caution-bg);color:#3d4738;'
                             }">${
                                 isDraft ? '📝 Draft' : 
                                 set.status === 'answered' ? '✓ Answered' :
@@ -1173,7 +1173,7 @@
                     ` : `
                         <div style="display:flex;flex-direction:column;gap:.8rem;">
                             ${questions.map((q, i) => `
-                                <div style="background:white;border:1px solid var(--border);border-radius:8px;padding:1rem;">
+                                <div style="background:#FAFAF6;border:1px solid var(--border);border-radius:8px;padding:1rem;">
                                     <div style="display:flex;justify-content:space-between;align-items:start;gap:1rem;">
                                         <div style="flex:1;">
                                             <div style="margin-bottom:.5rem;">
@@ -1206,9 +1206,9 @@
                         <h3 style="margin:0 0 1rem;font-size:.95rem;font-weight:600;color:var(--status-positive-fg);"><img src="/icons/parent_answer_tracker.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Parent's Answers</h3>
                         <div style="display:flex;flex-direction:column;gap:.8rem;">
                             ${answeredAssignments.map(a => `
-                                <div style="background:var(--status-positive-bg);border:1px solid #86efac;border-radius:8px;padding:1rem;">
+                                <div style="background:var(--status-positive-bg);border:1px solid #a8c49d;border-radius:8px;padding:1rem;">
                                     <p style="margin:0 0 .5rem;font-size:.85rem;color:var(--text-light);">Question: ${esc(a.questionText || 'Question')}</p>
-                                    <div style="background:white;border:1px solid #d4edda;border-radius:6px;padding:.75rem;">
+                                    <div style="background:#FAFAF6;border:1px solid #a8c49d;border-radius:6px;padding:.75rem;">
                                         <p style="margin:0 0 .3rem;font-size:.78rem;color:var(--text-light);">Parent's Answer</p>
                                         <p style="margin:0;font-weight:600;color:var(--text-dark);">${esc(a.answer || 'No answer provided')}</p>
                                     </div>
@@ -1290,7 +1290,7 @@
                     if (v == null) return '';
                     const st = p.statuses?.[key];
                     const stLabel = st ? window.KCScoring.clinicalLabel(st) : '';
-                    return `<span class="assign-score-chip"><span class="assign-score-dot" style="background:${statusColors[st] || '#ddd'};" aria-hidden="true"></span>${label}: <strong>${v}%</strong>${stLabel ? ` (${stLabel})` : ''}</span>`;
+                    return `<span class="assign-score-chip"><span class="assign-score-dot" style="background:${statusColors[st] || '#DDD9CC'};" aria-hidden="true"></span>${label}: <strong>${v}%</strong>${stLabel ? ` (${stLabel})` : ''}</span>`;
                 };
                 const scoresHtml = hasScores ? `
                     <div style="display:flex;gap:0.4rem;margin-top:0.4rem;flex-wrap:wrap;">
@@ -1302,7 +1302,7 @@
                 ` : '';
 
                 return `
-            <div class="patient-row" style="${isSelected ? 'background:var(--status-positive-bg);border-left:3px solid #27ae60;' : ''}">
+            <div class="patient-row" style="${isSelected ? 'background:var(--status-positive-bg);border-left:3px solid #6b8e6f;' : ''}">
                 <label style="display:flex;align-items:flex-start;gap:0.75rem;cursor:pointer;flex:1;">
                     <input type="checkbox" class="patient-checkbox" value="${p.childId}" ${isSelected ? 'checked' : ''} onchange="togglePatientSelection('${p.childId}')" style="margin-top:0.3rem;">
                     <div>
@@ -1571,9 +1571,9 @@
 
                 const hasUnread = notifications.some(n => !n.isRead);
                 const tools = `
-            <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:white;position:sticky;top:0;z-index:1;">
-                ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:white;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
-                <button onclick="clearAllNotifications()" style="border:1px solid #e6b0b0;background:white;color:var(--status-attention-fg);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
+            <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:#FAFAF6;position:sticky;top:0;z-index:1;">
+                ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:#FAFAF6;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
+                <button onclick="clearAllNotifications()" style="border:1px solid #e8a5a5;background:#FAFAF6;color:var(--status-attention-fg);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
             </div>`;
 
                 const items = notifications.map((n) => {

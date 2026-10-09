@@ -224,13 +224,13 @@ function paymentSection(a) {
     const method = a.paymentMethodLabel || (isPaid ? 'E-Wallet' : '—');
 
     const colours = {
-        Paid: '#3D5A40',
-        'Pending Payment': '#8a6d00',
-        Unpaid: '#8a6d00',
-        Failed: '#8C3A2B',
-        Expired: '#8C3A2B',
-        Cancelled: '#8C3A2B',
-        Refunded: '#8C3A2B',
+        Paid: '#5A7560',
+        'Pending Payment': '#3D4738',
+        Unpaid: '#3D4738',
+        Failed: '#3D4738',
+        Expired: '#3D4738',
+        Cancelled: '#3D4738',
+        Refunded: '#3D4738',
     };
     const colour = colours[status] || 'var(--text-dark)';
 
@@ -295,7 +295,7 @@ function renderUpcoming(apts) {
             ${a.notes ? `<p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem;"><img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${a.notes}</p>` : ''}
             <div class="action-row">
                 ${isPending  ? `<button class="btn btn-primary btn-sm" onclick="updateStatus('${a.id}','approved','${info.child}')"><img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Approve</button>` : ''}
-                ${isPending  ? `<button class="btn btn-secondary btn-sm" style="color:var(--danger,#e74c3c);border-color:var(--danger,#e74c3c);" onclick="openStatusModal('${a.id}','rejected','${info.child}')"><img src="/icons/reject_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reject</button>` : ''}
+                ${isPending  ? `<button class="btn btn-secondary btn-sm" style="color:var(--danger,#3d4738);border-color:var(--danger,#e8a5a5);" onclick="openStatusModal('${a.id}','rejected','${info.child}')"><img src="/icons/reject_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reject</button>` : ''}
                 ${isApproved ? `<button class="btn btn-primary btn-sm" onclick="openStatusModal('${a.id}','completed','${info.child}')"><img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Mark Completed</button>` : ''}
                 ${isApproved ? `<button class="btn btn-secondary btn-sm" onclick="window.location.href='/pedia/pedia-chat.html?appointmentId=${a.id}'"> Chat</button>` : ''}
                 <button class="btn btn-secondary btn-sm" onclick="openReschedule('${a.id}','${encodeURIComponent(info.child)}','${encodeURIComponent(info.parent)}')"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reschedule</button>
@@ -613,9 +613,9 @@ async function openNotifications() {
 
         const hasUnread = notifications.some(n => !n.isRead);
         const tools = `
-            <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:white;position:sticky;top:0;z-index:1;">
-                ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:white;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
-                <button onclick="clearAllNotifications()" style="border:1px solid #e6b0b0;background:white;color:var(--status-attention-fg);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
+            <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:#FAFAF6;position:sticky;top:0;z-index:1;">
+                ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:#FAFAF6;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
+                <button onclick="clearAllNotifications()" style="border:1px solid #e8a5a5;background:#FAFAF6;color:var(--status-attention-fg);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
             </div>`;
 
         const items = notifications.map((n) => {

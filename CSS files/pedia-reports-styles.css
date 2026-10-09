@@ -8,11 +8,11 @@
 
 /* ── Page header ─────────────────────────────────────────────────────────── */
 .report-header {
-    background: white;
+    background: var(--bg-primary);
     padding: 2rem;
     border-radius: var(--radius-card);
     margin-bottom: 1.25rem;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
@@ -67,11 +67,11 @@
 
 /* ── Filter bar ──────────────────────────────────────────────────────────── */
 .report-filters {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     padding: 1.4rem 1.6rem;
     margin-bottom: 1.5rem;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.06);
 }
 
 .report-filters-grid {
@@ -113,7 +113,7 @@
     font-size: 0.9rem;
     line-height: 1.3;
     color: var(--text-dark);
-    background-color: white;
+    background-color: var(--bg-primary);
     /* A select's default line box is shorter than a date input's, so the two
        are pinned to one height rather than left to each control's default. */
     min-height: 2.9rem;
@@ -197,10 +197,10 @@
 }
 
 .report-tile {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     padding: 1.2rem 1.4rem;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.06);
 }
 
 .report-tile .tile-label {
@@ -229,11 +229,11 @@
 
 /* ── Cards ───────────────────────────────────────────────────────────────── */
 .report-card {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     padding: 1.6rem 1.8rem;
     margin-bottom: 1.5rem;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.06);
 }
 
 .report-card h2 {
@@ -418,13 +418,13 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 0.82rem;
-    background: white;
+    background: var(--bg-primary);
     border-radius: 8px;
     overflow: hidden;
 }
 
 .prog-detail th {
-    background: white;
+    background: var(--bg-primary);
     border-bottom: 1px solid var(--border);
     padding: 0.55rem 0.7rem;
 }
@@ -439,13 +439,14 @@
 }
 
 /* ── Chips and deltas ────────────────────────────────────────────────────── */
+/* Dark text: every band fill is a light palette colour. */
 .band-chip {
     display: inline-block;
     padding: 0.18rem 0.6rem;
     border-radius: var(--radius-pill);
     font-size: 0.72rem;
     font-weight: 700;
-    color: white;
+    color: var(--text-dark);
     white-space: nowrap;
 }
 
@@ -460,7 +461,7 @@
 
 .move-improved  { background: rgba(168, 196, 157, 0.25); color: var(--primary-dark); }
 .move-unchanged { background: var(--status-neutral-bg); color: var(--status-neutral-fg); }
-.move-declined  { background: rgba(232, 165, 165, 0.2); color: var(--danger); }
+.move-declined  { background: rgba(232, 165, 165, 0.2); color: var(--text-dark); }
 
 .delta {
     font-weight: 700;
@@ -469,7 +470,7 @@
 }
 
 .delta-up   { color: var(--primary-dark); }
-.delta-down { color: var(--danger); }
+.delta-down { color: var(--text-dark); }
 .delta-flat { color: var(--text-light); }
 
 .warn-chip {
@@ -499,7 +500,7 @@
 }
 
 .crosstab td.cell-zero {
-    color: #b6bcc2;
+    color: var(--text-light);
     font-weight: 400;
 }
 

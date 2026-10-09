@@ -1,15 +1,15 @@
 /* ==================== PEDIA PATIENTS STYLES ==================== */
 
 .patient-card {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     padding: 2rem;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
     transition: box-shadow 0.2s;
 }
 
 .patient-card:hover {
-    box-shadow: 0 6px 25px rgba(0,0,0,0.13);
+    box-shadow: 0 6px 25px rgba(61, 71, 56, 0.13);
 }
 
 /* Status badges use the shared soft-tint treatment (see .kc-badge in
@@ -125,19 +125,19 @@
 }
 
 .empty-state {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     padding: 5rem 2rem;
     text-align: center;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
 }
 
 .filter-bar {
-    background: white;
+    background: var(--bg-primary);
     padding: 1.5rem;
     border-radius: var(--radius-card);
     margin-bottom: 2rem;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
 }
 
 .filter-bar .form-group {
@@ -163,7 +163,7 @@
 
 #diagnosisModal .notifications-header {
     flex: 0 0 auto;
-    background: white;
+    background: var(--bg-primary);
 }
 
 #diagnosisModal .diagnosis-modal-body {
@@ -251,11 +251,11 @@
 }
 
 .score-guide-panel {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     padding: 1.2rem 1.5rem;
     margin-bottom: 1.5rem;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
     font-size: 0.82rem;
     line-height: 1.5;
     color: var(--text-light);

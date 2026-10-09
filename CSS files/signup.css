@@ -22,7 +22,7 @@
 
 .error-msg {
     background: rgba(232, 165, 165, 0.15);
-    color: var(--danger);
+    color: var(--text-dark);
     padding: 0.8rem 1rem;
     border-radius: 8px;
     margin-bottom: 1rem;
@@ -151,9 +151,9 @@
     width: 100%;
     min-width: 0;
     padding: 0.9rem 1rem;
-    border: 1px solid rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(221, 217, 204, 0.5);
     border-radius: var(--radius-panel);
-    background: rgba(255, 255, 255, 0.24);
+    background: rgba(250, 250, 246, 0.24);
     box-shadow: 0 14px 30px rgba(61, 71, 56, 0.16);
     backdrop-filter: blur(8px);
 }
@@ -161,14 +161,14 @@
 .signup-page .check-icon {
     width: 32px;
     height: 32px;
-    background: rgba(255, 255, 255, 0.32);
-    color: white;
+    background: rgba(250, 250, 246, 0.32);
+    color: var(--bg-primary);
 }
 
 .signup-page .feature p {
     min-width: 0;
     font-weight: 600;
-    color: white;
+    color: var(--bg-primary);
     overflow-wrap: break-word;
 }
 
@@ -189,7 +189,7 @@
     padding: 1.75rem 1.25rem;
     border: 2px dashed var(--border);
     border-radius: var(--radius-card);
-    background: linear-gradient(180deg, var(--surface-muted) 0%, #f7f5f0 100%);
+    background: linear-gradient(180deg, var(--surface-muted) 0%, var(--bg-primary) 100%);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -203,7 +203,7 @@
 .signup-page .photo-upload-area:hover,
 .signup-page .photo-upload-area:focus-within {
     border-color: var(--primary);
-    background: linear-gradient(180deg, #ffffff 0%, #f9f7f2 100%);
+    background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-primary) 100%);
     box-shadow: 0 14px 30px rgba(107, 142, 111, 0.14);
     transform: translateY(-2px);
 }
@@ -261,7 +261,7 @@
     height: 140px;
     object-fit: cover;
     border-radius: 50%;
-    border: 4px solid white;
+    border: 4px solid var(--border);
     box-shadow:
         0 0 0 3px rgba(107, 142, 111, 0.18),
         0 10px 28px rgba(61, 71, 56, 0.14);
@@ -282,7 +282,7 @@
     aspect-ratio: 4 / 3;
     object-fit: contain;
     border-radius: var(--radius-panel);
-    background: white;
+    background: var(--bg-primary);
 }
 
 .signup-page .photo-upload-btn {
@@ -291,7 +291,7 @@
     border: 0;
     border-radius: var(--radius-pill);
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
-    color: white;
+    color: var(--bg-primary);
     font-weight: 700;
     font-family: inherit;
     cursor: pointer;
@@ -370,7 +370,7 @@
 }
 
 .signup-page .required-label {
-    color: var(--danger);
+    color: var(--text-dark);
     font-weight: 700;
 }
 
@@ -399,7 +399,7 @@
 }
 
 .signup-page .onboarding-step .form-group input::placeholder {
-    color: #8b9787;
+    color: var(--text-light);
     opacity: 1;
 }
 
@@ -444,16 +444,16 @@
     height: 13px;
     border: 2px solid currentColor;
     border-radius: 4px;
-    box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.18);
+    box-shadow: inset 0 0 0 3px rgba(250, 250, 246, 0.18);
     flex: 0 0 auto;
 }
 
 .signup-page .error-msg {
     padding: 0.9rem 1rem;
-    border: 1px solid #f0c7c7;
-    border-left: 4px solid #d36f6f;
-    background: #fff1f1;
-    color: var(--danger);
+    border: 1px solid var(--accent-red);
+    border-left: 4px solid var(--accent-red);
+    background: var(--bg-tertiary);
+    color: var(--text-dark);
     line-height: 1.45;
 }
 
@@ -461,8 +461,8 @@
     padding: 0.9rem 1rem;
     border: 1px solid rgba(107, 142, 111, 0.24);
     border-left: 4px solid var(--primary);
-    background: #edf6ea;
-    color: var(--primary-dark);
+    background: var(--success);
+    color: var(--text-dark);
     line-height: 1.45;
 }
 
@@ -479,13 +479,13 @@
 .signup-page .onboarding-step .btn-primary,
 .signup-page .consent-dialog .btn-primary {
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
-    color: white;
+    color: var(--bg-primary);
     box-shadow: 0 10px 22px rgba(107, 142, 111, 0.22);
 }
 
 .signup-page .onboarding-step .btn-secondary,
 .signup-page .consent-dialog .btn-secondary {
-    background: white;
+    background: var(--bg-primary);
     color: var(--primary-dark);
     border: 2px solid var(--border);
 }
@@ -807,7 +807,7 @@
     font-weight: 700;
     border-radius: var(--radius-panel);
     background: linear-gradient(135deg, var(--primary, #6B8E6F) 0%, var(--primary-light, #8BA98D) 100%);
-    color: white;
+    color: var(--bg-primary);
     border: none;
     cursor: pointer;
     box-shadow: 0 8px 20px rgba(107, 142, 111, 0.25);
@@ -923,7 +923,7 @@
 }
 
 .consent-input[aria-invalid="true"] {
-    outline: 2px solid #b42318;
+    outline: 2px solid var(--accent-red);
     outline-offset: 2px;
 }
 
@@ -946,7 +946,7 @@
 
 .consent-error {
     margin: 1rem 0 0;
-    color: #b42318;
+    color: var(--text-dark);
     font-weight: 600;
 }
 
@@ -963,9 +963,9 @@
     padding: 0;
     border: 1px solid var(--border, #DDD9CC);
     border-radius: 16px;
-    background: #fff;
+    background: var(--bg-primary);
     color: var(--text-dark, #3D4738);
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+    box-shadow: 0 24px 64px rgba(61, 71, 56, 0.28);
     overflow: hidden;
 }
 
@@ -988,7 +988,7 @@
 }
 
 .consent-dialog::backdrop {
-    background: rgba(20, 30, 20, 0.55);
+    background: rgba(61, 71, 56, 0.55);
 }
 
 /* The page behind an open modal does not scroll with the wheel or touch. */
@@ -1106,9 +1106,9 @@
     padding: 0;
     border: 1px solid var(--border, #DDD9CC);
     border-radius: 14px;
-    background: #fff;
+    background: var(--bg-primary);
     color: var(--text-dark, #3D4738);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 20px 60px rgba(61, 71, 56, 0.3);
     overflow: hidden;
 }
 
@@ -1118,7 +1118,7 @@
 }
 
 .terms-dialog::backdrop {
-    background: rgba(20, 30, 20, 0.55);
+    background: rgba(61, 71, 56, 0.55);
 }
 
 .terms-dialog-header {

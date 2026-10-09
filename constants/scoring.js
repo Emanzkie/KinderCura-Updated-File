@@ -122,12 +122,14 @@
 
   // ── Colours ──────────────────────────────────────────────────────────────
   // Consolidated from the two duplicate maps previously at
-  // js/pedia/pedia-questions.js:894 and :1121. Red → orange → lime → green.
+  // js/pedia/pedia-questions.js:894 and :1121. KinderCura palette only:
+  // --success, --primary-light, --accent, --accent-red. These are fills
+  // (bars, dots, swatches, chips); text on them uses --text-dark.
   const STATUS_COLORS = Object.freeze({
-    [BAND.ON_TRACK]:   '#27ae60',
-    [BAND.DEVELOPING]: '#7fb800',
-    [BAND.AT_RISK]:    '#f39c12',
-    [BAND.DELAYED]:    '#e74c3c',
+    [BAND.ON_TRACK]:   '#A8C49D',
+    [BAND.DEVELOPING]: '#8BA98D',
+    [BAND.AT_RISK]:    '#F4D89F',
+    [BAND.DELAYED]:    '#E8A5A5',
   });
 
   // ── Risk-flag threshold ──────────────────────────────────────────────────

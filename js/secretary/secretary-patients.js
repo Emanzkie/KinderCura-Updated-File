@@ -143,7 +143,7 @@ requireAuth();
                         `Dr. ${ped.firstName || ''} ${ped.lastName || ''}`.trim() + (ped.clinicName ? ` - ${ped.clinicName}` : '');
                     banner.style.display = 'flex';
                 } else {
-                    banner.style.cssText = 'display:flex;border-color:#d97706;background:#fef3c7;color:#92400e;';
+                    banner.style.cssText = 'display:flex;border-color:#f4d89f;background:#f8e5b5;color:#3d4738;';
                     banner.innerHTML = '<img src="/icons/smart_notif.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> This secretary account is not linked to a pediatrician.';
                 }
             } catch (err) {

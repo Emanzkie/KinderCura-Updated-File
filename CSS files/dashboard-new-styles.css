@@ -7,11 +7,11 @@
 
 /* ==================== Utility / Page Layout Helpers ==================== */
 .page-header {
-    background: white;
+    background: var(--bg-primary);
     padding: 2rem;
     border-radius: var(--radius-card);
     margin-bottom: 2rem;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -60,9 +60,9 @@ body {
 /* ==================== TOP NAVIGATION ==================== */
 
 .top-nav {
-    background: white;
+    background: var(--bg-primary);
     padding: 1rem 0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 2px 8px rgba(61, 71, 56, 0.08);
     position: sticky;
     top: 0;
     z-index: 1000;
@@ -181,7 +181,7 @@ body {
     top: -8px;
     right: -8px;
     background: var(--accent-red);
-    color: white;
+    color: var(--text-dark);
     border-radius: 50%;
     width: 18px;
     height: 18px;
@@ -223,11 +223,11 @@ body {
     position: absolute;
     top: 100%;
     right: 0;
-    background: white;
+    background: var(--bg-primary);
     border: 2px solid var(--border);
     border-radius: 10px;
     min-width: 200px;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 20px rgba(61, 71, 56, 0.1);
     overflow: hidden;
     margin-top: 0.5rem;
     z-index: 1000;
@@ -267,7 +267,7 @@ body {
 .text-center { text-align: center; }
 
 .btn-border {
-    background: white;
+    background: var(--bg-primary);
     color: var(--primary);
     border: 2px solid var(--border);
     border-radius: 8px;
@@ -304,7 +304,7 @@ body {
 }
 
 .menu-item.logout {
-    color: var(--accent-red);
+    color: var(--text-dark);
 }
 
 .menu-icon{
@@ -326,11 +326,11 @@ body {
 /* ==================== PAGE HEADER ==================== */
 
 .page-header {
-    background: white;
+    background: var(--bg-primary);
     padding: 2rem;
     border-radius: var(--radius-card);
     margin-bottom: 2rem;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
 }
 
 /* The title always claims its own line, so a bare `<h1> + <p>` pair stacks the
@@ -359,14 +359,14 @@ body {
 /* ==================== CHILD PROFILE CARD ==================== */
 
 .child-card {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     padding: 2rem;
     margin-bottom: 2rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
 }
 
 .child-info h1 {
@@ -389,10 +389,10 @@ body {
 }
 
 .overview-card {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     padding: 2rem;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
 }
 
 .overview-card h3 {
@@ -439,7 +439,7 @@ body {
 
 .skill-percent {
     font-weight: 700;
-    color: var(--accent-red);
+    color: var(--text-dark);
     font-size: 0.85rem;
 }
 
@@ -486,10 +486,10 @@ body {
 /* ==================== CARDS ==================== */
 
 .card {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     padding: 2rem;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
     margin-bottom: 2rem;
 }
 
@@ -502,10 +502,10 @@ body {
 /* ==================== ACTIONS CARD ==================== */
 
 .actions-card {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     padding: 2rem;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
     margin-bottom: 2rem;
 }
 
@@ -542,7 +542,7 @@ body {
 
 .btn-primary {
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
-    color: white;
+    color: var(--bg-primary);
     isolation: isolate;
 }
 
@@ -552,7 +552,7 @@ body {
 }
 
 .btn-secondary {
-    background: white;
+    background: var(--bg-primary);
     color: var(--primary);
     border: 2px solid var(--border);
 }
@@ -578,10 +578,10 @@ body {
 }
 
 .result-card {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     padding: 1.5rem;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
     border-left: 4px solid var(--primary);
 }
 
@@ -611,7 +611,7 @@ body {
     font-weight: 600;
     white-space: nowrap;
     background: var(--primary);
-    color: white;
+    color: var(--bg-primary);
 }
 
 .badge.excellent {
@@ -717,7 +717,7 @@ body {
     align-items: center;
     justify-content: center;
     padding: 1.5rem;
-    background: rgba(0, 0, 0, 0.45);
+    background: rgba(61, 71, 56, 0.45);
     z-index: 2000;
 }
 
@@ -726,14 +726,14 @@ body {
 }
 
 .notifications-content {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     width: min(92vw, 560px);
     max-height: min(82vh, 720px);
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+    box-shadow: 0 20px 60px rgba(61, 71, 56, 0.28);
 }
 
 .notifications-header {
@@ -777,13 +777,13 @@ body {
     padding: 0.85rem 1.5rem;
     text-align: right;
     border-bottom: 1px solid var(--border);
-    background: white;
+    background: var(--bg-primary);
 }
 
 .clear-all-btn {
-    border: 1px solid #e6b0b0;
-    background: white;
-    color: var(--danger);
+    border: 1px solid var(--accent-red);
+    background: var(--bg-primary);
+    color: var(--text-dark);
     padding: 0.45rem 0.85rem;
     border-radius: 8px;
     cursor: pointer;
@@ -794,8 +794,8 @@ body {
 
 .clear-all-btn:hover:not(:disabled) {
     background: rgba(232, 165, 165, 0.1);
-    border-color: #d4897a;
-    color: var(--danger);
+    border-color: var(--accent-red);
+    color: var(--text-dark);
 }
 
 .clear-all-btn:disabled {
@@ -824,11 +824,11 @@ body {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.75rem;
     align-items: start;
-    background: white;
+    background: var(--bg-primary);
     border: 1px solid var(--border);
     border-radius: var(--radius-panel);
     padding: 1rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 2px 8px rgba(61, 71, 56, 0.05);
     transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
@@ -837,13 +837,13 @@ body {
 }
 
 .notification-card.unread {
-    background: #f0f7f1;
+    background: var(--bg-secondary);
     border-color: rgba(107, 142, 111, 0.35);
 }
 
 .notification-card:hover {
     border-color: rgba(107, 142, 111, 0.45);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 6px 18px rgba(61, 71, 56, 0.08);
 }
 
 .notification-card-main {
@@ -899,7 +899,7 @@ body {
 }
 
 .notification-card-time {
-    color: #9a9a9a;
+    color: var(--text-light);
     font-size: 0.78rem;
     line-height: 1.3;
     margin: 0 0 0.45rem;
@@ -928,7 +928,7 @@ body {
     border: none;
     border-radius: 50%;
     background: transparent;
-    color: var(--danger);
+    color: var(--text-dark);
     cursor: pointer;
     font-size: 1rem;
     font-weight: 800;
@@ -938,7 +938,7 @@ body {
 
 .notification-delete-btn:hover {
     background: rgba(232, 165, 165, 0.08);
-    color: var(--danger);
+    color: var(--text-dark);
 }
 
 /* ==================== SETTINGS TABS ==================== */
@@ -1139,10 +1139,10 @@ body {
 }
 
 .parent-chart-card {
-    background: white;
+    background: var(--bg-primary);
     padding: 1.5rem;
     border-radius: var(--radius-panel);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    box-shadow: 0 2px 8px rgba(61, 71, 56, 0.08);
     /* Grid items default to min-width:auto, so the Chart.js canvas inside kept
        these cards at their intrinsic width and pushed the whole dashboard into
        horizontal scrolling on phones (408px card in a 372px viewport). */
@@ -1268,7 +1268,7 @@ body {
 }
 
 .kc-score-guide-list li {
-    background: white;
+    background: var(--bg-primary);
     border: 1px solid var(--border);
     border-radius: var(--radius-pill);
     padding: 0.15rem 0.6rem;
@@ -1386,7 +1386,7 @@ textarea:focus-visible,
     transition: background-color .18s ease, border-color .18s ease, color .18s ease;
 }
 
-.kc-btn--primary { background: var(--primary); color: #fff; }
+.kc-btn--primary { background: var(--primary); color: var(--bg-primary); }
 .kc-btn--primary:hover { background: var(--primary-dark); }
 
 .kc-btn--secondary {
@@ -1396,11 +1396,11 @@ textarea:focus-visible,
 }
 .kc-btn--secondary:hover { background: var(--surface-tint); border-color: var(--primary); }
 
-.kc-btn--danger { background: var(--status-attention-bg); color: var(--status-attention-fg); border-color: #E9C6C2; }
-.kc-btn--danger:hover { background: #F3D6D3; }
+.kc-btn--danger { background: var(--status-attention-bg); color: var(--status-attention-fg); border-color: var(--accent-red); }
+.kc-btn--danger:hover { background: var(--accent-red); }
 
-.kc-btn--warning { background: var(--status-caution-bg); color: var(--status-caution-fg); border-color: #EBDBB4; }
-.kc-btn--warning:hover { background: #F6E7C6; }
+.kc-btn--warning { background: var(--status-caution-bg); color: var(--status-caution-fg); border-color: var(--accent); }
+.kc-btn--warning:hover { background: var(--accent); }
 
 .kc-btn--quiet { background: transparent; color: var(--text-light); border-color: var(--border); }
 .kc-btn--quiet:hover { background: var(--surface-muted); color: var(--text-dark); }
@@ -1475,14 +1475,14 @@ textarea:focus-visible,
 }
 
 .kc-input::placeholder,
-.kc-textarea::placeholder { color: #A2AB9E; }
+.kc-textarea::placeholder { color: var(--text-light); }
 
 .kc-hint  { font-size: var(--fs-small); color: var(--text-light); }
 .kc-error { font-size: var(--fs-small); color: var(--status-attention-fg); font-weight: var(--fw-medium); }
 
 .kc-input.is-invalid,
 .kc-select.is-invalid,
-.kc-textarea.is-invalid { border-color: #D9A6A0; }
+.kc-textarea.is-invalid { border-color: var(--accent-red); }
 
 /* ---- Tables -------------------------------------------------------------- */
 .kc-table-wrap {
@@ -1605,7 +1605,7 @@ textarea:focus-visible,
     line-height: var(--leading);
     margin-bottom: var(--space-md);
 }
-.kc-alert--warning  { background: var(--status-caution-bg);  border-left-color: #D8B65E; }
+.kc-alert--warning  { background: var(--status-caution-bg);  border-left-color: var(--accent); }
 .kc-alert--error    { background: var(--status-attention-bg);border-left-color: var(--accent-red); }
 .kc-alert--positive { background: var(--status-positive-bg); border-left-color: var(--primary); }
 

@@ -47,7 +47,7 @@ body {
 .auth-sidebar {
     flex: 1;
     background: linear-gradient(135deg, var(--primary) 0%, var(--accent-red) 100%);
-    color: white;
+    color: var(--bg-primary);
     padding: 3rem 2rem;
     display: flex;
     flex-direction: column;
@@ -65,7 +65,7 @@ body {
     right: -50%;
     width: 300px;
     height: 300px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(250, 250, 246, 0.1);
     border-radius: 50%;
 }
 
@@ -76,7 +76,7 @@ body {
     left: -30%;
     width: 250px;
     height: 250px;
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(250, 250, 246, 0.05);
     border-radius: 50%;
 }
 
@@ -116,7 +116,7 @@ body {
 }
 
 .sidebar-logo .logo-cura {
-    color: #FFFFFF;
+    color: var(--bg-primary);
     font-weight: 700;
 }
 
@@ -163,7 +163,7 @@ body {
     justify-content: center;
     width: 30px;
     height: 30px;
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(250, 250, 246, 0.3);
     border-radius: 50%;
     font-weight: bold;
     flex-shrink: 0;
@@ -226,7 +226,7 @@ body {
 
 /* Form Sections */
 .form-section {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-panel);
     padding: 2rem;
     margin-bottom: 1.5rem;
@@ -277,7 +277,7 @@ body {
     gap: 1.2rem;
     width: 100%;
     padding: 1.2rem;
-    background: white;
+    background: var(--bg-primary);
     border: 2px solid var(--border);
     border-radius: 10px;
     cursor: pointer;
@@ -333,7 +333,7 @@ body {
     font-size: 0.95rem;
     font-family: inherit;
     color: var(--text-dark);
-    background: white;
+    background: var(--bg-primary);
     transition: all 0.3s ease;
 }
 
@@ -383,7 +383,7 @@ body {
 
 .btn-primary {
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
-    color: white;
+    color: var(--bg-primary);
 }
 
 .btn-primary:hover {
@@ -392,7 +392,7 @@ body {
 }
 
 .btn-secondary {
-    background: white;
+    background: var(--bg-primary);
     color: var(--primary);
     border: 2px solid var(--border);
 }
@@ -587,9 +587,9 @@ body {
     width: 100%;
     min-width: 0;
     padding: 0.9rem 1rem;
-    border: 1px solid rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(221, 217, 204, 0.5);
     border-radius: var(--radius-panel);
-    background: rgba(255, 255, 255, 0.24);
+    background: rgba(250, 250, 246, 0.24);
     box-shadow: 0 14px 30px rgba(61, 71, 56, 0.16);
     backdrop-filter: blur(8px);
 }
@@ -597,14 +597,14 @@ body {
 .auth-page .check-icon {
     width: 32px;
     height: 32px;
-    background: rgba(255, 255, 255, 0.32);
-    color: white;
+    background: rgba(250, 250, 246, 0.32);
+    color: var(--bg-primary);
 }
 
 .auth-page .feature p {
     min-width: 0;
     font-weight: 600;
-    color: white;
+    color: var(--bg-primary);
     overflow-wrap: break-word;
 }
 
@@ -663,7 +663,7 @@ body {
 }
 
 .auth-page .onboarding-step .form-group input::placeholder {
-    color: #8b9787;
+    color: var(--text-light);
     opacity: 1;
 }
 
@@ -683,12 +683,12 @@ body {
 
 .auth-page .onboarding-step .btn-primary {
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
-    color: white;
+    color: var(--bg-primary);
     box-shadow: 0 10px 22px rgba(107, 142, 111, 0.22);
 }
 
 .auth-page .onboarding-step .btn-secondary {
-    background: white;
+    background: var(--bg-primary);
     color: var(--primary-dark);
     border: 2px solid var(--border);
 }
@@ -741,15 +741,15 @@ body {
 .auth-page .auth-message--info {
     border: 1px solid rgba(107, 142, 111, 0.24);
     border-left: 4px solid var(--primary);
-    background: #edf6ea;
-    color: var(--primary-dark);
+    background: var(--success);
+    color: var(--text-dark);
 }
 
 .auth-page .auth-message--error {
-    border: 1px solid #f0c7c7;
-    border-left: 4px solid #d36f6f;
-    background: #fff1f1;
-    color: var(--danger);
+    border: 1px solid var(--accent-red);
+    border-left: 4px solid var(--accent-red);
+    background: var(--bg-tertiary);
+    color: var(--text-dark);
 }
 
 /* -- "Remember me" / "Forgot password?" row (Login only) ------------------- */

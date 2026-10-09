@@ -87,16 +87,16 @@ const API = window.location.origin + '/api';
     // Small helper so progress notes are easier to scan in the card and modal.
     function progressStatusMeta(status) {
         const map = {
-            initial_review: { label: 'Initial Review', color: '#6B7967', bg: '#EFEEE7' },
-            monitoring:      { label: 'Monitoring',     color: '#8A6A1F', bg: '#FBF0D8' },
-            follow_up:       { label: 'Follow-up',      color: '#d97706', bg: '#fef3c7' },
-            improving:       { label: 'Improving',      color: '#15803d', bg: '#dcfce7' },
-            stable:          { label: 'Stable',         color: '#5A7560', bg: '#F3F7F3' },
-            needs_attention: { label: 'Needs Attention',color: '#b91c1c', bg: '#fee2e2' },
-            referred:        { label: 'Referred',       color: '#9C4F43', bg: '#F8E4E4' },
-            completed:       { label: 'Completed',      color: '#166534', bg: '#dcfce7' },
+            initial_review: { label: 'Initial Review', color: '#6B7967', bg: '#F0EFE8' },
+            monitoring:      { label: 'Monitoring',     color: '#3D4738', bg: '#F8E5B5' },
+            follow_up:       { label: 'Follow-up',      color: '#3d4738', bg: '#f8e5b5' },
+            improving:       { label: 'Improving',      color: '#5a7560', bg: '#a8c49d' },
+            stable:          { label: 'Stable',         color: '#5A7560', bg: '#F0EFE8' },
+            needs_attention: { label: 'Needs Attention',color: '#3d4738', bg: '#f0dcd8' },
+            referred:        { label: 'Referred',       color: '#3D4738', bg: '#F0DCD8' },
+            completed:       { label: 'Completed',      color: '#5a7560', bg: '#a8c49d' },
         };
-        return map[status] || { label: status || 'Monitoring', color: '#8A6A1F', bg: '#FBF0D8' };
+        return map[status] || { label: status || 'Monitoring', color: '#3D4738', bg: '#F8E5B5' };
     }
 
     function toDateInputValue(value) {
@@ -172,7 +172,7 @@ const API = window.location.origin + '/api';
                 ${valueHtml}
             </div>`;
         return `
-        <div style="margin-top:1rem;padding:0.9rem 1rem;background:white;border-radius:8px;border-left:3px solid var(--primary);">
+        <div style="margin-top:1rem;padding:0.9rem 1rem;background:#FAFAF6;border-radius:8px;border-left:3px solid var(--primary);">
             <p style="font-size:0.8rem;font-weight:700;color:var(--primary);margin:0 0 .7rem;">Developmental Assessment &amp; Care Plan</p>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.9rem;">
                 ${chip('Developmental Band', `<span class="kc-badge kc-badge--${stageBadgeSafe(CP.toneForDevelopmentalBand(developmentalBand))}">${escapeHtml(CP.developmentalBandLabel(developmentalBand))}</span>`)}
@@ -292,7 +292,7 @@ const API = window.location.origin + '/api';
             const hasPhoto   = p.childProfileIcon && p.childProfileIcon.startsWith('/uploads/');
             const avatarHTML = hasPhoto
                 ? `<img src="${p.childProfileIcon}" alt="${p.childFirstName}" class="avatar ${avatarCls}" style="object-fit:cover;border:2px solid var(--primary);" onerror="this.onerror=null;this.src='/icons/profile_icon.png';">`
-                : `<div class="avatar ${avatarCls}" style="font-size:0.65rem;font-weight:700;flex-direction:column;gap:0.1rem;color:white;text-align:center;line-height:1.2;">
+                : `<div class="avatar ${avatarCls}" style="font-size:0.65rem;font-weight:700;flex-direction:column;gap:0.1rem;color:#FAFAF6;text-align:center;line-height:1.2;">
                     <span style="font-size:0.9rem;">${p.childGender==='female'?'♀':'♂'}</span>
                     <span>${genderLabel}</span>
                    </div>`;
@@ -363,7 +363,7 @@ const API = window.location.origin + '/api';
                         ${Object.entries(scores).map(([k,v]) => {
                             const color = window.KCScoring.colorForScore(v);
                             return `<div class="score-item">
-                                <div class="score-val" style="color:${color};">${v}%</div>
+                                <div class="score-val" style="color:var(--text-dark);">${v}%</div>
                                 <div class="score-lbl">${k}</div>
                                 <div class="score-band">${escapeHtml(scoreBandLabel(v))}</div>
                             </div>`;
@@ -372,18 +372,18 @@ const API = window.location.origin + '/api';
                     ${renderScoreCaption(p.overallScore)}
                     ${renderCarePlanRow(p.developmentalBand, p.prediction)}
                     ${hasDiag ? `
-                    <div style="margin-top:1rem;padding:0.8rem 1rem;background:white;border-radius:8px;border-left:3px solid var(--primary);">
+                    <div style="margin-top:1rem;padding:0.8rem 1rem;background:#FAFAF6;border-radius:8px;border-left:3px solid var(--primary);">
                         <p style="font-size:0.8rem;font-weight:600;color:var(--primary);margin-bottom:0.3rem;">Your Diagnosis:</p>
                         <p style="font-size:0.85rem;color:var(--text-dark);">${p.diagnosis}</p>
                     </div>` : ''}
                     ${nextDateDisplay ? `
-                    <div style="margin-top:1rem;padding:0.85rem 1rem;background:white;border-radius:8px;border-left:3px solid var(--primary);">
+                    <div style="margin-top:1rem;padding:0.85rem 1rem;background:#FAFAF6;border-radius:8px;border-left:3px solid var(--primary);">
                         <p style="font-size:0.8rem;font-weight:700;color:var(--status-info-fg);margin:0 0 0.3rem;">Next Assessment</p>
                         <p style="font-size:0.85rem;color:var(--text-dark);margin:0;">${nextDateDisplay}</p>
                         ${p.nextAssessmentReason ? `<p style="font-size:0.8rem;color:var(--text-light);margin:0.35rem 0 0;line-height:1.45;">${escapeHtml(p.nextAssessmentReason)}</p>` : ''}
                     </div>` : ''}
                     ${p.progressNotesCount ? `
-                    <div style="margin-top:1rem;padding:0.9rem 1rem;background:white;border-radius:8px;border-left:3px solid ${progressMeta.color};">
+                    <div style="margin-top:1rem;padding:0.9rem 1rem;background:#FAFAF6;border-radius:8px;border-left:3px solid ${progressMeta.color};">
                         <div style="display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap;">
                             <p style="font-size:0.8rem;font-weight:700;color:var(--text-dark);margin:0;">Latest Progress Update</p>
                             <span style="background:${progressMeta.bg};color:${progressMeta.color};padding:0.2rem 0.6rem;border-radius:999px;font-size:0.74rem;font-weight:700;">${progressMeta.label}</span>
@@ -755,16 +755,16 @@ const API = window.location.origin + '/api';
     // scoring threshold — the pediatrician always chooses the status explicitly.
     function checkupStatusMeta(status) {
         const map = {
-            initial_review:    { label: 'Initial Review',       color: '#6B7967', bg: '#EFEEE7' },
-            monitoring:        { label: 'Monitoring',           color: '#8A6A1F', bg: '#FBF0D8' },
-            improving:         { label: 'Improving',            color: '#15803d', bg: '#dcfce7' },
-            stable:            { label: 'Stable',                color: '#5A7560', bg: '#F3F7F3' },
-            needs_attention:   { label: 'Needs Attention',      color: '#b91c1c', bg: '#fee2e2' },
-            referred:          { label: 'Referred',             color: '#9C4F43', bg: '#F8E4E4' },
-            resolved:          { label: 'Resolved / Ruled Out', color: '#166534', bg: '#dcfce7' },
-            parent_monitoring: { label: 'Parent Monitoring',    color: '#a16207', bg: '#fef3c7' },
+            initial_review:    { label: 'Initial Review',       color: '#6B7967', bg: '#F0EFE8' },
+            monitoring:        { label: 'Monitoring',           color: '#3D4738', bg: '#F8E5B5' },
+            improving:         { label: 'Improving',            color: '#5a7560', bg: '#a8c49d' },
+            stable:            { label: 'Stable',                color: '#5A7560', bg: '#F0EFE8' },
+            needs_attention:   { label: 'Needs Attention',      color: '#3d4738', bg: '#f0dcd8' },
+            referred:          { label: 'Referred',             color: '#3D4738', bg: '#F0DCD8' },
+            resolved:          { label: 'Resolved / Ruled Out', color: '#5a7560', bg: '#a8c49d' },
+            parent_monitoring: { label: 'Parent Monitoring',    color: '#3d4738', bg: '#f8e5b5' },
         };
-        return map[status] || { label: status || 'Monitoring', color: '#8A6A1F', bg: '#FBF0D8' };
+        return map[status] || { label: status || 'Monitoring', color: '#3D4738', bg: '#F8E5B5' };
     }
 
     function checkupVisitTypeLabel(visitType) {
@@ -816,7 +816,7 @@ const API = window.location.origin + '/api';
             const linkedAssessmentLabel = c.assessmentId ? assessmentDateLabel(c.assessmentId) : null;
             const isLatest = idx === 0;
             return `
-                <div style="background:white;border:1px solid var(--border);border-left:4px solid ${meta.color};border-radius:10px;padding:1.1rem 1.3rem;">
+                <div style="background:#FAFAF6;border:1px solid var(--border);border-left:4px solid ${meta.color};border-radius:10px;padding:1.1rem 1.3rem;">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
                         <div>
                             <p style="margin:0;font-weight:700;color:var(--text-dark);">${escapeHtml(dateText)}${isLatest ? ' <span style="font-size:0.66rem;font-weight:700;color:var(--primary);background:var(--surface-tint);padding:0.15rem 0.5rem;border-radius:999px;margin-left:0.3rem;vertical-align:middle;">LATEST</span>' : ''}</p>
@@ -1205,9 +1205,9 @@ async function openNotifications() {
 
         const hasUnread = notifications.some(n => !n.isRead);
         const tools = `
-            <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:white;position:sticky;top:0;z-index:1;">
-                ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:white;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
-                <button onclick="clearAllNotifications()" style="border:1px solid #e6b0b0;background:white;color:var(--status-attention-fg);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
+            <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:#FAFAF6;position:sticky;top:0;z-index:1;">
+                ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:#FAFAF6;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
+                <button onclick="clearAllNotifications()" style="border:1px solid #e8a5a5;background:#FAFAF6;color:var(--status-attention-fg);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
             </div>`;
 
         const items = notifications.map((n) => {

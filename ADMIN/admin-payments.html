@@ -11,10 +11,10 @@
     <link rel="stylesheet" href="/css/admin-responsive.css">
     <style>
         .stat-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
-        .stat-card { background: white; border-radius: 12px; padding: 1.2rem; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .stat-card { background: var(--bg-primary); border-radius: 12px; padding: 1.2rem; text-align: center; box-shadow: 0 2px 8px rgba(61, 71, 56, 0.06); }
         .stat-card .stat-num { font-size: 2.2rem; font-weight: 700; color: var(--primary, #6B8E6F); }
-        .stat-card .stat-label { font-size: 0.82rem; color: var(--text-light, #888); margin-top: 0.2rem; }
-        .empty-msg { text-align: center; color: var(--text-light, #888); padding: 3rem 1rem; }
+        .stat-card .stat-label { font-size: 0.82rem; color: var(--text-light); margin-top: 0.2rem; }
+        .empty-msg { text-align: center; color: var(--text-light); padding: 3rem 1rem; }
     </style>
 </head>
 <body>
@@ -67,7 +67,7 @@
          queue to show. Historical e-wallet payments remain visible below via
          the method filter.
     ─────────────────────────────────────────────────────────────────────── -->
-    <div style="background:white;padding:2rem;border-radius:15px;margin-bottom:1.5rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;">
+    <div style="background:var(--bg-primary);padding:2rem;border-radius:15px;margin-bottom:1.5rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;">
         <div>
             <h1 style="margin-bottom:0.3rem;">Payment Monitoring</h1>
             <p style="color:var(--text-light);">Online (PayMongo) and Pay-at-Clinic transactions. These complete automatically — no approval needed.</p>
@@ -85,7 +85,7 @@
         <div class="stat-card"><div class="stat-num" id="monClinic">—</div><div class="stat-label">Pay at Clinic</div></div>
     </div>
 
-    <div style="background:white;border-radius:15px;padding:1.25rem 1.5rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+    <div style="background:var(--bg-primary);border-radius:15px;padding:1.25rem 1.5rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);">
         <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-bottom:1rem;">
             <select id="monMethod" class="form-input" style="max-width:200px;" onchange="loadPaymentMonitor()">
                 <option value="">All methods</option>
@@ -190,10 +190,10 @@ function monMethodLabel(method) {
 }
 
 function monStatusColor(status) {
-    if (status === 'Paid') return '#3D5A40';
-    if (['Failed', 'Expired', 'Cancelled'].includes(status)) return '#8C3A2B';
+    if (status === 'Paid') return '#5A7560';
+    if (['Failed', 'Expired', 'Cancelled'].includes(status)) return '#3D4738';
     if (status === 'Refunded') return '#6B7967';
-    return '#8A6D1F';
+    return '#3D4738';
 }
 
 async function loadPaymentMonitor() {
@@ -226,7 +226,7 @@ async function loadPaymentMonitor() {
         }
 
         body.innerHTML = rows.map((p) => `
-            <tr style="border-bottom:1px solid var(--border,#EEE);">
+            <tr style="border-bottom:1px solid var(--border,#DDD9CC);">
                 <td style="padding:0.6rem 0.5rem;font-family:monospace;font-size:0.86rem;">${escapeHtml(p.paymentRef || '—')}</td>
                 <td style="padding:0.6rem 0.5rem;font-family:monospace;font-size:0.86rem;">${escapeHtml(p.receiptNumber || '—')}</td>
                 <td style="padding:0.6rem 0.5rem;">${p.appointmentId != null ? `#${escapeHtml(String(p.appointmentId))}` : '—'}</td>
@@ -241,7 +241,7 @@ async function loadPaymentMonitor() {
                 <td style="padding:0.6rem 0.5rem;white-space:nowrap;">${(p.paymentRef || p.receiptNumber) ? `<button class="btn btn-secondary" style="padding:0.3rem 0.7rem;font-size:0.78rem;" onclick="viewReceipt('${escapeHtml(p.paymentRef || p.receiptNumber)}')">Receipt</button>` : ''}</td>
             </tr>`).join('');
     } catch (err) {
-        body.innerHTML = `<tr><td colspan="12" style="padding:1rem 0.5rem;color:#8C3A2B;">${escapeHtml(err.message || 'Could not load payments.')}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="12" style="padding:1rem 0.5rem;color:#3D4738;">${escapeHtml(err.message || 'Could not load payments.')}</td></tr>`;
     }
 }
 
@@ -258,7 +258,7 @@ async function viewReceipt(paymentRef) {
         const data = await apiFetch(`/payments/ref/${encodeURIComponent(paymentRef)}/receipt`);
         body.innerHTML = renderReceipt(data.receipt || {});
     } catch (err) {
-        body.innerHTML = `<p style="color:#8C3A2B;">${escapeHtml(err.message || 'Could not load receipt.')}</p>`;
+        body.innerHTML = `<p style="color:#3D4738;">${escapeHtml(err.message || 'Could not load receipt.')}</p>`;
     }
 }
 

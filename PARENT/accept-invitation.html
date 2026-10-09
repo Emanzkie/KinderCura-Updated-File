@@ -18,7 +18,7 @@
     .ai-auth-gate p  { color: var(--text-light); max-width: 460px; }
     .ai-auth-buttons { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; margin-top: .5rem; }
     .ai-detail-card {
-      background: white; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,.1);
+      background: var(--bg-primary); border-radius: 15px; box-shadow: 0 4px 20px rgba(61, 71, 56, .1);
       padding: 28px 32px; margin-bottom: 1.5rem;
     }
     .ai-child-grid { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
@@ -35,11 +35,11 @@
       border-radius: 10px; padding: 14px 18px; margin-bottom: 1.5rem;
       font-weight: 600; font-size: .95rem; display: flex; align-items: center; gap: 8px;
     }
-    .ai-status.expired   { background:#F4D89F; border-left:4px solid #D4897A; color: var(--text-dark); }
-    .ai-status.used      { background:#c8e6c9; border-left:4px solid #388e3c; color: var(--text-dark); }
-    .ai-status.invalid   { background:#ffcdd2; border-left:4px solid #c62828; color: var(--text-dark); }
-    .ai-status.error     { background:#F4D89F; border-left:4px solid #D4897A; color: var(--text-dark); }
-    .ai-status.no_token  { background:#DDD9CC; border-left:4px solid #9e9e9e; color: var(--text-dark); }
+    .ai-status.expired   { background:#F4D89F; border-left:4px solid var(--accent-red); color: var(--text-dark); }
+    .ai-status.used      { background:var(--success); border-left:4px solid var(--primary); color: var(--text-dark); }
+    .ai-status.invalid   { background:var(--bg-tertiary); border-left:4px solid var(--accent-red); color: var(--text-dark); }
+    .ai-status.error     { background:#F4D89F; border-left:4px solid var(--accent-red); color: var(--text-dark); }
+    .ai-status.no_token  { background:#DDD9CC; border-left:4px solid var(--border); color: var(--text-dark); }
     .ai-inviter-card { display:flex; align-items:center; gap:14px; padding:14px;
                        background:var(--bg-primary); border:2px solid var(--border); border-radius:10px; margin-top:8px; }
     .ai-inviter-name   { font-weight:700; color:var(--text-dark); font-size:1rem; }
@@ -140,7 +140,7 @@ function renderToasts() {
                   padding:12px 16px;border-radius:10px;margin-bottom:8px;
                   background:${t.type==='error'?'#E8A5A5':'#A8C49D'};
                   color:#3D4738;font-weight:600;font-size:.9rem;
-                  box-shadow:0 4px 18px rgba(0,0,0,.18);cursor:pointer"
+                  box-shadow:0 4px 18px rgba(61, 71, 56, .18);cursor:pointer"
           onclick="this.remove()">
       <span>${t.type==='error'?'⚠️':'✅'}</span><span>${t.msg}</span>
     </div>`
@@ -427,7 +427,7 @@ function AcceptInvitation() {
         <div className="ai-inviter-card" style={{display:'flex',alignItems:'center',gap:'14px',padding:'14px',background:'var(--bg-primary)',border:'2px solid var(--border)',borderRadius:'10px',marginTop:'8px'}}>
           {ph
             ? <img src={ph} alt="" style={{width:'48px',height:'48px',objectFit:'cover',borderRadius:'50%'}}/>
-            : <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:'48px',height:'48px',borderRadius:'50%',background:'#6B8E6F',color:'#fff',fontWeight:'700',fontSize:'1.2rem'}}>{(ivN||'?')[0].toUpperCase()}</span>
+            : <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:'48px',height:'48px',borderRadius:'50%',background:'#6B8E6F',color:'#fafaf6',fontWeight:'700',fontSize:'1.2rem'}}>{(ivN||'?')[0].toUpperCase()}</span>
           }
           <div style={{marginLeft:'14px'}}>
             <div className="ai-inviter-name" style={{fontWeight:'700',color:'var(--text-dark)',fontSize:'1rem'}}>{ivN}</div>
@@ -483,12 +483,12 @@ function AcceptInvitation() {
             {busy ? 'Processing\u2026' : 'Accept'}
           </button>
           <button className="btn btn-secondary" onClick={handleDecline}
-                  style={{borderColor:'var(--accent-red,#D4897A)',color:'var(--accent-red,#D4897A)'}}>
+                  style={{borderColor:'var(--accent-red,#E8A5A5)',color:'var(--accent-red,#3D4738)'}}>
             Decline
           </button>
         </div>
 
-        <div style={{marginTop:'1rem',padding:'12px 16px',background:'white',borderRadius:'10px',border:'1px solid var(--border)',fontSize:'.82rem',color:'var(--text-light)',lineHeight:1.55}}>
+        <div style={{marginTop:'1rem',padding:'12px 16px',background:'#FAFAF6',borderRadius:'10px',border:'1px solid var(--border)',fontSize:'.82rem',color:'var(--text-light)',lineHeight:1.55}}>
           This email was sent directly by <strong>{ivN}</strong>. For support, contact <a href="mailto:support@kindercura.com" style={{color:'var(--primary)'}}>support@kindercura.com</a>.
         </div>
       </div>

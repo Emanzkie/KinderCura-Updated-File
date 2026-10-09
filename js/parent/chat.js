@@ -182,7 +182,7 @@ function renderMessages(msgs) {
     if (m.senderPhoto && m.senderPhoto.startsWith('/uploads/')) {
       avInner = `<img src="${m.senderPhoto}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">`;
     } else {
-      avInner = `<span style="display:flex;width:32px;height:32px;border-radius:50%;background:var(--primary);color:white;font-weight:700;font-size:.7rem;align-items:center;justify-content:center;">${ini}</span>`;
+      avInner = `<span style="display:flex;width:32px;height:32px;border-radius:50%;background:var(--primary);color:#FAFAF6;font-weight:700;font-size:.7rem;align-items:center;justify-content:center;">${ini}</span>`;
     }
 
     /* Show attached video if message has one */

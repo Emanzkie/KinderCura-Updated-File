@@ -8,10 +8,10 @@
 }
 
 .stat-card {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     padding: 1.5rem;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
 }
 
 .stat-label {
@@ -27,7 +27,7 @@
 }
 
 .stat-num.red {
-    color: var(--accent-red);
+    color: var(--text-dark);
 }
 
 .stat-sub {
@@ -49,10 +49,10 @@
 }
 
 .panel {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     padding: 2rem;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
 }
 
 .panel h2 {
@@ -89,7 +89,7 @@
 
 .badge-pending {
     background: var(--accent-red);
-    color: white;
+    color: var(--text-dark);
     padding: 0.25rem 0.7rem;
     border-radius: 20px;
     font-size: 0.75rem;
@@ -98,7 +98,7 @@
 }
 
 .scores-row {
-    background: white;
+    background: var(--bg-primary);
     padding: 0.8rem;
     border-radius: 8px;
     margin: 0.8rem 0;
@@ -109,7 +109,7 @@
 
 .btn-approve {
     background: var(--primary);
-    color: white;
+    color: var(--bg-primary);
     border: none;
     padding: 0.6rem 1.2rem;
     border-radius: 8px;
@@ -120,8 +120,8 @@
 }
 
 .btn-reject {
-    background: white;
-    color: var(--accent-red);
+    background: var(--bg-primary);
+    color: var(--text-dark);
     border: 2px solid var(--accent-red);
     padding: 0.6rem 1.2rem;
     border-radius: 8px;
@@ -136,7 +136,7 @@
 }
 
 .btn-reject:hover {
-    background: #fde8e8;
+    background: var(--bg-tertiary);
 }
 
 .activity-item {
@@ -192,7 +192,7 @@
 /* Neutral middle action: clearly not the green confirm and not the red
    decline, built from the same tokens as the two buttons beside it. */
 .btn-reschedule {
-    background: var(--surface, white);
+    background: var(--surface, var(--bg-primary));
     color: var(--text-dark);
     border: 2px solid var(--border);
     padding: 0.6rem 1.2rem;
@@ -205,7 +205,7 @@
 
 .btn-reschedule:hover {
     border-color: var(--primary-light);
-    background: var(--surface-tint, #f3f7f3);
+    background: var(--surface-tint, var(--bg-secondary));
 }
 
 /* ===========================================================================
@@ -217,7 +217,7 @@
 .reschedule-modal {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
+    background: rgba(61, 71, 56, 0.45);
     display: none;
     align-items: center;
     justify-content: center;
@@ -226,7 +226,7 @@
 }
 
 .reschedule-content {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card, 12px);
     width: 100%;
     max-width: 460px;
@@ -234,7 +234,7 @@
     max-height: calc(100vh - 2rem);
     display: flex;
     flex-direction: column;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18);
+    box-shadow: 0 10px 40px rgba(61, 71, 56, 0.18);
 }
 
 .reschedule-header {
@@ -270,7 +270,7 @@
 .reschedule-summary {
     margin: 0 0 1rem;
     padding: 0.8rem;
-    background: var(--bg-primary, #f7f7f5);
+    background: var(--bg-primary);
     border-radius: 8px;
     font-size: 0.9rem;
 }
@@ -314,7 +314,7 @@
     margin-bottom: 0.9rem;
     border: 1.5px solid var(--border);
     border-radius: 8px;
-    background: white;
+    background: var(--bg-primary);
     color: var(--text-dark);
 }
 
@@ -342,8 +342,8 @@
     margin: 0;
     padding: 0.6rem 0.7rem;
     border-radius: 8px;
-    background: #fdecec;
-    color: var(--accent-red, #b4454a);
+    background: var(--bg-tertiary);
+    color: var(--text-dark);
     font-size: 0.85rem;
     font-weight: 600;
 }
@@ -442,7 +442,7 @@
 }
 
 .score-guide-ranges span {
-    background: white;
+    background: var(--bg-primary);
     border: 1px solid var(--border);
     border-radius: var(--radius-pill, 999px);
     padding: 0.1rem 0.55rem;

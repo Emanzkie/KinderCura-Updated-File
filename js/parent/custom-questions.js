@@ -68,8 +68,8 @@ function flash(msg, ok = true) {
   el.style.display = 'block';
   el.style.padding = '0.9rem 1rem';
   el.style.borderRadius = '10px';
-  el.style.background = ok ? '#dff3e7' : '#fde8e8';
-  el.style.color = ok ? '#2d6a4f' : '#c0392b';
+  el.style.background = ok ? '#a8c49d' : '#f0dcd8';
+  el.style.color = '#3d4738';
   el.textContent = msg;
   setTimeout(() => { el.style.display = 'none'; }, 3200);
 }
@@ -260,7 +260,7 @@ function renderPendingStandalone(a) {
 function renderAnsweredSet(group) {
   const answeredAt = group.questions.find(hasAnswer)?.answeredAt;
   return `
-    <div class="page-card" style="border-left:4px solid #2d6a4f;">
+    <div class="page-card" style="border-left:4px solid #6b8e6f;">
       <div style="display:flex;justify-content:space-between;align-items:start;gap:1rem;margin-bottom:1rem;">
         <div style="flex:1;">
           <h4 style="margin:0 0 .25rem;font-size:1rem;color:var(--status-positive-fg);">${esc(group.setTitle || `Question Set (${group.totalCount})`)}</h4>

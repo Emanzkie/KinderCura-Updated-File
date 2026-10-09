@@ -112,9 +112,9 @@
 
                 const hasUnread = notifications.some(n => !n.isRead);
                 const tools = `
-                    <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:white;position:sticky;top:0;z-index:1;">
-                        ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:white;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
-                        <button onclick="clearAllNotifications()" style="border:1px solid #e6b0b0;background:white;color:var(--status-attention-fg);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
+                    <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:#FAFAF6;position:sticky;top:0;z-index:1;">
+                        ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:#FAFAF6;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
+                        <button onclick="clearAllNotifications()" style="border:1px solid #e8a5a5;background:#FAFAF6;color:var(--status-attention-fg);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
                     </div>`;
 
                 const items = notifications.map((n) => {
@@ -173,23 +173,23 @@
         // Builds and injects the HTML rows for the main Users table.
         // Status badge colors: active = brand green (--success), suspended = warm red (--accent-red).
         function renderUsers(users) {
-            const statusColor = { active:'var(--success)', pending:'#f39c12', suspended:'var(--accent-red)' };
+            const statusColor = { active:'var(--success)', pending:'var(--accent)', suspended:'var(--accent-red)' };
             document.getElementById('usersList').innerHTML = users.length
                 ? users.map(u => `
                     <tr style="border-bottom:1px solid var(--border);">
                         <td style="padding:1rem;font-weight:600;">${u.firstName} ${u.lastName}</td>
                         <td style="padding:1rem;color:var(--text-light);">${u.email}</td>
                         <td style="padding:1rem;"><span style="background:var(--bg-primary);padding:0.3rem 0.8rem;border-radius:4px;font-size:0.85rem;text-transform:capitalize;">${u.role}</span></td>
-                        <td style="padding:1rem;"><span style="background:${statusColor[u.status]||'gray'};color:white;padding:0.3rem 0.8rem;border-radius:4px;font-size:0.85rem;text-transform:capitalize;">${u.status}</span></td>
+                        <td style="padding:1rem;"><span style="background:${statusColor[u.status]||'var(--border)'};color:#3D4738;padding:0.3rem 0.8rem;border-radius:4px;font-size:0.85rem;text-transform:capitalize;">${u.status}</span></td>
                         <td style="padding:1rem;color:var(--text-light);">${u.createdAt}</td>
                         <td style="padding:1rem;text-align:center;">
                             ${u.status === 'pending' ? `
-                                <button onclick="approveUser('${u.id}')" style="padding:0.4rem 0.8rem;background:var(--success);color:white;border:none;border-radius:4px;cursor:pointer;margin-right:0.3rem;">Approve</button>
-                                <button onclick="rejectUser('${u.id}')" style="padding:0.4rem 0.8rem;background:var(--accent-red);color:white;border:none;border-radius:4px;cursor:pointer;">Reject</button>
+                                <button onclick="approveUser('${u.id}')" style="padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;margin-right:0.3rem;">Approve</button>
+                                <button onclick="rejectUser('${u.id}')" style="padding:0.4rem 0.8rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Reject</button>
                             ` : u.status === 'active' ? `
-                                <button onclick="suspendUser('${u.id}')" style="padding:0.4rem 0.8rem;background:var(--accent-red);color:white;border:none;border-radius:4px;cursor:pointer;">Suspend</button>
+                                <button onclick="suspendUser('${u.id}')" style="padding:0.4rem 0.8rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Suspend</button>
                             ` : `
-                                <button onclick="approveUser('${u.id}')" style="padding:0.4rem 0.8rem;background:var(--success);color:white;border:none;border-radius:4px;cursor:pointer;">Re-activate</button>
+                                <button onclick="approveUser('${u.id}')" style="padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Re-activate</button>
                             `}
                         </td>
                     </tr>`).join('')
@@ -204,13 +204,13 @@
             badge.textContent = pending.length > 0 ? pending.length : '';
             document.getElementById('pendingList').innerHTML = pending.length
                 ? pending.map(u => `
-                    <div style="background:var(--bg-primary);padding:1.5rem;border-radius:10px;border-left:4px solid #f39c12;">
+                    <div style="background:var(--bg-primary);padding:1.5rem;border-radius:10px;border-left:4px solid #f4d89f;">
                         <p style="font-weight:600;">${u.firstName} ${u.lastName}</p>
                         <p style="color:var(--text-light);font-size:0.85rem;margin:0.3rem 0;">${u.email}</p>
                         <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:1rem;text-transform:capitalize;">Role: ${u.role}</p>
                         <div style="display:flex;gap:0.5rem;">
-                            <button onclick="approveUser('${u.id}')" style="flex:1;padding:0.5rem;background:var(--success);color:white;border:none;border-radius:4px;cursor:pointer;">Approve</button>
-                            <button onclick="rejectUser('${u.id}')" style="flex:1;padding:0.5rem;background:var(--accent-red);color:white;border:none;border-radius:4px;cursor:pointer;">Reject</button>
+                            <button onclick="approveUser('${u.id}')" style="flex:1;padding:0.5rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Approve</button>
+                            <button onclick="rejectUser('${u.id}')" style="flex:1;padding:0.5rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Reject</button>
                         </div>
                     </div>`).join('')
                 : '<p style="color:var(--text-light);text-align:center;grid-column:1/-1;">No pending approvals</p>';
@@ -267,7 +267,7 @@
                                     ${pediaOptions.map(p => `<option value="${p.id}" ${s.linkedPediatricianId === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
                                 </select>
                                 <!-- Update Link button: uses KinderCura primary green (#6B8E6F) instead of off-brand teal -->
-                                <button onclick="linkSecretary('${s.id}')" style="padding:0.4rem 0.8rem;background:var(--primary);color:white;border:none;border-radius:4px;cursor:pointer;font-size:0.85rem;">Update Link</button>
+                                <button onclick="linkSecretary('${s.id}')" style="padding:0.4rem 0.8rem;background:var(--primary);color:#FAFAF6;border:none;border-radius:4px;cursor:pointer;font-size:0.85rem;">Update Link</button>
                             </div>
                         </div>`).join('')
                     : '<p style="color:var(--text-light);text-align:center;">No assistant/secretary accounts created yet.</p>';

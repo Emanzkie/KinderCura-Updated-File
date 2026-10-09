@@ -151,7 +151,7 @@ function bandLabel(key) {
 function bandColor(key) {
     const hit = (vocab?.bands || []).find((b) => b.key === key);
     if (hit) return hit.color;
-    return window.KCScoring ? window.KCScoring.colorForBand(key) : '#b6bcc2';
+    return window.KCScoring ? window.KCScoring.colorForBand(key) : '#DDD9CC';
 }
 
 function ageBandLabel(key) {
@@ -161,7 +161,7 @@ function ageBandLabel(key) {
 }
 
 function bandChip(bandKey) {
-    if (!bandKey) return '<span class="band-chip" style="background:#b6bcc2;">Not scored</span>';
+    if (!bandKey) return '<span class="band-chip" style="background:#ddd9cc;">Not scored</span>';
     return `<span class="band-chip" style="background:${escapeHtml(bandColor(bandKey))};">${escapeHtml(bandLabel(bandKey))}</span>`;
 }
 
@@ -514,9 +514,9 @@ function renderUsers(data) {
             labels: roleData.map((r) => roleLabel(r.role)),
             datasets: [{
                 data: roleData.map((r) => count(r.count)),
-                // KinderCura palette only: greens, yellow, pink, red-brown,
-                // light brown, gray (the former lavender was off-palette).
-                backgroundColor: ['#6B8E6F', '#8BA98D', '#F4D89F', '#E8A5A5', '#A8C49D', '#D4897A', '#C9A27E'],
+                // KinderCura palette only: seven distinct palette colours,
+                // one per slice (greens, yellow, pink, pink-cream).
+                backgroundColor: ['#6B8E6F', '#8BA98D', '#F4D89F', '#E8A5A5', '#A8C49D', '#5A7560', '#F0DCD8'],
                 borderWidth: 0,
             }],
         },
@@ -651,7 +651,7 @@ function renderChildren(data) {
             labels: genderKeys.map(genderLabel),
             datasets: [{
                 data: genderKeys.map((k) => count(byGender[k])),
-                backgroundColor: ['#6B8E6F', '#E8A5A5', '#F4D89F', '#C8C8C0'],
+                backgroundColor: ['#6B8E6F', '#E8A5A5', '#F4D89F', '#DDD9CC'],
                 borderWidth: 0,
             }],
         },
@@ -897,7 +897,7 @@ function renderScreenings(data) {
             labels: ['With a scored result', 'Without a scored result'],
             datasets: [{
                 data: [withResult, withoutResult],
-                backgroundColor: ['#6B8E6F', '#D4897A'],
+                backgroundColor: ['#6B8E6F', '#E8A5A5'],
                 borderWidth: 0,
             }],
         },

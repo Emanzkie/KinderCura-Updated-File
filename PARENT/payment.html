@@ -17,13 +17,13 @@
             padding: 1.2rem 1.4rem;
             margin-bottom: 1.5rem;
         }
-        .appt-summary-card p { margin: 0.25rem 0; font-size: 0.93rem; color: var(--text-dark, #333); }
+        .appt-summary-card p { margin: 0.25rem 0; font-size: 0.93rem; color: var(--text-dark); }
         .appt-summary-card .fee { font-size: 1.3rem; font-weight: 700; color: var(--primary, #6B8E6F); margin-top: 0.5rem; }
         .payment-options { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
         @media (max-width: 520px) { .payment-options { grid-template-columns: 1fr; } }
         .payment-option-card {
-            background: white;
-            border: 2px solid #e0e0e0;
+            background: var(--bg-primary);
+            border: 2px solid var(--border);
             border-radius: 12px;
             padding: 1.5rem 1rem;
             text-align: center;
@@ -32,20 +32,20 @@
         }
         .payment-option-card:hover { border-color: var(--primary, #6B8E6F); box-shadow: 0 4px 16px rgba(107,142,111,0.15); }
         .payment-option-card .option-icon { font-size: 2.4rem; margin-bottom: 0.6rem; }
-        .payment-option-card h3 { margin: 0 0 0.4rem; color: var(--text-dark, #333); font-size: 1rem; }
-        .payment-option-card p { margin: 0; font-size: 0.82rem; color: var(--text-light, #888); }
+        .payment-option-card h3 { margin: 0 0 0.4rem; color: var(--text-dark); font-size: 1rem; }
+        .payment-option-card p { margin: 0; font-size: 0.82rem; color: var(--text-light); }
         .payment-option-card .btn { margin-top: 1rem; width: 100%; }
         .panel { display: none; }
         .panel.active { display: block; }
         .success-banner {
             background:var(--status-positive-bg);
-            border: 1px solid #a5d6a7;
+            border: 1px solid var(--success);
             border-radius: 10px;
             padding: 1.2rem 1.4rem;
             margin-bottom: 1rem;
         }
         .success-banner h3 { color:var(--status-positive-fg); margin: 0 0 0.4rem; }
-        .success-banner p { margin: 0.2rem 0; color: #388e3c; font-size: 0.9rem; }
+        .success-banner p { margin: 0.2rem 0; color: var(--text-dark); font-size: 0.9rem; }
         .status-badge {
             display: inline-block;
             padding: 0.35rem 0.9rem;
@@ -59,26 +59,26 @@
         .status-badge.verified { background:var(--status-positive-bg); color:var(--status-positive-fg); }
         .back-link { display: inline-block; margin-top: 1rem; color: var(--primary, #6B8E6F); text-decoration: none; font-size: 0.9rem; }
         .back-link:hover { text-decoration: underline; }
-        .loading-placeholder { text-align: center; color: var(--text-light, #888); padding: 2rem 0; }
+        .loading-placeholder { text-align: center; color: var(--text-light); padding: 2rem 0; }
 
         /* Official receipt card — shared shape with the admin/appointments
            receipt views, expanded into a full printable card here since this
            is the page a parent lands on right after paying. */
         .official-receipt {
-            background: #fff;
-            border: 1px solid var(--border, #e0e0e0);
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
             border-radius: 12px;
             padding: 1.4rem 1.5rem;
             margin: 1rem 0;
         }
         .official-receipt__head {
             text-align: center;
-            border-bottom: 2px dashed var(--border, #e0e0e0);
+            border-bottom: 2px dashed var(--border);
             padding-bottom: 0.9rem;
             margin-bottom: 1rem;
         }
         .official-receipt__head h2 { margin: 0; color: var(--primary, #6B8E6F); font-size: 1.15rem; }
-        .official-receipt__head p { margin: 0.2rem 0 0; font-size: 0.85rem; color: var(--text-light, #888); }
+        .official-receipt__head p { margin: 0.2rem 0 0; font-size: 0.85rem; color: var(--text-light); }
         .official-receipt .receipt-ids {
             display: flex;
             justify-content: space-between;
@@ -99,8 +99,8 @@
         }
         @media (max-width: 480px) { .official-receipt dl.receipt-fields { grid-template-columns: 1fr; } }
         .official-receipt dl.receipt-fields div { display: flex; flex-direction: column; }
-        .official-receipt dl.receipt-fields dt { font-size: 0.76rem; color: var(--text-light, #888); text-transform: uppercase; letter-spacing: 0.03em; }
-        .official-receipt dl.receipt-fields dd { margin: 0.1rem 0 0; font-size: 0.95rem; font-weight: 600; color: var(--text-dark, #333); }
+        .official-receipt dl.receipt-fields dt { font-size: 0.76rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.03em; }
+        .official-receipt dl.receipt-fields dd { margin: 0.1rem 0 0; font-size: 0.95rem; font-weight: 600; color: var(--text-dark); }
         .official-receipt .receipt-amount-row {
             display: flex;
             justify-content: space-between;
@@ -111,7 +111,7 @@
             margin-bottom: 0.9rem;
         }
         .official-receipt .receipt-amount-row .amt { font-size: 1.4rem; font-weight: 700; color: var(--status-positive-fg); }
-        .official-receipt .receipt-emailed { font-size: 0.85rem; color: var(--text-light, #888); margin: 0 0 0.2rem; }
+        .official-receipt .receipt-emailed { font-size: 0.85rem; color: var(--text-light); margin: 0 0 0.2rem; }
         .receipt-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
         @media print {
             .top-nav, .payment-options, .receipt-actions, #errorMsg, .notification-modal { display: none !important; }
@@ -163,12 +163,12 @@
 
 <div class="dashboard-container">
     <div class="payment-page-wrap">
-        <div class="parent-card" style="background:white;border-radius:15px;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+        <div class="parent-card" style="background:var(--bg-primary);border-radius:15px;margin-bottom:2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);">
             <h1 style="margin-bottom:0.3rem;">Select Payment Method</h1>
             <p style="color:var(--text-light);">Choose how you would like to pay for your appointment</p>
         </div>
 
-        <div class="parent-card" style="background:white;border-radius:15px;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+        <div class="parent-card" style="background:var(--bg-primary);border-radius:15px;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);">
 
             <!-- Appointment summary -->
             <div id="apptSummary" class="appt-summary-card">
@@ -200,7 +200,7 @@
                     The secretary will scan this code, confirm your details, and accept your payment.
                 </p>
                 <div style="text-align:center;padding:1.25rem;background:var(--surface-muted,#FAFAF6);border-radius:12px;">
-                    <img id="clinicQrImage" alt="Payment QR code" style="width:260px;max-width:100%;height:auto;border-radius:8px;background:#fff;padding:8px;">
+                    <img id="clinicQrImage" alt="Payment QR code" style="width:260px;max-width:100%;height:auto;border-radius:8px;background:var(--bg-primary);padding:8px;">
                     <p style="margin-top:0.9rem;font-family:monospace;font-size:1.05rem;font-weight:700;letter-spacing:0.04em;" id="clinicQrRef">—</p>
                     <p style="color:var(--text-light);font-size:0.86rem;margin-top:0.25rem;">Payment reference</p>
                     <p style="margin-top:0.9rem;font-size:1.3rem;font-weight:700;" id="clinicQrAmount">—</p>

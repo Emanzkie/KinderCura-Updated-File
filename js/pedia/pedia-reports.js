@@ -115,7 +115,7 @@ function bandKeys() {
 }
 
 function bandChip(bandKey) {
-    if (!bandKey) return '<span class="band-chip" style="background:#b6bcc2;">Not scored</span>';
+    if (!bandKey) return '<span class="band-chip" style="background:#ddd9cc;">Not scored</span>';
     const color = window.KCScoring.colorForBand(bandKey);
     const label = window.KCScoring.clinicalLabel(bandKey);
     return `<span class="band-chip" style="background:${escapeHtml(color)};">${escapeHtml(label)}</span>`;
@@ -369,7 +369,7 @@ function renderClassification(overview) {
         return `
             <div class="risk-item">
                 <p class="risk-count" style="color:${escapeHtml(
-                    n > 0 ? window.KCScoring.colorForBand(window.KCScoring.BAND.DELAYED) : '#8a949c')};">${n}</p>
+                    n > 0 ? '#3D4738' : '#6B7967')};">${n}</p>
                 <p class="risk-label">${escapeHtml(d.label)}</p>
             </div>`;
     }).join('');
@@ -476,7 +476,7 @@ function renderClassification(overview) {
                 ${riskItems}
                 <div class="risk-item">
                     <p class="risk-count" style="color:${escapeHtml(
-                        anyDomain > 0 ? window.KCScoring.colorForBand(window.KCScoring.BAND.DELAYED) : '#8a949c')};">${anyDomain}</p>
+                        anyDomain > 0 ? '#3D4738' : '#6B7967')};">${anyDomain}</p>
                     <p class="risk-label"><strong>Any domain</strong></p>
                 </div>
             </div>

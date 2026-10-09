@@ -260,7 +260,7 @@ requireAuth();
                         </label>
                     `).join('')}
                 </div>` : `
-                <textarea class="assessment-question-box" style="width:100%;min-height:110px;padding:0.9rem;border-radius:10px;border:1px solid var(--border, #ddd);font:inherit;"
+                <textarea class="assessment-question-box" style="width:100%;min-height:110px;padding:0.9rem;border-radius:10px;border:1px solid var(--border, #ddd9cc);font:inherit;"
                     placeholder="Type your answer here..."
                     oninput="recordAnswer(this.value.trim())">${esc(currentAnswer)}</textarea>`;
 

@@ -30,7 +30,7 @@ requireAuth();
                 tab.style.color = 'var(--primary)';
             });
             event.currentTarget.style.background = 'var(--primary)';
-            event.currentTarget.style.color = 'white';
+            event.currentTarget.style.color = '#FAFAF6';
             // Auto-load staff list when the Staff Access tab is first opened.
             if (tabName === 'staff') loadStaffList();
         }
@@ -255,9 +255,9 @@ requireAuth();
                 }
                 const hasUnread = notifications.some(n => !n.isRead);
                 const tools = `
-                    <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:white;position:sticky;top:0;z-index:1;">
-                        ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:white;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
-                        <button onclick="clearAllNotifications()" style="border:1px solid #e6b0b0;background:white;color:var(--status-attention-fg);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
+                    <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:#FAFAF6;position:sticky;top:0;z-index:1;">
+                        ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:#FAFAF6;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
+                        <button onclick="clearAllNotifications()" style="border:1px solid #e8a5a5;background:#FAFAF6;color:var(--status-attention-fg);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
                     </div>`;
                 const items = notifications.map((n) => {
                     const dest = notificationDestination(n);
@@ -352,13 +352,13 @@ requireAuth();
                         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:0.8rem;">
                             <div>
                                 <p style="font-weight:700;font-size:1rem;margin:0 0 0.2rem;">${escapeHtml(s.firstName)} ${escapeHtml(s.lastName)}
-                                    <span style="margin-left:0.5rem;padding:0.2rem 0.6rem;border-radius:20px;font-size:0.72rem;font-weight:700;color:white;background:${s.status === 'active' ? '#6B8E6F' : '#D4897A'};">${s.status === 'active' ? 'Active' : 'Inactive'}</span>
+                                    <span style="margin-left:0.5rem;padding:0.2rem 0.6rem;border-radius:20px;font-size:0.72rem;font-weight:700;color:${s.status === 'active' ? '#FAFAF6' : '#3D4738'};background:${s.status === 'active' ? '#6B8E6F' : '#E8A5A5'};">${s.status === 'active' ? 'Active' : 'Inactive'}</span>
                                 </p>
                                 <p style="font-size:0.85rem;color:var(--text-light);margin:0;">${escapeHtml(s.email)} &nbsp;|&nbsp; @${escapeHtml(s.username)}</p>
                             </div>
                             <button onclick="toggleSecretaryStatus('${s.id}', '${s.status}')"
                                 style="padding:0.45rem 1rem;border-radius:8px;border:none;cursor:pointer;font-size:0.82rem;font-weight:600;
-                                background:${s.status === 'active' ? '#F0EFE8' : '#EDF3EE'};
+                                background:#F0EFE8;
                                 color:${s.status === 'active' ? '#5A7560' : '#5A7560'};">        
                                 ${s.status === 'active' ? '<img src="/icons/deactivate_pedia.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Deactivate' : '▶ Reactivate'}
                             </button>

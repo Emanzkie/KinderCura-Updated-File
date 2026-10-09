@@ -107,9 +107,9 @@ requireAuth();
 
                 const hasUnread = notifications.some(n => !n.isRead);
                 const tools = `
-                    <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:white;position:sticky;top:0;z-index:1;">
-                        ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:white;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
-                        <button onclick="clearAllNotifications()" style="border:1px solid #e6b0b0;background:white;color:var(--status-attention-fg);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
+                    <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:#FAFAF6;position:sticky;top:0;z-index:1;">
+                        ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:#FAFAF6;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
+                        <button onclick="clearAllNotifications()" style="border:1px solid #e8a5a5;background:#FAFAF6;color:var(--status-attention-fg);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
                     </div>`;
 
                 const items = notifications.map((n) => {
@@ -294,7 +294,7 @@ requireAuth();
                     reconciliationEl.textContent = matches
                         ? `Total: ${fmtCountR(totalRoles)} — matches Total Users above. Share = accounts with that role ÷ all ${fmtCountR(totalRoles)} accounts (every status).`
                         : `Total: ${fmtCountR(totalRoles)} vs Total Users ${fmtCountR(dashboard.totalUsers ?? 0)} — these should match; investigate if they do not.`;
-                    reconciliationEl.style.color = matches ? '' : 'var(--status-attention-fg, #c0392b)';
+                    reconciliationEl.style.color = matches ? '' : 'var(--status-attention-fg, #3D4738)';
                 }
 
                 const activities = dashboard.recentActivity || [];
@@ -707,7 +707,7 @@ requireAuth();
                     ${follow ? `<p class="muted" style="margin-top:0.75rem;">Scheduled follow-up on file: ${fmtDateShortPR(follow.nextAssessmentDate)}${follow.reason ? ' — ' + escapeHtml(follow.reason) : ''}</p>` : ''}
                 `;
             } catch (err) {
-                body.innerHTML = `<p style="color:var(--status-attention-fg, #c0392b);">Could not load this patient's report: ${escapeHtml(err.message)}</p>`;
+                body.innerHTML = `<p style="color:var(--status-attention-fg, #3d4738);">Could not load this patient's report: ${escapeHtml(err.message)}</p>`;
             }
         }
 
@@ -739,7 +739,7 @@ requireAuth();
                     </tr>`).join('');
                 tbody.innerHTML = rows || '<tr><td colspan="4" class="muted">No demo data recorded.</td></tr>';
             } catch (err) {
-                tbody.innerHTML = `<tr><td colspan="4" style="color:var(--status-attention-fg, #c0392b);">Could not load demo data volume: ${escapeHtml(err.message)}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="4" style="color:var(--status-attention-fg, #3d4738);">Could not load demo data volume: ${escapeHtml(err.message)}</td></tr>`;
             }
         }
 
@@ -921,8 +921,8 @@ requireAuth();
                 const dxBody = document.getElementById('diagnosisModeBody');
                 const ldScope = document.getElementById('lateDevelopmentScopeNote');
                 const dxScope = document.getElementById('diagnosisScopeNote');
-                if (ldBody) ldBody.innerHTML = `<p style="color:var(--status-attention-fg, #c0392b);">Could not load demographic profile: ${escapeHtml(err.message)}</p>`;
-                if (dxBody) dxBody.innerHTML = `<p style="color:var(--status-attention-fg, #c0392b);">Could not load diagnosis frequency: ${escapeHtml(err.message)}</p>`;
+                if (ldBody) ldBody.innerHTML = `<p style="color:var(--status-attention-fg, #3d4738);">Could not load demographic profile: ${escapeHtml(err.message)}</p>`;
+                if (dxBody) dxBody.innerHTML = `<p style="color:var(--status-attention-fg, #3d4738);">Could not load diagnosis frequency: ${escapeHtml(err.message)}</p>`;
                 if (ldScope) ldScope.textContent = '';
                 if (dxScope) dxScope.textContent = '';
             }

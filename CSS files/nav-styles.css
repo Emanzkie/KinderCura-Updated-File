@@ -113,6 +113,6 @@ a:focus {
 
 /* Active state for current page */
 nav a.active {
-    color: #E8A5A5;
+    color: var(--text-dark);
     font-weight: 700;
 }

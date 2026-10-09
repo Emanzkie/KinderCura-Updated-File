@@ -122,9 +122,9 @@ async function openNotifications() {
 
         const hasUnread = notifications.some((n) => !n.isRead);
         const tools = `
-            <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:white;position:sticky;top:0;z-index:1;">
-                ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:white;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
-                <button onclick="clearAllNotifications()" style="border:1px solid #e6b0b0;background:white;color:var(--status-attention-fg);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
+            <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:#FAFAF6;position:sticky;top:0;z-index:1;">
+                ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:#FAFAF6;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
+                <button onclick="clearAllNotifications()" style="border:1px solid #e8a5a5;background:#FAFAF6;color:var(--status-attention-fg);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
             </div>`;
 
         const items = notifications.map((n) => {
@@ -529,11 +529,11 @@ async function runMlDiagnostics(button) {
             const row = (label, section, warnOnly) => {
                 if (!section) return '';
                 const status = section.ok ? 'OK' : (warnOnly ? 'ATTENTION' : 'FAIL');
-                const color = section.ok ? 'var(--status-positive-fg)' : 'var(--status-attention-fg, #c0392b)';
+                const color = section.ok ? 'var(--status-positive-fg)' : 'var(--status-attention-fg, #3D4738)';
                 return `<li style="margin:0.3rem 0;"><strong style="color:${color};">${status}</strong> <strong>${escapeHtml(label)}</strong> — <span style="color:var(--text-light);">${escapeHtml(section.detail || '')}</span></li>`;
             };
             const r = d.readiness || {};
-            const yesNo = (v) => (v ? '<strong style="color:var(--status-positive-fg);">yes</strong>' : '<strong style="color:var(--status-attention-fg, #c0392b);">no</strong>');
+            const yesNo = (v) => (v ? '<strong style="color:var(--status-positive-fg);">yes</strong>' : '<strong style="color:var(--status-attention-fg, #3d4738);">no</strong>');
             box.innerHTML = `
                 <p style="margin:0 0 0.4rem;font-weight:700;">${d.ok ? 'ML pipeline is working.' : 'ML pipeline status'}</p>
                 <ul style="list-style:none;margin:0 0 0.6rem;padding:0;">
@@ -728,7 +728,7 @@ async function loadModels() {
             const sourceLabel = m.sourceType === 'reviewed_assessment'
                 ? '<div class="dataset-meta" style="color:var(--primary-dark);font-weight:600;">Reviewed Assessment Data</div>'
                 : (m.sourceType === 'synthetic'
-                    ? '<div class="dataset-meta" style="color:var(--danger);">Test/Synthetic Data — not clinically validated</div>'
+                    ? '<div class="dataset-meta" style="color:var(--text-dark);">Test/Synthetic Data — not clinically validated</div>'
                     : '<div class="dataset-meta">Source not recorded</div>');
             // Values exactly as ml/trainer.py recorded them; see the
             // "What do Accuracy, Precision, Recall and F1 mean?" glossary.
@@ -737,7 +737,7 @@ async function loadModels() {
                     + '<div class="dataset-meta">Measured on the test split; precision, recall and F1 are weighted averages across risk categories.</div>'
                     + `<div class="dataset-meta">${TD.formatCount(m.trainingSamples)} training rows / ${TD.formatCount(m.testSamples)} test rows (counts) of ${TD.formatCount(m.totalRows)}; ${TD.formatCount(m.rowsDropped ?? 0)} dropped by the trainer's validation</div>`
                     + perClassDetails(m)
-                : (m.status === 'failed' ? `<span style="color:var(--danger);">${escapeHtml(m.errorMessage || 'Training failed')}</span>` : '—');
+                : (m.status === 'failed' ? `<span style="color:var(--text-dark);">${escapeHtml(m.errorMessage || 'Training failed')}</span>` : '—');
             const featureSetType = m.featureSetType || (Array.isArray(m.featuresUsed) && m.featuresUsed.some((f) => /^Q\d{2}$/.test(f)) ? 'question_based' : 'score_based');
             const featureSetBadge = featureSetType === 'question_based'
                 ? '<div style="font-weight:600;color:var(--primary);margin-bottom:0.25rem;">Question-based</div>'
@@ -783,7 +783,7 @@ async function loadModels() {
                         ${escapeHtml(m.datasetName)}
                         ${sourceLabel}
                     </td>
-                    <td data-label="Status">${modelStateChip(m.lifecycleState)}${m.legacy ? '<div class="dataset-meta">Legacy model — recorded with a local file path</div>' : ''}${m.lifecycleState === 'active' && m.artifactAvailable === false ? '<div class="dataset-meta" style="color:var(--danger);">Artifact unavailable — new assessments use the rule-based fallback</div>' : ''}</td>
+                    <td data-label="Status">${modelStateChip(m.lifecycleState)}${m.legacy ? '<div class="dataset-meta">Legacy model — recorded with a local file path</div>' : ''}${m.lifecycleState === 'active' && m.artifactAvailable === false ? '<div class="dataset-meta" style="color:var(--text-dark);">Artifact unavailable — new assessments use the rule-based fallback</div>' : ''}</td>
                     <td data-label="Compatibility">${compatCell}</td>
                     <td data-label="Metrics"><div class="metrics-cell">${metrics}</div></td>
                     <td data-label="Feature Columns"><div class="dataset-fields">${featureSetBadge}${features}</div></td>
@@ -826,7 +826,7 @@ function renderActiveModelBanner(active, errored) {
 
     const acc = typeof active.accuracy === 'number' ? `${(active.accuracy * 100).toFixed(1)}%` : '—';
     const synthetic = active.sourceType === 'synthetic'
-        ? ' <strong style="color:var(--danger);">Trained on synthetic data — not clinically validated.</strong>'
+        ? ' <strong style="color:var(--text-dark);">Trained on synthetic data — not clinically validated.</strong>'
         : '';
     el.className = 'active-model-banner is-active';
     const unavailable = active.artifactAvailable === false;
@@ -1085,7 +1085,7 @@ async function loadReviewedQuality() {
     } catch (err) {
         badge.className = 'dataset-status status-review';
         badge.textContent = 'ERROR';
-        details.innerHTML = `<p style="color:var(--danger);margin:0;">${escapeHtml(err.message)}</p>`;
+        details.innerHTML = `<p style="color:var(--text-dark);margin:0;">${escapeHtml(err.message)}</p>`;
     }
 }
 
@@ -1258,7 +1258,7 @@ async function loadPipelineSummary() {
                 ${metricsBlock}
             </div>`;
     } catch (err) {
-        body.innerHTML = `<p style="color:var(--danger);">Could not load model dataset status: ${escapeHtml(err.message)}</p>`;
+        body.innerHTML = `<p style="color:var(--text-dark);">Could not load model dataset status: ${escapeHtml(err.message)}</p>`;
     }
 }
 

@@ -51,7 +51,7 @@
 
     <div class="dashboard-container">
         <!-- Header -->
-        <div style="background:white;padding:2rem;border-radius:15px;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+        <div style="background:var(--bg-primary);padding:2rem;border-radius:15px;margin-bottom:2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);">
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <div>
                     <h1 style="margin-bottom:0.3rem;">My Patients</h1>
@@ -130,7 +130,7 @@
                         only field that can later be used to check the assessment scores against real
                         clinical judgement. Leave blank if you cannot conclude — do not guess.
                     </p>
-                    <select id="clinical-outcome" onchange="onOutcomeChange()" style="width:100%;padding:0.85rem 1rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.95rem;background:white;">
+                    <select id="clinical-outcome" onchange="onOutcomeChange()" style="width:100%;padding:0.85rem 1rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.95rem;background:var(--bg-primary);">
                         <option value="">— not recorded —</option>
                         <option value="typical_development">Typical development — no concern identified</option>
                         <option value="monitor">Monitor — subclinical, reassess later</option>
@@ -153,12 +153,12 @@
                      is a training-label review, not a diagnosis, treatment,
                      or cure/recovery status, and a pediatrician may set it
                      without writing a new diagnosis every time. -->
-                <div class="form-group" style="background:#eef6f0;border:1px solid #bfe0c8;border-radius:12px;padding:1rem;margin-top:0.25rem;">
+                <div class="form-group" style="background:var(--bg-secondary);border:1px solid var(--success);border-radius:12px;padding:1rem;margin-top:0.25rem;">
                     <label style="font-weight:600;" for="ml-label-select">ML Developmental Risk Label <span style="font-weight:400;color:var(--text-light);">(optional)</span></label>
                     <p style="font-size:0.78rem;color:var(--text-light);margin:0.25rem 0 0.5rem;line-height:1.5;">
                         This label is used as a reviewed target for machine-learning dataset preparation. It does not replace medical diagnosis.
                     </p>
-                    <select id="ml-label-select" style="width:100%;padding:0.85rem 1rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.95rem;background:white;">
+                    <select id="ml-label-select" style="width:100%;padding:0.85rem 1rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.95rem;background:var(--bg-primary);">
                         <option value="">— not reviewed —</option>
                         <option value="Low">Low</option>
                         <option value="Medium">Medium</option>
@@ -176,10 +176,10 @@
                 </div>
                 <div class="form-group" style="background:var(--bg-primary);border-radius:12px;padding:1rem;margin-top:0.25rem;">
                     <label style="font-weight:600;">Next Assessment Date</label>
-                    <input type="date" id="next-assessment-date" style="width:100%;padding:0.85rem 1rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.95rem;margin-top:0.4rem;background:white;">
+                    <input type="date" id="next-assessment-date" style="width:100%;padding:0.85rem 1rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.95rem;margin-top:0.4rem;background:var(--bg-primary);">
                     <p id="next-assessment-suggestion" style="font-size:0.8rem;color:var(--text-light);margin-top:0.45rem;line-height:1.4;"></p>
                     <label style="display:block;font-weight:600;margin-top:0.9rem;">Reason/Notes <span style="font-weight:400;color:var(--text-light);">(optional)</span></label>
-                    <textarea id="next-assessment-reason" placeholder="e.g., Routine follow-up, concerns regarding motor skills..." style="width:100%;height:90px;padding:1rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.95rem;resize:vertical;margin-top:0.4rem;background:white;"></textarea>
+                    <textarea id="next-assessment-reason" placeholder="e.g., Routine follow-up, concerns regarding motor skills..." style="width:100%;height:90px;padding:1rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.95rem;resize:vertical;margin-top:0.4rem;background:var(--bg-primary);"></textarea>
                 </div>
                 <div class="diagnosis-modal-actions" style="display:flex;gap:1rem;margin-top:1rem;">
                     <button class="btn btn-primary" onclick="submitDiagnosis()" style="flex:1;padding:0.9rem;">Submit Diagnosis</button>
@@ -311,13 +311,13 @@
                 </div>
 
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start;">
-                    <div style="background:white;">
+                    <div style="background:var(--bg-primary);">
                         <h4 style="margin-bottom:0.8rem;color:var(--primary);">Progress Notes</h4>
                         <div id="progressTimeline" style="display:grid;gap:0.8rem;">
                             <p style="text-align:center;color:var(--text-light);padding:1rem;">Loading progress notes...</p>
                         </div>
                     </div>
-                    <div style="background:white;">
+                    <div style="background:var(--bg-primary);">
                         <h4 style="margin-bottom:0.3rem;color:var(--primary);">Assessment History</h4>
                         <p class="history-note">Newest first. Each percentage is that assessment's overall assessment score (average of the four domain scores) &mdash; not a probability or a diagnosis. The change is in percentage points (pts) versus the previous completed assessment.</p>
                         <div id="assessmentHistoryList" style="display:grid;gap:0.8rem;">

@@ -53,11 +53,11 @@
      Permission Edit Modal
      ═══════════════════════════════════════════════════════════ -->
 <div id="gmPermModal" style="display:none">
-  <div id="gmPermOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;
+  <div id="gmPermOverlay" style="position:fixed;inset:0;background:rgba(61, 71, 56, .45);z-index:9000;
     display:flex;align-items:center;justify-content:center"
     onclick="gmClosePermModal()"></div>
   <div id="gmPermContent" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-    background:white;border-radius:15px;box-shadow:0 8px 36px rgba(0,0,0,.18);
+    background:var(--bg-primary);border-radius:15px;box-shadow:0 8px 36px rgba(61, 71, 56, .18);
     width:min(580px,94vw);max-height:86vh;overflow-y:auto;padding:28px;z-index:9001"
     role="dialog" aria-modal="true" aria-label="Edit Guardian Permissions">
     <button onclick="gmClosePermModal()"
@@ -79,11 +79,11 @@
      Transfer-Primary Confirmation Modal
      ═══════════════════════════════════════════════════════════ -->
 <div id="gmTransferModal" style="display:none">
-  <div id="gmTransferOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;
+  <div id="gmTransferOverlay" style="position:fixed;inset:0;background:rgba(61, 71, 56, .45);z-index:9000;
     display:flex;align-items:center;justify-content:center"
     onclick="gmCloseTransferModal()"></div>
   <div id="gmTransferContent" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-    background:white;border-radius:15px;box-shadow:0 8px 36px rgba(0,0,0,.18);
+    background:var(--bg-primary);border-radius:15px;box-shadow:0 8px 36px rgba(61, 71, 56, .18);
     width:min(480px,94vw);padding:28px;z-index:9001"
     role="dialog" aria-modal="true" aria-label="Transfer Primary Guardian">
     <button onclick="gmCloseTransferModal()"

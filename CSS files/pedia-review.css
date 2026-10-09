@@ -13,17 +13,17 @@
 }
 
 .review-modal-header h3 {
-    color: white !important;
+    color: var(--bg-primary) !important;
     font-size: 1.15rem;
 }
 
 .review-modal-header .close-btn {
-    color: rgba(255,255,255,0.8);
+    color: rgba(250, 250, 246, 0.8);
 }
 
 .review-modal-header .close-btn:hover {
-    color: white;
-    background: rgba(255,255,255,0.15);
+    color: var(--bg-primary);
+    background: rgba(250, 250, 246, 0.15);
 }
 
 .review-modal-body {
@@ -65,7 +65,7 @@
 }
 
 .ra-meta-chip {
-    background: white;
+    background: var(--bg-primary);
     border: 1px solid var(--border);
     padding: 0.2rem 0.55rem;
     border-radius: 6px;
@@ -109,7 +109,7 @@
 
 .ra-risk-high {
     background: rgba(232, 165, 165, 0.2);
-    color: var(--danger);
+    color: var(--text-dark);
     border: 1px solid var(--accent-red);
 }
 
@@ -148,7 +148,7 @@
 .ra-flags-title {
     font-size: 0.85rem;
     font-weight: 700;
-    color: var(--danger);
+    color: var(--text-dark);
     margin: 0 0 0.5rem;
 }
 
@@ -160,7 +160,7 @@
 
 .ra-flag-chip {
     background: rgba(232, 165, 165, 0.2);
-    color: var(--danger);
+    color: var(--text-dark);
     border: 1px solid var(--accent-red);
     padding: 0.25rem 0.7rem;
     border-radius: var(--radius-pill);
@@ -229,16 +229,16 @@
 
 /* Domain risk level color coding */
 .ra-domain-high .ra-domain-score {
-    color: var(--danger);
+    color: var(--text-dark);
 }
 
 .ra-domain-high .ra-domain-status {
-    background: #fee2e2;
-    color: var(--danger);
+    background: var(--bg-tertiary);
+    color: var(--text-dark);
 }
 
 .ra-domain-moderate .ra-domain-score {
-    color: var(--accent);
+    color: var(--text-dark);
 }
 
 .ra-domain-moderate .ra-domain-status {
@@ -262,7 +262,7 @@
 }
 
 .ra-answer-card {
-    background: white;
+    background: var(--bg-primary);
     border-radius: 10px;
     padding: 1rem 1.15rem;
     border: 1px solid var(--border);
@@ -270,7 +270,7 @@
 }
 
 .ra-answer-card:hover {
-    box-shadow: 0 4px 16px rgba(0,0,0,0.07);
+    box-shadow: 0 4px 16px rgba(61, 71, 56, 0.07);
     transform: translateY(-1px);
 }
 
@@ -386,7 +386,7 @@
 
 .ra-dot-concern {
     background: var(--danger);
-    box-shadow: 0 0 0 2px rgba(212, 137, 122, 0.3);
+    box-shadow: 0 0 0 2px rgba(232, 165, 165, 0.3);
 }
 
 /* ── Existing diagnosis (read-only) ── */
@@ -410,7 +410,7 @@
     line-height: 1.55;
     margin: 0 0 0.4rem;
     padding: 0.6rem 0.85rem;
-    background: white;
+    background: var(--bg-primary);
     border-radius: 8px;
     border-left: 3px solid var(--primary);
 }
@@ -446,7 +446,7 @@
     font-size: 0.9rem;
     resize: vertical;
     color: var(--text-dark);
-    background: white;
+    background: var(--bg-primary);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 

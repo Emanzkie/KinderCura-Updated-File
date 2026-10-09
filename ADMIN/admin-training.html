@@ -83,8 +83,8 @@
             <h3><img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Upload Dataset</h3>
             <p style="color:var(--text-light);margin:0.4rem 0 0.6rem;">Add a CSV or JSON dataset for assessment data.</p>
             <p style="color:var(--text-light);margin:0 0 1.2rem;font-size:0.9rem;">A dataset row represents one completed assessment: its <strong>calculated scores</strong> (communication/social/cognitive/motor/overall), optionally the individual assessment question answers, and a labeled <code>risk_category</code> value (<strong>Low</strong>, <strong>Medium</strong>, or <strong>High</strong>) — this is the target the model learns to predict. KinderCura does not automatically generate risk labels from assessment scores; datasets without valid, independently-supplied labels will be rejected during training. Use a template below for the exact required column format (its sample values are placeholders, not clinical data). See <code>ml/datasets/README.md</code> in the repository for the full canonical structure, including the optional per-question columns.</p>
-            <div id="uploadError" style="display:none;background:#fde8e8;color:var(--status-attention-fg);padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"></div>
-            <div id="uploadSuccess" style="display:none;background:#dff5e3;color:#1e6f3f;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"></div>
+            <div id="uploadError" style="display:none;background:var(--bg-tertiary);color:var(--status-attention-fg);padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"></div>
+            <div id="uploadSuccess" style="display:none;background:var(--success);color:var(--text-dark);padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"></div>
             <div class="dataset-form-grid">
                 <div class="form-group" style="margin-bottom:1rem;">
                     <label>Dataset Name</label>

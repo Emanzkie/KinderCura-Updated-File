@@ -68,9 +68,9 @@
                 } else {
                     // Warn: account is not yet linked — shown in amber (KinderCura warning tone)
                     banner.style.display = 'flex';
-                    banner.style.borderColor = '#d97706';
-                    banner.style.background  = '#fef3c7';
-                    banner.style.color       = '#92400e';
+                    banner.style.borderColor = '#f4d89f';
+                    banner.style.background  = '#f8e5b5';
+                    banner.style.color       = '#3d4738';
                     banner.innerHTML =
                         '<img src="/icons/smart_notif.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">️ Your account is not yet linked to a pediatrician. Please contact the system administrator.';
                 }
@@ -102,7 +102,7 @@
                 renderToday(approvedToday);
             } catch (e) {
                 document.getElementById('pendingList').innerHTML =
-                    `<p class="empty-msg" style="color:var(--danger);">Could not load appointments: ${escapeHtml(e.message)}</p>`;
+                    `<p class="empty-msg" style="color:var(--text-dark);">Could not load appointments: ${escapeHtml(e.message)}</p>`;
             }
         }
 

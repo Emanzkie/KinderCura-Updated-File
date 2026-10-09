@@ -107,12 +107,12 @@ function switchTab(tab) {
                     '</tr></thead><tbody>' +
                     data.guardians.map(g => {
                         const relLabel = g.role ? g.role.charAt(0).toUpperCase() + g.role.slice(1).replace(/_/g, ' ') : 'Guardian';
-                        const statusColor = g.status === 'active' ? '#27ae60' : '#c0392b';
+                        const statusColor = '#3D4738';
                         return '<tr style="border-top:1px solid var(--border);">' +
                             '<td style="padding:8px;">' + (g.name || '—') + '</td>' +
                             '<td style="padding:8px;">' + (g.email || '—') + '</td>' +
                             '<td style="padding:8px;">' + relLabel + '</td>' +
-                            '<td style="padding:8px;"><span style="padding:2px 8px;border-radius:12px;font-size:0.8rem;background:' + (g.status === 'active' ? '#e8f5e9' : '#ffebee') + ';color:' + statusColor + ';">' + g.status + '</span></td>' +
+                            '<td style="padding:8px;"><span style="padding:2px 8px;border-radius:12px;font-size:0.8rem;background:' + (g.status === 'active' ? '#A8C49D' : '#F0DCD8') + ';color:' + statusColor + ';">' + g.status + '</span></td>' +
                             '</tr>';
                     }).join('') +
                     '</tbody></table></div>';
@@ -133,10 +133,10 @@ function switchTab(tab) {
             const permissionPreset = document.getElementById('famPermissionPreset')?.value || 'standard';
             const childId = document.getElementById('familyChildSelect')?.value;
 
-            if (!firstName || !lastName) { msg.textContent = 'First and last name are required.'; msg.style.color = '#c0392b'; return; }
-            if (!email) { msg.textContent = 'Email is required.'; msg.style.color = '#c0392b'; return; }
-            if (!password || password.length < 8) { msg.textContent = 'Password must be at least 8 characters.'; msg.style.color = '#c0392b'; return; }
-            if (!childId) { msg.textContent = 'Select a child first.'; msg.style.color = '#c0392b'; return; }
+            if (!firstName || !lastName) { msg.textContent = 'First and last name are required.'; msg.style.color = '#3d4738'; return; }
+            if (!email) { msg.textContent = 'Email is required.'; msg.style.color = '#3d4738'; return; }
+            if (!password || password.length < 8) { msg.textContent = 'Password must be at least 8 characters.'; msg.style.color = '#3d4738'; return; }
+            if (!childId) { msg.textContent = 'Select a child first.'; msg.style.color = '#3d4738'; return; }
 
             try {
                 const headers = { 'Content-Type': 'application/json' };
@@ -150,11 +150,11 @@ function switchTab(tab) {
                 const data = await res.json();
                 if (!res.ok) {
                     msg.textContent = data.error || 'Failed to create account.';
-                    msg.style.color = '#c0392b';
+                    msg.style.color = '#3d4738';
                     return;
                 }
                 msg.textContent = data.message || 'Account created successfully!';
-                msg.style.color = '#27ae60';
+                msg.style.color = '#5a7560';
                 document.getElementById('famFirstName').value = '';
                 document.getElementById('famLastName').value = '';
                 document.getElementById('famEmail').value = '';
@@ -163,7 +163,7 @@ function switchTab(tab) {
                 await loadFamilyMembers();
             } catch (err) {
                 msg.textContent = 'Network error. Try again.';
-                msg.style.color = '#c0392b';
+                msg.style.color = '#3d4738';
                 console.error('createFamilyAccount error:', err);
             }
         }

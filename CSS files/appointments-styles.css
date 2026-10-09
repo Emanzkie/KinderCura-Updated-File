@@ -12,7 +12,7 @@
     --accent-light: #F8E5B5;
     --accent-red: #E8A5A5;
     --success: #A8C49D;
-    --danger: #D4897A;
+    --danger: var(--accent-red);
     --warning: #F4D89F;
     --bg-primary: #FAFAF6;
     --bg-secondary: #F0EFE8;
@@ -35,9 +35,9 @@ body {
 
 /* Header */
 .top-header {
-    background: white;
+    background: var(--bg-primary);
     padding: 1rem 0;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    box-shadow: 0 2px 10px rgba(61, 71, 56, 0.08);
     margin-bottom: 2rem;
 }
 
@@ -74,7 +74,7 @@ body {
 
 .btn-logout:hover {
     background: var(--primary);
-    color: white;
+    color: var(--bg-primary);
 }
 
 /* Breadcrumb */
@@ -113,10 +113,10 @@ body {
 
 /* Form Section */
 .booking-form-section {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     padding: 2rem;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
 }
 
 .appointment-form {
@@ -262,7 +262,7 @@ body {
 
 .btn-primary {
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
-    color: white;
+    color: var(--bg-primary);
 }
 
 .btn-primary:hover {
@@ -271,7 +271,7 @@ body {
 }
 
 .btn-secondary {
-    background: white;
+    background: var(--bg-primary);
     color: var(--primary);
     border: 2px solid var(--primary);
 }
@@ -299,10 +299,10 @@ body {
 }
 
 .sidebar-card {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-panel);
     padding: 1.5rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    box-shadow: 0 2px 8px rgba(61, 71, 56, 0.06);
 }
 
 .sidebar-card h3 {
@@ -537,7 +537,7 @@ body {
     border-radius: 20px;
     font-size: 0.75rem;
     font-weight: 600;
-    color: white;
+    color: var(--text-dark);
     white-space: nowrap;
 }
 
@@ -551,6 +551,7 @@ body {
 
 .badge.completed {
     background: var(--primary);
+    color: var(--bg-primary);
 }
 
 .badge.cancelled,
@@ -570,7 +571,7 @@ body {
 
 .error-msg {
     background: rgba(232, 165, 165, 0.15);
-    color: var(--danger);
+    color: var(--text-dark);
     padding: 0.8rem 1rem;
     border-radius: 8px;
     margin-bottom: 1rem;
@@ -611,7 +612,7 @@ body {
 }
 
 .ped-card {
-    background: #fff;
+    background: var(--bg-primary);
     border: 2px solid var(--border);
     border-radius: var(--radius-panel);
     padding: 1rem;
@@ -625,7 +626,7 @@ body {
 .ped-card.suggested {
     border-color: var(--primary);
     background: var(--bg-primary);
-    box-shadow: 0 3px 10px rgba(0,0,0,0.04);
+    box-shadow: 0 3px 10px rgba(61, 71, 56, 0.04);
 }
 
 .pill {
@@ -650,7 +651,7 @@ body {
 
 .pill.red {
     background: rgba(232, 165, 165, 0.15);
-    color: var(--danger);
+    color: var(--text-dark);
 }
 
 /* Per-appointment payment summary + receipt link (parent Appointments page) */
@@ -669,7 +670,7 @@ body {
     border-radius: 20px;
     font-size: 0.75rem;
     font-weight: 700;
-    color: white;
+    color: var(--text-dark);
     white-space: nowrap;
 }
 
@@ -677,7 +678,7 @@ body {
 .payment-badge.payment-down,
 .payment-badge.payment-partial { background: var(--accent); color: var(--text-dark); }
 .payment-badge.payment-cancelled { background: var(--danger); }
-.payment-badge.payment-unpaid { background: var(--text-light); }
+.payment-badge.payment-unpaid { background: var(--text-light); color: var(--bg-primary); }
 
 .payment-link-btn {
     border: 1px solid var(--primary);
@@ -757,7 +758,7 @@ body {
 
 .slot-chip.taken {
     background: rgba(232, 165, 165, 0.15);
-    color: var(--danger);
+    color: var(--text-dark);
 }
 
 .slot-chip.free {

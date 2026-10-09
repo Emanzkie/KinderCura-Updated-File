@@ -91,7 +91,7 @@
                     </li>`;
             }).join('');
             return `
-                <div style="background:white;border-radius:15px;padding:1.4rem 2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);margin-bottom:1.5rem;">
+                <div style="background:#FAFAF6;border-radius:15px;padding:1.4rem 2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);margin-bottom:1.5rem;">
                     <h3 style="margin:0 0 .3rem;color:var(--primary);font-size:1rem;">How the recommendation labels work</h3>
                     <p style="margin:0;color:var(--text-light);font-size:.85rem;line-height:1.5;">Each card below is one developmental area. Its label comes from that area's recorded score in the latest assessment, using KinderCura's current score ranges:</p>
                     <ul class="kc-chart-legend">${items}</ul>
@@ -220,7 +220,7 @@
 
             const top = suggestedPediatricians.slice(0, 3);
             return `
-                <div style="background:white;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);margin-bottom:2rem;">
+                <div style="background:#FAFAF6;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);margin-bottom:2rem;">
                     <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
                         <div>
                             <h2 style="color:var(--primary);margin:0 0 .35rem;">Suggested Pediatricians / Clinics</h2>
@@ -301,7 +301,7 @@
                 </div>`;
 
             return `
-            <div style="background:white;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);margin-bottom:2rem;">
+            <div style="background:#FAFAF6;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);margin-bottom:2rem;">
                 <h3 style="margin:0 0 .4rem;color:var(--primary);">Developmental Assessment &amp; Care Plan</h3>
                 <p style="margin:0 0 1.2rem;font-size:.85rem;color:var(--text-light);line-height:1.5;">A summary of how KinderCura's existing rules classify the latest assessment, and the follow-up they suggest.</p>
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1.4rem;">
@@ -319,7 +319,7 @@
             const assessmentId = await resolveContext();
             if (!assessmentId || !activeChild) {
                 document.getElementById('recsContent').innerHTML = `
-                    <div style="text-align:center;padding:3rem;background:white;border-radius:15px;box-shadow:0 4px 15px rgba(0,0,0,0.08);">
+                    <div style="text-align:center;padding:3rem;background:#FAFAF6;border-radius:15px;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);">
                         <p style="font-size:1.1rem;font-weight:600;margin-bottom:1rem;">No recommendations yet</p>
                         <p style="color:var(--text-light);margin-bottom:1.5rem;">Complete an assessment first to receive personalized recommendations for this child.</p>
                         <button class="btn btn-primary" onclick="window.location.href='/parent/screening.html'">Start Assessment</button>
@@ -353,14 +353,14 @@
 
                 if (data.consultationNeeded && !booked) {
                     html += `
-                    <div style="background:linear-gradient(135deg,var(--accent) 0%,#F8E5B5 100%);border-radius:15px;padding:2rem;margin-bottom:2rem;color:#6B7967;box-shadow:0 4px 15px rgba(0,0,0,0.12);">
+                    <div style="background:linear-gradient(135deg,var(--accent) 0%,#F8E5B5 100%);border-radius:15px;padding:2rem;margin-bottom:2rem;color:#6B7967;box-shadow:0 4px 15px rgba(61, 71, 56, 0.12);">
                         <div style="display:flex;align-items:flex-start;gap:1.5rem;">
                             <span style="font-size:2.5rem;">⚠️</span>
                             <div style="flex:1;">
                                 <h2 style="margin-bottom:0.5rem;">Schedule Professional Consultation</h2>
                                 <p style="margin-bottom:0.9rem;opacity:0.95;">${escapeHtml(data.suggestionSummary || 'Based on the assessment results, we recommend scheduling a consultation with a pediatrician.')}</p>
                                 ${Array.isArray(data.focusAreas) && data.focusAreas.length ? `<p style="margin:0 0 1.1rem;font-weight:600;">Focus areas: ${escapeHtml(data.focusAreas.join(', '))}</p>` : ''}
-                                <button class="btn btn-primary" onclick="window.location.href='/parent/appointments.html?childId=${encodeURIComponent(activeChild.id)}'" style="background:white;color:var(--accent-red);font-weight:700;">Book Appointment Now</button>
+                                <button class="btn btn-primary" onclick="window.location.href='/parent/appointments.html?childId=${encodeURIComponent(activeChild.id)}'" style="background:#FAFAF6;color:var(--text-dark);font-weight:700;">Book Appointment Now</button>
                             </div>
                         </div>
                     </div>`;
@@ -368,7 +368,7 @@
 
                 if (booked) {
                     html += `
-                    <div style="background:var(--surface-tint);border-left:4px solid var(--primary);border-radius:15px;padding:1.3rem 1.4rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.06);">
+                    <div style="background:var(--surface-tint);border-left:4px solid var(--primary);border-radius:15px;padding:1.3rem 1.4rem;margin-bottom:2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.06);">
                         <h3 style="margin:0 0 .35rem;color:var(--primary);">Consultation already scheduled</h3>
                         <p style="margin:0;color:var(--text-light);">This child already has a consultation request or appointment. The urgent consultation banner has been hidden to avoid confusion.</p>
                     </div>`;
@@ -384,10 +384,10 @@
                     const icon = ICONS[r.skill] || '<img src="/icons/recommendations.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">';
                     const activities = Array.isArray(r.activities) ? r.activities : [];
                     html += `
-                    <div style="background:white;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);border-left:4px solid ${color};margin-bottom:1.5rem;">
+                    <div style="background:#FAFAF6;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);border-left:4px solid ${color};margin-bottom:1.5rem;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;gap:1rem;flex-wrap:wrap;">
                             <h3>${icon} ${r.skill.charAt(0).toUpperCase() + r.skill.slice(1)} Development</h3>
-                            <span style="background:${color};color:white;padding:0.5rem 1rem;border-radius:20px;font-size:0.8rem;font-weight:600;">${label}</span>
+                            <span style="background:${color};color:#FAFAF6;padding:0.5rem 1rem;border-radius:20px;font-size:0.8rem;font-weight:600;">${label}</span>
                         </div>
                         ${areaScoreLine(r.skill, result)}
                         <p style="color:var(--text-light);margin-bottom:1rem;line-height:1.6;">${escapeHtml(r.suggestion)}</p>
@@ -400,7 +400,7 @@
                 });
 
                 html += `
-                <div style="background:white;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.08);margin-top:1rem;">
+                <div style="background:#FAFAF6;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);margin-top:1rem;">
                     <h3 style="margin-bottom:1.5rem;color:var(--primary);">Next Steps</h3>
                     <div style="display:flex;gap:1rem;flex-wrap:wrap;">
                         <button class="btn btn-secondary" onclick="saveParentChildContext(activeChild.id, assessmentId); window.location.href='/parent/results.html?childId=${activeChild.id}&assessmentId=${assessmentId}'">Back to Results</button>
@@ -412,7 +412,7 @@
                 document.getElementById('recsContent').innerHTML = html;
             } catch (e) {
                 document.getElementById('recsContent').innerHTML = `
-                    <div style="text-align:center;padding:2rem;background:white;border-radius:15px;">
+                    <div style="text-align:center;padding:2rem;background:#FAFAF6;border-radius:15px;">
                         <p style="color:red;">Failed to load recommendations: ${escapeHtml(e.message)}</p>
                         <button class="btn btn-secondary" onclick="loadRecommendations()" style="margin-top:1rem;">Retry</button>
                     </div>`;

@@ -378,7 +378,7 @@
 
     .top-nav.nav-drawer .nav-drawer-logout:hover,
     .top-nav.nav-drawer .nav-drawer-logout:active {
-        background: rgba(212, 137, 122, 0.1);
+        background: rgba(232, 165, 165, 0.1);
     }
 
     /* Keyboard focus stays visible on every row of the panel. */

@@ -19,7 +19,7 @@
     
     /* Status Colors */
     --success: #A8C49D;
-    --danger: #D4897A;
+    --danger: #E8A5A5;
     --warning: #F4D89F;
     
     /* Background Colors */
@@ -44,9 +44,9 @@
        ------------------------------------------------------------------ */
 
     /* Surfaces */
-    --surface: #FFFFFF;
-    --surface-muted: #FAFAF6;      /* inset panels inside a white card */
-    --surface-tint: #F3F7F3;       /* very soft green wash for callouts */
+    --surface: #FAFAF6;
+    --surface-muted: #F0EFE8;      /* inset panels inside a card */
+    --surface-tint: #F0EFE8;       /* soft wash for callouts */
 
     /* Corner radii — one value per component family */
     --radius-card: 16px;
@@ -83,31 +83,48 @@
 
     /* Status palette — ONE colour per meaning, system-wide.
        Used by .kc-badge and by any page that shows state. */
-    --status-positive-bg: #E7F0E4;
-    --status-positive-fg: #4C6B45;
-    --status-caution-bg: #FBF0D8;
-    --status-caution-fg: #8A6A1F;
-    --status-attention-bg: #F8E4E4;
-    --status-attention-fg: #9C4F43;
-    --status-neutral-bg: #EFEEE7;
+    /* Only the 13 palette colours are used. The palette's red, yellow and
+       green are pastels, too light to be read as text, so every status keeps
+       its meaning in the background colour and uses dark text on top. */
+    --status-positive-bg: #A8C49D;
+    --status-positive-fg: #3D4738;
+    --status-caution-bg: #F8E5B5;
+    --status-caution-fg: #3D4738;
+    --status-attention-bg: #F0DCD8;
+    --status-attention-fg: #3D4738;
+    --status-neutral-bg: #F0EFE8;
     --status-neutral-fg: #6B7967;
-    /* Info was a slate blue; blue is not a KinderCura colour. Info now uses
-       the soft green callout wash with the dark brand green. */
-    --status-info-bg: #F3F7F3;
+    /* Info uses the secondary cream with the dark brand green. */
+    --status-info-bg: #F0EFE8;
     --status-info-fg: #5A7560;
 
     /* Focus ring — one visible, accessible treatment everywhere */
     --focus-ring: 0 0 0 3px rgba(107, 142, 111, 0.35);
 }
 
-/* Browser defaults are blue: unstyled links (#0000EE / visited purple) and
-   native checkboxes, radios, range sliders and progress bars. Point them at
-   the brand green. accent-color is inherited and :where() has zero
-   specificity, so every existing component rule still wins. */
+/* Browser defaults are outside the palette: blue links, blue checkboxes,
+   radios and range sliders, and black-on-white form fields with gray
+   borders and gray <hr> rules. Point them at the palette. accent-color is
+   inherited and :where() has zero specificity, so every existing component
+   rule still wins. */
 :root {
     accent-color: var(--primary);
 }
 
 :where(a:link, a:visited) {
     color: var(--primary-dark);
+}
+
+:where(input, select, textarea, button, option) {
+    color: var(--text-dark);
+}
+
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), select, textarea) {
+    background-color: var(--bg-primary);
+    border-color: var(--border);
+}
+
+:where(hr) {
+    color: var(--border);
+    border-color: var(--border);
 }

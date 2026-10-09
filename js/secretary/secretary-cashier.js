@@ -119,13 +119,13 @@ function renderLookup(data) {
     const statusEl = document.getElementById('rStatus');
     if (payment.status === 'Paid') {
         statusEl.textContent = 'PAID';
-        statusEl.style.color = '#3D5A40';
+        statusEl.style.color = '#5A7560';
     } else if (canConfirm) {
         statusEl.textContent = 'WAITING FOR PAYMENT';
-        statusEl.style.color = '#8A6D1F';
+        statusEl.style.color = '#3D4738';
     } else {
         statusEl.textContent = String(payment.status).toUpperCase();
-        statusEl.style.color = '#8C3A2B';
+        statusEl.style.color = '#3D4738';
     }
 
     // Banners
@@ -186,7 +186,7 @@ async function confirmPayment() {
         document.getElementById('confirmRow').style.display = 'none';
         document.getElementById('validBanner').style.display = 'none';
         document.getElementById('rStatus').textContent = 'PAID';
-        document.getElementById('rStatus').style.color = '#3D5A40';
+        document.getElementById('rStatus').style.color = '#5A7560';
 
         const detail = [
             `Receipt ${data.receiptNumber}`,
@@ -228,7 +228,7 @@ async function loadToday() {
 
         body.innerHTML = rows.map((a) => {
             const paid = a.paymentStatus === 'Paid';
-            const payColor = paid ? '#3D5A40' : '#8A6D1F';
+            const payColor = paid ? '#5A7560' : '#3D4738';
             const payText = paid
                 ? `Paid${a.receiptNumber ? ` · ${escapeHtml(a.receiptNumber)}` : ''}`
                 : escapeHtml(a.paymentStatus || 'Unpaid');
@@ -236,7 +236,7 @@ async function loadToday() {
                 ? `<button class="btn btn-primary" style="padding:0.35rem 0.7rem;font-size:0.82rem;"
                      onclick="lookupPayment('${escapeHtml(a.paymentRef)}')">Collect</button>`
                 : '';
-            return `<tr style="border-bottom:1px solid var(--border,#EEE);">
+            return `<tr style="border-bottom:1px solid var(--border,#DDD9CC);">
                 <td style="padding:0.6rem 0.5rem;white-space:nowrap;font-weight:600;">${fmtTime(a.time)}</td>
                 <td style="padding:0.6rem 0.5rem;">${escapeHtml(a.parentName)}</td>
                 <td style="padding:0.6rem 0.5rem;">${escapeHtml(a.childName)}</td>
@@ -247,7 +247,7 @@ async function loadToday() {
             </tr>`;
         }).join('');
     } catch (err) {
-        body.innerHTML = `<tr><td colspan="7" style="padding:1rem 0.5rem;color:#8C3A2B;">${escapeHtml(err.message || 'Could not load today’s appointments.')}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="7" style="padding:1rem 0.5rem;color:#3D4738;">${escapeHtml(err.message || 'Could not load today’s appointments.')}</td></tr>`;
     }
 }
 

@@ -6,11 +6,11 @@
 
 /* ── Page header ───────────────────────────────────────────────────────── */
 .report-header {
-    background: white;
+    background: var(--bg-primary);
     padding: 2rem;
     border-radius: var(--radius-card);
     margin-bottom: 1.25rem;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -60,11 +60,11 @@
 
 /* ── Generic card ──────────────────────────────────────────────────────── */
 .report-card {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     padding: 2rem;
     margin-bottom: 1.5rem;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
 }
 
 .report-card h2 {
@@ -205,12 +205,13 @@
     margin: 0;
 }
 
+/* Dark text: every band fill is a light palette colour. */
 .domain-chip {
     padding: 0.3rem 0.7rem;
     border-radius: 20px;
     font-size: 0.75rem;
     font-weight: 600;
-    color: white;
+    color: var(--text-dark);
     white-space: nowrap;
 }
 
@@ -321,8 +322,8 @@
 }
 
 .followup-banner.followup-none {
-    background: #fffaf0;
-    border-color: #f3ddb1;
+    background: var(--accent-light);
+    border-color: var(--accent);
     border-left-color: var(--accent);
 }
 
@@ -344,7 +345,7 @@
 
 .followup-action {
     border: 2px solid var(--status-info-fg);
-    background: white;
+    background: var(--bg-primary);
     color: var(--status-info-fg);
     padding: 0.8rem 1.05rem;
     border-radius: var(--radius-panel);
@@ -359,11 +360,11 @@
 
 /* ── Loading / empty / error states ────────────────────────────────────── */
 .report-state {
-    background: white;
+    background: var(--bg-primary);
     border-radius: var(--radius-card);
     padding: 3rem 2rem;
     text-align: center;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
 }
 
 .report-state h2 {
@@ -382,7 +383,7 @@
 }
 
 .report-state.report-error p {
-    color: var(--danger);
+    color: var(--text-dark);
 }
 
 /* ── Data note ─────────────────────────────────────────────────────────── */
