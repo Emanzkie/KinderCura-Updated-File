@@ -1,0 +1,202 @@
+/* ==========================================================================
+   Administrator Dashboard only (ADMIN/admin-dashboard.html).
+   Loaded after dashboard-new-styles.css and admin-responsive.css; nothing
+   here is shared with other admin pages. Colours come from kc-tokens.css.
+   ========================================================================== */
+
+/* ---- Load / last-updated / error line under the page header ------------- */
+.dash-status {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.9rem;
+    margin: -1rem 0 1.5rem;
+    padding: 0.6rem 1rem;
+    border-radius: var(--radius-panel);
+    background: var(--status-neutral-bg);
+    color: var(--status-neutral-fg);
+    font-size: var(--fs-small);
+    line-height: 1.45;
+}
+
+.dash-status.is-error {
+    background: var(--status-attention-bg);
+    color: var(--status-attention-fg);
+}
+
+.dash-retry {
+    border: 1px solid currentColor;
+    background: var(--surface);
+    color: inherit;
+    border-radius: var(--radius-btn);
+    padding: 0.25rem 0.8rem;
+    font: inherit;
+    font-weight: var(--fw-medium);
+    cursor: pointer;
+}
+
+.dash-retry:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+}
+
+/* ---- Stat tiles (same look as the former inline styles) ----------------- */
+.stat-tile {
+    background: var(--bg-primary);
+    padding: 1rem;
+    border-radius: 8px;
+    min-width: 0;
+}
+
+.stat-tile--center {
+    text-align: center;
+}
+
+.stat-label {
+    color: var(--text-light);
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+.stat-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--primary);
+    line-height: 1.2;
+}
+
+/* "Not measured" is a state, not a number — keep it from shouting. */
+.stat-value.stat-value--muted {
+    font-size: 1.15rem;
+    color: var(--text-light);
+    padding: 0.35rem 0;
+}
+
+.stat-share {
+    margin-top: 0.2rem;
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+    color: var(--primary-dark);
+}
+
+.stat-note {
+    margin-top: 0.35rem;
+    font-size: var(--fs-tiny);
+    color: var(--text-light);
+    line-height: 1.4;
+}
+
+.card-footnote,
+.breakdown-caption {
+    margin-top: 0.9rem;
+    font-size: var(--fs-tiny);
+    color: var(--text-light);
+    line-height: 1.45;
+}
+
+.dashboard-container > .card .breakdown-caption {
+    margin: -0.6rem 0 1rem;
+}
+
+/* ---- Assessment sessions by status: stacked bar + legend --------------- */
+.status-breakdown {
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border);
+}
+
+.status-breakdown h4 {
+    font-size: 0.98rem;
+    color: var(--text-dark);
+}
+
+.status-breakdown .breakdown-caption {
+    margin: 0.3rem 0 0.8rem;
+}
+
+.breakdown-bar {
+    display: flex;
+    height: 16px;
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+    background: var(--bg-secondary);
+}
+
+.breakdown-bar:empty {
+    display: none;
+}
+
+.breakdown-segment {
+    height: 100%;
+    min-width: 3px;
+}
+
+.breakdown-segment + .breakdown-segment {
+    border-left: 2px solid var(--surface);
+}
+
+.breakdown-legend {
+    list-style: none;
+    margin: 0.85rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.breakdown-legend li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: var(--fs-small);
+    color: var(--text-dark);
+    min-width: 0;
+}
+
+.legend-swatch {
+    flex: 0 0 auto;
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 3px;
+    transform: translateY(0.1rem);
+    box-shadow: inset 0 0 0 1px rgba(61, 71, 56, 0.18);
+}
+
+.legend-label {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.legend-label small {
+    display: block;
+    color: var(--text-light);
+    font-size: var(--fs-tiny);
+}
+
+.legend-value {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-weight: var(--fw-medium);
+    font-variant-numeric: tabular-nums;
+}
+
+.legend-empty {
+    color: var(--text-light);
+}
+
+/* Status colours: green = done, yellow = waiting on the system, pink = still
+   with the parent. The legend text carries the meaning; colour only links
+   each legend row to its bar segment. */
+.seg-complete   { background: var(--primary); }
+.seg-submitted  { background: var(--accent); }
+.seg-inProgress { background: var(--accent-red); }
+
+@media (max-width: 768px) {
+    .dash-status {
+        margin: -0.25rem 0 1rem;
+    }
+
+    .stat-value {
+        font-size: 1.55rem;
+    }
+}
