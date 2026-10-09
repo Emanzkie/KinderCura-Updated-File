@@ -249,7 +249,7 @@ function renderDomainCardInner(vm, index, view) {
 
     return `
         <div class="domain-score-row">
-            <span class="domain-score-value" style="color:var(--text-dark);">${score}%</span>
+            <span class="domain-score-value">${score}%</span>
             ${countsRow}
         </div>
         <div class="domain-progress" role="img"
@@ -986,7 +986,7 @@ async function loadResults() {
                         ${domains.map((d) => `
                             <div style="background:var(--bg-primary);padding:1rem;border-radius:8px;text-align:center;">
                                 <span style="display:block;font-size:1.2rem;margin-bottom:0.5rem;">${d.icon}</span>
-                                <div style="font-weight:700;color:var(--text-dark);margin-bottom:0.3rem;">${d.score}%</div>
+                                <div style="font-weight:700;color:var(--primary);margin-bottom:0.3rem;">${d.score}%</div>
                                 <div style="font-size:0.8rem;color:var(--text-light);">${d.label}</div>
                                 <div class="results-domain-tile-label">${escapeHtml(getStatusLabel(d.score).label)}</div>
                             </div>`).join('')}

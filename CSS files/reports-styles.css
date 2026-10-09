@@ -235,7 +235,7 @@
 }
 
 .domain-score strong {
-    color: var(--text-dark);
+    color: var(--primary);
 }
 
 /* ── Timeline ──────────────────────────────────────────────────────────── */

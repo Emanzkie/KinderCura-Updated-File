@@ -387,7 +387,7 @@ requireAuth();
             rowsEl.innerHTML = note + list.map((p) => `
                 <tr>
                     <td>${escapeHtml(p.name)}</td>
-                    <td style="text-align:right;font-weight:700;">${escapeHtml(String(p.total))}</td>
+                    <td style="text-align:right;font-weight:700;color:var(--primary);">${escapeHtml(String(p.total))}</td>
                     <td style="text-align:right;">${escapeHtml(String(p.active))}</td>
                     <td style="text-align:right;">${escapeHtml(String(p.assignedChildren ?? 0))}</td>
                     <td>${fmtDateShort(p.latestCreatedAt)}</td>
@@ -732,7 +732,7 @@ requireAuth();
                     <td>${pediaOwnerCell(r)}</td>
                     <td>${formatDateTime(r.createdAt)}</td>
                     <td>${r.isActive ? 'Yes' : 'No'}</td>
-                    <td style="text-align:right;font-weight:700;">${r.timesAnswered ?? 0}</td>`;
+                    <td style="text-align:right;font-weight:700;color:var(--primary);">${r.timesAnswered ?? 0}</td>`;
             } else if (currentCategory === 'dataset_question') {
                 bodyCells = `
                     <td class="src-cell">${sourceCell(r)}</td>
@@ -740,7 +740,7 @@ requireAuth();
                     <td>${approvalCell(r)}</td>
                     <td>${escapeHtml(r.createdBy)}</td>
                     <td>${formatDateTime(r.effectiveDate || r.createdAt)}</td>
-                    <td style="text-align:right;font-weight:700;">${r.timesAnswered ?? 0}</td>`;
+                    <td style="text-align:right;font-weight:700;color:var(--primary);">${r.timesAnswered ?? 0}</td>`;
             } else {
                 // "All" tab — one generic 7-cell body shape for every row,
                 // whichever category it belongs to. A Pediatrician Question row
@@ -757,7 +757,7 @@ requireAuth();
                     <td>${approvalCell(r)}</td>
                     <td>${pediaOwnerCell(r)}</td>
                     <td>${formatDateTime(r.effectiveDate || r.createdAt)}</td>
-                    <td style="text-align:right;font-weight:700;">${r.timesAnswered ?? 0}</td>`;
+                    <td style="text-align:right;font-weight:700;color:var(--primary);">${r.timesAnswered ?? 0}</td>`;
             }
 
             return `<tr>${questionCell}${bodyCells}</tr>${provenanceDetailRow(r, rid, span)}`;

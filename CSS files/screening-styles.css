@@ -127,7 +127,7 @@ body {
 
 .progress-percent {
     text-align: center;
-    color: var(--text-dark);
+    color: var(--primary);
     font-weight: 700;
     font-size: 0.9rem;
 }

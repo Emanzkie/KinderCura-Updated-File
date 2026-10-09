@@ -204,7 +204,7 @@ body {
 }
 
 .metric-trend.positive {
-    color: var(--text-dark);
+    color: var(--primary);
 }
 
 /* Charts Section */
@@ -449,7 +449,7 @@ body {
 }
 
 .stat-value.positive {
-    color: var(--text-dark);
+    color: var(--primary);
 }
 
 /* Insights Section */

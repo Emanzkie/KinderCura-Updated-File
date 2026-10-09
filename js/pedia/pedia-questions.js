@@ -1157,7 +1157,7 @@
                         </div>
                         <div style="background:var(--bg-primary);border-radius:8px;padding:1rem;">
                             <p style="font-size:.78rem;color:var(--text-light);margin:0 0 .3rem;">Answered</p>
-                            <p style="font-size:1.6rem;font-weight:700;color:var(--status-positive-fg);margin:0;">${answeredAssignments.length}</p>
+                            <p style="font-size:1.6rem;font-weight:700;color:var(--primary);margin:0;">${answeredAssignments.length}</p>
                         </div>
                         <div style="background:var(--bg-primary);border-radius:8px;padding:1rem;">
                             <p style="font-size:.78rem;color:var(--text-light);margin:0 0 .3rem;">Created</p>

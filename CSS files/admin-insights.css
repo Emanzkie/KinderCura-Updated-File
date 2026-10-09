@@ -166,7 +166,7 @@
 .tile-value {
     font-size: 1.9rem;
     font-weight: 700;
-    color: var(--text-dark);
+    color: var(--primary);
     margin: 0 0 0.3rem;
     line-height: 1.1;
 }
@@ -394,7 +394,7 @@
 .rate-value {
     font-size: 1.55rem;
     font-weight: 700;
-    color: var(--text-dark);
+    color: var(--primary);
     margin: 0 0 0.25rem;
     line-height: 1.1;
 }
@@ -434,7 +434,7 @@
 .pipeline-count {
     font-size: 1.5rem;
     font-weight: 700;
-    color: var(--text-dark);
+    color: var(--primary);
     margin: 0 0 0.2rem;
     line-height: 1.1;
 }

@@ -516,7 +516,7 @@ function renderTimeline(assessments) {
                     </div>
                     <div class="timeline-overall-wrap">
                         <span class="timeline-overall-label">Overall score</span>
-                        <div class="timeline-overall" style="color:var(--text-dark);">${overall}%</div>
+                        <div class="timeline-overall" style="color:var(--primary);">${overall}%</div>
                         <span class="timeline-overall-band">${escapeHtml(window.KCScoring.parentOverallLabel(overall))}</span>
                     </div>
                 </div>

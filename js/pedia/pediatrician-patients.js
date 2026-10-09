@@ -363,7 +363,7 @@ const API = window.location.origin + '/api';
                         ${Object.entries(scores).map(([k,v]) => {
                             const color = window.KCScoring.colorForScore(v);
                             return `<div class="score-item">
-                                <div class="score-val" style="color:var(--text-dark);">${v}%</div>
+                                <div class="score-val">${v}%</div>
                                 <div class="score-lbl">${k}</div>
                                 <div class="score-band">${escapeHtml(scoreBandLabel(v))}</div>
                             </div>`;

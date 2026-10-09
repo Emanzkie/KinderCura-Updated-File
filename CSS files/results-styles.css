@@ -1011,7 +1011,7 @@ body {
     font-size: 2rem;
     font-weight: 700;
     line-height: 1;
-    color: var(--text-dark);
+    color: var(--primary);
     white-space: nowrap;
 }
 
@@ -1412,7 +1412,7 @@ body {
     margin: 0;
     font-size: 1.1rem;
     font-weight: 700;
-    color: var(--text-dark);
+    color: var(--primary);
 }
 
 .progression-interp {
