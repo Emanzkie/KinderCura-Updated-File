@@ -88,6 +88,8 @@
             <h3><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Centralized Patient Reports</h3>
             <p class="muted" style="margin-top:-0.5rem;margin-bottom:1rem;">One place to browse patient reports across pediatricians and parents, instead of opening Parent Reports or Pediatrician Reports separately. Pivot with the filters below — nothing here recomputes a score.</p>
 
+            <h4 style="margin:0 0 0.3rem;">System-wide totals</h4>
+            <p class="muted pr-scope-line">All records, all dates. These six cards are not affected by the filters below.</p>
             <div class="report-grid" id="systemTotalsCards" style="margin-bottom:1.25rem;">
                 <div class="report-card"><p class="report-label">Loading system totals...</p><p class="report-value">—</p></div>
             </div>
@@ -144,7 +146,8 @@
 
             <div id="patientReportsNotice" class="pr-notice" hidden></div>
 
-            <h4 id="patientPivotTitle" style="margin:0 0 0.6rem;">All Patient Reports</h4>
+            <h4 id="patientPivotTitle" style="margin:0 0 0.3rem;">All Patient Reports</h4>
+            <p class="muted pr-scope-line" id="patientFilterScope">Showing: all patients · all dates.</p>
             <div class="report-grid" id="patientFilteredSummary" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:1.25rem;">
                 <div class="report-card"><p class="report-label">Patients</p><p class="report-value">—</p></div>
             </div>
@@ -154,6 +157,7 @@
             <!-- narrows its Assessments/Reviewed/Latest Activity columns.     -->
             <details style="margin-bottom:1.25rem;">
                 <summary style="cursor:pointer;font-weight:600;padding:0.5rem 0;">Pediatrician Report Summary</summary>
+                <p class="muted pr-scope-line">Up to 25 most recently active pediatricians. Follows only the Date From / Date To filters. <strong>Patients</strong>: distinct children with at least one appointment (any status) with that pediatrician; not narrowed by dates. <strong>Assessments</strong>: those children's completed assessments in the date range, whichever pediatrician they saw. <strong>Reviewed</strong>: of those, with a pediatrician review. A child seen by two pediatricians counts for both.</p>
                 <div style="overflow-x:auto;">
                     <table class="simple-table">
                         <thead>
@@ -167,6 +171,7 @@
             <!-- Parent Summary (req 7) — same idea, keyed by parent. -->
             <details style="margin-bottom:1.25rem;">
                 <summary style="cursor:pointer;font-weight:600;padding:0.5rem 0;">Parent Summary</summary>
+                <p class="muted pr-scope-line">Up to 25 most recently active parents. Follows only the Date From / Date To filters. <strong>Children</strong>: child records owned by that parent or guardian account. <strong>Assessments</strong>: their completed assessments in the date range.</p>
                 <div style="overflow-x:auto;">
                     <table class="simple-table">
                         <thead>
@@ -183,12 +188,13 @@
                         <tr>
                             <th>Child</th><th>Parent</th><th>Pediatrician</th>
                             <th>Assessments</th><th>Latest Score</th><th>Status</th>
-                            <th>Last Assessed</th><th>Review</th><th></th>
+                            <th>Last Assessed</th><th>Review (latest)</th><th></th>
                         </tr>
                     </thead>
                     <tbody id="patientReportsRows"><tr><td colspan="9" class="muted">Loading patient reports...</td></tr></tbody>
                 </table>
             </div>
+            <p class="muted pr-scope-line" style="margin-top:0.6rem;"><strong>Assessments</strong>: that child's completed assessments in the date range. <strong>Latest Score</strong> and <strong>Status</strong>: overall score (0–100) and its score band for the child's most recent of those assessments — a screening band, not a diagnosis. <strong>Review (latest)</strong>: whether that latest assessment has a pediatrician review; earlier assessments may differ. <strong>Pediatrician</strong>: from the child's most recent appointment, or "—" if the child has none.</p>
 
             <div class="origin-pagination" style="margin-top:1rem;">
                 <span class="page-info" id="patientReportsPageInfo">—</span>
@@ -266,12 +272,13 @@
              /admin/analytics endpoint. -->
         <div class="report-section">
             <h3><img src="/icons/cognitive.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Average Assessment Scores</h3>
+            <p class="muted pr-scope-line">Mean domain score across all completed assessments (all dates). A domain score is the share of that domain's possible points earned (0–100%) — an average score, not a share of children and not a diagnosis.</p>
             <div id="averageScoreBlocks" class="report-grid" style="grid-template-columns:repeat(4,minmax(0,1fr));">
                 <div class="report-card"><p class="report-label">Loading...</p><p class="report-value">—</p></div>
             </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start;">
+        <div id="breakdownGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start;">
             <div class="report-section">
                 <h3><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Appointment Status Breakdown</h3>
                 <div style="overflow-x:auto;">
@@ -287,6 +294,7 @@
                             <tr><td colspan="3" class="muted">Loading appointment breakdown...</td></tr>
                         </tbody>
                     </table>
+                    <p class="muted" id="appointmentBreakdownNote" style="margin-top:0.6rem;font-size:0.82rem;">—</p>
                 </div>
             </div>
             <div class="report-section">

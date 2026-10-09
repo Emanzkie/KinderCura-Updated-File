@@ -142,15 +142,28 @@ requireAuth();
             if (modal) modal.style.display = 'none';
         }
 
-        // Small helper so the report shows readable percent values.
+        // value ÷ total as a one-decimal share (same format as Admin
+        // Analytics). N/A — never 0% — when there is nothing to divide by.
         function percentOf(value, total) {
-            if (!total) return '0%';
-            return `${Math.round((value / total) * 100)}%`;
+            if (!total || !Number.isFinite(value) || value < 0 || value > total) return 'N/A';
+            const pct = (value / total) * 100;
+            if (pct > 0 && pct < 0.05) return '<0.1%';
+            return `${pct.toFixed(1)}%`;
+        }
+
+        // "x% of N <noun>", or a plain "N/A (no <noun>)" when N is zero.
+        function shareOfText(part, whole, noun) {
+            return whole > 0 ? `${percentOf(part, whole)} of ${fmtCountR(whole)} ${noun}` : `N/A (no ${noun})`;
+        }
+
+        function fmtCountR(value) {
+            return Number.isFinite(Number(value)) ? Number(value).toLocaleString('en-US') : '—';
         }
 
         // Reusable row template for count tables.
         function row(label, value, total) {
-            return `<tr><td>${label}</td><td>${value}</td><td>${percentOf(value, total)}</td></tr>`;
+            const text = String(label || 'No status recorded');
+            return `<tr><td>${escapeHtml(text.charAt(0).toUpperCase() + text.slice(1))}</td><td>${fmtCountR(value)}</td><td>${percentOf(value, total)}</td></tr>`;
         }
 
         // Human-readable labels for the ACTUAL role values found in the
@@ -173,7 +186,7 @@ requireAuth();
 
         function roleRow(role, value, total) {
             const label = ROLE_LABELS[role] || role;
-            return `<tr><td>${label}</td><td>${value}</td><td>${percentOf(value, total)}</td></tr>`;
+            return `<tr><td>${escapeHtml(label)}</td><td>${fmtCountR(value)}</td><td>${percentOf(value, total)}</td></tr>`;
         }
 
         // Builds one summary card at the top of the report page. `note` is an
@@ -236,13 +249,16 @@ requireAuth();
                 ].join('');
 
                 // Snapshot table gives the adviser a quick one-look report summary.
+                // System uptime: the API's `uptime` field is a fixed '99.9%'
+                // string in routes/admin.js, not a measurement, so it is not
+                // shown (same treatment as the Admin Dashboard).
                 document.getElementById('snapshotTable').innerHTML = `
-                    <tr><td>Total parents</td><td>${dashboard.parentCount ?? 0}</td></tr>
-                    <tr><td>Total pediatricians</td><td>${dashboard.pediatricianCount ?? 0}</td></tr>
-                    <tr><td>Total admins</td><td>${dashboard.adminCount ?? 0}</td></tr>
-                    <tr><td>System uptime</td><td>${dashboard.uptime || '99.9%'}</td></tr>
-                    <tr><td>Pending account approvals</td><td>${pendingCount}</td></tr>
-                    <tr><td>Total appointment records</td><td>${totalAppointments}</td></tr>
+                    <tr><td>Parent-role accounts <span class="muted snapshot-note">(legal guardian, foster parent and court-appointed accounts are listed separately in User Role Breakdown)</span></td><td>${fmtCountR(dashboard.parentCount ?? 0)}</td></tr>
+                    <tr><td>Total pediatricians</td><td>${fmtCountR(dashboard.pediatricianCount ?? 0)}</td></tr>
+                    <tr><td>Total admins</td><td>${fmtCountR(dashboard.adminCount ?? 0)}</td></tr>
+                    <tr><td>System uptime <span class="muted snapshot-note">(no uptime monitor is connected)</span></td><td>Not measured</td></tr>
+                    <tr><td>Pending account approvals <span class="muted snapshot-note">(accounts of any role awaiting activation)</span></td><td>${fmtCountR(pendingCount)}</td></tr>
+                    <tr><td>Total appointment records <span class="muted snapshot-note">(every status)</span></td><td>${fmtCountR(totalAppointments)}</td></tr>
                 `;
 
                 const scoreCards = [
@@ -251,11 +267,20 @@ requireAuth();
                     ['Cognitive', averageScores.avgCognitive],
                     ['Motor Skills', averageScores.avgMotor]
                 ];
-                document.getElementById('averageScoreBlocks').innerHTML = scoreCards.map(([label, value]) => summaryCard(label, value == null ? '—' : `${Math.round(value)}%`)).join('');
+                // The API sends 0 when there are no results to average; with
+                // no completed assessments that 0 is not a real score.
+                const noScores = (analytics.scoreDistribution && analytics.scoreDistribution.total === 0)
+                    || (analytics.summaryTotals && analytics.summaryTotals.completedScreenings === 0);
+                document.getElementById('averageScoreBlocks').innerHTML = scoreCards.map(([label, value]) =>
+                    summaryCard(label, noScores || value == null ? 'N/A' : `${Math.round(value)}%`, 'mean domain score')).join('');
 
                 document.getElementById('appointmentBreakdownTable').innerHTML = appointmentStats.length
                     ? appointmentStats.map(item => row(item.status, item.count || 0, totalAppointments)).join('')
                     : '<tr><td colspan="3" class="muted">No appointment data available.</td></tr>';
+                const apptNote = document.getElementById('appointmentBreakdownNote');
+                if (apptNote) {
+                    apptNote.textContent = `Share = appointments in that status ÷ all ${fmtCountR(totalAppointments)} appointment records (every status, all dates). Shares are rounded to one decimal.`;
+                }
 
                 document.getElementById('roleBreakdownTable').innerHTML = roleBreakdown.length
                     ? roleBreakdown.map(item => roleRow(item.role, item.count || 0, totalRoles)).join('')
@@ -267,8 +292,8 @@ requireAuth();
                 if (reconciliationEl) {
                     const matches = totalRoles === (dashboard.totalUsers ?? 0);
                     reconciliationEl.textContent = matches
-                        ? `Total: ${totalRoles} — matches Total Users above.`
-                        : `Total: ${totalRoles} vs Total Users ${dashboard.totalUsers ?? 0} — these should match; investigate if they do not.`;
+                        ? `Total: ${fmtCountR(totalRoles)} — matches Total Users above. Share = accounts with that role ÷ all ${fmtCountR(totalRoles)} accounts (every status).`
+                        : `Total: ${fmtCountR(totalRoles)} vs Total Users ${fmtCountR(dashboard.totalUsers ?? 0)} — these should match; investigate if they do not.`;
                     reconciliationEl.style.color = matches ? '' : 'var(--status-attention-fg, #c0392b)';
                 }
 
@@ -276,14 +301,20 @@ requireAuth();
                 document.getElementById('recentActivityList').innerHTML = activities.length
                     ? activities.map(item => `
                         <div class="report-item">
-                            <p style="font-weight:600;margin-bottom:0.2rem;">${item.type}</p>
-                            <p class="muted" style="margin-bottom:0.35rem;">${item.description}</p>
-                            <p class="muted" style="font-size:0.82rem;">${item.timestamp}</p>
+                            <p style="font-weight:600;margin-bottom:0.2rem;">${escapeHtml(item.type)}</p>
+                            <p class="muted" style="margin-bottom:0.35rem;">${escapeHtml(item.description)}</p>
+                            <p class="muted" style="font-size:0.82rem;">${escapeHtml(item.timestamp)}</p>
                         </div>`).join('')
                     : '<div class="report-item"><p class="muted">No recent activity yet.</p></div>';
             } catch (err) {
                 console.error('admin reports load error:', err);
-                document.getElementById('summaryCards').innerHTML = `<div class="report-card"><p class="report-label">Could not load report</p><p class="report-value" style="font-size:1rem;">${err.message}</p></div>`;
+                document.getElementById('summaryCards').innerHTML = `<div class="report-card"><p class="report-label">Could not load report</p><p class="report-value" style="font-size:1rem;">${escapeHtml(err.message)}</p></div>`;
+                // Leave nothing on "Loading…" that looks like it might still arrive.
+                document.getElementById('snapshotTable').innerHTML = '<tr><td colspan="2" class="muted">Unavailable: the report did not load.</td></tr>';
+                document.getElementById('averageScoreBlocks').innerHTML = summaryCard('Average scores', '—', 'Unavailable: the report did not load.');
+                document.getElementById('appointmentBreakdownTable').innerHTML = '<tr><td colspan="3" class="muted">Unavailable: the report did not load.</td></tr>';
+                document.getElementById('roleBreakdownTable').innerHTML = '<tr><td colspan="3" class="muted">Unavailable: the report did not load.</td></tr>';
+                document.getElementById('recentActivityList').innerHTML = '<div class="report-item"><p class="muted">Unavailable: the report did not load.</p></div>';
             }
         }
 
@@ -362,14 +393,17 @@ requireAuth();
                 if (patientFilters.dateTo) params.set('dateTo', patientFilters.dateTo);
                 const data = await apiFetch(`/admin/patient-reports/overview?${params.toString()}`);
 
+                // Always system-wide and all-time (routes/admin-patient-reports.js
+                // GET /overview) — the filters below never change these.
                 const t = data.systemTotals || {};
                 document.getElementById('systemTotalsCards').innerHTML = [
-                    summaryCard('Total Patients', t.totalPatients ?? 0),
-                    summaryCard('Total Parents', t.totalParents ?? 0),
-                    summaryCard('Total Pediatricians', t.totalPediatricians ?? 0),
-                    summaryCard('Completed Assessments', t.totalCompletedAssessments ?? 0),
-                    summaryCard('Total Appointments', t.totalAppointments ?? 0),
-                    summaryCard('Pediatrician-Reviewed', t.totalReviewed ?? 0),
+                    summaryCard('Total Patients', fmtCountR(t.totalPatients ?? 0), 'Every child record, assessed or not.'),
+                    summaryCard('Total Parents', fmtCountR(t.totalParents ?? 0), 'Parent-role accounts only; other guardian roles are not included.'),
+                    summaryCard('Total Pediatricians', fmtCountR(t.totalPediatricians ?? 0), 'Pediatrician accounts, any status.'),
+                    summaryCard('Completed Assessments', fmtCountR(t.totalCompletedAssessments ?? 0), 'Assessment sessions with status complete. Counts sessions, not children.'),
+                    summaryCard('Total Appointments', fmtCountR(t.totalAppointments ?? 0), 'Appointment records of every status.'),
+                    summaryCard('Pediatrician-Reviewed', fmtCountR(t.totalReviewed ?? 0),
+                        `Completed assessments with a recorded pediatrician review: ${shareOfText(t.totalReviewed ?? 0, t.totalCompletedAssessments ?? 0, 'completed assessments')}.`),
                 ].join('');
 
                 // Pediatrician dropdown — populated from the roster response so
@@ -435,13 +469,20 @@ requireAuth();
 
                 document.getElementById('patientPivotTitle').textContent = data.title || 'All Patient Reports';
 
+                // Same population for all four cards and the rows below; see
+                // the filter policy in services/adminPatientReportsView.js.
                 const s = data.summary || {};
+                const dated = Boolean(patientFilters.dateFrom || patientFilters.dateTo);
+                const inRange = dated ? ' in the date range' : '';
                 document.getElementById('patientFilteredSummary').innerHTML = [
-                    summaryCard('Patients', s.patients ?? 0),
-                    summaryCard('Assessments', s.assessments ?? 0),
-                    summaryCard('Reviewed', s.reviewed ?? 0),
-                    summaryCard('Latest Activity', fmtDateShortPR(s.latestActivity)),
+                    summaryCard('Patients', fmtCountR(s.patients ?? 0),
+                        `Children matching the filters${dated ? '. The date range does not remove patients; it only narrows the other three cards' : ''}.`),
+                    summaryCard('Assessments', fmtCountR(s.assessments ?? 0), `Completed assessment sessions of these patients${inRange}.`),
+                    summaryCard('Reviewed', fmtCountR(s.reviewed ?? 0),
+                        `Of those assessments, with a pediatrician review: ${shareOfText(s.reviewed ?? 0, s.assessments ?? 0, 'assessments')}.`),
+                    summaryCard('Latest Activity', fmtDateShortPR(s.latestActivity), `Most recent completion date among these assessments${inRange}.`),
                 ].join('');
+                renderPatientFilterScope(data.filters);
 
                 const rows = data.rows || [];
                 if (!rows.length) {
@@ -467,7 +508,38 @@ requireAuth();
                 rowsEl.innerHTML = '';
                 patientReportsNotice(`Could not load patient reports: ${err.message}`, 'error');
                 document.getElementById('patientFilteredSummary').innerHTML = summaryCard('Could not load', 'Server request failed');
+                // Don't leave a "Showing: …" line describing figures that failed to load.
+                const scopeEl = document.getElementById('patientFilterScope');
+                if (scopeEl) scopeEl.textContent = '';
+                document.getElementById('patientReportsPageInfo').textContent = '—';
             }
+        }
+
+        const SCOPE_LABELS = {
+            all: 'All patients',
+            assessments: 'Patients with a completed assessment',
+            reviewed: 'Patients with a reviewed assessment',
+            followup: 'Patients with a follow-up date or recommendation',
+        };
+
+        // One line saying exactly which filters produced the cards and rows,
+        // from the filters the server echoes back (not from the form).
+        function renderPatientFilterScope(echo) {
+            const el = document.getElementById('patientFilterScope');
+            if (!el) return;
+            const f = echo || {};
+            const parts = [SCOPE_LABELS[f.scope] || SCOPE_LABELS.all];
+            const ped = document.getElementById('prPediatrician');
+            if (f.pediatricianId && ped && ped.selectedIndex > 0) parts.push(`Pediatrician: ${ped.options[ped.selectedIndex].text.replace(/\s*\(\d+\)$/, '')}`);
+            if (f.parentId) parts.push(`Parent: ${document.getElementById('prParentSearch').value || 'selected'}`);
+            if (f.childId) parts.push(`Child: ${document.getElementById('prChildSearch').value || 'selected'}`);
+            const dayOf = (iso) => (iso ? iso.slice(0, 10) : null);
+            if (f.dateFrom || f.dateTo) {
+                parts.push(`Assessments completed ${f.dateFrom ? `from ${dayOf(f.dateFrom)}` : 'up to'} ${f.dateTo ? `${f.dateFrom ? 'to ' : ''}${dayOf(f.dateTo)} (inclusive, UTC dates)` : 'onwards'}`);
+            } else {
+                parts.push('all dates');
+            }
+            el.textContent = `Showing: ${parts.join(' · ')}.`;
         }
 
         function renderPatientReportsPagination() {
@@ -523,6 +595,10 @@ requireAuth();
         function onParentSearchInput(value) {
             clearTimeout(parentSearchTimer);
             document.getElementById('prParentId').value = '';
+            // Editing the box invalidates the earlier selection (the hidden id
+            // was just cleared), so drop the applied filter too — otherwise
+            // the list stays filtered by a parent the box no longer shows.
+            if (patientFilters.parentId !== 'all') onPatientFilterChange('parentId', 'all');
             parentSearchTimer = setTimeout(async () => {
                 const resultsEl = document.getElementById('prParentResults');
                 if (!value || value.trim().length < 2) { resultsEl.hidden = true; return; }
@@ -550,6 +626,9 @@ requireAuth();
         function onChildSearchInput(value) {
             clearTimeout(childSearchTimer);
             document.getElementById('prChildId').value = '';
+            // Same as the parent box: an edited name no longer matches the
+            // applied child filter, so remove it.
+            if (patientFilters.childId !== 'all') onPatientFilterChange('childId', 'all');
             childSearchTimer = setTimeout(async () => {
                 const resultsEl = document.getElementById('prChildResults');
                 if (!value || value.trim().length < 2) { resultsEl.hidden = true; return; }
@@ -705,7 +784,7 @@ requireAuth();
                             <span>${escapeHtml(labels[k] || k)}</span>
                             <span class="mini-bar-count">${n} ${n === 1 ? 'case' : 'cases'}</span>
                         </div>
-                        <div class="mini-bar-track"><div class="mini-bar-fill" style="width:${pct}%;"></div></div>
+                        <div class="mini-bar-track" role="img" aria-label="${escapeHtml(labels[k] || k)}: ${n} ${n === 1 ? 'case' : 'cases'}" title="${escapeHtml(labels[k] || k)}: ${n} ${n === 1 ? 'assessment' : 'assessments'}"><div class="mini-bar-fill" style="width:${pct}%;"></div></div>
                     </div>`;
             }).join('')}</div>`;
         }
@@ -720,7 +799,7 @@ requireAuth();
             const delayedBand = (vocab.bands || []).find((b) => b.key === 'delayed');
             const delayedLabel = delayedBand ? delayedBand.label : 'Delayed';
 
-            scopeNote.textContent = `Based on completed, scored assessments from ${fmtReportDate(data.filters?.from)} to ${fmtReportDate(data.filters?.to)}. "Late development" here means the "${delayedLabel}" band only, per KinderCura's existing scoring rules — not a new category.`;
+            scopeNote.textContent = `Based on completed, scored assessments from ${fmtReportDate(data.filters?.from)} to ${fmtReportDate(data.filters?.to)} (this section's own default range; it does not follow the Centralized Patient Reports filters above). "Late development" here means an overall score in the "${delayedLabel}" band only, per KinderCura's existing scoring rules — not a new category. Counts are assessments, so a child assessed more than once can be counted more than once.`;
 
             const genderKeys = [...(vocab.genders || []), unknownKey];
             const genderLabels = { ...GENDER_DISPLAY_LABELS, [unknownKey]: GENDER_UNKNOWN_LABEL };
@@ -749,9 +828,10 @@ requireAuth();
             const ageLeaderText = ageMode.leaders.map((k) => ageLabels[k] || k).join(' / ');
 
             body.innerHTML = `
-                <p style="margin:0 0 1rem;"><strong>${genderMode.total}</strong> assessment${genderMode.total === 1 ? '' : 's'} classified as "${escapeHtml(delayedLabel)}" in this range.</p>
+                <p style="margin:0 0 0.4rem;"><strong>${genderMode.total}</strong> assessment${genderMode.total === 1 ? '' : 's'} classified as "${escapeHtml(delayedLabel)}" in this range.</p>
+                <p class="muted mini-bars-legend">How to read the bars: each bar is a count of "${escapeHtml(delayedLabel)}" assessments, and its length is relative to the largest group in the same chart (that group fills the bar), not a percentage. These are counts, not rates — they are not adjusted for how many children of each gender or age were assessed, so a larger bar does not mean a group is more likely to be delayed.</p>
 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start;">
+                <div class="late-dev-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start;">
                     <div>
                         <h4 style="margin:0 0 0.6rem;">Gender Distribution</h4>
                         ${renderMiniBars(genderKeys, genderCounts, genderLabels)}
@@ -781,7 +861,7 @@ requireAuth();
             const body = document.getElementById('diagnosisModeBody');
             if (!scopeNote || !body) return;
 
-            scopeNote.textContent = `Based on completed assessments with a recorded diagnosis, from ${fmtReportDate(data.filters?.from)} to ${fmtReportDate(data.filters?.to)}.`;
+            scopeNote.textContent = `Based on completed assessments with a recorded pediatrician diagnosis, from ${fmtReportDate(data.filters?.from)} to ${fmtReportDate(data.filters?.to)} (same default range as the section above; not affected by the Centralized Patient Reports filters). Counts are assessments, not children.`;
 
             const df = data.diagnosisFrequency || { totalConsidered: 0, rows: [], topCount: 0, topDiagnoses: [], tie: false };
             const KI = window.KCAdminReportsInterpretations;

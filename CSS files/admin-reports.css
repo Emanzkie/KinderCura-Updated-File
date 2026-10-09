@@ -316,3 +316,39 @@
         border: 1px solid #ddd;
     }
 }
+
+/* ── Admin Reports: scope and definition lines ───────────────────────
+   New class names only, so ADMIN/admin-analytics.html (which also loads
+   this file) is unaffected. */
+.pr-scope-line {
+    margin: 0 0 0.75rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
+.pr-scope-line strong {
+    color: var(--text-dark);
+    font-weight: 600;
+}
+
+.snapshot-note {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.76rem;
+    font-weight: 400;
+}
+
+.mini-bars-legend {
+    margin: 0 0 1rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
+/* Two-up grids on the Reports page are inline styles, so stacking them on a
+   narrow screen needs !important. Scoped by id/class to this page. */
+@media (max-width: 900px) {
+    #breakdownGrid,
+    .late-dev-grid {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+}
