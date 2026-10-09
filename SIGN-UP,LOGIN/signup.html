@@ -252,6 +252,25 @@
                             <input type="password" id="pConfirm" placeholder="Repeat password">
                         </div>
 
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" onclick="go(3)">Back</button>
+                            <button type="button" class="btn btn-primary" id="pCredentialsNextBtn" onclick="continueToConsent('parent')">Continue</button>
+                        </div>
+                    </div>
+                    <div class="form-footer">
+                        <p>Already have an account? <a href="/login.html">Sign in</a></p>
+                    </div>
+                </div>
+
+                <!-- P-STEP 4b: Terms of Service & Consent. Shown only after the
+                     Login Credentials step validates; the OTP is sent from here. -->
+                <div class="form-step onboarding-step consent-step" id="sp4c">
+                    <div class="form-header">
+                        <h2 id="sp4cTitle" tabindex="-1">Terms of Service and Consent</h2>
+                        <p>Review the KinderCura Terms of Service and make your selections before we send your email verification code.</p>
+                    </div>
+                    <div class="form-section onboarding-card">
+                        <div id="ep4c" class="error-msg" role="alert" aria-live="polite"></div>
                         <!-- Terms of Service & consent. Wording is taken verbatim from
                              legal/KINDERCURA-TERMS-OF-SERVICE.txt (section 17). -->
                         <fieldset class="consent-group" aria-describedby="pConsentIntro">
@@ -289,7 +308,7 @@
                         </fieldset>
 
                         <div class="form-actions">
-                            <button type="button" class="btn btn-secondary" onclick="go(3)">Back</button>
+                            <button type="button" class="btn btn-secondary" onclick="go(4)">Back</button>
                             <button type="button" class="btn btn-primary" id="sendOtpBtn" onclick="sendOTP()">Send Verification Code</button>
                         </div>
                     </div>
@@ -324,7 +343,7 @@
                         <p class="resend-text">Didn't receive it? <button type="button" class="resend-btn"
                                 id="resendOtpBtn" onclick="sendOTP(true)">Resend Code</button></p>
                         <div class="form-actions">
-                            <button type="button" class="btn btn-secondary" onclick="go(4)">Back</button>
+                            <button type="button" class="btn btn-secondary" onclick="show('sp4c')">Back</button>
                             <button type="button" class="btn btn-primary" id="verifyBtn" onclick="verifyAndRegister()">Verify &
                                 Continue</button>
                         </div>
@@ -416,6 +435,25 @@
                             <input type="password" id="dConfirm" placeholder="Repeat password">
                         </div>
 
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" onclick="go(2)">Back</button>
+                            <button type="button" class="btn btn-primary" id="dCredentialsNextBtn" onclick="continueToConsent('pediatrician')">Continue</button>
+                        </div>
+                    </div>
+                    <div class="form-footer">
+                        <p>Already have an account? <a href="/login.html">Sign in</a></p>
+                    </div>
+                </div>
+
+                <!-- D-STEP 3b: Terms of Service & Consent. Shown only after the
+                     Login Credentials step validates; the OTP is sent from here. -->
+                <div class="form-step onboarding-step consent-step" id="sd3c">
+                    <div class="form-header">
+                        <h2 id="sd3cTitle" tabindex="-1">Terms of Service and Consent</h2>
+                        <p>Review the KinderCura Terms of Service and make your selections before we send your email verification code.</p>
+                    </div>
+                    <div class="form-section onboarding-card">
+                        <div id="ed3c" class="error-msg" role="alert" aria-live="polite"></div>
                         <!-- Terms of Service & consent. Wording is taken verbatim from
                              legal/KINDERCURA-TERMS-OF-SERVICE.txt (section 17). -->
                         <fieldset class="consent-group" aria-describedby="dConsentIntro">
@@ -453,7 +491,7 @@
                         </fieldset>
 
                         <div class="form-actions">
-                            <button type="button" class="btn btn-secondary" onclick="go(2)">Back</button>
+                            <button type="button" class="btn btn-secondary" onclick="go(3)">Back</button>
                             <button type="button" class="btn btn-primary" id="dSendOtpBtn" onclick="sendDoctorOTP()">Send Verification Code</button>
                         </div>
                     </div>
@@ -488,7 +526,7 @@
                         <p class="resend-text">Didn't receive it? <button type="button" class="resend-btn"
                                 id="dResendOtpBtn" onclick="sendDoctorOTP(true)">Resend Code</button></p>
                         <div class="form-actions">
-                            <button type="button" class="btn btn-secondary" onclick="go(3)">Back</button>
+                            <button type="button" class="btn btn-secondary" onclick="show('sd3c')">Back</button>
                             <button type="button" class="btn btn-primary" id="dVerifyBtn" onclick="verifyDoctorOTP()">Verify &
                                 Continue</button>
                         </div>

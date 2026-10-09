@@ -300,13 +300,53 @@ function validateConsent(kind, { focus = true } = {}) {
 }
 
 // For the later steps (resend / final submit), where the checkboxes are not on screen:
-// if a required box is not ticked, take the user back to the credentials step that
+// if a required box is not ticked, take the user back to the consent step that
 // holds them and show the message there, instead of failing somewhere they cannot act.
-function requireConsent(kind, credentialsStepId) {
+function requireConsent(kind, consentStepId) {
     if (validateConsent(kind, { focus: false })) return true;
-    show(credentialsStepId);
+    show(consentStepId);
     validateConsent(kind);
     return false;
+}
+
+// Sign-up is Login Credentials -> Terms of Service & Consent -> email verification.
+// The consent selections live on their own step, reached only through
+// continueToConsent(); the verification code is sent from the consent step.
+const SIGNUP_STEPS = {
+    parent:       { credentials: 'sp4', credentialsError: 'ep4', consent: 'sp4c', consentError: 'ep4c' },
+    pediatrician: { credentials: 'sd3', credentialsError: 'ed3', consent: 'sd3c', consentError: 'ed3c' },
+};
+
+// "Continue" on the Login Credentials step. Runs the same credential checks the
+// send step has always run and only then shows the consent step. Nothing is sent
+// to the server here: no code, no account. Typed values stay in their inputs, so
+// Back from the consent step finds them as they were.
+function continueToConsent(kind) {
+    const steps = SIGNUP_STEPS[kind];
+    const error = kind === 'parent' ? validateParentCredentials() : validateDoctorCredentials();
+    setMessage(steps.credentialsError, error);
+    if (error) {
+        const errorEl = byId(steps.credentialsError);
+        if (errorEl) errorEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return false;
+    }
+    // A failure message from an earlier send attempt no longer applies.
+    setMessage(steps.consentError, '');
+    show(steps.consent);
+    // Focus follows the step, so keyboard and screen-reader users are not left on
+    // the Continue button that has just been hidden.
+    const heading = byId(`${steps.consent}Title`);
+    if (heading && typeof heading.focus === 'function') heading.focus({ preventScroll: true });
+    return true;
+}
+
+// The address is already registered: only the credentials step can fix that,
+// so take the user there and say why.
+function showEmailExists(kind) {
+    const steps = SIGNUP_STEPS[kind];
+    setMessage(steps.consentError, '');
+    show(steps.credentials);
+    setMessage(steps.credentialsError, 'An account with this email already exists. Please sign in.');
 }
 
 let termsLoaded = false;
@@ -396,10 +436,14 @@ function openTermsDialog(trigger, section) {
 async function sendOTP(isResend = false) {
     const error = validateParentCredentials();
     if (error) {
+        // Normally caught by continueToConsent(); kept as the final gate before a send.
+        show('sp4');
         setMessage('ep4', error);
         return;
     }
-    if (!(isResend ? requireConsent('parent', 'sp4') : validateConsent('parent'))) return;
+    if (!(isResend ? requireConsent('parent', 'sp4c') : validateConsent('parent'))) return;
+    // Send failures are shown on the step the user is looking at.
+    const sendErrorId = isResend ? 'ep5e' : 'ep4c';
 
     if (otpSendInFlight.parent) return;
     otpSendInFlight.parent = true;
@@ -426,15 +470,16 @@ async function sendOTP(isResend = false) {
         if (!response.ok) {
             if (response.status === 409 && result.code === 'EMAIL_EXISTS') {
                 console.log('[SIGNUP] Existing user found:', email);
-                setMessage('ep4', 'An account with this email already exists. Please sign in.');
+                showEmailExists('parent');
                 return;
             }
             console.log('[SIGNUP] Frontend blocked:', result.error);
-            setMessage('ep4', result.error || result.message || 'Request failed.');
+            setMessage(sendErrorId, result.error || result.message || 'Request failed.');
             return;
         }
 
         setMessage('ep4', '');
+        setMessage('ep4c', '');
         setMessage('ep5e', '');
         setMessage('ep5s', isResend ? 'A new verification code was sent.' : 'Verification code sent.');
         const otpEmail = byId('otpEmail');
@@ -443,8 +488,7 @@ async function sendOTP(isResend = false) {
         show('sp5');
     } catch (err) {
         console.log('[SIGNUP] Frontend blocked:', err.message);
-        setMessage('ep4', err.message);
-        setMessage('ep5e', err.message);
+        setMessage(sendErrorId, err.message);
     } finally {
         otpSendInFlight.parent = false;
         restore();
@@ -466,7 +510,7 @@ async function verifyAndRegister() {
         return;
     }
     // Final guard, before the code is consumed or an account is created.
-    if (!requireConsent('parent', 'sp4')) return;
+    if (!requireConsent('parent', 'sp4c')) return;
 
     const restore = setButtonLoading('verifyBtn', 'Verifying...');
     try {
@@ -529,10 +573,14 @@ async function verifyAndRegister() {
 async function sendDoctorOTP(isResend = false) {
     const error = validateDoctorCredentials();
     if (error) {
+        // Normally caught by continueToConsent(); kept as the final gate before a send.
+        show('sd3');
         setMessage('ed3', error);
         return;
     }
-    if (!(isResend ? requireConsent('pediatrician', 'sd3') : validateConsent('pediatrician'))) return;
+    if (!(isResend ? requireConsent('pediatrician', 'sd3c') : validateConsent('pediatrician'))) return;
+    // Send failures are shown on the step the user is looking at.
+    const sendErrorId = isResend ? 'ed4e' : 'ed3c';
 
     if (otpSendInFlight.pediatrician) return;
     otpSendInFlight.pediatrician = true;
@@ -557,15 +605,16 @@ async function sendDoctorOTP(isResend = false) {
         if (!response.ok) {
             if (response.status === 409 && result.code === 'EMAIL_EXISTS') {
                 console.log('[SIGNUP] Existing user found:', email);
-                setMessage('ed3', 'An account with this email already exists. Please sign in.');
+                showEmailExists('pediatrician');
                 return;
             }
             console.log('[SIGNUP] Frontend blocked:', result.error);
-            setMessage('ed3', result.error || result.message || 'Request failed.');
+            setMessage(sendErrorId, result.error || result.message || 'Request failed.');
             return;
         }
 
         setMessage('ed3', '');
+        setMessage('ed3c', '');
         setMessage('ed4e', '');
         setMessage('ed4s', isResend ? 'A new verification code was sent.' : 'Verification code sent.');
         const otpEmail = byId('dOtpEmail');
@@ -574,8 +623,7 @@ async function sendDoctorOTP(isResend = false) {
         show('sd4');
     } catch (err) {
         console.log('[SIGNUP] Frontend blocked:', err.message);
-        setMessage('ed3', err.message);
-        setMessage('ed4e', err.message);
+        setMessage(sendErrorId, err.message);
     } finally {
         otpSendInFlight.pediatrician = false;
         restore();
@@ -641,7 +689,7 @@ async function registerPedia() {
             return;
         }
         // Final guard: nothing is sent to the server unless both REQUIRED boxes are ticked.
-        if (!requireConsent('pediatrician', 'sd3')) {
+        if (!requireConsent('pediatrician', 'sd3c')) {
             return;
         }
         const consent = readConsent('pediatrician');

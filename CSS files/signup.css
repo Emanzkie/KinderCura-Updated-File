@@ -944,6 +944,29 @@
     display: block;
 }
 
+/* The consent selections have their own sign-up step (sp4c / sd3c), whose
+   heading already reads "Terms of Service and Consent". The legend stays as the
+   group's accessible name but is not shown a second time. */
+.consent-step .consent-group {
+    margin-top: 0;
+}
+
+.consent-step .consent-legend {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.consent-step .form-header h2:focus {
+    outline: none;
+}
+
 /* Terms reader (native <dialog>) */
 .terms-dialog {
     width: min(760px, calc(100vw - 2rem));

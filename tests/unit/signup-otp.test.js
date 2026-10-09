@@ -243,8 +243,8 @@ async function httpEmailTests() {
 
 (async () => {
   // 1. Every id the JS touches exists in the markup.
-  for (const id of ['pEmail','pPassword','pConfirm','pUsername','otpEmail','o1','o2','o3','o4','sp5','verifyBtn','sendOtpBtn','resendOtpBtn',
-                    'dEmail','dPassword','dConfirm','dUsername','dOtpEmail','d1','d2','d3','d4','sd4','dVerifyBtn','dSendOtpBtn','dResendOtpBtn']) {
+  for (const id of ['pEmail','pPassword','pConfirm','pUsername','sp4c','ep4c','pCredentialsNextBtn','otpEmail','o1','o2','o3','o4','sp5','verifyBtn','sendOtpBtn','resendOtpBtn',
+                    'dEmail','dPassword','dConfirm','dUsername','sd3c','ed3c','dCredentialsNextBtn','dOtpEmail','d1','d2','d3','d4','sd4','dVerifyBtn','dSendOtpBtn','dResendOtpBtn']) {
     assert.ok(new RegExp(`id="${id}"`).test(html), `signup.html is missing id="${id}"`);
   }
   assert.ok(/<script src="\/js\/auth\/signup\.js"><\/script>/.test(html), 'signup.html must load /js/auth/signup.js');
@@ -345,7 +345,7 @@ async function httpEmailTests() {
     await env.run('sendOTP')();
     assert.strictEqual(env.els.sendOtpBtn.disabled, false, 'button restored after failure');
     assert.strictEqual(env.els.sendOtpBtn.textContent, 'Send Verification Code');
-    assert.match(env.els.ep4.textContent, /Email service is not configured/);
+    assert.match(env.els.ep4c.textContent, /Email service is not configured/, 'shown on the consent step, where Send was clicked');
     assert.ok(!env.els.sp5 || !env.els.sp5.classList.added.includes('active'), 'does not advance on failure');
     ok('failure path: server message shown, button restored, no advance to the OTP step');
   }

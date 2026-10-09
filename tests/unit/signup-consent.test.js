@@ -372,7 +372,7 @@ async function clientTests() {
     if (c.blocked) {
       assert.strictEqual(env.fetchCalls.length, 0, `${name}: final step sends NOTHING (OTP not consumed, no account)`);
       assert.match(env.els.pConsentError.textContent, /Terms of Service|Privacy Notice/, name + ': message shown inside the consent block');
-      assert.ok(env.els.sp4.classList.added.includes('active'), name + ': user is taken back to the step that holds the checkboxes');
+      assert.ok(env.els.sp4c.classList.added.includes('active'), name + ': user is taken back to the consent step that holds the checkboxes');
     } else {
       const reg = env.fetchCalls.find((f) => f.url.endsWith('/register'));
       assert.ok(reg, `${name}: register request made`);
@@ -404,7 +404,7 @@ async function clientTests() {
     if (c.blocked) {
       assert.ok(!reg, `${name}: pediatrician register NOT sent`);
       assert.match(env2.els.dConsentError.textContent, /Terms of Service|Privacy Notice/, name + ': message shown inside the consent block');
-      assert.ok(env2.els.sd3.classList.added.includes('active'), name + ': pediatrician is taken back to the credentials step');
+      assert.ok(env2.els.sd3c.classList.added.includes('active'), name + ': pediatrician is taken back to the consent step');
     } else {
       assert.ok(reg, `${name}: pediatrician register sent`);
       assert.strictEqual(reg.opts.body.get('acceptTerms'), 'true'); assert.strictEqual(reg.opts.body.get('acknowledgePrivacy'), 'true');
@@ -426,6 +426,98 @@ async function clientTests() {
     await env.run('sendOTP')();
     assert.strictEqual(env.els.ep4.textContent, 'Please enter a valid email address.');
     ok('existing credential validation messages unchanged');
+  }
+
+  // 5e2. Separate consent step: markup. The consent fieldset is NOT in the Login
+  // Credentials step; it is the content of its own step, which holds the send button.
+  {
+    const stepHtml = (id) => {
+      const start = html.indexOf(`id="${id}"`);
+      assert.ok(start > 0, `step ${id} exists`);
+      const next = html.indexOf('class="form-step', start);
+      return html.slice(start, next === -1 ? undefined : next);
+    };
+    for (const [kind, cred, consent, p, nextBtn, sendBtn] of [
+      ['parent', 'sp4', 'sp4c', 'p', 'pCredentialsNextBtn', 'sendOtpBtn'],
+      ['pediatrician', 'sd3', 'sd3c', 'd', 'dCredentialsNextBtn', 'dSendOtpBtn'],
+    ]) {
+      const credHtml = stepHtml(cred);
+      const consentHtml = stepHtml(consent);
+      for (const field of ['Username', 'Email', 'Password', 'Confirm']) assert.ok(credHtml.includes(`id="${p}${field}"`), `${cred} keeps ${p}${field}`);
+      assert.ok(!/consent-group|AcceptTerms|AckPrivacy|MlConsent|Send Verification Code/.test(credHtml), `${cred}: no consent UI and no send button on the credentials step`);
+      assert.ok(credHtml.includes(`id="${nextBtn}" onclick="continueToConsent('${kind}')">Continue</button>`), `${cred}: Continue runs continueToConsent`);
+      for (const id of [`${p}AcceptTerms`, `${p}AckPrivacy`, `${p}MlConsent`, `${p}ConsentError`]) assert.ok(consentHtml.includes(`id="${id}"`), `${consent} holds ${id}`);
+      assert.ok(consentHtml.includes(`id="${sendBtn}"`), `${consent} holds the existing Send Verification Code button`);
+      assert.ok(!/id="(p|d)(Username|Email|Password|Confirm)"/.test(consentHtml), `${consent}: no credential fields on the consent step`);
+      assert.ok(!/<form\b/.test(html), 'no <form> element: nothing can be submitted implicitly');
+    }
+    assert.ok(stepHtml('sp4c').includes('onclick="go(4)">Back</button>') && stepHtml('sd3c').includes('onclick="go(3)">Back</button>'), 'consent Back returns to Login Credentials');
+    assert.ok(stepHtml('sp5').includes(`onclick="show('sp4c')">Back</button>`) && stepHtml('sd4').includes(`onclick="show('sd3c')">Back</button>`), 'verification Back returns to the consent step');
+    ok('markup: Login Credentials step has only credential fields + Continue; consent fieldset + Send Verification Code live on their own step (parent and pediatrician)');
+  }
+
+  // 5e3. continueToConsent: credential validation gates the consent step; nothing is sent.
+  {
+    const valid = { pUsername: 'kind_parent', pEmail: 'kind.parent@example.invalid', pPassword: 'pw-long-enough', pConfirm: 'pw-long-enough', pFirst: 'Ana', pLast: 'Reyes' };
+    const bad = [
+      ['empty', {}, 'Please complete all parent login credentials.'],
+      ['invalid email', { pEmail: 'not-an-email' }, 'Please enter a valid email address.'],
+      ['short password', { pPassword: 'short', pConfirm: 'short' }, 'Password must be at least 8 characters long.'],
+      ['mismatch', { pConfirm: 'pw-different-value' }, 'Passwords do not match.'],
+    ];
+    for (const [name, override, message] of bad) {
+      const env = makeSignupEnv();
+      if (name !== 'empty') Object.entries({ ...valid, ...override }).forEach(([k, v]) => { env.el(k).value = v; });
+      assert.strictEqual(env.run("continueToConsent('parent')"), false, `${name}: blocked`);
+      assert.strictEqual(env.els.ep4.textContent, message, `${name}: message on the credentials step`);
+      assert.ok(!env.el('sp4c').classList.added.includes('active'), `${name}: consent step NOT shown`);
+      assert.strictEqual(env.fetchCalls.length, 0, `${name}: no request`);
+    }
+    const env = makeSignupEnv();
+    Object.entries(valid).forEach(([k, v]) => { env.el(k).value = v; });
+    env.el('ep4').textContent = 'stale'; env.el('ep4c').textContent = 'stale send error';
+    assert.strictEqual(env.run("continueToConsent('parent')"), true);
+    assert.ok(env.els.sp4c.classList.added.includes('active'), 'consent step shown');
+    assert.strictEqual(env.els.ep4.textContent, ''); assert.strictEqual(env.els.ep4c.textContent, '', 'old messages cleared');
+    assert.strictEqual(env.fetchCalls.length, 0, 'advancing sends NO verification code and creates NO account');
+    assert.strictEqual(env.focused[env.focused.length - 1], 'sp4cTitle', 'focus moves to the consent step heading');
+    assert.strictEqual(env.el('pMlConsent').checked, false, 'optional ML consent is not pre-ticked by the script');
+    Object.entries(valid).forEach(([k, v]) => assert.strictEqual(env.els[k].value, v, `${k} preserved for Back`));
+    // Doctor: same gate, its own messages
+    const envD = makeSignupEnv();
+    Object.entries({ dFirst: 'Ben', dLast: 'Cruz', dUsername: 'dr_cruz', dEmail: 'dr.cruz@example.invalid', dPassword: 'pw-long-enough', dConfirm: 'pw-nope-nope' }).forEach(([k, v]) => { envD.el(k).value = v; });
+    assert.strictEqual(envD.run("continueToConsent('pediatrician')"), false);
+    assert.strictEqual(envD.els.ed3.textContent, 'Passwords do not match.');
+    assert.ok(!envD.el('sd3c').classList.added.includes('active'));
+    envD.el('dConfirm').value = 'pw-long-enough';
+    assert.strictEqual(envD.run("continueToConsent('pediatrician')"), true, 'edited credentials are validated again, then allowed');
+    assert.ok(envD.els.sd3c.classList.added.includes('active'));
+    assert.strictEqual(envD.fetchCalls.length, 0);
+    ok('continueToConsent: empty / invalid email / short / mismatched credentials stay on Login Credentials with the existing message; valid ones open the consent step without any request');
+  }
+
+  // 5e4. Send from the consent step: errors land on the consent step; an existing
+  // email takes the user back to Login Credentials, where it can be changed.
+  {
+    const typed = { pUsername: 'kind_parent', pEmail: 'kind.parent@example.invalid', pPassword: 'pw-long-enough', pConfirm: 'pw-long-enough', pFirst: 'Ana', pLast: 'Reyes' };
+    const env = makeSignupEnv();
+    Object.entries(typed).forEach(([k, v]) => { env.el(k).value = v; });
+    setConsent(env, 'parent', CASES.D);
+    env.setFetch(async () => env.resp(409, { error: 'exists', code: 'EMAIL_EXISTS' }));
+    await env.run('sendOTP')();
+    assert.ok(env.els.sp4.classList.added.includes('active'), 'back on Login Credentials');
+    assert.match(env.els.ep4.textContent, /already exists/);
+    assert.ok(!env.el('sp5').classList.added.includes('active'), 'no OTP step');
+    Object.entries(typed).forEach(([k, v]) => assert.strictEqual(env.els[k].value, v));
+
+    const env2 = makeSignupEnv();
+    Object.entries(typed).forEach(([k, v]) => { env2.el(k).value = v; });
+    setConsent(env2, 'parent', CASES.D);
+    env2.setFetch(async () => { throw new Error('Network down'); });
+    await env2.run('sendOTP')();
+    assert.strictEqual(env2.els.ep4c.textContent, 'Network down', 'network failure shown on the consent step');
+    assert.ok(!env2.el('sp5').classList.added.includes('active'));
+    ok('send from consent step: EMAIL_EXISTS returns to Login Credentials with the message; other failures shown on the consent step; no advance');
   }
 
   // 5f. Terms reader: verbatim rendering
