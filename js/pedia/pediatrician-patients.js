@@ -355,7 +355,7 @@ const API = window.location.origin + '/api';
 
                 <!-- Assessment Scores -->
                 ${hasScores ? `
-                <div style="background:var(--bg-primary);padding:1.2rem 1.5rem;border-radius:10px;margin-bottom:1.2rem;">
+                <div style="background:var(--bg-secondary);padding:1.2rem 1.5rem;border-radius:10px;margin-bottom:1.2rem;">
                     <p style="font-weight:600;color:var(--primary);margin-bottom:0.8rem;font-size:0.9rem;"><img src="/icons/analytics.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Assessment Results
                         <span style="float:right;font-size:0.78rem;color:var(--text-light);font-weight:400;">Latest assessment: ${lastAssess}</span>
                     </p>
@@ -392,7 +392,7 @@ const API = window.location.origin + '/api';
                         <p style="font-size:0.75rem;color:var(--text-light);margin:0.45rem 0 0;">${p.progressNotesCount} note${p.progressNotesCount !== 1 ? "s" : ""} • Last update ${latestProgressDate}</p>
                     </div>` : ''}
                 </div>` : `
-                <div style="background:var(--bg-primary);padding:1rem 1.5rem;border-radius:10px;margin-bottom:1.2rem;text-align:center;color:var(--text-light);font-size:0.85rem;">
+                <div style="background:var(--bg-secondary);padding:1rem 1.5rem;border-radius:10px;margin-bottom:1.2rem;text-align:center;color:var(--text-light);font-size:0.85rem;">
                     <p><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> No assessment results on file yet. <span style="color:var(--text-light);">Last checked: ${lastAssess}</span></p>
                 </div>`}
 
