@@ -591,3 +591,154 @@
   display: inline-block;
   margin-top: 0.35rem;
 }
+
+
+/* ── Metric and data definitions ─────────────────────────────────── */
+
+.card-def {
+  margin: 0.4rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-light);
+}
+
+.metric-glossary,
+.cleaning-defs {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: var(--text-dark);
+}
+
+.cleaning-defs {
+  margin-top: 0.9rem;
+}
+
+.metric-glossary summary,
+.cleaning-defs summary,
+.per-class summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--primary-dark);
+}
+
+.metric-glossary dl,
+.cleaning-defs dl {
+  margin: 0.6rem 0 0;
+}
+
+.metric-glossary dt,
+.cleaning-defs dt {
+  margin-top: 0.55rem;
+  font-weight: 600;
+}
+
+.metric-glossary dd,
+.cleaning-defs dd {
+  margin: 0.15rem 0 0;
+  color: var(--text-light);
+}
+
+.metric-caveat {
+  margin: 0.75rem 0 0;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+  color: var(--status-attention-fg);
+}
+
+.mps-reasons {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.mps-synthetic,
+.mps-not-active {
+  margin: 0.75rem 0 0;
+  padding: 0.6rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.mps-synthetic {
+  background: var(--status-attention-bg);
+  color: var(--status-attention-fg);
+  font-weight: 600;
+}
+
+.mps-not-active {
+  background: var(--status-caution-bg);
+  color: var(--status-caution-fg);
+}
+
+.metric-line {
+  font-weight: 600;
+  color: var(--text-dark);
+}
+
+.per-class {
+  margin-top: 0.45rem;
+  font-size: 0.8rem;
+}
+
+.per-class-table {
+  margin-top: 0.4rem;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.per-class {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* The per-class table sits inside a .dataset-table cell, whose generic
+   th/td rules (padding, and on phones display:block/flex with a data-label
+   prefix and a hidden thead) would otherwise apply to it too. These
+   selectors are more specific, so it stays an ordinary small table. */
+.dataset-table .per-class-table { display: table; width: auto; }
+.dataset-table .per-class-table thead { display: table-header-group; }
+.dataset-table .per-class-table tbody { display: table-row-group; }
+.dataset-table .per-class-table tr {
+  display: table-row;
+  width: auto;
+  padding: 0;
+  border: 0;
+}
+
+.dataset-table .per-class-table th,
+.dataset-table .per-class-table td {
+  display: table-cell;
+  width: auto;
+  padding: 0.25rem 0.55rem 0.25rem 0;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.dataset-table .per-class-table td::before {
+  content: none;
+  display: none;
+}
+
+.dataset-table .per-class-table th {
+  color: var(--text-light);
+  font-weight: 600;
+}
+
+.metrics-cell {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.quality-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}

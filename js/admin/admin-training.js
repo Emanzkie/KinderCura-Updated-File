@@ -340,6 +340,7 @@ function renderDatasetPipelineSummary(datasets, summary) {
 
             <p class="dp-note">
                 <strong>Synthetic data — for testing/training only — not clinically validated.</strong>
+                Duplicates are removed first, and each invalid row is counted once, under the first check it failed.
                 Counts come from the recorded <code>ml/preprocess.py</code> run for dataset version
                 <code>${escapeHtml((pipelineDataset.syntheticPipeline && pipelineDataset.syntheticPipeline.datasetVersion) || '—')}</code>.
             </p>
@@ -678,6 +679,30 @@ function formatMetric(value) {
     return typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '—';
 }
 
+// Display helpers (labels, class order, cleaning accounting) — pure; see
+// js/admin/training-display.js and its unit test.
+const TD = window.KCTrainingDisplay;
+
+// Per-class breakdown behind the weighted averages, from the model's own
+// recorded perClassMetrics (TEST split) and classDistribution (all rows).
+// Omitted entirely for models trained before per-class metrics were stored.
+function perClassDetails(m) {
+    const rows = TD.perClassRows(m.perClassMetrics, m.classDistribution);
+    if (!rows.length) return '';
+    const showAll = rows.some((r) => r.allRows != null);
+    return `
+        <details class="per-class">
+            <summary>Per-class results</summary>
+            <table class="per-class-table">
+                <thead><tr><th>Risk category</th><th>Precision</th><th>Recall</th><th>F1</th><th>Test rows</th>${showAll ? '<th>All rows</th>' : ''}</tr></thead>
+                <tbody>${rows.map((r) => `
+                    <tr><td>${escapeHtml(r.cls)}</td><td>${formatMetric(r.precision)}</td><td>${formatMetric(r.recall)}</td><td>${formatMetric(r.f1)}</td><td>${TD.formatCount(r.testRows)}</td>${showAll ? `<td>${TD.formatCount(r.allRows)}</td>` : ''}</tr>`).join('')}
+                </tbody>
+            </table>
+            <p class="dataset-meta">Test rows = rows of that category in the test split (the weights for the averages above).${showAll ? ' All rows = rows of that category the model was trained and tested on.' : ''}</p>
+        </details>`;
+}
+
 async function loadModels() {
     try {
         const data = await apiFetch('/ml/models');
@@ -705,9 +730,13 @@ async function loadModels() {
                 : (m.sourceType === 'synthetic'
                     ? '<div class="dataset-meta" style="color:var(--danger);">Test/Synthetic Data — not clinically validated</div>'
                     : '<div class="dataset-meta">Source not recorded</div>');
+            // Values exactly as ml/trainer.py recorded them; see the
+            // "What do Accuracy, Precision, Recall and F1 mean?" glossary.
             const metrics = m.status === 'completed'
-                ? `Acc ${formatMetric(m.accuracy)} · Prec ${formatMetric(m.precision)} · Rec ${formatMetric(m.recall)} · F1 ${formatMetric(m.f1Score)}`
-                    + `<div class="dataset-meta">${m.trainingSamples ?? '—'} train / ${m.testSamples ?? '—'} test (of ${m.totalRows ?? '—'} rows, ${m.rowsDropped ?? 0} dropped)</div>`
+                ? `<div class="metric-line">Accuracy ${formatMetric(m.accuracy)} · Precision ${formatMetric(m.precision)} · Recall ${formatMetric(m.recall)} · F1 ${formatMetric(m.f1Score)}</div>`
+                    + '<div class="dataset-meta">Measured on the test split; precision, recall and F1 are weighted averages across risk categories.</div>'
+                    + `<div class="dataset-meta">${TD.formatCount(m.trainingSamples)} training rows / ${TD.formatCount(m.testSamples)} test rows (counts) of ${TD.formatCount(m.totalRows)}; ${TD.formatCount(m.rowsDropped ?? 0)} dropped by the trainer's validation</div>`
+                    + perClassDetails(m)
                 : (m.status === 'failed' ? `<span style="color:var(--danger);">${escapeHtml(m.errorMessage || 'Training failed')}</span>` : '—');
             const featureSetType = m.featureSetType || (Array.isArray(m.featuresUsed) && m.featuresUsed.some((f) => /^Q\d{2}$/.test(f)) ? 'question_based' : 'score_based');
             const featureSetBadge = featureSetType === 'question_based'
@@ -756,7 +785,7 @@ async function loadModels() {
                     </td>
                     <td data-label="Status">${modelStateChip(m.lifecycleState)}${m.legacy ? '<div class="dataset-meta">Legacy model — recorded with a local file path</div>' : ''}${m.lifecycleState === 'active' && m.artifactAvailable === false ? '<div class="dataset-meta" style="color:var(--danger);">Artifact unavailable — new assessments use the rule-based fallback</div>' : ''}</td>
                     <td data-label="Compatibility">${compatCell}</td>
-                    <td data-label="Metrics">${metrics}</td>
+                    <td data-label="Metrics"><div class="metrics-cell">${metrics}</div></td>
                     <td data-label="Feature Columns"><div class="dataset-fields">${featureSetBadge}${features}</div></td>
                     <td class="dataset-actions" data-label="Actions">${actionCell}</td>
                 </tr>`;
@@ -809,7 +838,7 @@ function renderActiveModelBanner(active, errored) {
             <p class="amb-detail">
                 ${escapeHtml(active.datasetName || 'Unknown dataset')} ·
                 ${escapeHtml(active.featureSetType || 'score_based')} ·
-                accuracy ${acc}.${synthetic}
+                test-split accuracy ${acc} (agreement with the dataset's labels, not clinical accuracy).${synthetic}
                 Already-completed assessments keep the result they were saved with.
             </p>
         </div>
@@ -1001,7 +1030,7 @@ async function loadReviewedSummary() {
         countEl.textContent = data.total ?? 0;
         const byLabel = data.byLabel || {};
         byLabelEl.textContent = data.total
-            ? `Low: ${byLabel.Low || 0} · Medium: ${byLabel.Medium || 0} · High: ${byLabel.High || 0}`
+            ? `Pediatrician labels: Low ${byLabel.Low || 0} · Medium ${byLabel.Medium || 0} · High ${byLabel.High || 0}`
             : 'No assessments have been reviewed yet.';
     } catch (err) {
         countEl.textContent = '—';
@@ -1036,17 +1065,23 @@ async function loadReviewedQuality() {
             ? `<ul style="margin:0.5rem 0 0;padding-left:1.2rem;">${q.readiness.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join('')}</ul>`
             : '<p style="margin:0.5rem 0 0;color:var(--text-light);">No quality concerns detected.</p>';
 
+        // Class shares are the server's own percentages
+        // (summarizeClassDistribution: count ÷ eligible assessments).
+        const classShare = (label) => (q.eligibleAssessments > 0 && typeof cd[label]?.percentage === 'number'
+            ? `${cd[label].percentage}%`
+            : 'N/A');
         details.innerHTML = `
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.75rem;margin-bottom:0.5rem;">
-                <div><strong>${q.eligibleAssessments}</strong> eligible <div class="dataset-meta">of ${q.totalReviewedAssessments} reviewed</div></div>
-                <div><strong>${cd.Low?.count ?? 0} / ${cd.Medium?.count ?? 0} / ${cd.High?.count ?? 0}</strong><div class="dataset-meta">Low / Medium / High</div></div>
-                <div><strong>${q.duplicateCount}</strong><div class="dataset-meta">Duplicate rows</div></div>
-                <div><strong>${missingAge}</strong><div class="dataset-meta">Missing age_months</div></div>
-                <div><strong>${q.excludedAssessments}</strong><div class="dataset-meta">Excluded</div></div>
-                <div><strong>${q.reviewStatistics?.uniqueReviewers ?? 0}</strong><div class="dataset-meta">Reviewers</div></div>
+            <div class="quality-grid">
+                <div><strong>${q.eligibleAssessments}</strong> eligible <div class="dataset-meta">of ${q.totalReviewedAssessments} reviewed. Eligible = completed, reviewed, with a valid label and a stored result; these are the rows the export contains.</div></div>
+                <div><strong>${cd.Low?.count ?? 0} / ${cd.Medium?.count ?? 0} / ${cd.High?.count ?? 0}</strong><div class="dataset-meta">Low / Medium / High labels (${classShare('Low')} / ${classShare('Medium')} / ${classShare('High')} of the ${q.eligibleAssessments} eligible)</div></div>
+                <div><strong>${q.duplicateCount}</strong><div class="dataset-meta">Duplicate rows: eligible rows with the same child and completion time as another row</div></div>
+                <div><strong>${missingAge}</strong><div class="dataset-meta">Eligible rows with no computable age_months</div></div>
+                <div><strong>${q.excludedAssessments}</strong><div class="dataset-meta">Excluded: assessments a reviewer excluded from model training (not counted as reviewed)</div></div>
+                <div><strong>${q.reviewStatistics?.uniqueReviewers ?? 0}</strong><div class="dataset-meta">Distinct pediatricians who labelled eligible rows</div></div>
             </div>
             <p style="margin:0;font-weight:600;">${escapeHtml(chip.text)}${q.readiness.reasons.length ? ' — see notes below:' : '.'}</p>
-            ${reasonsHtml}`;
+            ${reasonsHtml}
+            <p class="dataset-meta" style="margin-top:0.6rem;">Readiness checks technical minimums only (at least 10 eligible rows, at least 2 per represented risk category). Passing them does not show that a model trained on this data would be reliable, and a small number of reviewed assessments is not enough evidence for that.</p>`;
     } catch (err) {
         badge.className = 'dataset-status status-review';
         badge.textContent = 'ERROR';
@@ -1099,6 +1134,38 @@ function mpsPercent(value) {
     return Number.isFinite(Number(value)) ? (Number(value) * 100).toFixed(2) + '%' : null;
 }
 
+// Definitions of each cleaning figure, read from the stored ml/preprocess.py
+// report. The accounting rules are the preprocessor's own (see the header of
+// ml/preprocess.py and js/admin/training-display.js) — nothing is estimated.
+function cleaningDefinitions(cleaning) {
+    const c = TD.describeCleaning(cleaning);
+    if (c.generated == null) return '';
+    const reasons = c.reasons.length
+        ? `<ul class="mps-reasons">${c.reasons.map((r) => `<li>${escapeHtml(r.label)}: ${TD.formatCount(r.count)}</li>`).join('')}</ul>`
+        : '';
+    const filled = c.filled.length
+        ? c.filled.map((f) => `${TD.formatCount(f.filled)} blank <code>${escapeHtml(f.column)}</code> value(s) filled with the ${escapeHtml(f.strategy || 'recorded')} value${f.value != null ? ` (${escapeHtml(String(f.value))})` : ''}`).join('; ')
+        : 'none recorded';
+    return `
+        <details class="cleaning-defs">
+            <summary>What do these cleaning figures mean?</summary>
+            <dl>
+                <dt>Generated records (${TD.formatCount(c.generated)})</dt>
+                <dd>Rows read from the generated file before any cleaning.</dd>
+                <dt>Duplicates removed (${TD.formatCount(c.duplicates)})</dt>
+                <dd>Exact repeats of another row's answers, scores and label. Removed first, keeping the first copy, so a duplicate is never also counted as invalid.</dd>
+                <dt>Invalid records (${TD.formatCount(c.invalid)})</dt>
+                <dd>Rows dropped by a validation check. Checks run in order and a dropped row is counted once, under the first check it failed, so the reasons below add up to the invalid total${c.reasonsMatchInvalid === false ? ' — <strong>but here they do not; investigate before citing these counts</strong>' : ''}.${reasons}</dd>
+                ${c.valid != null ? `<dt>Valid records (${TD.formatCount(c.valid)})</dt>
+                <dd>Generated minus invalid. Duplicates still count as valid here, which is why this is larger than training-ready.</dd>` : ''}
+                <dt>Missing values filled</dt>
+                <dd>${filled}. Filled rows are kept, not removed. Missing domain or overall scores are never filled; those rows are counted as invalid.</dd>
+                <dt>Training-ready records (${TD.formatCount(c.final)})</dt>
+                <dd>Rows written to the clean file: generated − duplicates − invalid.${c.reconciles === false ? ' <strong>These stored counts do not reconcile; investigate before citing them.</strong>' : ''}</dd>
+            </dl>
+        </details>`;
+}
+
 async function loadPipelineSummary() {
     const body = document.getElementById('pipelineSummaryBody');
     if (!body) return;
@@ -1133,12 +1200,14 @@ async function loadPipelineSummary() {
                     ${mpsStat('Precision', mpsPercent(model.precision))}
                     ${mpsStat('Recall', mpsPercent(model.recall))}
                     ${mpsStat('F1 score', mpsPercent(model.f1Score))}
-                    ${mpsStat('Training rows', mpsNumber(model.trainingSamples))}
-                    ${mpsStat('Test rows', mpsNumber(model.testSamples))}
+                    ${mpsStat('Training rows (count)', mpsNumber(model.trainingSamples))}
+                    ${mpsStat('Test rows (count)', mpsNumber(model.testSamples))}
                 </div>
                 <p class="mps-sub" style="margin-top:0.85rem;">
-                    Measured by <code>ml/trainer.py</code> on its held-out test split (weighted averages).
-                    Classes: ${(model.classNames || []).map(escapeHtml).join(', ') || '—'}.
+                    Measured by <code>ml/trainer.py</code> on its held-out test split of ${escapeHtml(mpsNumber(model.testSamples) || '—')} rows.
+                    Precision, recall and F1 are weighted averages across risk categories (each weighted by its number of test rows);
+                    see "What do Accuracy, Precision, Recall and F1 mean?" under Trained Models. They measure agreement with the dataset's labels, not clinical accuracy.
+                    Classes: ${TD.orderedClasses(model.classNames || []).map(escapeHtml).join(', ') || '—'}.
                     Features: ${escapeHtml(model.featureSetType || '—')} (${mpsNumber((model.featuresUsed || []).length) || 0} columns).
                     ${model.rowsDropped ? `${mpsNumber(model.rowsDropped)} row(s) dropped by the trainer's own validation.` : ''}
                 </p>`
@@ -1172,6 +1241,10 @@ async function loadPipelineSummary() {
                     <br>Cleaning counts come from the actual <code>ml/preprocess.py</code> run recorded with this dataset.
                     Full breakdown on the <a href="/admin/admin-data-sources.html#modelDatasetPipeline">Data Sources</a> page.
                 </div>
+                ${cleaningDefinitions(cleaning)}
+                ${dataset.provenance && dataset.provenance.sourceType === 'synthetic'
+                    ? '<p class="mps-synthetic">Synthetic data — for testing/training only — not clinically validated. These rows are generated, not real patient records.</p>'
+                    : ''}
             </div>
 
             <div class="mps-section">
@@ -1179,6 +1252,9 @@ async function loadPipelineSummary() {
                     ${model && model.isActive ? '<span class="dataset-status status-processed">Active</span>' : (model && model.status === 'completed' ? '<span class="dataset-status status-ready">Candidate</span>' : '')}
                 </h4>
                 <p class="mps-sub">A completed model is a candidate; it does not affect live predictions until it is activated in Trained Models below.</p>
+                ${model && !model.isActive
+                    ? `<p class="mps-not-active"><strong>v${escapeHtml(String(model.version))} is not the active model.</strong> These metrics describe the model trained from this generated dataset only. The model serving predictions, and its own metrics, are shown under Trained Models below.</p>`
+                    : ''}
                 ${metricsBlock}
             </div>`;
     } catch (err) {
