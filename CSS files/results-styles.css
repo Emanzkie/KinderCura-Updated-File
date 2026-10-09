@@ -1056,7 +1056,7 @@ body {
     height: 8px;
     background: linear-gradient(
         to right,
-        var(--bg-tertiary) 0%,
+        var(--accent-red) 0%,
         var(--accent) 35%,
         var(--primary-light) 65%,
         var(--primary) 85%,
