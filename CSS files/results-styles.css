@@ -979,9 +979,9 @@ body {
 }
 
 /* Soft-tint status chip, matching .kc-badge and the pediatrician/secretary
-   screens. The saturated band colour is still used for the score number and
-   the progress bar on this card, where it carries the data; a solid fill with
-   white text was both off-system and low contrast on the amber "Fair" band. */
+   screens. The band colour is still used for this card's left border and
+   view dot; a solid fill with white text was both off-system and low
+   contrast on the amber "Fair" band. */
 .domain-status-chip {
     display: inline-flex;
     align-items: center;
@@ -1047,16 +1047,29 @@ body {
     color: var(--status-attention-fg);
 }
 
+/* The pink → yellow → green → dark green gradient spans the whole track, so
+   a higher score reveals more of it. The fill is transparent: it uncovers the
+   gradient up to its width, and its spread shadow paints the neutral track
+   colour over everything to its right (the track's overflow clips the rest).
+   At 0% the shadow covers the whole track. */
 .domain-progress {
     height: 8px;
-    background: var(--border);
+    background: linear-gradient(
+        to right,
+        var(--bg-tertiary) 0%,
+        var(--accent) 35%,
+        var(--primary-light) 65%,
+        var(--primary) 85%,
+        var(--primary-dark) 100%
+    );
     border-radius: 10px;
     overflow: hidden;
 }
 
 .domain-progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--domain-color, var(--primary)), var(--primary-light));
+    background: transparent;
+    box-shadow: 0 0 0 100vmax var(--border);
     border-radius: 10px;
     transition: width 0.5s ease;
 }
