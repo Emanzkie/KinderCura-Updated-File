@@ -270,7 +270,7 @@ function makeSignupEnv() {
   const el = (id) => (els[id] ||= {
     id, value: '', checked: false, textContent: '', disabled: false, style: {}, files: [], attrs: {}, listeners: {}, children: [], className: '', open: false, scrollTop: 0,
     classList: { added: [], add(c) { this.added.push(c); }, remove() {} },
-    setAttribute(k, v) { this.attrs[k] = String(v); }, getAttribute(k) { return this.attrs[k]; },
+    setAttribute(k, v) { this.attrs[k] = String(v); }, getAttribute(k) { return this.attrs[k]; }, removeAttribute(k) { delete this.attrs[k]; },
     focus() { focused.push(id); }, scrollIntoView() {}, appendChild(c) { this.children.push(c); },
     addEventListener(type, cb) { this.listeners[type] = cb; },
   });
@@ -372,7 +372,8 @@ async function clientTests() {
     if (c.blocked) {
       assert.strictEqual(env.fetchCalls.length, 0, `${name}: final step sends NOTHING (OTP not consumed, no account)`);
       assert.match(env.els.pConsentError.textContent, /Terms of Service|Privacy Notice/, name + ': message shown inside the consent block');
-      assert.ok(env.els.sp4c.classList.added.includes('active'), name + ': user is taken back to the consent step that holds the checkboxes');
+      assert.strictEqual(env.els.pConsentDialog.attrs.open, '', name + ': the consent modal is reopened over Login Credentials');
+      assert.ok(env.els.sp4.classList.added.includes('active'), name + ': Login Credentials shown under the modal');
     } else {
       const reg = env.fetchCalls.find((f) => f.url.endsWith('/register'));
       assert.ok(reg, `${name}: register request made`);
@@ -404,7 +405,7 @@ async function clientTests() {
     if (c.blocked) {
       assert.ok(!reg, `${name}: pediatrician register NOT sent`);
       assert.match(env2.els.dConsentError.textContent, /Terms of Service|Privacy Notice/, name + ': message shown inside the consent block');
-      assert.ok(env2.els.sd3c.classList.added.includes('active'), name + ': pediatrician is taken back to the consent step');
+      assert.strictEqual(env2.els.dConsentDialog.attrs.open, '', name + ': the consent modal is reopened for the pediatrician');
     } else {
       assert.ok(reg, `${name}: pediatrician register sent`);
       assert.strictEqual(reg.opts.body.get('acceptTerms'), 'true'); assert.strictEqual(reg.opts.body.get('acknowledgePrivacy'), 'true');
@@ -428,8 +429,8 @@ async function clientTests() {
     ok('existing credential validation messages unchanged');
   }
 
-  // 5e2. Separate consent step: markup. The consent fieldset is NOT in the Login
-  // Credentials step; it is the content of its own step, which holds the send button.
+  // 5e2. Consent modal: markup. The consent fieldset is NOT in the Login Credentials
+  // step; it lives in a modal <dialog> on the same page, which holds the send action.
   {
     const stepHtml = (id) => {
       const start = html.indexOf(`id="${id}"`);
@@ -437,26 +438,39 @@ async function clientTests() {
       const next = html.indexOf('class="form-step', start);
       return html.slice(start, next === -1 ? undefined : next);
     };
-    for (const [kind, cred, consent, p, nextBtn, sendBtn] of [
-      ['parent', 'sp4', 'sp4c', 'p', 'pCredentialsNextBtn', 'sendOtpBtn'],
-      ['pediatrician', 'sd3', 'sd3c', 'd', 'dCredentialsNextBtn', 'dSendOtpBtn'],
+    const dialogHtml = (id) => {
+      const m = new RegExp(`<dialog id="${id}"[^>]*>[\\s\\S]*?</dialog>`).exec(html);
+      assert.ok(m, `<dialog id="${id}"> exists`);
+      return m[0];
+    };
+    assert.ok(!/<form\b/.test(html), 'no <form> element: nothing can be submitted implicitly');
+    assert.ok(!/sp4c|sd3c/.test(html + signupJs), 'the separate consent steps are gone');
+    for (const [kind, cred, dialogId, p, nextBtn, sendBtn, sendFn] of [
+      ['parent', 'sp4', 'pConsentDialog', 'p', 'pCredentialsNextBtn', 'sendOtpBtn', 'sendOTP'],
+      ['pediatrician', 'sd3', 'dConsentDialog', 'd', 'dCredentialsNextBtn', 'dSendOtpBtn', 'sendDoctorOTP'],
     ]) {
       const credHtml = stepHtml(cred);
-      const consentHtml = stepHtml(consent);
+      const dlg = dialogHtml(dialogId);
       for (const field of ['Username', 'Email', 'Password', 'Confirm']) assert.ok(credHtml.includes(`id="${p}${field}"`), `${cred} keeps ${p}${field}`);
-      assert.ok(!/consent-group|AcceptTerms|AckPrivacy|MlConsent|Send Verification Code/.test(credHtml), `${cred}: no consent UI and no send button on the credentials step`);
+      assert.ok(!/consent-group|AcceptTerms|AckPrivacy|MlConsent|<dialog/.test(credHtml), `${cred}: no consent UI inside the credentials step`);
       assert.ok(credHtml.includes(`id="${nextBtn}" onclick="continueToConsent('${kind}')">Continue</button>`), `${cred}: Continue runs continueToConsent`);
-      for (const id of [`${p}AcceptTerms`, `${p}AckPrivacy`, `${p}MlConsent`, `${p}ConsentError`]) assert.ok(consentHtml.includes(`id="${id}"`), `${consent} holds ${id}`);
-      assert.ok(consentHtml.includes(`id="${sendBtn}"`), `${consent} holds the existing Send Verification Code button`);
-      assert.ok(!/id="(p|d)(Username|Email|Password|Confirm)"/.test(consentHtml), `${consent}: no credential fields on the consent step`);
-      assert.ok(!/<form\b/.test(html), 'no <form> element: nothing can be submitted implicitly');
+      assert.match(dlg, new RegExp(`<dialog id="${dialogId}" class="consent-dialog" aria-labelledby="${dialogId}Title"[^>]*aria-modal="true"`), `${dialogId}: labelled modal dialog`);
+      assert.ok(dlg.includes(`<h2 id="${dialogId}Title" tabindex="-1">Terms of Service and Consent</h2>`), `${dialogId}: title`);
+      for (const id of [`${p}AcceptTerms`, `${p}AckPrivacy`, `${p}MlConsent`, `${p}ConsentError`]) assert.ok(dlg.includes(`id="${id}"`), `${dialogId} holds ${id}`);
+      assert.ok(dlg.includes('href="/legal/KINDERCURA-TERMS-OF-SERVICE.txt" class="terms-open-link"'), `${dialogId}: Terms review link`);
+      assert.ok(dlg.includes(`onclick="closeConsentDialog('${kind}')">Back to Registration</button>`), `${dialogId}: Back to Registration`);
+      assert.ok(dlg.includes(`id="${sendBtn}" onclick="${sendFn}()">I Agree &amp; Continue</button>`), `${dialogId}: I Agree & Continue is the existing send action`);
+      assert.ok(!/id="(p|d)(Username|Email|Password|Confirm)"/.test(dlg), `${dialogId}: no credential fields in the modal`);
+      assert.ok(!/\bopen\b/.test(dlg.slice(0, dlg.indexOf('>'))), `${dialogId}: hidden on page load`);
+      // page-level, not nested inside a step that could be display:none
+      assert.ok(html.indexOf(`<dialog id="${dialogId}"`) > html.lastIndexOf('class="form-step'), `${dialogId} sits outside the steps`);
     }
-    assert.ok(stepHtml('sp4c').includes('onclick="go(4)">Back</button>') && stepHtml('sd3c').includes('onclick="go(3)">Back</button>'), 'consent Back returns to Login Credentials');
-    assert.ok(stepHtml('sp5').includes(`onclick="show('sp4c')">Back</button>`) && stepHtml('sd4').includes(`onclick="show('sd3c')">Back</button>`), 'verification Back returns to the consent step');
-    ok('markup: Login Credentials step has only credential fields + Continue; consent fieldset + Send Verification Code live on their own step (parent and pediatrician)');
+    assert.ok(stepHtml('sp5').includes(`onclick="openConsentDialog('parent')">Back</button>`) && stepHtml('sd4').includes(`onclick="openConsentDialog('pediatrician')">Back</button>`), 'verification Back reopens the consent modal');
+    assert.match(css, /\.consent-dialog::backdrop\s*\{/); assert.match(css, /\.consent-dialog-body\s*\{[^}]*overflow-y:\s*auto/);
+    ok('markup: Login Credentials step has only credential fields + Continue; consent fieldset lives in a hidden, labelled modal <dialog> with Back to Registration + I Agree & Continue (parent and pediatrician)');
   }
 
-  // 5e3. continueToConsent: credential validation gates the consent step; nothing is sent.
+  // 5e3. continueToConsent: credential validation gates the modal; nothing is sent.
   {
     const valid = { pUsername: 'kind_parent', pEmail: 'kind.parent@example.invalid', pPassword: 'pw-long-enough', pConfirm: 'pw-long-enough', pFirst: 'Ana', pLast: 'Reyes' };
     const bad = [
@@ -467,57 +481,93 @@ async function clientTests() {
     ];
     for (const [name, override, message] of bad) {
       const env = makeSignupEnv();
+      let opened = 0; env.el('pConsentDialog').showModal = () => { opened += 1; };
       if (name !== 'empty') Object.entries({ ...valid, ...override }).forEach(([k, v]) => { env.el(k).value = v; });
       assert.strictEqual(env.run("continueToConsent('parent')"), false, `${name}: blocked`);
       assert.strictEqual(env.els.ep4.textContent, message, `${name}: message on the credentials step`);
-      assert.ok(!env.el('sp4c').classList.added.includes('active'), `${name}: consent step NOT shown`);
+      assert.strictEqual(opened, 0, `${name}: modal NOT opened`);
       assert.strictEqual(env.fetchCalls.length, 0, `${name}: no request`);
     }
     const env = makeSignupEnv();
+    const dlg = env.el('pConsentDialog'); let opened = 0;
+    dlg.showModal = () => { opened += 1; dlg.open = true; }; dlg.close = () => { dlg.open = false; };
     Object.entries(valid).forEach(([k, v]) => { env.el(k).value = v; });
     env.el('ep4').textContent = 'stale'; env.el('ep4c').textContent = 'stale send error';
     assert.strictEqual(env.run("continueToConsent('parent')"), true);
-    assert.ok(env.els.sp4c.classList.added.includes('active'), 'consent step shown');
+    assert.strictEqual(opened, 1, 'modal opened with showModal()');
     assert.strictEqual(env.els.ep4.textContent, ''); assert.strictEqual(env.els.ep4c.textContent, '', 'old messages cleared');
-    assert.strictEqual(env.fetchCalls.length, 0, 'advancing sends NO verification code and creates NO account');
-    assert.strictEqual(env.focused[env.focused.length - 1], 'sp4cTitle', 'focus moves to the consent step heading');
+    assert.strictEqual(env.fetchCalls.length, 0, 'opening the modal sends NO verification code and creates NO account');
+    assert.strictEqual(env.focused[env.focused.length - 1], 'pConsentDialogTitle', 'focus moves to the modal title');
     assert.strictEqual(env.el('pMlConsent').checked, false, 'optional ML consent is not pre-ticked by the script');
-    Object.entries(valid).forEach(([k, v]) => assert.strictEqual(env.els[k].value, v, `${k} preserved for Back`));
-    // Doctor: same gate, its own messages
+    env.run("continueToConsent('parent')"); assert.strictEqual(opened, 1, 'an already-open modal is not opened twice');
+
+    // Back to Registration: closes, keeps everything, sends nothing, focus back on Continue.
+    env.el('pAcceptTerms').checked = true;
+    assert.strictEqual(env.run("closeConsentDialog('parent')"), true);
+    assert.strictEqual(dlg.open, false, 'modal closed');
+    assert.strictEqual(env.focused[env.focused.length - 1], 'pCredentialsNextBtn', 'focus returns to Continue');
+    assert.strictEqual(env.fetchCalls.length, 0, 'Back to Registration sends nothing');
+    Object.entries(valid).forEach(([k, v]) => assert.strictEqual(env.els[k].value, v, `${k} preserved`));
+    assert.strictEqual(env.els.pAcceptTerms.checked, true, 'selections kept for when the modal reopens');
+    // Escape (the dialog's cancel event) is the same as Back to Registration.
+    env.domReady(); env.run("continueToConsent('parent')"); assert.strictEqual(dlg.open, true);
+    let prevented = false; dlg.listeners.cancel({ preventDefault() { prevented = true; } });
+    assert.ok(prevented && dlg.open === false, 'Escape closes through closeConsentDialog');
+    assert.strictEqual(env.fetchCalls.length, 0, 'Escape sends nothing');
+    // While a code is being sent the modal cannot be dismissed.
+    env.run("continueToConsent('parent')"); env.run('otpSendInFlight.parent = true');
+    assert.strictEqual(env.run("closeConsentDialog('parent')"), false); assert.strictEqual(dlg.open, true);
+    env.run('otpSendInFlight.parent = false');
+
+    // Doctor: same gate, its own messages; edited credentials are validated again.
     const envD = makeSignupEnv();
+    let openedD = 0; envD.el('dConsentDialog').showModal = () => { openedD += 1; };
     Object.entries({ dFirst: 'Ben', dLast: 'Cruz', dUsername: 'dr_cruz', dEmail: 'dr.cruz@example.invalid', dPassword: 'pw-long-enough', dConfirm: 'pw-nope-nope' }).forEach(([k, v]) => { envD.el(k).value = v; });
     assert.strictEqual(envD.run("continueToConsent('pediatrician')"), false);
     assert.strictEqual(envD.els.ed3.textContent, 'Passwords do not match.');
-    assert.ok(!envD.el('sd3c').classList.added.includes('active'));
+    assert.strictEqual(openedD, 0);
     envD.el('dConfirm').value = 'pw-long-enough';
     assert.strictEqual(envD.run("continueToConsent('pediatrician')"), true, 'edited credentials are validated again, then allowed');
-    assert.ok(envD.els.sd3c.classList.added.includes('active'));
+    assert.strictEqual(openedD, 1);
     assert.strictEqual(envD.fetchCalls.length, 0);
-    ok('continueToConsent: empty / invalid email / short / mismatched credentials stay on Login Credentials with the existing message; valid ones open the consent step without any request');
+    ok('continueToConsent: invalid credentials keep the modal closed with the existing message; valid ones open it without any request; Back to Registration / Escape close it, keep every value and send nothing');
   }
 
-  // 5e4. Send from the consent step: errors land on the consent step; an existing
-  // email takes the user back to Login Credentials, where it can be changed.
+  // 5e4. I Agree & Continue: success closes the modal and opens code entry; an existing
+  // email returns to Login Credentials; other failures stay in the modal.
   {
     const typed = { pUsername: 'kind_parent', pEmail: 'kind.parent@example.invalid', pPassword: 'pw-long-enough', pConfirm: 'pw-long-enough', pFirst: 'Ana', pLast: 'Reyes' };
-    const env = makeSignupEnv();
-    Object.entries(typed).forEach(([k, v]) => { env.el(k).value = v; });
-    setConsent(env, 'parent', CASES.D);
-    env.setFetch(async () => env.resp(409, { error: 'exists', code: 'EMAIL_EXISTS' }));
-    await env.run('sendOTP')();
-    assert.ok(env.els.sp4.classList.added.includes('active'), 'back on Login Credentials');
-    assert.match(env.els.ep4.textContent, /already exists/);
-    assert.ok(!env.el('sp5').classList.added.includes('active'), 'no OTP step');
-    Object.entries(typed).forEach(([k, v]) => assert.strictEqual(env.els[k].value, v));
+    const fresh = () => {
+      const e = makeSignupEnv(); const d = e.el('pConsentDialog');
+      d.showModal = () => { d.open = true; }; d.close = () => { d.open = false; };
+      Object.entries(typed).forEach(([k, v]) => { e.el(k).value = v; });
+      setConsent(e, 'parent', CASES.D); e.run("continueToConsent('parent')");
+      return { e, d };
+    };
+    const sent = fresh();
+    await sent.e.run('sendOTP')();
+    assert.strictEqual(sent.e.fetchCalls.filter((f) => f.url.endsWith('/send-otp')).length, 1, 'existing send-otp called once');
+    assert.strictEqual(sent.d.open, false, 'modal closed after the code is sent');
+    assert.ok(sent.e.els.sp5.classList.added.includes('active'), 'verification step shown');
+    assert.strictEqual(sent.e.focused[sent.e.focused.length - 1], 'o1', 'cursor in the first code box');
 
-    const env2 = makeSignupEnv();
-    Object.entries(typed).forEach(([k, v]) => { env2.el(k).value = v; });
-    setConsent(env2, 'parent', CASES.D);
-    env2.setFetch(async () => { throw new Error('Network down'); });
-    await env2.run('sendOTP')();
-    assert.strictEqual(env2.els.ep4c.textContent, 'Network down', 'network failure shown on the consent step');
-    assert.ok(!env2.el('sp5').classList.added.includes('active'));
-    ok('send from consent step: EMAIL_EXISTS returns to Login Credentials with the message; other failures shown on the consent step; no advance');
+    const ex = fresh();
+    ex.e.setFetch(async () => ex.e.resp(409, { error: 'exists', code: 'EMAIL_EXISTS' }));
+    await ex.e.run('sendOTP')();
+    assert.strictEqual(ex.d.open, false, 'modal closed');
+    assert.match(ex.e.els.ep4.textContent, /already exists/);
+    assert.strictEqual(ex.e.focused[ex.e.focused.length - 1], 'pEmail', 'cursor on the email field');
+    assert.ok(!ex.e.el('sp5').classList.added.includes('active'), 'no OTP step');
+    Object.entries(typed).forEach(([k, v]) => assert.strictEqual(ex.e.els[k].value, v));
+
+    const net = fresh();
+    net.e.setFetch(async () => { throw new Error('Network down'); });
+    await net.e.run('sendOTP')();
+    assert.strictEqual(net.e.els.ep4c.textContent, 'Network down', 'failure shown inside the modal');
+    assert.strictEqual(net.d.open, true, 'modal stays open so the user can retry');
+    assert.strictEqual(net.e.els.sendOtpBtn.disabled, false, 'button usable again for a retry');
+    assert.ok(!net.e.el('sp5').classList.added.includes('active'));
+    ok('I Agree & Continue: one send-otp, modal closes, code entry focused; EMAIL_EXISTS returns to Login Credentials; other failures stay in the modal with a retryable button');
   }
 
   // 5f. Terms reader: verbatim rendering

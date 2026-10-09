@@ -262,61 +262,6 @@
                     </div>
                 </div>
 
-                <!-- P-STEP 4b: Terms of Service & Consent. Shown only after the
-                     Login Credentials step validates; the OTP is sent from here. -->
-                <div class="form-step onboarding-step consent-step" id="sp4c">
-                    <div class="form-header">
-                        <h2 id="sp4cTitle" tabindex="-1">Terms of Service and Consent</h2>
-                        <p>Review the KinderCura Terms of Service and make your selections before we send your email verification code.</p>
-                    </div>
-                    <div class="form-section onboarding-card">
-                        <div id="ep4c" class="error-msg" role="alert" aria-live="polite"></div>
-                        <!-- Terms of Service & consent. Wording is taken verbatim from
-                             legal/KINDERCURA-TERMS-OF-SERVICE.txt (section 17). -->
-                        <fieldset class="consent-group" aria-describedby="pConsentIntro">
-                            <legend class="consent-legend">Terms of Service and Consent</legend>
-                            <div id="pConsentError" class="error-msg consent-error" role="alert" aria-live="polite"></div>
-                            <p id="pConsentIntro" class="consent-intro">Before creating an account or using KinderCura, users should review these Terms of Service and the KinderCura Privacy Notice.</p>
-                            <p class="consent-review"><a href="/legal/KINDERCURA-TERMS-OF-SERVICE.txt" class="terms-open-link" target="_blank" rel="noopener">Review the KinderCura Terms of Service</a></p>
-                            <p class="consent-intro">The following selections are presented separately to distinguish acceptance of the Terms from optional consent:</p>
-
-                            <div class="consent-item">
-                                <p class="consent-heading">Required Terms Acceptance</p>
-                                <div class="consent-check">
-                                    <input type="checkbox" class="consent-input" id="pAcceptTerms" name="acceptTerms" required aria-describedby="pConsentError">
-                                    <label class="consent-label" for="pAcceptTerms">I have read, understood, and agree to the KinderCura Terms of Service. I understand that KinderCura is a developmental assessment and monitoring support system and does not provide medical diagnosis, treatment, therapy, or emergency medical services.</label>
-                                </div>
-                            </div>
-
-                            <div class="consent-item">
-                                <p class="consent-heading">Privacy Notice Acknowledgment <span class="consent-required-tag">(Required)</span></p>
-                                <div class="consent-check">
-                                    <input type="checkbox" class="consent-input" id="pAckPrivacy" name="acknowledgePrivacy" required aria-describedby="pConsentError">
-                                    <label class="consent-label" for="pAckPrivacy">I have read and understood the KinderCura Privacy Notice and acknowledge the information provided regarding the collection, processing, storage, access, sharing, retention, and protection of personal information.</label>
-                                </div>
-                                <p class="consent-privacy-review"><a href="/legal/KINDERCURA-TERMS-OF-SERVICE.txt" class="terms-open-link" data-terms-section="7" target="_blank" rel="noopener">Review section "7. PRIVACY AND COOKIES" of the Terms of Service</a></p>
-                            </div>
-
-                            <div class="consent-item">
-                                <p class="consent-heading">Optional Machine Learning Consent</p>
-                                <div class="consent-check">
-                                    <input type="checkbox" class="consent-input" id="pMlConsent" name="mlConsent" aria-describedby="pMlNote">
-                                    <label class="consent-label" for="pMlConsent">I voluntarily consent to the use of eligible information that I submit through KinderCura for the training, testing, evaluation, research, and improvement of KinderCura's machine learning models, subject to the KinderCura Privacy Notice and applicable data privacy requirements. I understand that this consent is optional and may be withdrawn subject to applicable law and the procedures provided by KinderCura.</label>
-                                </div>
-                                <p id="pMlNote" class="consent-note">The Optional Machine Learning Consent is separate from acceptance of the KinderCura Terms of Service and acknowledgment of the KinderCura Privacy Notice.</p>
-                            </div>
-                        </fieldset>
-
-                        <div class="form-actions">
-                            <button type="button" class="btn btn-secondary" onclick="go(4)">Back</button>
-                            <button type="button" class="btn btn-primary" id="sendOtpBtn" onclick="sendOTP()">Send Verification Code</button>
-                        </div>
-                    </div>
-                    <div class="form-footer">
-                        <p>Already have an account? <a href="/login.html">Sign in</a></p>
-                    </div>
-                </div>
-
                 <!-- P-STEP 5: 4-digit OTP -->
                 <div class="form-step onboarding-step verification-step" id="sp5">
                     <div class="form-header">
@@ -343,7 +288,7 @@
                         <p class="resend-text">Didn't receive it? <button type="button" class="resend-btn"
                                 id="resendOtpBtn" onclick="sendOTP(true)">Resend Code</button></p>
                         <div class="form-actions">
-                            <button type="button" class="btn btn-secondary" onclick="show('sp4c')">Back</button>
+                            <button type="button" class="btn btn-secondary" onclick="openConsentDialog('parent')">Back</button>
                             <button type="button" class="btn btn-primary" id="verifyBtn" onclick="verifyAndRegister()">Verify &
                                 Continue</button>
                         </div>
@@ -445,61 +390,6 @@
                     </div>
                 </div>
 
-                <!-- D-STEP 3b: Terms of Service & Consent. Shown only after the
-                     Login Credentials step validates; the OTP is sent from here. -->
-                <div class="form-step onboarding-step consent-step" id="sd3c">
-                    <div class="form-header">
-                        <h2 id="sd3cTitle" tabindex="-1">Terms of Service and Consent</h2>
-                        <p>Review the KinderCura Terms of Service and make your selections before we send your email verification code.</p>
-                    </div>
-                    <div class="form-section onboarding-card">
-                        <div id="ed3c" class="error-msg" role="alert" aria-live="polite"></div>
-                        <!-- Terms of Service & consent. Wording is taken verbatim from
-                             legal/KINDERCURA-TERMS-OF-SERVICE.txt (section 17). -->
-                        <fieldset class="consent-group" aria-describedby="dConsentIntro">
-                            <legend class="consent-legend">Terms of Service and Consent</legend>
-                            <div id="dConsentError" class="error-msg consent-error" role="alert" aria-live="polite"></div>
-                            <p id="dConsentIntro" class="consent-intro">Before creating an account or using KinderCura, users should review these Terms of Service and the KinderCura Privacy Notice.</p>
-                            <p class="consent-review"><a href="/legal/KINDERCURA-TERMS-OF-SERVICE.txt" class="terms-open-link" target="_blank" rel="noopener">Review the KinderCura Terms of Service</a></p>
-                            <p class="consent-intro">The following selections are presented separately to distinguish acceptance of the Terms from optional consent:</p>
-
-                            <div class="consent-item">
-                                <p class="consent-heading">Required Terms Acceptance</p>
-                                <div class="consent-check">
-                                    <input type="checkbox" class="consent-input" id="dAcceptTerms" name="acceptTerms" required aria-describedby="dConsentError">
-                                    <label class="consent-label" for="dAcceptTerms">I have read, understood, and agree to the KinderCura Terms of Service. I understand that KinderCura is a developmental assessment and monitoring support system and does not provide medical diagnosis, treatment, therapy, or emergency medical services.</label>
-                                </div>
-                            </div>
-
-                            <div class="consent-item">
-                                <p class="consent-heading">Privacy Notice Acknowledgment <span class="consent-required-tag">(Required)</span></p>
-                                <div class="consent-check">
-                                    <input type="checkbox" class="consent-input" id="dAckPrivacy" name="acknowledgePrivacy" required aria-describedby="dConsentError">
-                                    <label class="consent-label" for="dAckPrivacy">I have read and understood the KinderCura Privacy Notice and acknowledge the information provided regarding the collection, processing, storage, access, sharing, retention, and protection of personal information.</label>
-                                </div>
-                                <p class="consent-privacy-review"><a href="/legal/KINDERCURA-TERMS-OF-SERVICE.txt" class="terms-open-link" data-terms-section="7" target="_blank" rel="noopener">Review section "7. PRIVACY AND COOKIES" of the Terms of Service</a></p>
-                            </div>
-
-                            <div class="consent-item">
-                                <p class="consent-heading">Optional Machine Learning Consent</p>
-                                <div class="consent-check">
-                                    <input type="checkbox" class="consent-input" id="dMlConsent" name="mlConsent" aria-describedby="dMlNote">
-                                    <label class="consent-label" for="dMlConsent">I voluntarily consent to the use of eligible information that I submit through KinderCura for the training, testing, evaluation, research, and improvement of KinderCura's machine learning models, subject to the KinderCura Privacy Notice and applicable data privacy requirements. I understand that this consent is optional and may be withdrawn subject to applicable law and the procedures provided by KinderCura.</label>
-                                </div>
-                                <p id="dMlNote" class="consent-note">The Optional Machine Learning Consent is separate from acceptance of the KinderCura Terms of Service and acknowledgment of the KinderCura Privacy Notice.</p>
-                            </div>
-                        </fieldset>
-
-                        <div class="form-actions">
-                            <button type="button" class="btn btn-secondary" onclick="go(3)">Back</button>
-                            <button type="button" class="btn btn-primary" id="dSendOtpBtn" onclick="sendDoctorOTP()">Send Verification Code</button>
-                        </div>
-                    </div>
-                    <div class="form-footer">
-                        <p>Already have an account? <a href="/login.html">Sign in</a></p>
-                    </div>
-                </div>
-
                 <!-- D-STEP 4: OTP Verification -->
                 <div class="form-step onboarding-step verification-step" id="sd4">
                     <div class="form-header">
@@ -526,7 +416,7 @@
                         <p class="resend-text">Didn't receive it? <button type="button" class="resend-btn"
                                 id="dResendOtpBtn" onclick="sendDoctorOTP(true)">Resend Code</button></p>
                         <div class="form-actions">
-                            <button type="button" class="btn btn-secondary" onclick="show('sd3c')">Back</button>
+                            <button type="button" class="btn btn-secondary" onclick="openConsentDialog('pediatrician')">Back</button>
                             <button type="button" class="btn btn-primary" id="dVerifyBtn" onclick="verifyDoctorOTP()">Verify &
                                 Continue</button>
                         </div>
@@ -653,6 +543,112 @@
         <button type="button" class="btn btn-primary reg-success-btn" id="regSuccessOkBtn">OK &mdash; Go to Login</button>
     </div>
 </div>
+
+<!-- Parent Terms of Service & Consent. Opened by continueToConsent('parent') over the
+     Login Credentials step once the credentials validate; the user never leaves signup.html.
+     Native <dialog> + showModal(): dimmed backdrop, inert page behind it, focus kept inside,
+     Escape = Back to Registration. "I Agree & Continue" is the existing send-code action. -->
+<dialog id="pConsentDialog" class="consent-dialog" aria-labelledby="pConsentDialogTitle" aria-describedby="pConsentDialogIntro" aria-modal="true">
+    <div class="consent-dialog-header">
+        <h2 id="pConsentDialogTitle" tabindex="-1">Terms of Service and Consent</h2>
+        <p id="pConsentDialogIntro">Please review the KinderCura Terms of Service and Privacy Notice before continuing with your registration.</p>
+    </div>
+    <div class="consent-dialog-body">
+        <div id="ep4c" class="error-msg" role="alert" aria-live="polite"></div>
+        <!-- Terms of Service & consent. Wording is taken verbatim from
+             legal/KINDERCURA-TERMS-OF-SERVICE.txt (section 17). -->
+        <fieldset class="consent-group" aria-describedby="pConsentIntro">
+            <legend class="consent-legend">Terms of Service and Consent</legend>
+            <div id="pConsentError" class="error-msg consent-error" role="alert" aria-live="polite"></div>
+            <p id="pConsentIntro" class="consent-intro">Before creating an account or using KinderCura, users should review these Terms of Service and the KinderCura Privacy Notice.</p>
+            <p class="consent-review"><a href="/legal/KINDERCURA-TERMS-OF-SERVICE.txt" class="terms-open-link" target="_blank" rel="noopener">Review the KinderCura Terms of Service</a></p>
+            <p class="consent-intro">The following selections are presented separately to distinguish acceptance of the Terms from optional consent:</p>
+
+            <div class="consent-item">
+                <p class="consent-heading">Required Terms Acceptance</p>
+                <div class="consent-check">
+                    <input type="checkbox" class="consent-input" id="pAcceptTerms" name="acceptTerms" required aria-describedby="pConsentError">
+                    <label class="consent-label" for="pAcceptTerms">I have read, understood, and agree to the KinderCura Terms of Service. I understand that KinderCura is a developmental assessment and monitoring support system and does not provide medical diagnosis, treatment, therapy, or emergency medical services.</label>
+                </div>
+            </div>
+
+            <div class="consent-item">
+                <p class="consent-heading">Privacy Notice Acknowledgment <span class="consent-required-tag">(Required)</span></p>
+                <div class="consent-check">
+                    <input type="checkbox" class="consent-input" id="pAckPrivacy" name="acknowledgePrivacy" required aria-describedby="pConsentError">
+                    <label class="consent-label" for="pAckPrivacy">I have read and understood the KinderCura Privacy Notice and acknowledge the information provided regarding the collection, processing, storage, access, sharing, retention, and protection of personal information.</label>
+                </div>
+                <p class="consent-privacy-review"><a href="/legal/KINDERCURA-TERMS-OF-SERVICE.txt" class="terms-open-link" data-terms-section="7" target="_blank" rel="noopener">Review section "7. PRIVACY AND COOKIES" of the Terms of Service</a></p>
+            </div>
+
+            <div class="consent-item">
+                <p class="consent-heading">Optional Machine Learning Consent</p>
+                <div class="consent-check">
+                    <input type="checkbox" class="consent-input" id="pMlConsent" name="mlConsent" aria-describedby="pMlNote">
+                    <label class="consent-label" for="pMlConsent">I voluntarily consent to the use of eligible information that I submit through KinderCura for the training, testing, evaluation, research, and improvement of KinderCura's machine learning models, subject to the KinderCura Privacy Notice and applicable data privacy requirements. I understand that this consent is optional and may be withdrawn subject to applicable law and the procedures provided by KinderCura.</label>
+                </div>
+                <p id="pMlNote" class="consent-note">The Optional Machine Learning Consent is separate from acceptance of the KinderCura Terms of Service and acknowledgment of the KinderCura Privacy Notice.</p>
+            </div>
+        </fieldset>
+    </div>
+    <div class="consent-dialog-footer">
+        <button type="button" class="btn btn-secondary" id="pConsentBackBtn" onclick="closeConsentDialog('parent')">Back to Registration</button>
+        <button type="button" class="btn btn-primary" id="sendOtpBtn" onclick="sendOTP()">I Agree &amp; Continue</button>
+    </div>
+</dialog>
+
+<!-- Pediatrician Terms of Service & Consent. Opened by continueToConsent('pediatrician') over the
+     Login Credentials step once the credentials validate; the user never leaves signup.html.
+     Native <dialog> + showModal(): dimmed backdrop, inert page behind it, focus kept inside,
+     Escape = Back to Registration. "I Agree & Continue" is the existing send-code action. -->
+<dialog id="dConsentDialog" class="consent-dialog" aria-labelledby="dConsentDialogTitle" aria-describedby="dConsentDialogIntro" aria-modal="true">
+    <div class="consent-dialog-header">
+        <h2 id="dConsentDialogTitle" tabindex="-1">Terms of Service and Consent</h2>
+        <p id="dConsentDialogIntro">Please review the KinderCura Terms of Service and Privacy Notice before continuing with your registration.</p>
+    </div>
+    <div class="consent-dialog-body">
+        <div id="ed3c" class="error-msg" role="alert" aria-live="polite"></div>
+        <!-- Terms of Service & consent. Wording is taken verbatim from
+             legal/KINDERCURA-TERMS-OF-SERVICE.txt (section 17). -->
+        <fieldset class="consent-group" aria-describedby="dConsentIntro">
+            <legend class="consent-legend">Terms of Service and Consent</legend>
+            <div id="dConsentError" class="error-msg consent-error" role="alert" aria-live="polite"></div>
+            <p id="dConsentIntro" class="consent-intro">Before creating an account or using KinderCura, users should review these Terms of Service and the KinderCura Privacy Notice.</p>
+            <p class="consent-review"><a href="/legal/KINDERCURA-TERMS-OF-SERVICE.txt" class="terms-open-link" target="_blank" rel="noopener">Review the KinderCura Terms of Service</a></p>
+            <p class="consent-intro">The following selections are presented separately to distinguish acceptance of the Terms from optional consent:</p>
+
+            <div class="consent-item">
+                <p class="consent-heading">Required Terms Acceptance</p>
+                <div class="consent-check">
+                    <input type="checkbox" class="consent-input" id="dAcceptTerms" name="acceptTerms" required aria-describedby="dConsentError">
+                    <label class="consent-label" for="dAcceptTerms">I have read, understood, and agree to the KinderCura Terms of Service. I understand that KinderCura is a developmental assessment and monitoring support system and does not provide medical diagnosis, treatment, therapy, or emergency medical services.</label>
+                </div>
+            </div>
+
+            <div class="consent-item">
+                <p class="consent-heading">Privacy Notice Acknowledgment <span class="consent-required-tag">(Required)</span></p>
+                <div class="consent-check">
+                    <input type="checkbox" class="consent-input" id="dAckPrivacy" name="acknowledgePrivacy" required aria-describedby="dConsentError">
+                    <label class="consent-label" for="dAckPrivacy">I have read and understood the KinderCura Privacy Notice and acknowledge the information provided regarding the collection, processing, storage, access, sharing, retention, and protection of personal information.</label>
+                </div>
+                <p class="consent-privacy-review"><a href="/legal/KINDERCURA-TERMS-OF-SERVICE.txt" class="terms-open-link" data-terms-section="7" target="_blank" rel="noopener">Review section "7. PRIVACY AND COOKIES" of the Terms of Service</a></p>
+            </div>
+
+            <div class="consent-item">
+                <p class="consent-heading">Optional Machine Learning Consent</p>
+                <div class="consent-check">
+                    <input type="checkbox" class="consent-input" id="dMlConsent" name="mlConsent" aria-describedby="dMlNote">
+                    <label class="consent-label" for="dMlConsent">I voluntarily consent to the use of eligible information that I submit through KinderCura for the training, testing, evaluation, research, and improvement of KinderCura's machine learning models, subject to the KinderCura Privacy Notice and applicable data privacy requirements. I understand that this consent is optional and may be withdrawn subject to applicable law and the procedures provided by KinderCura.</label>
+                </div>
+                <p id="dMlNote" class="consent-note">The Optional Machine Learning Consent is separate from acceptance of the KinderCura Terms of Service and acknowledgment of the KinderCura Privacy Notice.</p>
+            </div>
+        </fieldset>
+    </div>
+    <div class="consent-dialog-footer">
+        <button type="button" class="btn btn-secondary" id="dConsentBackBtn" onclick="closeConsentDialog('pediatrician')">Back to Registration</button>
+        <button type="button" class="btn btn-primary" id="dSendOtpBtn" onclick="sendDoctorOTP()">I Agree &amp; Continue</button>
+    </div>
+</dialog>
 
 <!-- Terms of Service reader. Native <dialog> + showModal(): the browser provides the
      focus trap, Escape-to-close, an inert background and focus return. The text is

@@ -470,20 +470,24 @@
     min-height: 50px;
 }
 
-.signup-page .onboarding-step .btn-primary {
+.signup-page .onboarding-step .btn-primary,
+.signup-page .consent-dialog .btn-primary {
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
     color: white;
     box-shadow: 0 10px 22px rgba(107, 142, 111, 0.22);
 }
 
-.signup-page .onboarding-step .btn-secondary {
+.signup-page .onboarding-step .btn-secondary,
+.signup-page .consent-dialog .btn-secondary {
     background: white;
     color: var(--primary-dark);
     border: 2px solid var(--border);
 }
 
 .signup-page .onboarding-step .btn-secondary:hover,
-.signup-page .onboarding-step .btn-secondary:focus-visible {
+.signup-page .onboarding-step .btn-secondary:focus-visible,
+.signup-page .consent-dialog .btn-secondary:hover,
+.signup-page .consent-dialog .btn-secondary:focus-visible {
     border-color: var(--primary-light);
     background: var(--bg-primary);
     color: var(--primary-dark);
@@ -944,14 +948,86 @@
     display: block;
 }
 
-/* The consent selections have their own sign-up step (sp4c / sd3c), whose
-   heading already reads "Terms of Service and Consent". The legend stays as the
-   group's accessible name but is not shown a second time. */
-.consent-step .consent-group {
-    margin-top: 0;
+/* Terms of Service & Consent modal (pConsentDialog / dConsentDialog). Opened with
+   showModal() over the Login Credentials step: header and footer stay put, only
+   the consent text scrolls, so "I Agree & Continue" is always reachable. */
+.consent-dialog {
+    width: min(720px, calc(100vw - 2rem));
+    max-height: min(90vh, 900px);
+    padding: 0;
+    border: 1px solid var(--border, #DDD9CC);
+    border-radius: 16px;
+    background: #fff;
+    color: var(--text-dark, #3D4738);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+    overflow: hidden;
 }
 
-.consent-step .consent-legend {
+.consent-dialog[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+/* auth-new-styles.css resets every element to margin: 0, which removes the
+   browser's own margin: auto for modal dialogs and pins them to the top-left
+   corner. Put it back so both signup modals sit centred in the viewport. */
+.consent-dialog,
+.terms-dialog {
+    margin: auto;
+}
+
+/* Browsers without <dialog>: keep it hidden until it is opened. */
+.consent-dialog:not([open]) {
+    display: none;
+}
+
+.consent-dialog::backdrop {
+    background: rgba(20, 30, 20, 0.55);
+}
+
+/* The page behind an open modal does not scroll with the wheel or touch. */
+.signup-page:has(.consent-dialog[open]) {
+    overflow: hidden;
+}
+
+.consent-dialog-header {
+    padding: 1.15rem 1.4rem 0.9rem;
+    border-bottom: 1px solid var(--border, #DDD9CC);
+}
+
+.consent-dialog-header h2 {
+    margin: 0 0 0.35rem;
+    font-size: 1.3rem;
+    line-height: 1.3;
+    color: var(--primary-dark, #5A7560);
+}
+
+.consent-dialog-header h2:focus {
+    outline: none;
+}
+
+.consent-dialog-header p {
+    margin: 0;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    color: var(--text-light, #6B7967);
+}
+
+.consent-dialog-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 1rem 1.4rem;
+}
+
+/* The modal title already reads "Terms of Service and Consent"; the legend stays
+   as the group's accessible name but is not shown a second time. */
+.consent-dialog .consent-group {
+    margin: 0;
+}
+
+.consent-dialog .consent-legend {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -963,8 +1039,47 @@
     border: 0;
 }
 
-.consent-step .form-header h2:focus {
-    outline: none;
+.consent-dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding: 0.9rem 1.4rem;
+    border-top: 1px solid var(--border, #DDD9CC);
+    background: var(--bg-primary, #FAFAF6);
+}
+
+.signup-page .consent-dialog-footer .btn {
+    flex: 0 1 220px;
+    min-height: 50px;
+}
+
+@media (max-width: 480px) {
+    .consent-dialog {
+        width: calc(100vw - 1rem);
+        max-height: calc(100dvh - 1rem);
+    }
+
+    .consent-dialog-header {
+        padding: 1rem 1rem 0.8rem;
+    }
+
+    .consent-dialog-header h2 {
+        font-size: 1.15rem;
+    }
+
+    .consent-dialog-body {
+        padding: 0.85rem 1rem;
+    }
+
+    .consent-dialog-footer {
+        flex-direction: column-reverse;
+        padding: 0.8rem 1rem;
+    }
+
+    .signup-page .consent-dialog-footer .btn {
+        flex: 0 0 auto;
+        width: 100%;
+    }
 }
 
 /* Terms reader (native <dialog>) */

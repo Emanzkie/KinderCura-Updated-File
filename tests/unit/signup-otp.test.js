@@ -44,8 +44,8 @@ function makeEnv(sendDelayMs = 20) {
   // Seed the four buttons with the labels the real markup gives them, so an
   // assertion about a button the code should NOT have touched is meaningful.
   Object.entries({
-    sendOtpBtn: 'Send Verification Code', resendOtpBtn: 'Resend Code', verifyBtn: 'Verify & Continue',
-    dSendOtpBtn: 'Send Verification Code', dResendOtpBtn: 'Resend Code', dVerifyBtn: 'Verify & Continue',
+    sendOtpBtn: 'I Agree & Continue', resendOtpBtn: 'Resend Code', verifyBtn: 'Verify & Continue',
+    dSendOtpBtn: 'I Agree & Continue', dResendOtpBtn: 'Resend Code', dVerifyBtn: 'Verify & Continue',
   }).forEach(([id, label]) => { el(id).textContent = label; });
   return { els, el, fetchCalls, run: (e) => vm.runInContext(e, ctx) };
 }
@@ -243,8 +243,8 @@ async function httpEmailTests() {
 
 (async () => {
   // 1. Every id the JS touches exists in the markup.
-  for (const id of ['pEmail','pPassword','pConfirm','pUsername','sp4c','ep4c','pCredentialsNextBtn','otpEmail','o1','o2','o3','o4','sp5','verifyBtn','sendOtpBtn','resendOtpBtn',
-                    'dEmail','dPassword','dConfirm','dUsername','sd3c','ed3c','dCredentialsNextBtn','dOtpEmail','d1','d2','d3','d4','sd4','dVerifyBtn','dSendOtpBtn','dResendOtpBtn']) {
+  for (const id of ['pEmail','pPassword','pConfirm','pUsername','pConsentDialog','ep4c','pCredentialsNextBtn','otpEmail','o1','o2','o3','o4','sp5','verifyBtn','sendOtpBtn','resendOtpBtn',
+                    'dEmail','dPassword','dConfirm','dUsername','dConsentDialog','ed3c','dCredentialsNextBtn','dOtpEmail','d1','d2','d3','d4','sd4','dVerifyBtn','dSendOtpBtn','dResendOtpBtn']) {
     assert.ok(new RegExp(`id="${id}"`).test(html), `signup.html is missing id="${id}"`);
   }
   assert.ok(/<script src="\/js\/auth\/signup\.js"><\/script>/.test(html), 'signup.html must load /js/auth/signup.js');
@@ -262,7 +262,7 @@ async function httpEmailTests() {
     assert.strictEqual(env.els.verifyBtn.disabled, false, 'the next step Verify button is NOT disabled');
     await p;
     assert.strictEqual(env.els.sendOtpBtn.disabled, false, 'Send button re-enables');
-    assert.strictEqual(env.els.sendOtpBtn.textContent, 'Send Verification Code', 'Send button label restored');
+    assert.strictEqual(env.els.sendOtpBtn.textContent, 'I Agree & Continue', 'Send button label restored');
     assert.ok(env.els.sp5.classList.added.includes('active'), 'sp5 OTP step shown');
     assert.strictEqual(env.els.otpEmail.textContent, 'new.parent@example.invalid', 'OTP email display updated');
     ok('parent: Send button disables + reads "Sending...", verifyBtn untouched, sp5 shown, label restored');
@@ -344,8 +344,8 @@ async function httpEmailTests() {
     env.run("fetch = async (url, opts) => ({ ok: false, status: 503, json: async () => ({ error: 'Email service is not configured. Please contact support.', code: 'EMAIL_NOT_CONFIGURED' }) })");
     await env.run('sendOTP')();
     assert.strictEqual(env.els.sendOtpBtn.disabled, false, 'button restored after failure');
-    assert.strictEqual(env.els.sendOtpBtn.textContent, 'Send Verification Code');
-    assert.match(env.els.ep4c.textContent, /Email service is not configured/, 'shown on the consent step, where Send was clicked');
+    assert.strictEqual(env.els.sendOtpBtn.textContent, 'I Agree & Continue');
+    assert.match(env.els.ep4c.textContent, /Email service is not configured/, 'shown in the consent modal, where I Agree & Continue was clicked');
     assert.ok(!env.els.sp5 || !env.els.sp5.classList.added.includes('active'), 'does not advance on failure');
     ok('failure path: server message shown, button restored, no advance to the OTP step');
   }

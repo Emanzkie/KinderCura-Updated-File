@@ -300,27 +300,83 @@ function validateConsent(kind, { focus = true } = {}) {
 }
 
 // For the later steps (resend / final submit), where the checkboxes are not on screen:
-// if a required box is not ticked, take the user back to the consent step that
-// holds them and show the message there, instead of failing somewhere they cannot act.
-function requireConsent(kind, consentStepId) {
+// if a required box is not ticked, reopen the consent modal that holds them and show
+// the message there, instead of failing somewhere the user cannot act.
+function requireConsent(kind) {
     if (validateConsent(kind, { focus: false })) return true;
-    show(consentStepId);
+    openConsentDialog(kind);
     validateConsent(kind);
     return false;
 }
 
-// Sign-up is Login Credentials -> Terms of Service & Consent -> email verification.
-// The consent selections live on their own step, reached only through
-// continueToConsent(); the verification code is sent from the consent step.
+// Sign-up is Login Credentials -> Terms of Service & Consent modal -> email verification,
+// all on signup.html. The consent selections live in a modal <dialog> opened over the
+// Login Credentials step by continueToConsent(); its "I Agree & Continue" button is the
+// existing send-code action (sendOTP / sendDoctorOTP).
 const SIGNUP_STEPS = {
-    parent:       { credentials: 'sp4', credentialsError: 'ep4', consent: 'sp4c', consentError: 'ep4c' },
-    pediatrician: { credentials: 'sd3', credentialsError: 'ed3', consent: 'sd3c', consentError: 'ed3c' },
+    parent: {
+        credentials: 'sp4', credentialsError: 'ep4', continueBtn: 'pCredentialsNextBtn', email: 'pEmail',
+        dialog: 'pConsentDialog', dialogTitle: 'pConsentDialogTitle', consentError: 'ep4c',
+    },
+    pediatrician: {
+        credentials: 'sd3', credentialsError: 'ed3', continueBtn: 'dCredentialsNextBtn', email: 'dEmail',
+        dialog: 'dConsentDialog', dialogTitle: 'dConsentDialogTitle', consentError: 'ed3c',
+    },
 };
 
+function isStepActive(stepId) {
+    const step = byId(stepId);
+    return Boolean(step && step.classList && typeof step.classList.contains === 'function' && step.classList.contains('active'));
+}
+
+// Opens the consent modal over the Login Credentials step. showModal() gives the dimmed
+// backdrop, makes the page behind it inert, keeps Tab inside the modal and closes on
+// Escape; browsers without <dialog> show it in place instead.
+function openConsentDialog(kind) {
+    const steps = SIGNUP_STEPS[kind];
+    const dialog = byId(steps.dialog);
+    if (!dialog) return false;
+    // Coming Back from the verification step: the modal belongs over the credentials.
+    if (!isStepActive(steps.credentials)) show(steps.credentials);
+    if (typeof dialog.showModal === 'function') {
+        if (!dialog.open) dialog.showModal();
+    } else {
+        dialog.setAttribute('open', '');
+    }
+    const body = typeof dialog.querySelector === 'function' ? dialog.querySelector('.consent-dialog-body') : null;
+    if (body) body.scrollTop = 0;
+    // Focus the title so screen readers announce the modal and Tab starts at its top.
+    const heading = byId(steps.dialogTitle);
+    if (heading && typeof heading.focus === 'function') heading.focus({ preventScroll: true });
+    return true;
+}
+
+// Closes the modal without any other effect: nothing is sent, nothing is cleared.
+function hideConsentDialog(kind) {
+    const dialog = byId(SIGNUP_STEPS[kind].dialog);
+    if (!dialog) return;
+    if (typeof dialog.close === 'function') {
+        if (dialog.open) dialog.close();
+    } else if (typeof dialog.removeAttribute === 'function') {
+        dialog.removeAttribute('open');
+    }
+}
+
+// "Back to Registration" (and Escape): close the modal and put the user back on the
+// Login Credentials form with everything they typed still in place. While a code is
+// being sent the modal stays open, so the request finishes where it started.
+function closeConsentDialog(kind) {
+    if (otpSendInFlight[kind]) return false;
+    hideConsentDialog(kind);
+    const continueBtn = byId(SIGNUP_STEPS[kind].continueBtn);
+    if (continueBtn && typeof continueBtn.focus === 'function') continueBtn.focus();
+    return true;
+}
+
 // "Continue" on the Login Credentials step. Runs the same credential checks the
-// send step has always run and only then shows the consent step. Nothing is sent
+// send step has always run and only then opens the consent modal. Nothing is sent
 // to the server here: no code, no account. Typed values stay in their inputs, so
-// Back from the consent step finds them as they were.
+// Back to Registration finds them as they were.
 function continueToConsent(kind) {
     const steps = SIGNUP_STEPS[kind];
     const error = kind === 'parent' ? validateParentCredentials() : validateDoctorCredentials();
@@ -332,21 +388,34 @@ function continueToConsent(kind) {
     }
     // A failure message from an earlier send attempt no longer applies.
     setMessage(steps.consentError, '');
-    show(steps.consent);
-    // Focus follows the step, so keyboard and screen-reader users are not left on
-    // the Continue button that has just been hidden.
-    const heading = byId(`${steps.consent}Title`);
-    if (heading && typeof heading.focus === 'function') heading.focus({ preventScroll: true });
-    return true;
+    return openConsentDialog(kind);
 }
 
-// The address is already registered: only the credentials step can fix that,
-// so take the user there and say why.
+// Back to the Login Credentials form, with the modal closed.
+function backToCredentials(kind) {
+    const steps = SIGNUP_STEPS[kind];
+    hideConsentDialog(kind);
+    if (!isStepActive(steps.credentials)) show(steps.credentials);
+}
+
+// The address is already registered: only the credentials form can fix that,
+// so close the modal, take the user there and say why.
 function showEmailExists(kind) {
     const steps = SIGNUP_STEPS[kind];
     setMessage(steps.consentError, '');
-    show(steps.credentials);
+    backToCredentials(kind);
     setMessage(steps.credentialsError, 'An account with this email already exists. Please sign in.');
+    const email = byId(steps.email);
+    if (email && typeof email.focus === 'function') email.focus();
+}
+
+// Leaving the modal for the verification step: close it and put the cursor in the
+// first code box.
+function moveToCodeEntry(kind, stepId, firstBoxId) {
+    hideConsentDialog(kind);
+    show(stepId);
+    const first = byId(firstBoxId);
+    if (first && typeof first.focus === 'function') first.focus({ preventScroll: true });
 }
 
 let termsLoaded = false;
@@ -437,11 +506,11 @@ async function sendOTP(isResend = false) {
     const error = validateParentCredentials();
     if (error) {
         // Normally caught by continueToConsent(); kept as the final gate before a send.
-        show('sp4');
+        backToCredentials('parent');
         setMessage('ep4', error);
         return;
     }
-    if (!(isResend ? requireConsent('parent', 'sp4c') : validateConsent('parent'))) return;
+    if (!(isResend ? requireConsent('parent') : validateConsent('parent'))) return;
     // Send failures are shown on the step the user is looking at.
     const sendErrorId = isResend ? 'ep5e' : 'ep4c';
 
@@ -485,7 +554,7 @@ async function sendOTP(isResend = false) {
         const otpEmail = byId('otpEmail');
         if (otpEmail) otpEmail.textContent = email;
         console.log('[SIGNUP] Verification UI opened');
-        show('sp5');
+        moveToCodeEntry('parent', 'sp5', 'o1');
     } catch (err) {
         console.log('[SIGNUP] Frontend blocked:', err.message);
         setMessage(sendErrorId, err.message);
@@ -510,7 +579,7 @@ async function verifyAndRegister() {
         return;
     }
     // Final guard, before the code is consumed or an account is created.
-    if (!requireConsent('parent', 'sp4c')) return;
+    if (!requireConsent('parent')) return;
 
     const restore = setButtonLoading('verifyBtn', 'Verifying...');
     try {
@@ -574,11 +643,11 @@ async function sendDoctorOTP(isResend = false) {
     const error = validateDoctorCredentials();
     if (error) {
         // Normally caught by continueToConsent(); kept as the final gate before a send.
-        show('sd3');
+        backToCredentials('pediatrician');
         setMessage('ed3', error);
         return;
     }
-    if (!(isResend ? requireConsent('pediatrician', 'sd3c') : validateConsent('pediatrician'))) return;
+    if (!(isResend ? requireConsent('pediatrician') : validateConsent('pediatrician'))) return;
     // Send failures are shown on the step the user is looking at.
     const sendErrorId = isResend ? 'ed4e' : 'ed3c';
 
@@ -620,7 +689,7 @@ async function sendDoctorOTP(isResend = false) {
         const otpEmail = byId('dOtpEmail');
         if (otpEmail) otpEmail.textContent = email;
         console.log('[SIGNUP] Verification UI opened');
-        show('sd4');
+        moveToCodeEntry('pediatrician', 'sd4', 'd1');
     } catch (err) {
         console.log('[SIGNUP] Frontend blocked:', err.message);
         setMessage(sendErrorId, err.message);
@@ -689,7 +758,7 @@ async function registerPedia() {
             return;
         }
         // Final guard: nothing is sent to the server unless both REQUIRED boxes are ticked.
-        if (!requireConsent('pediatrician', 'sd3c')) {
+        if (!requireConsent('pediatrician')) {
             return;
         }
         const consent = readConsent('pediatrician');
@@ -785,6 +854,16 @@ document.addEventListener('DOMContentLoaded', function() {
         radio.addEventListener('change', () => {
             selectedRole = radio.value;
             setMessage('e1', '');
+        });
+    });
+
+    // Escape on a consent modal behaves exactly like "Back to Registration".
+    Object.keys(SIGNUP_STEPS).forEach((kind) => {
+        const dialog = byId(SIGNUP_STEPS[kind].dialog);
+        if (!dialog) return;
+        dialog.addEventListener('cancel', (event) => {
+            event.preventDefault();
+            closeConsentDialog(kind);
         });
     });
 
