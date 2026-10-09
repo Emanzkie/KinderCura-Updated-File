@@ -138,3 +138,108 @@
     color: var(--text-light);
     margin: 0;
 }
+
+/* ==================== METRIC DEFINITIONS & LEGENDS ==================== */
+
+.insight-card .insight-def {
+    margin: 0.45rem 0 0;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-light);
+}
+
+.chart-note {
+    margin: -0.5rem 0 1rem;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--text-light);
+}
+
+/* HTML legend under a chart: swatch, name, then count and share. */
+.chart-legend {
+    list-style: none;
+    margin: 0.85rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.25rem;
+}
+
+.chart-legend:empty {
+    display: none;
+}
+
+.chart-legend li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    font-size: 0.85rem;
+    color: var(--text-dark);
+    min-width: 0;
+}
+
+.chart-legend .legend-swatch {
+    flex: 0 0 auto;
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 3px;
+    transform: translateY(0.1rem);
+    box-shadow: inset 0 0 0 1px rgba(61, 71, 56, 0.18);
+}
+
+.chart-legend .legend-value {
+    color: var(--text-light);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.column-defs {
+    margin: 0.8rem 0 0;
+    padding-left: 1.1rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-light);
+}
+
+.column-defs strong {
+    color: var(--text-dark);
+    font-weight: 600;
+}
+
+.simple-table tfoot td {
+    font-weight: 600;
+    border-top: 2px solid var(--border);
+}
+
+.analytics-header.is-stale .status-dot {
+    background: var(--danger);
+    animation: none;
+}
+
+.analytics-header.is-stale .status-text {
+    color: var(--status-attention-fg);
+}
+
+.analytics-error {
+    margin: 0 0 1.5rem;
+    padding: 0.7rem 1rem;
+    border-radius: var(--radius-panel);
+    background: var(--status-attention-bg);
+    color: var(--status-attention-fg);
+    font-size: 0.85rem;
+}
+
+/* .grid-4 (shared, dashboard-new-styles.css) stays four columns at every
+   width, which pushed Average Assessment Scores past a phone screen. Scoped
+   to this page's grid only. */
+@media (max-width: 768px) {
+    #avgScores {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 600px) {
+    .chart-legend {
+        flex-direction: column;
+    }
+}

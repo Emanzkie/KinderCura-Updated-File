@@ -165,7 +165,13 @@
     const reviewedPhrase = n === 0
       ? 'no completed assessments have been reviewed by a pediatrician yet'
       : `only ${n} completed assessment${n === 1 ? ' has' : 's have'} been reviewed by a pediatrician`;
-    return `Comparison based on recorded assessment monitoring data, not pediatrician performance or effectiveness. Pediatricians are ranked by needs-support cases among their relevant children, which shows where monitoring demand is currently concentrated. Because ${reviewedPhrase}, and no child has two or more reviewed assessments under the same pediatrician yet, there is not enough repeat-review history to calculate a score-change or outcome metric. The Reviewed Assessments column is shown instead as a descriptive count, not an outcome measure.`;
+    // With fewer than two reviews system-wide, no child can have two reviewed
+    // assessments under one pediatrician — only then is that clause provably
+    // true, so it is not stated otherwise.
+    const repeatClause = n < 2
+      ? ', so no child has two or more reviewed assessments under the same pediatrician yet'
+      : '';
+    return `Comparison based on recorded assessment monitoring data, not pediatrician performance or effectiveness. Pediatricians are listed in order of needs-support cases among their relevant children (most first). The order shows where monitoring demand is currently concentrated; it is not a ranking of clinical skill, accuracy or effectiveness. Because ${reviewedPhrase}${repeatClause}, there is not enough repeat-review history to calculate a score-change or outcome metric. The Reviewed Assessments column is shown instead as a descriptive count, not an outcome measure.`;
   }
 
   /** Per-row interpretation sentence for the Pediatrician Assessment Comparison table. */
@@ -177,9 +183,180 @@
     return `${needsSupportCases} of ${completedAssessments} completed assessment${completedAssessments === 1 ? '' : 's'} among ${relevantChildren} relevant child${relevantChildren === 1 ? '' : 'ren'} fall in the needs-support range.`;
   }
 
+  // ── Metric helpers (percentages, shares, month handling) ──────────────────
+  // Pure arithmetic over fields /api/admin/analytics already returns. A share
+  // is only produced when the part belongs to the whole's population;
+  // otherwise null, which the page renders as "N/A".
+
+  function isCount(value) {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+  }
+
+  /** part ÷ whole × 100, or null (missing value, empty population, part > whole). */
+  function sharePercent(part, whole) {
+    if (!isCount(part) || !isCount(whole) || whole === 0 || part > whole) return null;
+    return (part / whole) * 100;
+  }
+
+  /** "70.2%", "<0.1%" for a non-zero share that would round to 0.0, "N/A" for null. */
+  function formatPercent(percent) {
+    if (percent == null || !Number.isFinite(percent)) return 'N/A';
+    if (percent > 0 && percent < 0.05) return '<0.1%';
+    return `${percent.toFixed(1)}%`;
+  }
+
+  /** "+12.5%", "−48.2%", "0.0%" — for a change, where the sign carries meaning. */
+  function formatSignedPercent(change) {
+    if (change == null || !Number.isFinite(change)) return 'N/A';
+    const rounded = Math.round(change * 10) / 10;
+    if (rounded === 0) return '0.0%';
+    return `${rounded > 0 ? '+' : '−'}${Math.abs(rounded).toFixed(1)}%`;
+  }
+
+  function formatCount(value) {
+    return isCount(value) ? value.toLocaleString('en-US') : '—';
+  }
+
+  /**
+   * Month-over-month change in NEW sign-ups. monthlySignups is the API's
+   * 6-month window, oldest first, whose last entry is the CURRENT month and
+   * therefore only partly over. Comparing it with a full month is not like
+   * for like, so the change is taken between the last two FULL months, with
+   * the earlier one as the baseline. The current month is returned separately
+   * as context only.
+   *   available:false, reason:'zero-baseline' — the baseline month had no
+   *     sign-ups, so a % change is undefined (never shown as +100% or ∞).
+   *   A drop to zero from a non-zero baseline is a real −100%.
+   */
+  function computeSignupChange(monthlySignups) {
+    const rows = Array.isArray(monthlySignups) ? monthlySignups : [];
+    const partial = rows.length ? rows[rows.length - 1] : null;
+    if (rows.length < 3) return { available: false, reason: 'not-enough-months', partial };
+    const latest = rows[rows.length - 2];
+    const previous = rows[rows.length - 3];
+    if (!latest || !previous || !isCount(latest.count) || !isCount(previous.count)) {
+      return { available: false, reason: 'missing', latest, previous, partial };
+    }
+    if (previous.count === 0) {
+      return { available: false, reason: 'zero-baseline', latest, previous, partial };
+    }
+    return {
+      available: true,
+      change: ((latest.count - previous.count) / previous.count) * 100,
+      latest,
+      previous,
+      partial,
+    };
+  }
+
+  /**
+   * Assessment completion rate over ONE population: every assessment session
+   * ever started (summaryTotals.totalAssessments). Sessions are in_progress,
+   * submitted or complete, so submitted = total − complete − in progress.
+   */
+  function computeCompletionRate(summary) {
+    const s = summary || {};
+    const total = isCount(s.totalAssessments) ? s.totalAssessments : null;
+    const complete = isCount(s.completedScreenings) ? s.completedScreenings : null;
+    const inProgress = isCount(s.inProgressScreenings) ? s.inProgressScreenings : null;
+    const submitted = total != null && complete != null && inProgress != null && total - complete - inProgress >= 0
+      ? total - complete - inProgress
+      : null;
+    return { rate: sharePercent(complete, total), total, complete, inProgress, submitted };
+  }
+
+  /** Adds share = count ÷ (sum of every row's count) — one denominator for all rows. */
+  function withShares(rows) {
+    const list = Array.isArray(rows) ? rows : [];
+    const total = list.reduce((sum, r) => sum + (isCount(r.count) ? r.count : 0), 0);
+    return {
+      total,
+      rows: list.map((r) => ({ ...r, share: sharePercent(isCount(r.count) ? r.count : null, total) })),
+    };
+  }
+
+  /**
+   * Groups the 10-point histogram bins into score bands. bands: [{ key,
+   * label, min, max }] (constants/scoring.js ACTIVE_BANDS + clinicalLabel).
+   * The band edges (0/40/60/80) fall on bin edges, so every bin belongs to
+   * exactly one band.
+   */
+  function summarizeScoreBands(bins, bands) {
+    const binList = Array.isArray(bins) ? bins : [];
+    const total = binList.reduce((sum, b) => sum + (isCount(b.count) ? b.count : 0), 0);
+    return (bands || []).map((band) => {
+      const count = binList
+        .filter((b) => {
+          const start = parseInt(String(b.range), 10);
+          return Number.isFinite(start) && start >= band.min && start <= band.max;
+        })
+        .reduce((sum, b) => sum + (isCount(b.count) ? b.count : 0), 0);
+      return { ...band, count, share: sharePercent(count, total) };
+    });
+  }
+
+  function monthLabelFor(key) {
+    const [y, m] = key.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  }
+
+  /**
+   * Prepares domainMonthlyTrend (rows keyed 'YYYY-MM' by UTC completion month,
+   * oldest first) for display:
+   *   - months with no completed assessments between the first and last row
+   *     are filled with zero rows, so the x-axis is evenly spaced in time;
+   *   - the row for currentMonthKey (the month still in progress) is flagged
+   *     isPartial and kept out of completeRows, so it is never compared with
+   *     full months.
+   */
+  function prepareMonthlyTrend(monthlyTrend, currentMonthKey) {
+    const KEY = /^\d{4}-\d{2}$/;
+    const source = (Array.isArray(monthlyTrend) ? monthlyTrend : [])
+      .filter((r) => r && KEY.test(r.month))
+      .slice()
+      .sort((a, b) => (a.month < b.month ? -1 : a.month > b.month ? 1 : 0));
+    if (!source.length) return { rows: [], completeRows: [], partialRow: null };
+
+    const byMonth = new Map(source.map((r) => [r.month, r]));
+    const rows = [];
+    let [y, m] = source[0].month.split('-').map(Number);
+    const last = source[source.length - 1].month;
+    for (let guard = 0; guard < 600; guard += 1) {
+      const key = `${y}-${String(m).padStart(2, '0')}`;
+      const row = byMonth.get(key) || {
+        month: key,
+        monthLabel: monthLabelFor(key),
+        totalAssessments: 0,
+        communication: 0,
+        social: 0,
+        cognitive: 0,
+        motor: 0,
+      };
+      rows.push({ ...row, isPartial: key === currentMonthKey });
+      if (key === last) break;
+      m += 1;
+      if (m > 12) { m = 1; y += 1; }
+    }
+    return {
+      rows,
+      completeRows: rows.filter((r) => !r.isPartial),
+      partialRow: rows.find((r) => r.isPartial) || null,
+    };
+  }
+
   const api = {
     DOMAIN_LABELS,
     DOMAIN_KEYS,
+    isCount,
+    sharePercent,
+    formatPercent,
+    formatSignedPercent,
+    formatCount,
+    computeSignupChange,
+    computeCompletionRate,
+    withShares,
+    summarizeScoreBands,
+    prepareMonthlyTrend,
     formatList,
     topBins,
     formatHistogramInterpretation,

@@ -142,13 +142,24 @@ requireAuth();
 
         let scoreHistogramChart, domainMonitoringChart, domainTrendChart;
 
+        // Pure helpers (shares, % formatting, month handling) — see
+        // js/admin/analytics-interpretations.js; covered by its unit test.
+        const KCI = window.KCAnalyticsInterpretations;
+
         // Existing domain color convention — reused verbatim from the retired
         // per-domain "Assessment Score Distribution" bar chart so Communication/
         // Social Skills/Cognitive/Motor Skills keep the same color everywhere on
         // this page (Developmental Areas chart AND Trends-over-time chart).
         const DOMAIN_COLORS = { communication: '#6B8E6F', social: '#8BA98D', cognitive: '#F4D89F', motor: '#D4E2D4' };
-        const DOMAIN_KEYS = (window.KCAnalyticsInterpretations && window.KCAnalyticsInterpretations.DOMAIN_KEYS) || ['communication', 'social', 'cognitive', 'motor'];
-        const DOMAIN_LABELS = (window.KCAnalyticsInterpretations && window.KCAnalyticsInterpretations.DOMAIN_LABELS) || { communication: 'Communication', social: 'Social Skills', cognitive: 'Cognitive', motor: 'Motor Skills' };
+        const DOMAIN_KEYS = (KCI && KCI.DOMAIN_KEYS) || ['communication', 'social', 'cognitive', 'motor'];
+        const DOMAIN_LABELS = (KCI && KCI.DOMAIN_LABELS) || { communication: 'Communication', social: 'Social Skills', cognitive: 'Cognitive', motor: 'Motor Skills' };
+
+        // Latest values the chart tooltips read, so a hover shows the same
+        // denominator the legend and interpretation text use.
+        let histogramTotal = 0;
+        let domainTotal = 0;
+        let trendRows = [];
+        let analyticsLoadedAt = null;
 
         // Score-band color for a histogram bin, straight from constants/scoring.js
         // (window.KCScoring) — the SAME colours used on every other score/result
@@ -156,6 +167,23 @@ requireAuth();
         function histogramBinColor(rangeStart) {
             if (!window.KCScoring) return '#8BA98D';
             return window.KCScoring.colorForBand(window.KCScoring.bandFor(rangeStart));
+        }
+
+        // The month the server is still filling. domainMonthlyTrend is keyed by
+        // the UTC month of completedAt ($dateToString defaults to UTC), so the
+        // comparison is made in UTC too, whatever the viewer's timezone.
+        function currentUtcMonthKey() {
+            return new Date().toISOString().slice(0, 7);
+        }
+
+        function renderLegend(listEl, items) {
+            if (!listEl) return;
+            listEl.innerHTML = items.map((item) => `
+                <li>
+                    <span class="legend-swatch" style="background:${item.color};" aria-hidden="true"></span>
+                    <span>${escapeHtml(item.label)}</span>
+                    <span class="legend-value">${escapeHtml(item.value)}</span>
+                </li>`).join('');
         }
 
         function initCharts() {
@@ -166,41 +194,64 @@ requireAuth();
             };
 
             // Assessment Score Distribution — vertical histogram, 10 bins of 10
-            // points each, colour-coded by the existing score band (req 3).
+            // points each, colour-coded by the existing score band (req 3). The
+            // band legend is HTML (#scoreBandLegend): Chart.js would only show
+            // one swatch for this single dataset.
             scoreHistogramChart = new Chart(document.getElementById('scoreHistogramChart'), {
                 type: 'bar',
                 data: {
                     labels: [],
-                    datasets: [{ label: 'Assessments', data: [], backgroundColor: [] }],
+                    datasets: [{ label: 'Completed assessments', data: [], backgroundColor: [] }],
                 },
                 options: {
                     ...chartOptions,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                title: (items) => `Overall score ${items[0].label}`,
+                                label: (ctx) => `${KCI.formatCount(ctx.parsed.y)} completed assessments (${KCI.formatPercent(KCI.sharePercent(ctx.parsed.y, histogramTotal))} of ${KCI.formatCount(histogramTotal)})`,
+                            },
+                        },
+                    },
                     scales: {
-                        x: { title: { display: true, text: 'Score range' } },
-                        y: { beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: 'Number of assessments' } },
+                        x: { title: { display: true, text: 'Overall assessment score range (0–100)' } },
+                        y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Number of completed assessments' } },
                     },
                 },
             });
 
             // Developmental Areas Requiring Monitoring — one bar per domain,
             // count of stored results in the at-risk/delayed ("Needs Support")
-            // range (req 4).
+            // range (req 4). Domains are named on the x-axis and in the HTML
+            // legend (#domainMonitoringLegend) with their counts and shares.
             domainMonitoringChart = new Chart(document.getElementById('domainMonitoringChart'), {
                 type: 'bar',
                 data: {
                     labels: DOMAIN_KEYS.map((k) => DOMAIN_LABELS[k]),
-                    datasets: [{ label: 'Needs-support cases', data: [0, 0, 0, 0], backgroundColor: DOMAIN_KEYS.map((k) => DOMAIN_COLORS[k]) }],
+                    datasets: [{ label: 'Completed assessments with a needs-support result', data: [0, 0, 0, 0], backgroundColor: DOMAIN_KEYS.map((k) => DOMAIN_COLORS[k]) }],
                 },
                 options: {
                     ...chartOptions,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => `${KCI.formatCount(ctx.parsed.y)} of ${KCI.formatCount(domainTotal)} completed assessments (${KCI.formatPercent(KCI.sharePercent(ctx.parsed.y, domainTotal))}) in the needs-support range`,
+                            },
+                        },
+                    },
                     scales: {
-                        y: { beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: 'Number of assessments / results' } },
+                        x: { title: { display: true, text: 'Developmental domain' } },
+                        y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Completed assessments (needs support)' } },
                     },
                 },
             });
 
             // Developmental Monitoring Trends Over Time — one line per domain,
-            // month on the X-axis (req 5).
+            // month on the X-axis (req 5). Straight segments (tension 0): a
+            // smoothed curve draws values between months that do not exist.
+            // The segment into the current, unfinished month is dashed.
             domainTrendChart = new Chart(document.getElementById('domainTrendChart'), {
                 type: 'line',
                 data: {
@@ -210,17 +261,38 @@ requireAuth();
                         data: [],
                         borderColor: DOMAIN_COLORS[k],
                         backgroundColor: DOMAIN_COLORS[k],
-                        tension: 0.3,
+                        tension: 0,
                         pointRadius: 3,
                         fill: false,
+                        segment: {
+                            borderDash: (ctx) => (trendRows[ctx.p1DataIndex] && trendRows[ctx.p1DataIndex].isPartial ? [6, 4] : undefined),
+                        },
                     })),
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: true, position: 'bottom' } },
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: true, position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                title: (items) => {
+                                    const row = trendRows[items[0].dataIndex];
+                                    if (!row) return items[0].label;
+                                    return `${row.monthLabel}${row.isPartial ? ' (month in progress)' : ''}: ${KCI.formatCount(row.totalAssessments)} completed assessments`;
+                                },
+                                label: (ctx) => {
+                                    const row = trendRows[ctx.dataIndex];
+                                    const total = row ? row.totalAssessments : null;
+                                    return `${ctx.dataset.label}: ${KCI.formatCount(ctx.parsed.y)} needs support (${KCI.formatPercent(KCI.sharePercent(ctx.parsed.y, total))})`;
+                                },
+                            },
+                        },
+                    },
                     scales: {
-                        y: { beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: 'Needs-support results' } },
+                        x: { title: { display: true, text: 'Month assessment was completed (UTC)' } },
+                        y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Completed assessments (needs support)' } },
                     },
                 },
             });
@@ -228,34 +300,57 @@ requireAuth();
 
         function updateScoreHistogram(scoreDistribution) {
             const bins = (scoreDistribution && scoreDistribution.bins) || [];
-            if (!scoreHistogramChart) return;
-            scoreHistogramChart.data.labels = bins.map((b) => b.range);
-            scoreHistogramChart.data.datasets[0].data = bins.map((b) => b.count || 0);
-            scoreHistogramChart.data.datasets[0].backgroundColor = bins.map((b, i) => histogramBinColor(i * 10));
-            scoreHistogramChart.update();
+            histogramTotal = scoreDistribution && KCI.isCount(scoreDistribution.total)
+                ? scoreDistribution.total
+                : bins.reduce((sum, b) => sum + (b.count || 0), 0);
+            if (scoreHistogramChart) {
+                scoreHistogramChart.data.labels = bins.map((b) => b.range);
+                scoreHistogramChart.data.datasets[0].data = bins.map((b) => b.count || 0);
+                scoreHistogramChart.data.datasets[0].backgroundColor = bins.map((b, i) => histogramBinColor(i * 10));
+                scoreHistogramChart.update();
+            }
 
-            const interp = window.KCAnalyticsInterpretations
-                ? window.KCAnalyticsInterpretations.formatHistogramInterpretation(bins, scoreDistribution.total)
-                : '';
-            document.getElementById('histogramInterpretation').textContent = interp;
+            // Band legend: each band's colour, label, score range, and how many
+            // of the plotted assessments fall in it.
+            const S = window.KCScoring;
+            const bands = S && S.ACTIVE_BANDS
+                ? S.ACTIVE_BANDS.map((b) => ({ key: b.key, min: b.min, max: b.max, label: S.clinicalLabel(b.key) }))
+                : [];
+            renderLegend(document.getElementById('scoreBandLegend'), histogramTotal > 0
+                ? KCI.summarizeScoreBands(bins, bands).map((b) => ({
+                    color: S.colorForBand(b.key),
+                    label: `${b.label} (${b.min}–${b.max})`,
+                    value: `${KCI.formatCount(b.count)} · ${KCI.formatPercent(b.share)}`,
+                }))
+                : []);
+
+            document.getElementById('histogramInterpretation').textContent =
+                KCI.formatHistogramInterpretation(bins, scoreDistribution ? scoreDistribution.total : undefined);
         }
 
         function updateDomainMonitoring(domainNeedsSupport) {
             const counts = domainNeedsSupport || { communication: 0, social: 0, cognitive: 0, motor: 0, total: 0 };
+            domainTotal = KCI.isCount(counts.total) ? counts.total : 0;
             if (domainMonitoringChart) {
                 domainMonitoringChart.data.datasets[0].data = DOMAIN_KEYS.map((k) => counts[k] || 0);
                 domainMonitoringChart.update();
             }
-            const interp = window.KCAnalyticsInterpretations
-                ? window.KCAnalyticsInterpretations.formatDomainInterpretation(counts)
-                : '';
-            document.getElementById('domainMonitoringInterpretation').textContent = interp;
+            renderLegend(document.getElementById('domainMonitoringLegend'), domainTotal > 0
+                ? DOMAIN_KEYS.map((k) => ({
+                    color: DOMAIN_COLORS[k],
+                    label: DOMAIN_LABELS[k],
+                    value: `${KCI.formatCount(counts[k] || 0)} of ${KCI.formatCount(domainTotal)} · ${KCI.formatPercent(KCI.sharePercent(counts[k] || 0, domainTotal))}`,
+                }))
+                : []);
+            document.getElementById('domainMonitoringInterpretation').textContent = KCI.formatDomainInterpretation(counts);
         }
 
         function updateDomainTrend(domainMonthlyTrend) {
-            const rows = domainMonthlyTrend || [];
+            const prepared = KCI.prepareMonthlyTrend(domainMonthlyTrend, currentUtcMonthKey());
+            const rows = prepared.rows;
             const wrap = document.getElementById('domainTrendChartWrap');
             const emptyState = document.getElementById('domainTrendEmptyState');
+            trendRows = rows;
 
             if (!rows.length) {
                 if (wrap) wrap.style.display = 'none';
@@ -264,7 +359,7 @@ requireAuth();
                 if (wrap) wrap.style.display = '';
                 if (emptyState) emptyState.hidden = true;
                 if (domainTrendChart) {
-                    domainTrendChart.data.labels = rows.map((r) => r.monthLabel);
+                    domainTrendChart.data.labels = rows.map((r) => (r.isPartial ? `${r.monthLabel} (to date)` : r.monthLabel));
                     DOMAIN_KEYS.forEach((k, i) => {
                         domainTrendChart.data.datasets[i].data = rows.map((r) => r[k] || 0);
                     });
@@ -272,52 +367,63 @@ requireAuth();
                 }
             }
 
-            let interp = '';
-            if (window.KCAnalyticsInterpretations) {
-                if (!rows.length) {
-                    interp = 'Not enough completed assessment data is available yet to describe a monitoring trend.';
-                } else {
-                    const summary = window.KCAnalyticsInterpretations.computeMonitoringSummary(rows);
-                    interp = summary.trendText + ' This reflects the distribution of recorded assessment results, not a diagnosis.';
+            // The month-over-month comparison uses full months only.
+            let interp;
+            if (!rows.length) {
+                interp = 'Not enough completed assessment data is available yet to describe a monitoring trend.';
+            } else {
+                const summary = KCI.computeMonitoringSummary(prepared.completeRows);
+                interp = `${summary.trendText} This reflects the distribution of recorded assessment results, not a diagnosis.`;
+                if (prepared.partialRow) {
+                    interp += ` ${prepared.partialRow.monthLabel} is still in progress (${KCI.formatCount(prepared.partialRow.totalAssessments)} completed assessments so far), so it is drawn dashed and left out of the comparison.`;
                 }
             }
             document.getElementById('domainTrendInterpretation').textContent = interp;
-            return rows;
+            return prepared;
         }
 
-        function updateMonitoringSummary(domainMonthlyTrend) {
+        function updateMonitoringSummary(prepared) {
             const el = document.getElementById('monitoringSummary');
-            if (!el || !window.KCAnalyticsInterpretations) return;
-            const summary = window.KCAnalyticsInterpretations.computeMonitoringSummary(domainMonthlyTrend || []);
+            if (!el) return;
+            const summary = KCI.computeMonitoringSummary(prepared.completeRows);
+            const partial = prepared.partialRow;
+            const card = (label, value) => `
+                <div class="report-card"><p class="report-label">${escapeHtml(label)}</p><p class="report-value" style="font-size:1.3rem;">${escapeHtml(value)}</p></div>`;
+            const partialCard = partial
+                ? card(`${partial.monthLabel} so far (month in progress, not compared)`, `${KCI.formatCount(partial.totalAssessments)} completed assessments`)
+                : '';
 
             if (!summary.hasData) {
-                el.innerHTML = `<div class="report-card" style="grid-column:1/-1;"><p class="report-label">Not enough data yet</p><p class="pr-kpi-note" style="margin-top:0.4rem;">${summary.trendText}</p></div>`;
+                el.innerHTML = `<div class="report-card" style="grid-column:1/-1;"><p class="report-label">Not enough full-month data yet</p><p class="pr-kpi-note" style="margin-top:0.4rem;">${escapeHtml(summary.trendText)}</p></div>${partialCard}`;
                 return;
             }
 
+            const month = summary.latest.monthLabel;
+            const tiedLeaders = KCI.leadingDomainForMonth(summary.latest).leaders.length > 1;
             const cards = [
-                ['Current highest monitoring area', summary.latestLeadLabel],
-                ['Latest period', summary.latest.monthLabel],
-                [`Needs-support results (${summary.latestLeadLabel}, latest period)`, summary.latestLeadCount],
-                ['Total needs-support results, all domains (latest period)', summary.latestTotal],
+                ['Latest full month', month],
+                [`Highest monitoring area (${month})`, summary.latestLeadLabel],
+                [`Completed assessments (${month})`, KCI.formatCount(summary.latest.totalAssessments)],
+                [`Needs-support results in ${summary.latestLeadLabel}${tiedLeaders ? ', each' : ''} (${month})`, KCI.formatCount(summary.latestLeadCount)],
+                [`Needs-support results, all four domains added together (${month}); one assessment can add up to four`, KCI.formatCount(summary.latestTotal)],
             ];
             if (summary.hasComparison) {
                 cards.push(
-                    ['Previous period', summary.previous.monthLabel],
-                    ['Previous highest monitoring area', summary.previousLeadLabel],
+                    ['Month before', summary.previous.monthLabel],
+                    [`Highest monitoring area (${summary.previous.monthLabel})`, summary.previousLeadLabel],
                 );
             }
-            el.innerHTML = cards.map(([label, value]) => `
-                <div class="report-card"><p class="report-label">${label}</p><p class="report-value" style="font-size:1.3rem;">${value}</p></div>
-            `).join('') + `<div class="report-card" style="grid-column:1/-1;"><p class="report-label">Trend</p><p class="pr-kpi-note" style="margin-top:0.4rem;font-size:0.85rem;">${summary.trendText}</p></div>`;
+            el.innerHTML = cards.map(([label, value]) => card(label, value)).join('')
+                + partialCard
+                + `<div class="report-card" style="grid-column:1/-1;"><p class="report-label">Trend (full months only)</p><p class="pr-kpi-note" style="margin-top:0.4rem;font-size:0.85rem;">${escapeHtml(summary.trendText)}</p></div>`;
         }
 
         function updatePediatricianComparison(rows, total, reviewedAssessmentsSystemWide) {
             const noteEl = document.getElementById('pediatricianComparisonNote');
             const capEl = document.getElementById('pediatricianComparisonCapNote');
             const tbody = document.getElementById('pediatricianComparisonTable');
-            if (noteEl && window.KCAnalyticsInterpretations) {
-                noteEl.textContent = window.KCAnalyticsInterpretations.formatPediatricianComparisonNote(reviewedAssessmentsSystemWide);
+            if (noteEl) {
+                noteEl.textContent = KCI.formatPediatricianComparisonNote(reviewedAssessmentsSystemWide);
             }
             const list = rows || [];
             if (!list.length) {
@@ -331,12 +437,12 @@ requireAuth();
                         <td>${p.completedAssessments}</td>
                         <td>${p.needsSupportCases}</td>
                         <td>${p.reviewedAssessments}</td>
-                        <td>${escapeHtml(window.KCAnalyticsInterpretations ? window.KCAnalyticsInterpretations.formatPediatricianRowInterpretation(p) : '')}</td>
+                        <td>${escapeHtml(KCI.formatPediatricianRowInterpretation(p))}</td>
                     </tr>`).join('');
             }
             if (capEl) {
                 capEl.textContent = (total || 0) > list.length
-                    ? `Showing the top ${list.length} of ${total} pediatricians with assigned appointments, ranked by needs-support cases.`
+                    ? `Showing the first ${list.length} of ${total} pediatricians with appointments, in order of needs-support cases.`
                     : '';
             }
         }
@@ -362,133 +468,202 @@ requireAuth();
             return items.slice().sort((a, b) => rank(a) - rank(b));
         }
 
-        function updateAppointmentTable(appointmentStats) {
-            const tbody = document.getElementById('appointmentStatusTable');
-            const stats = sortByFixedOrder(appointmentStats || [], APPOINTMENT_STATUS_ORDER, 'status');
-            const total = stats.reduce((sum, a) => sum + (a.count || 0), 0);
-            if (!stats.length) {
-                tbody.innerHTML = '<tr><td colspan="3" class="muted">No appointment data available.</td></tr>';
-                return;
+        // Every share in a table uses ONE denominator: the sum of that table's
+        // rows, which is shown as the table's total row.
+        function renderShareTable(tbody, tfoot, rows, labelFor, totalLabel, emptyText) {
+            const { total, rows: withShare } = KCI.withShares(rows);
+            if (!withShare.length) {
+                tbody.innerHTML = `<tr><td colspan="3" class="muted">${escapeHtml(emptyText)}</td></tr>`;
+                if (tfoot) tfoot.innerHTML = '';
+                return total;
             }
-            tbody.innerHTML = stats.map((a) => {
-                const label = a.status ? (a.status.charAt(0).toUpperCase() + a.status.slice(1)) : 'Unknown';
-                const pct = total > 0 ? Math.round(((a.count || 0) / total) * 100) : 0;
-                return `<tr><td>${escapeHtml(label)}</td><td>${a.count || 0}</td><td>${pct}%</td></tr>`;
-            }).join('');
+            tbody.innerHTML = withShare.map((r) =>
+                `<tr><td>${escapeHtml(labelFor(r))}</td><td>${KCI.formatCount(r.count || 0)}</td><td>${KCI.formatPercent(r.share)}</td></tr>`
+            ).join('');
+            if (tfoot) {
+                tfoot.innerHTML = `<tr><td>${escapeHtml(totalLabel)}</td><td>${KCI.formatCount(total)}</td><td>${total > 0 ? '100%' : 'N/A'}</td></tr>`;
+            }
+            return total;
         }
 
-        function updateRoleTable(roleBreakdown) {
-            const tbody = document.getElementById('userRoleTable');
-            const roles = sortByFixedOrder(roleBreakdown || [], USER_ROLE_ORDER, 'role');
-            const total = roles.reduce((sum, r) => sum + (r.count || 0), 0);
-            if (!roles.length) {
-                tbody.innerHTML = '<tr><td colspan="3" class="muted">No role data available.</td></tr>';
-                return;
-            }
+        function updateAppointmentTable(appointmentStats) {
+            const stats = sortByFixedOrder(appointmentStats || [], APPOINTMENT_STATUS_ORDER, 'status');
+            const total = renderShareTable(
+                document.getElementById('appointmentStatusTable'),
+                document.getElementById('appointmentStatusTotal'),
+                stats,
+                (a) => (a.status ? (a.status.charAt(0).toUpperCase() + a.status.slice(1)) : 'No status recorded'),
+                'All appointments',
+                'No appointment data available.'
+            );
+            document.getElementById('appointmentStatusNote').textContent =
+                `Share = appointments in that status ÷ all ${KCI.formatCount(total)} appointments, every status including cancelled and rejected, all dates. Active Appointments above = Pending + Approved.`;
+        }
+
+        function updateRoleTable(roleBreakdown, totalUsers) {
             const ROLE_LABELS = {
                 parent: 'Parent', legal_guardian: 'Legal Guardian', foster_parent: 'Foster Parent',
                 court_appointed: 'Court-Appointed Guardian', pediatrician: 'Pediatrician',
                 secretary: 'Secretary', admin: 'Admin',
             };
-            tbody.innerHTML = roles.map((r) => {
-                const label = ROLE_LABELS[r.role] || (r.role ? (r.role.charAt(0).toUpperCase() + r.role.slice(1)) : 'Unknown');
-                const pct = total > 0 ? Math.round(((r.count || 0) / total) * 100) : 0;
-                return `<tr><td>${escapeHtml(label)}</td><td>${r.count || 0}</td><td>${pct}%</td></tr>`;
-            }).join('');
+            const roles = sortByFixedOrder(roleBreakdown || [], USER_ROLE_ORDER, 'role');
+            const total = renderShareTable(
+                document.getElementById('userRoleTable'),
+                document.getElementById('userRoleTotal'),
+                roles,
+                (r) => ROLE_LABELS[r.role] || (r.role ? (r.role.charAt(0).toUpperCase() + r.role.slice(1)) : 'Unknown'),
+                'All user accounts',
+                'No role data available.'
+            );
+            let note = `Share = accounts with that role ÷ all ${KCI.formatCount(total)} user accounts with a role (active, pending and suspended).`;
+            if (KCI.isCount(totalUsers) && totalUsers > total) {
+                note += ` ${KCI.formatCount(totalUsers - total)} of the ${KCI.formatCount(totalUsers)} accounts in Total Users have no role and are not listed.`;
+            }
+            document.getElementById('userRoleNote').textContent = note;
+        }
+
+        function updateGrowthCard(monthly) {
+            const el = document.getElementById('growthRate');
+            const def = document.getElementById('growthDef');
+            const g = KCI.computeSignupChange(monthly);
+            const partialText = g.partial && KCI.isCount(g.partial.count)
+                ? ` ${g.partial.month} so far: ${KCI.formatCount(g.partial.count)} (month in progress, not compared).`
+                : '';
+            if (g.available) {
+                el.textContent = KCI.formatSignedPercent(g.change);
+                el.className = 'value ' + (g.change >= 0 ? 'green' : 'orange');
+                def.textContent = `Change in new accounts between the last two full months: ${KCI.formatCount(g.latest.count)} in ${g.latest.month} vs ${KCI.formatCount(g.previous.count)} in ${g.previous.month} (baseline).${partialText}`;
+            } else {
+                el.textContent = 'N/A';
+                el.className = 'value';
+                def.textContent = g.reason === 'zero-baseline'
+                    ? `No new accounts in ${g.previous.month}, so a % change from it cannot be calculated. ${g.latest.month}: ${KCI.formatCount(g.latest.count)} new accounts.${partialText}`
+                    : 'Not enough monthly sign-up data to compare two full months.';
+            }
+        }
+
+        function updateCompletionCard(summary) {
+            const c = KCI.computeCompletionRate(summary);
+            document.getElementById('completionRate').textContent = KCI.formatPercent(c.rate);
+            const def = document.getElementById('completionDef');
+            if (c.rate == null) {
+                def.textContent = c.total === 0
+                    ? 'No assessment sessions have been started yet, so there is nothing to divide by.'
+                    : 'Unavailable: the assessment counts did not load.';
+                return;
+            }
+            const rest = c.submitted != null && c.inProgress != null
+                ? ` The other ${KCI.formatCount(c.submitted)} submitted (awaiting result) and ${KCI.formatCount(c.inProgress)} in-progress sessions count as not completed.`
+                : '';
+            def.textContent = `${KCI.formatCount(c.complete)} completed ÷ ${KCI.formatCount(c.total)} assessment sessions started, all time.${rest}`;
+        }
+
+        function updateAverageScores(avg, completedCount) {
+            const el = document.getElementById('avgScores');
+            const note = document.getElementById('avgScoresNote');
+            // The API sends 0 when there are no results to average, which would
+            // read as a real 0% — show N/A instead.
+            const noResults = completedCount === 0;
+            const fmt = (v) => (noResults || v == null ? 'N/A' : `${v}%`);
+            el.innerHTML = [
+                { label: DOMAIN_LABELS.communication, val: avg.avgCommunication },
+                { label: DOMAIN_LABELS.social, val: avg.avgSocial },
+                { label: DOMAIN_LABELS.cognitive, val: avg.avgCognitive },
+                { label: DOMAIN_LABELS.motor, val: avg.avgMotor }
+            ].map(s => `
+                <div style="background:var(--bg-primary);padding:1.2rem;border-radius:8px;text-align:center;">
+                    <p style="font-size:0.9rem;color:var(--text-light);margin-bottom:0.5rem;">${escapeHtml(s.label)}</p>
+                    <p style="font-size:2rem;font-weight:700;color:var(--primary);">${fmt(s.val)}</p>
+                    <p style="font-size:0.78rem;color:var(--text-light);margin-top:0.25rem;">mean domain score</p>
+                </div>`).join('');
+            if (note) {
+                note.textContent = noResults
+                    ? 'No completed assessments yet, so there are no scores to average.'
+                    : `Mean domain score across all ${KCI.formatCount(completedCount)} completed assessments, rounded to a whole number. A domain score is the share of that domain's possible points the child earned (0–100%). It is an average score, not a share of children, a probability or a diagnosis.`;
+            }
+        }
+
+        function setAnalyticsStatus(errorMessage) {
+            const banner = document.getElementById('analyticsError');
+            const header = document.querySelector('.analytics-header');
+            const statusText = document.querySelector('.analytics-header .status-text');
+            const updated = document.getElementById('lastUpdated');
+            if (!errorMessage) {
+                banner.hidden = true;
+                header.classList.remove('is-stale');
+                statusText.textContent = 'Live';
+                updated.textContent = 'Updated: ' + analyticsLoadedAt.toLocaleTimeString();
+                return;
+            }
+            header.classList.add('is-stale');
+            statusText.textContent = 'Update failed';
+            banner.hidden = false;
+            banner.textContent = analyticsLoadedAt
+                ? `The latest refresh failed (${errorMessage}). Showing data from ${analyticsLoadedAt.toLocaleTimeString()}.`
+                : `Could not load analytics (${errorMessage}). No figures are shown until the data loads; the page retries automatically.`;
+            updated.textContent = analyticsLoadedAt ? 'Last good update: ' + analyticsLoadedAt.toLocaleTimeString() : 'Not loaded';
         }
 
         async function loadAnalytics() {
+            let response;
             try {
-                const response = await apiFetch('/admin/analytics');
-                console.log('[Analytics] Full Response:', response);
-
-                // Validate response structure
-                if (!response || response.success !== true) {
-                    throw new Error('Invalid API response');
-                }
-
-                // Extract data with explicit fallbacks
-                const summary = response.summaryTotals || {};
-                const avg = response.averageScores || {};
-                const monthly = response.monthlySignups || [];
-                const apptStats = response.appointmentStats || [];
-                const roles = response.roleBreakdown || [];
-
-                // Update KPI cards with fallback values.
-                // "completedScreenings" is the response field NAME (unchanged,
-                // still Assessment.countDocuments({status:'complete'}) — see
-                // routes/admin.js); the CARD label now correctly reads
-                // "Completed Assessments" to match that definition and stay
-                // consistent with Admin Reports.
-                document.getElementById('totalUsers').textContent = summary.totalUsers != null ? summary.totalUsers : 0;
-                document.getElementById('totalChildren').textContent = summary.totalChildren != null ? summary.totalChildren : 0;
-                document.getElementById('activeAppointments').textContent = summary.activeAppointments != null ? summary.activeAppointments : 0;
-                document.getElementById('completedScreenings').textContent = summary.completedScreenings != null ? summary.completedScreenings : 0;
-                document.getElementById('activeAssessments').textContent = summary.inProgressScreenings != null ? summary.inProgressScreenings : 0;
-
-                // Update average scores section
-                const commVal = avg.avgCommunication != null ? avg.avgCommunication : 0;
-                const socialVal = avg.avgSocial != null ? avg.avgSocial : 0;
-                const cognVal = avg.avgCognitive != null ? avg.avgCognitive : 0;
-                const motorVal = avg.avgMotor != null ? avg.avgMotor : 0;
-
-                document.getElementById('avgScores').innerHTML = [
-                    { label: DOMAIN_LABELS.communication, val: commVal },
-                    { label: DOMAIN_LABELS.social, val: socialVal },
-                    { label: DOMAIN_LABELS.cognitive, val: cognVal },
-                    { label: DOMAIN_LABELS.motor, val: motorVal }
-                ].map(s => `
-                    <div style="background:var(--bg-primary);padding:1.2rem;border-radius:8px;text-align:center;">
-                        <p style="font-size:0.9rem;color:var(--text-light);margin-bottom:0.5rem;">${s.label}</p>
-                        <p style="font-size:2rem;font-weight:700;color:var(--primary);">${s.val}%</p>
-                    </div>`).join('');
-
-                // Update the assessment-monitoring sections.
-                updateScoreHistogram(response.scoreDistribution);
-                updateDomainMonitoring(response.domainNeedsSupport);
-                updateDomainTrend(response.domainMonthlyTrend);
-                updateMonitoringSummary(response.domainMonthlyTrend);
-                updatePediatricianComparison(response.pediatricianComparison, response.pediatricianComparisonTotal, response.reviewedAssessmentsSystemWide);
-                updateAppointmentTable(apptStats);
-                updateRoleTable(roles);
-
-                // Calculate growth rate
-                const totalRecent = monthly.reduce((sum, m) => sum + m.count, 0);
-                const growthRate = monthly.length >= 2 && monthly[monthly.length-2].count > 0
-                    ? Math.round(((monthly[monthly.length-1].count - monthly[monthly.length-2].count) / monthly[monthly.length-2].count) * 100)
-                    : (totalRecent > 0 ? 100 : 0);
-                document.getElementById('growthRate').textContent = (growthRate >= 0 ? '+' : '') + growthRate + '%';
-                document.getElementById('growthRate').className = 'value ' + (growthRate >= 0 ? 'green' : 'orange');
-
-                // Completion rate
-                const completionRate = summary.totalAssessments > 0
-                    ? Math.round((summary.completedScreenings / summary.totalAssessments) * 100)
-                    : 0;
-                document.getElementById('completionRate').textContent = completionRate + '%';
-
-                // Pending appointments.
-                // This used to be (totalAppointments - completed), which counted
-                // approved and rejected bookings as "pending" — the tile read 9
-                // when the database held 8 approved, 1 rejected and 0 pending.
-                // apptStats is already grouped by status, so read it directly.
-                const pendingAppt = apptStats
-                    .filter(a => String(a.status).toLowerCase() === 'pending')
-                    .reduce((sum, a) => sum + (a.count || 0), 0);
-                document.getElementById('pendingRate').textContent = pendingAppt;
-
-                document.getElementById('lastUpdated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
-
+                response = await apiFetch('/admin/analytics');
+                if (!response || response.success !== true) throw new Error('Invalid API response');
             } catch (e) {
                 console.error('[Analytics] Load error:', e);
-                const errorMsg = 'Error: ' + e.message;
-                document.getElementById('totalUsers').textContent = '0';
-                document.getElementById('totalChildren').textContent = '0';
-                document.getElementById('activeAppointments').textContent = '0';
-                document.getElementById('completedScreenings').textContent = '0';
-                document.getElementById('activeAssessments').textContent = '0';
-                document.getElementById('avgScores').innerHTML = '<p style="color:red;text-align:center;">' + errorMsg + '</p>';
-                document.getElementById('lastUpdated').textContent = 'Update failed';
+                // Never replace figures with zeros: keep the last good values,
+                // or leave the placeholders if nothing has loaded yet.
+                if (!analyticsLoadedAt) {
+                    document.getElementById('avgScores').innerHTML = '<p class="text-center text-muted" style="grid-column:1/-1;">Unavailable: analytics did not load.</p>';
+                }
+                setAnalyticsStatus(e.message || 'unknown error');
+                return;
             }
+
+            // Extract data with explicit fallbacks
+            const summary = response.summaryTotals || {};
+            const avg = response.averageScores || {};
+            const monthly = response.monthlySignups || [];
+            const apptStats = response.appointmentStats || [];
+            const roles = response.roleBreakdown || [];
+
+            // "completedScreenings" is the response field NAME (unchanged,
+            // still Assessment.countDocuments({status:'complete'}) — see
+            // routes/admin.js); the CARD label reads "Completed Assessments"
+            // to match that definition and stay consistent with Admin Reports.
+            document.getElementById('totalUsers').textContent = KCI.formatCount(summary.totalUsers);
+            document.getElementById('totalChildren').textContent = KCI.formatCount(summary.totalChildren);
+            document.getElementById('activeAppointments').textContent = KCI.formatCount(summary.activeAppointments);
+            document.getElementById('completedScreenings').textContent = KCI.formatCount(summary.completedScreenings);
+            document.getElementById('activeAssessments').textContent = KCI.formatCount(summary.inProgressScreenings);
+
+            const histogram = response.scoreDistribution;
+            updateAverageScores(avg, histogram && KCI.isCount(histogram.total) ? histogram.total : summary.completedScreenings);
+
+            // Update the assessment-monitoring sections.
+            updateScoreHistogram(histogram);
+            updateDomainMonitoring(response.domainNeedsSupport);
+            const preparedTrend = updateDomainTrend(response.domainMonthlyTrend);
+            updateMonitoringSummary(preparedTrend);
+            updatePediatricianComparison(response.pediatricianComparison, response.pediatricianComparisonTotal, response.reviewedAssessmentsSystemWide);
+            updateAppointmentTable(apptStats);
+            updateRoleTable(roles, summary.totalUsers);
+
+            updateGrowthCard(monthly);
+            updateCompletionCard(summary);
+
+            // Pending appointments.
+            // This used to be (totalAppointments - completed), which counted
+            // approved and rejected bookings as "pending" — the tile read 9
+            // when the database held 8 approved, 1 rejected and 0 pending.
+            // apptStats is already grouped by status, so read it directly.
+            const pendingAppt = apptStats
+                .filter(a => String(a.status).toLowerCase() === 'pending')
+                .reduce((sum, a) => sum + (a.count || 0), 0);
+            document.getElementById('pendingRate').textContent = KCI.formatCount(pendingAppt);
+
+            analyticsLoadedAt = new Date();
+            setAnalyticsStatus(null);
         }
 
         let eventSource = null;

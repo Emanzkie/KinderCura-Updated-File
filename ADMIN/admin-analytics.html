@@ -64,19 +64,24 @@
             </div>
         </div>
 
+        <p class="analytics-error" id="analyticsError" role="alert" hidden></p>
+
         <!-- Insights Row -->
         <div class="insights-row" id="insightsRow">
             <div class="insight-card">
-                <div class="label">User Growth (vs last month)</div>
+                <div class="label">New Sign-ups, Month over Month</div>
                 <div class="value green" id="growthRate">—</div>
+                <p class="insight-def" id="growthDef">Loading…</p>
             </div>
             <div class="insight-card">
                 <div class="label">Assessment Completion Rate</div>
                 <div class="value" id="completionRate">—</div>
+                <p class="insight-def" id="completionDef">Loading…</p>
             </div>
             <div class="insight-card">
                 <div class="label">Pending Appointments</div>
                 <div class="value orange" id="pendingRate">—</div>
+                <p class="insight-def">Appointments with status Pending, waiting for approval, all dates. A count, not a percentage.</p>
             </div>
         </div>
 
@@ -105,13 +110,14 @@
             <div class="overview-card">
                 <h3><img src="/icons/appointment.png" alt="" aria-hidden="true" class="icon-inline"> Active Appointments</h3>
                 <p id="activeAppointments" class="kpi-value">—</p>
-                <p class="pr-kpi-note">Appointment records currently pending or approved.</p>
+                <p class="pr-kpi-note">Appointment records currently pending or approved (not yet completed, and not cancelled or rejected).</p>
             </div>
         </div>
 
         <!-- Average Scores -->
         <div class="card mb-2">
             <h3><img src="/icons/analytics.png" alt="" aria-hidden="true" class="icon-inline"> Average Assessment Scores</h3>
+            <p class="chart-note" id="avgScoresNote">Mean domain score across every completed assessment. A domain score is the share of that domain's possible points the child earned (0–100%). It is an average score, not a share of children, a probability or a diagnosis.</p>
             <div id="avgScores" class="grid-4">
                 <p class="text-center text-muted" style="grid-column:1/-1;">Loading…</p>
             </div>
@@ -126,26 +132,31 @@
              ADMIN/admin-insights.html if a chart is needed elsewhere. -->
         <div class="card mb-2">
             <h3><img src="/icons/clipboard.png" alt="" aria-hidden="true" class="icon-inline"> Assessment Score Distribution</h3>
+            <p class="chart-note">Each bar counts completed assessments whose overall score (0–100) falls in that 10-point range. Bar colour shows the score band the range belongs to.</p>
             <div class="chart-container">
-                <canvas id="scoreHistogramChart"></canvas>
+                <canvas id="scoreHistogramChart" role="img" aria-label="Bar chart: number of completed assessments in each overall score range"></canvas>
             </div>
+            <ul class="chart-legend" id="scoreBandLegend" aria-label="Legend: score bands"></ul>
             <p class="pr-kpi-note" id="histogramInterpretation" style="margin-top:0.75rem;">Loading…</p>
         </div>
 
         <!-- Developmental Areas Requiring Monitoring -->
         <div class="card mb-2">
             <h3><img src="/icons/cognitive.png" alt="" aria-hidden="true" class="icon-inline"> Developmental Areas Requiring Monitoring</h3>
+            <p class="chart-note">Each bar counts completed assessments whose score in that domain is in the needs-support range: At-Risk (40–59) or Delayed (0–39). One assessment can count in several domains, so the bars do not add up to the number of assessments. Counts are assessments, not unique children.</p>
             <div class="chart-container">
-                <canvas id="domainMonitoringChart"></canvas>
+                <canvas id="domainMonitoringChart" role="img" aria-label="Bar chart: completed assessments with a needs-support result in each developmental domain"></canvas>
             </div>
+            <ul class="chart-legend" id="domainMonitoringLegend" aria-label="Legend: developmental domains"></ul>
             <p class="pr-kpi-note" id="domainMonitoringInterpretation" style="margin-top:0.75rem;">Loading…</p>
         </div>
 
         <!-- Developmental Monitoring Trends Over Time -->
         <div class="card mb-2">
             <h3><img src="/icons/analytics.png" alt="" aria-hidden="true" class="icon-inline"> Developmental Monitoring Trends Over Time</h3>
+            <p class="chart-note" id="domainTrendNote">Each line counts completed assessments, by the month they were completed (UTC), whose score in that domain is At-Risk or Delayed (below 60). Counts rise and fall with how many assessments were completed that month; hover a point to see its share. This is recorded KinderCura data only, not a population-wide clinical trend.</p>
             <div class="chart-container" id="domainTrendChartWrap">
-                <canvas id="domainTrendChart"></canvas>
+                <canvas id="domainTrendChart" role="img" aria-label="Line chart: completed assessments with a needs-support result per developmental domain, by month"></canvas>
             </div>
             <p class="muted" id="domainTrendEmptyState" hidden>Not enough completed assessment data is available yet to show a monthly trend.</p>
             <p class="pr-kpi-note" id="domainTrendInterpretation" style="margin-top:0.75rem;">Loading…</p>
@@ -167,7 +178,7 @@
                 <table class="simple-table">
                     <thead>
                         <tr>
-                            <th>Rank</th><th>Pediatrician</th><th>Relevant Children</th>
+                            <th><abbr title="List position, ordered by needs-support cases. Not a performance ranking.">#</abbr></th><th>Pediatrician</th><th>Relevant Children</th>
                             <th>Completed Assessments</th><th>Needs-Support Cases</th>
                             <th>Reviewed Assessments</th><th>Interpretation</th>
                         </tr>
@@ -178,6 +189,12 @@
                 </table>
             </div>
             <p class="muted" id="pediatricianComparisonCapNote" style="margin-top:0.6rem;font-size:0.82rem;"></p>
+            <ul class="column-defs" aria-label="Column definitions">
+                <li><strong>Relevant Children</strong>: distinct children with at least one appointment of any status with this pediatrician.</li>
+                <li><strong>Completed Assessments</strong>: every completed assessment of those children, whichever pediatrician they saw. A child seen by two pediatricians counts for both.</li>
+                <li><strong>Needs-Support Cases</strong>: those completed assessments with an overall score below 60 (At-Risk or Delayed).</li>
+                <li><strong>Reviewed Assessments</strong>: those completed assessments that have a recorded pediatrician review.</li>
+            </ul>
         </div>
 
         <!-- Charts Row 2 — Appointment Status and User Role Distribution are
@@ -194,8 +211,10 @@
                         <tbody id="appointmentStatusTable">
                             <tr><td colspan="3" class="muted">Loading…</td></tr>
                         </tbody>
+                        <tfoot id="appointmentStatusTotal"></tfoot>
                     </table>
                 </div>
+                <p class="pr-kpi-note" id="appointmentStatusNote" style="margin-top:0.6rem;">Share = appointments in that status ÷ all appointments, every status including cancelled and rejected, all dates.</p>
             </div>
             <div class="card">
                 <h3><img src="/icons/parent.png" alt="" aria-hidden="true" class="icon-inline"> User Role Distribution</h3>
@@ -205,9 +224,10 @@
                         <tbody id="userRoleTable">
                             <tr><td colspan="3" class="muted">Loading…</td></tr>
                         </tbody>
+                        <tfoot id="userRoleTotal"></tfoot>
                     </table>
                 </div>
-                <p class="pr-kpi-note" style="margin-top:0.6rem;">The total user count includes all registered account roles shown above.</p>
+                <p class="pr-kpi-note" id="userRoleNote" style="margin-top:0.6rem;">Share = accounts with that role ÷ all user accounts (every role; active, pending and suspended).</p>
             </div>
         </div>
     </div>

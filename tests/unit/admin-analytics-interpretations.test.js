@@ -162,6 +162,144 @@ function testRowInterpretationNoAssessments() {
   assert.strictEqual(text, '1 relevant child, no completed assessments recorded yet.');
 }
 
+function testComparisonNoteNotARanking() {
+  const text = KC.formatPediatricianComparisonNote(0);
+  assert.ok(!/ranked by/.test(text), 'the order must not be described as a ranking');
+  assert.ok(/not a ranking of clinical skill, accuracy or effectiveness/.test(text));
+  assert.ok(/no child has two or more reviewed assessments/.test(text), 'provably true with 0 reviews');
+  const many = KC.formatPediatricianComparisonNote(5);
+  assert.ok(!/no child has two or more reviewed assessments/.test(many),
+    'with 2+ reviews the "no repeat review" claim is not verified, so it must not be stated');
+}
+
+// ── percentages and shares ──────────────────────────────────────────────────
+
+function testPercentFormatting() {
+  assert.strictEqual(KC.sharePercent(1207, 1720).toFixed(4), '70.1744');
+  assert.strictEqual(KC.sharePercent(1, 0), null, 'no division by zero');
+  assert.strictEqual(KC.sharePercent(5, 4), null, 'part larger than whole is not a share');
+  assert.strictEqual(KC.sharePercent(undefined, 4), null);
+  assert.strictEqual(KC.formatPercent(KC.sharePercent(1207, 1720)), '70.2%');
+  assert.strictEqual(KC.formatPercent(null), 'N/A');
+  assert.strictEqual(KC.formatPercent(Infinity), 'N/A');
+  assert.strictEqual(KC.formatPercent(0.04), '<0.1%');
+  assert.strictEqual(KC.formatSignedPercent(-48.249), '−48.2%');
+  assert.strictEqual(KC.formatSignedPercent(12.46), '+12.5%');
+  assert.strictEqual(KC.formatSignedPercent(-100), '−100.0%');
+  assert.strictEqual(KC.formatSignedPercent(0.01), '0.0%');
+  assert.strictEqual(KC.formatSignedPercent(null), 'N/A');
+  assert.strictEqual(KC.formatCount(1506), '1,506');
+  assert.strictEqual(KC.formatCount(undefined), '—');
+}
+
+// ── New sign-ups, month over month ──────────────────────────────────────────
+
+function signupMonths(counts) {
+  const labels = ['May 2026', 'Jun 2026', 'Jul 2026', 'Aug 2026', 'Sep 2026', 'Oct 2026'];
+  return counts.map((count, i) => ({ month: labels[i], count }));
+}
+
+function testSignupChangeUsesFullMonths() {
+  // Real shape on 2026-10-09: October (in progress) has 0 so far.
+  const g = KC.computeSignupChange(signupMonths([166, 174, 169, 257, 133, 0]));
+  assert.strictEqual(g.available, true);
+  assert.strictEqual(g.latest.month, 'Sep 2026', 'latest FULL month, not the partial current one');
+  assert.strictEqual(g.previous.month, 'Aug 2026', 'baseline is the month before it');
+  assert.strictEqual(g.partial.month, 'Oct 2026');
+  assert.strictEqual(KC.formatSignedPercent(g.change), '−48.2%', '(133 − 257) ÷ 257');
+}
+
+function testSignupChangeZeroBaseline() {
+  const g = KC.computeSignupChange(signupMonths([0, 0, 0, 0, 7, 2]));
+  assert.strictEqual(g.available, false);
+  assert.strictEqual(g.reason, 'zero-baseline', 'never +100% or Infinity from a zero baseline');
+}
+
+function testSignupChangeRealDropToZero() {
+  const g = KC.computeSignupChange(signupMonths([1, 1, 1, 10, 0, 3]));
+  assert.strictEqual(g.available, true);
+  assert.strictEqual(g.change, -100, 'a drop to zero from a non-zero baseline is a real −100%');
+}
+
+function testSignupChangeNotEnoughData() {
+  assert.strictEqual(KC.computeSignupChange([]).reason, 'not-enough-months');
+  assert.strictEqual(KC.computeSignupChange(undefined).reason, 'not-enough-months');
+  assert.strictEqual(KC.computeSignupChange([{ month: 'a', count: 1 }, { month: 'b', count: 2 }]).reason, 'not-enough-months');
+  assert.strictEqual(KC.computeSignupChange(signupMonths([1, 1, 1, null, 2, 0])).reason, 'missing');
+}
+
+// ── Assessment completion rate ───────────────────────────────────────────────
+
+function testCompletionRate() {
+  const c = KC.computeCompletionRate({ totalAssessments: 1720, completedScreenings: 1207, inProgressScreenings: 336 });
+  assert.strictEqual(KC.formatPercent(c.rate), '70.2%', 'completed ÷ all sessions started');
+  assert.strictEqual(c.submitted, 177, 'the remainder is the submitted sessions');
+  const none = KC.computeCompletionRate({ totalAssessments: 0, completedScreenings: 0, inProgressScreenings: 0 });
+  assert.strictEqual(none.rate, null, 'no sessions → N/A, not 0%');
+  assert.strictEqual(KC.computeCompletionRate({}).rate, null);
+}
+
+// ── One denominator per table ────────────────────────────────────────────────
+
+function testWithShares() {
+  const appts = [
+    { status: 'pending', count: 232 }, { status: 'approved', count: 291 }, { status: 'completed', count: 413 },
+    { status: 'cancelled', count: 123 }, { status: 'rejected', count: 65 },
+  ];
+  const { total, rows } = KC.withShares(appts);
+  assert.strictEqual(total, 1124, 'denominator includes cancelled and rejected');
+  assert.strictEqual(KC.formatPercent(rows[0].share), '20.6%');
+  assert.ok(Math.abs(rows.reduce((s, r) => s + r.share, 0) - 100) < 1e-9, 'shares total 100%');
+  const empty = KC.withShares([]);
+  assert.strictEqual(empty.total, 0);
+  assert.deepStrictEqual(KC.withShares([{ status: 'pending', count: 0 }]).rows[0].share, null, 'zero total → N/A');
+}
+
+// ── Score bands under the histogram ──────────────────────────────────────────
+
+function testScoreBands() {
+  const BANDS = [
+    { key: 'on-track', label: 'On-Track', min: 80, max: 100 },
+    { key: 'developing', label: 'Developing', min: 60, max: 79 },
+    { key: 'at-risk', label: 'At-Risk', min: 40, max: 59 },
+    { key: 'delayed', label: 'Delayed', min: 0, max: 39 },
+  ];
+  const b = bins([2, 2, 32, 60, 53, 97, 139, 169, 403, 250]);
+  const bands = KC.summarizeScoreBands(b, BANDS);
+  assert.deepStrictEqual(bands.map((x) => x.count), [653, 308, 150, 96]);
+  assert.strictEqual(bands.reduce((s, x) => s + x.count, 0), 1207, 'every plotted assessment is in exactly one band');
+  assert.strictEqual(KC.formatPercent(bands[0].share), '54.1%');
+  assert.ok(KC.summarizeScoreBands(bins([]), BANDS).every((x) => x.share === null), 'empty → N/A');
+}
+
+// ── Monthly trend: gaps and the month in progress ───────────────────────────
+
+function trendRow(month, total, c) {
+  return { month, monthLabel: month, totalAssessments: total, communication: c, social: 0, cognitive: 0, motor: 0 };
+}
+
+function testPrepareMonthlyTrend() {
+  const rows = [trendRow('2026-10', 4, 1), trendRow('2026-07', 174, 40), trendRow('2026-09', 295, 60)];
+  const p = KC.prepareMonthlyTrend(rows, '2026-10');
+  assert.deepStrictEqual(p.rows.map((r) => r.month), ['2026-07', '2026-08', '2026-09', '2026-10'],
+    'sorted, with the missing month filled in');
+  assert.strictEqual(p.rows[1].totalAssessments, 0, 'a filled month is a real zero');
+  assert.strictEqual(p.rows[1].monthLabel, 'August 2026');
+  assert.strictEqual(p.partialRow.month, '2026-10');
+  assert.deepStrictEqual(p.completeRows.map((r) => r.month), ['2026-07', '2026-08', '2026-09'],
+    'the month in progress is never compared');
+
+  const summary = KC.computeMonitoringSummary(p.completeRows);
+  assert.strictEqual(summary.latest.month, '2026-09', 'summary compares full months only');
+
+  const yearWrap = KC.prepareMonthlyTrend([trendRow('2025-12', 2, 0), trendRow('2026-02', 7, 1)], '2026-10');
+  assert.deepStrictEqual(yearWrap.rows.map((r) => r.month), ['2025-12', '2026-01', '2026-02']);
+  assert.strictEqual(yearWrap.partialRow, null);
+
+  assert.deepStrictEqual(KC.prepareMonthlyTrend(undefined, '2026-10').rows, []);
+  assert.deepStrictEqual(KC.prepareMonthlyTrend([{ month: 'bad' }], '2026-10').rows, [], 'malformed keys are skipped');
+}
+
 function run() {
   testHistogramLeader();
   testHistogramTie();
@@ -182,7 +320,17 @@ function run() {
   testComparisonNoteOneReviewed();
   testRowInterpretationWithData();
   testRowInterpretationNoAssessments();
-  console.log('Admin Analytics interpretation rules OK — histogram/domain leaders, ties, monthly trend change-detection, and pediatrician-comparison wording all verified');
+  testComparisonNoteNotARanking();
+  testPercentFormatting();
+  testSignupChangeUsesFullMonths();
+  testSignupChangeZeroBaseline();
+  testSignupChangeRealDropToZero();
+  testSignupChangeNotEnoughData();
+  testCompletionRate();
+  testWithShares();
+  testScoreBands();
+  testPrepareMonthlyTrend();
+  console.log('Admin Analytics interpretation rules OK — histogram/domain leaders, ties, monthly trend change-detection, pediatrician-comparison wording, percentages/shares, sign-up change and month handling all verified');
 }
 
 run();
