@@ -4,6 +4,7 @@ const express = require('express');
 const Child = require('../models/Child');
 const GuardianLink = require('../models/GuardianLink');
 const { authMiddleware } = require('../middleware/auth');
+const childAge = require('../js/shared/child-age');
 
 const router = express.Router();
 
@@ -90,6 +91,12 @@ router.post('/register', authMiddleware, async (req, res) => {
 
         if (!firstName || !lastName || !dateOfBirth) {
             return res.status(400).json({ error: 'First name, last name, and date of birth are required.' });
+        }
+
+        // Same 3-8 year rule as sign-up (js/shared/child-age.js).
+        const ageCheck = childAge.checkChildAge(dateOfBirth, childAge.todayInTimeZone(childAge.CLINIC_TIME_ZONE));
+        if (!ageCheck.ok) {
+            return res.status(400).json({ error: ageCheck.message });
         }
 
         const cleanFirst = String(firstName).trim();

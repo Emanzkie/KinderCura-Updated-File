@@ -1082,6 +1082,17 @@
     }
 }
 
+/* Child age requirement notice: the consent modal's look, sized for one message. */
+.consent-dialog.age-dialog {
+    width: min(480px, calc(100vw - 2rem));
+}
+
+.age-dialog .consent-dialog-body p {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
 /* Terms reader (native <dialog>) */
 .terms-dialog {
     width: min(760px, calc(100vw - 2rem));

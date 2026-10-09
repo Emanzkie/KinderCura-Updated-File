@@ -45,6 +45,10 @@ function go(step) {
     setMessage('e1', '');
 
     if (role === 'parent') {
+        // Continue on Child Information: the child must be 3 to 8 years old.
+        // Back buttons on later steps also call go(3), but sp2 is not active then.
+        if (step === 3 && isStepActive('sp2') && !validateChildAge()) return;
+
         const parentSteps = {
             1: 's1',
             2: 'sp2',
@@ -64,6 +68,61 @@ function go(step) {
         5: 'sd5',
     };
     show(doctorSteps[step] || 's1');
+}
+
+// Child age requirement (js/shared/child-age.js; routes/auth.js enforces the same
+// rule). Under 3 or over 8 opens the age notice; a missing, malformed or future
+// date uses the step's own error line. Either way nothing entered is cleared and
+// the user stays on Child Information.
+function validateChildAge() {
+    const ageRule = window.KCChildAge;
+    // The server still rejects an ineligible child if the rule failed to load.
+    if (!ageRule) return true;
+
+    const check = ageRule.checkChildAge(valueOf('dob'));
+    if (check.ok) {
+        setMessage('ep2', '');
+        return true;
+    }
+
+    if (check.reason === 'too_young' || check.reason === 'too_old') {
+        setMessage('ep2', '');
+        showAgeDialog(check.title, check.message);
+        return false;
+    }
+
+    setMessage('ep2', check.message);
+    const errorEl = byId('ep2');
+    if (errorEl && typeof errorEl.scrollIntoView === 'function') {
+        errorEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    const dob = byId('dob');
+    if (dob && typeof dob.focus === 'function') dob.focus({ preventScroll: true });
+    return false;
+}
+
+function showAgeDialog(title, message) {
+    const dialog = byId('ageDialog');
+    if (!dialog || typeof dialog.showModal !== 'function') {
+        // No <dialog> support: the step's error line carries the same message.
+        setMessage('ep2', message);
+        return;
+    }
+    const titleEl = byId('ageDialogTitle');
+    if (titleEl) titleEl.textContent = title;
+    setMessage('ageDialogMessage', message);
+    if (!dialog.open) dialog.showModal();
+    const okBtn = byId('ageDialogOkBtn');
+    if (okBtn) okBtn.focus();
+}
+
+// The picker only offers eligible dates; typed dates still go through validateChildAge.
+function limitDobPicker() {
+    const dob = byId('dob');
+    if (!dob || !window.KCChildAge) return;
+    const range = window.KCChildAge.eligibleBirthDateRange(window.KCChildAge.localToday());
+    dob.min = range.min;
+    dob.max = range.max;
 }
 
 function previewPhoto(inputId, previewId, placeholderId) {
@@ -896,6 +955,20 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         termsDialog.addEventListener('close', () => {
             if (termsTrigger && typeof termsTrigger.focus === 'function') termsTrigger.focus();
+        });
+    }
+
+    limitDobPicker();
+    const dobInput = byId('dob');
+    if (dobInput) dobInput.addEventListener('change', () => setMessage('ep2', ''));
+
+    // Closing the age notice (OK or Escape) returns to the date of birth field.
+    const ageDialog = byId('ageDialog');
+    if (ageDialog) {
+        const ageOkBtn = byId('ageDialogOkBtn');
+        if (ageOkBtn) ageOkBtn.addEventListener('click', () => ageDialog.close());
+        ageDialog.addEventListener('close', () => {
+            if (dobInput && typeof dobInput.focus === 'function') dobInput.focus();
         });
     }
 

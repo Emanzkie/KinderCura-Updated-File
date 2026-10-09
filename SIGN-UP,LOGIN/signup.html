@@ -666,6 +666,23 @@
     </div>
 </dialog>
 
+<!-- Child age requirement (3 to 8 years old). Opened by the Child Information step's
+     Continue button when the date of birth is outside the range; closing it leaves the
+     user on that step with everything they entered still in place. -->
+<dialog id="ageDialog" class="consent-dialog age-dialog" aria-labelledby="ageDialogTitle" aria-describedby="ageDialogMessage" aria-modal="true">
+    <div class="consent-dialog-header">
+        <h2 id="ageDialogTitle" tabindex="-1">Age Requirement Not Met</h2>
+    </div>
+    <div class="consent-dialog-body">
+        <p id="ageDialogMessage"></p>
+    </div>
+    <div class="consent-dialog-footer">
+        <button type="button" class="btn btn-primary" id="ageDialogOkBtn">OK</button>
+    </div>
+</dialog>
+
+<!-- Must load before signup.js — provides window.KCChildAge (the 3-8 year rule the server also enforces). -->
+<script src="/js/shared/child-age.js"></script>
 <script src="/js/auth/signup.js"></script>
 </body>
 

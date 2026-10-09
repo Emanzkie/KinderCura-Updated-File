@@ -20,6 +20,7 @@ const { authMiddleware } = require('../middleware/auth');
 const sse = require('../sse');
 const fileStorage = require('../services/fileStorage');
 const { parseSignupConsent } = require('../constants/legalConsent');
+const childAge = require('../js/shared/child-age');
 const httpEmail = require('../services/httpEmail');
 const { httpEmailConfigured } = httpEmail;
 
@@ -853,6 +854,17 @@ router.post('/register', handleProfileUpload, async (req, res) => {
     const consent = parseSignupConsent(req.body);
     if (!consent.ok) {
       return fail(400, consent.error);
+    }
+
+    // Children aged 3 to 8 only. Checked before the account exists, so an
+    // ineligible date of birth creates neither the user nor the child record.
+    // Pediatrician sign-up never sends a child, so it is not affected.
+    if ((cleanRole === 'parent' || cleanRole === 'legal_guardian')
+      && String(dateOfBirth == null ? '' : dateOfBirth).trim()) {
+      const ageCheck = childAge.checkChildAge(dateOfBirth, childAge.todayInTimeZone(childAge.CLINIC_TIME_ZONE));
+      if (!ageCheck.ok) {
+        return fail(400, ageCheck.message);
+      }
     }
 
     const existingUser = await User.findOne({
