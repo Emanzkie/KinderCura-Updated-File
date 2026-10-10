@@ -167,7 +167,7 @@
             } catch (e) {
                 flash(e.message, 'error');
             } finally {
-                btn.textContent = '➕ Add to Batch'; btn.disabled = false;
+                btn.textContent = '+ Add to Batch'; btn.disabled = false;
             }
         }
 
@@ -440,7 +440,7 @@
                     setsHtml += `
                 <div class="q-card qset-card" id="qset_${set.setId}">
                     <div class="qset-card-head">
-                        <h4 class="qset-title">📋 ${esc(setDisplayTitle(set, index))}</h4>
+                        <h4 class="qset-title"><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${esc(setDisplayTitle(set, index))}</h4>
                         <span class="qset-count-pill">${count} question${count !== 1 ? 's' : ''}</span>
                     </div>
                     <p class="qset-desc">${esc(set.description || 'No description')}</p>
@@ -1143,7 +1143,7 @@
                                 set.status === 'answered' ? 'background:var(--status-positive-bg);color:var(--status-positive-fg);' :
                                 'background:var(--status-caution-bg);color:#3d4738;'
                             }">${
-                                isDraft ? '📝 Draft' : 
+                                isDraft ? '<img src="/icons/edit_pedia.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Draft' :
                                 set.status === 'answered' ? '✓ Answered' :
                                 '✓ Assigned'
                             }</span>

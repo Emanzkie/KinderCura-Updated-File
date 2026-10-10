@@ -252,7 +252,7 @@ function paymentSection(a) {
 }
 
 // ── Render functions ──────────────────────────────────────────────────────────
-function emptyState(msg, icon='📭') {
+function emptyState(msg, icon='<img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">') {
     return `<div class="empty"><p style="font-size:2rem;margin-bottom:0.8rem;">${icon}</p><p style="font-weight:600;">${msg}</p></div>`;
 }
 
@@ -331,7 +331,7 @@ function renderCompleted(apts) {
 
 function renderCancelled(apts) {
     const el = document.getElementById('cancelled-pane');
-    if (!apts.length) { el.innerHTML = emptyState('No cancelled or rejected appointments','📭'); return; }
+    if (!apts.length) { el.innerHTML = emptyState('No cancelled or rejected appointments','<img src="/icons/cancelled_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">'); return; }
     el.innerHTML = apts.map(a => {
         const info = getDisplayInfo(a);
         return `<div class="appt-card" id="appt-card-${a.id}">
@@ -350,7 +350,7 @@ function renderCancelled(apts) {
 }
 
 async function loadAppointments() {
-    document.getElementById('upcoming-pane').innerHTML = emptyState('Loading…','⏳');
+    document.getElementById('upcoming-pane').innerHTML = emptyState('Loading…','<img src="/icons/parent_answer_tracker.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">');
     try {
         const data = await apiFetch('/appointments/pedia');
         const all  = (data.appointments || []).sort((a,b) => (b.id||0)-(a.id||0));

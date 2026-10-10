@@ -146,7 +146,7 @@ async function loadMessages(){
             const vd   = await apiFetch(`/videos/appointment/${activeApptId}`);
             const vids = vd.videos||[];
             const vbtn = document.getElementById('pchVideoBtn');
-            if(vids.length){ vbtn.href=vids[0].filePath; vbtn.textContent=`📹 View Video (${vids.length})`; vbtn.style.display='inline-flex'; }
+            if(vids.length){ vbtn.href=vids[0].filePath; vbtn.innerHTML=`<img src="/icons/change_photo.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> View Video (${Number(vids.length)})`; vbtn.style.display='inline-flex'; }
             else { vbtn.style.display='none'; }
         }catch{ document.getElementById('pchVideoBtn').style.display='none'; }
 
@@ -196,7 +196,7 @@ function renderMessages(msgs){
 
         const videoHtml = m.videoPath ? `<div class="msg-video-wrap">
             <video src="${m.videoPath}" controls playsinline></video>
-            <div class="msg-video-label">📹 ${m.videoName||'Video'}</div>
+            <div class="msg-video-label"><img src="/icons/change_photo.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${m.videoName||'Video'}</div>
         </div>` : '';
 
         return `<div class="msg-row ${cls}">

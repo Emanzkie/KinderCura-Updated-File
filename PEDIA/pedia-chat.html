@@ -93,7 +93,7 @@
                 <span class="pch-reason-key">Reason</span>
                 <span class="pch-reason-val" id="pchReason">—</span>
               </div>
-              <a href="#" class="pch-video-btn" id="pchVideoBtn" target="_blank" style="display:none;">📹 View Video</a>
+              <a href="#" class="pch-video-btn" id="pchVideoBtn" target="_blank" style="display:none;"><img src="/icons/change_photo.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> View Video</a>
             </div>
 
           </div>
@@ -113,12 +113,12 @@
       <div class="chat-input-area" id="chatInputArea" style="display:none;">
         <div class="upload-prog" id="uploadProg"><div class="upload-prog-bar" id="uploadProgBar"></div></div>
         <div class="video-attach-bar" id="videoAttachPreview">
-          <span>🎥</span>
+          <span><img src="/icons/change_photo.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"></span>
           <span id="videoAttachName"></span>
           <button onclick="clearAttach()" style="background:none;border:none;cursor:pointer;color:var(--status-attention-fg);font-size:1rem;">&#215;</button>
         </div>
         <div class="input-row">
-          <button class="attach-btn" onclick="document.getElementById('chatVideoInput').click()" title="Attach video">📎</button>
+          <button class="attach-btn" onclick="document.getElementById('chatVideoInput').click()" title="Attach video"><img src="/icons/change_photo.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"></button>
           <input type="file" id="chatVideoInput" accept="video/*" style="display:none;" onchange="handleChatVideo(event)">
           <textarea class="chat-textarea" id="msgInput" placeholder="Type a message to the parent…" rows="1"
                     onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>

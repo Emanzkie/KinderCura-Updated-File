@@ -355,7 +355,7 @@
                     html += `
                     <div style="background:linear-gradient(135deg,var(--accent) 0%,#F8E5B5 100%);border-radius:15px;padding:2rem;margin-bottom:2rem;color:#6B7967;box-shadow:0 4px 15px rgba(61, 71, 56, 0.12);">
                         <div style="display:flex;align-items:flex-start;gap:1.5rem;">
-                            <span style="font-size:2.5rem;">⚠️</span>
+                            <span style="font-size:2.5rem;"><img src="/icons/smart_notif.png" alt="" aria-hidden="true" style="width:1em;height:1em;object-fit:contain;vertical-align:middle;"></span>
                             <div style="flex:1;">
                                 <h2 style="margin-bottom:0.5rem;">Schedule Professional Consultation</h2>
                                 <p style="margin-bottom:0.9rem;opacity:0.95;">${escapeHtml(data.suggestionSummary || 'Based on the assessment results, we recommend scheduling a consultation with a pediatrician.')}</p>

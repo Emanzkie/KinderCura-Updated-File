@@ -51,18 +51,18 @@ const PERMISSION_PRESETS = [
 ];
 
 const PERMISSION_DEFINITIONS = [
-  { key: 'viewAssessments', label: 'View Assessments & Results', icon: '📊' },
-  { key: 'submitAssessments', label: 'Submit Assessments', icon: '✏️' },
-  { key: 'viewResults', label: 'View Assessment Results', icon: '📈' },
-  { key: 'uploadDocuments', label: 'Upload Documents & Photos', icon: '📷' },
-  { key: 'manageAppointments', label: 'Manage Appointments', icon: '📅' },
-  { key: 'viewMedicalRecords', label: 'View Medical Records', icon: '💊' },
-  { key: 'modifyChild', label: 'Modify Child Profile', icon: '👤' },
-  { key: 'inviteGuardians', label: 'Invite Other Guardians', icon: '➕' },
-  { key: 'revokeAccess', label: 'Revoke Access', icon: '❌' },
-  { key: 'viewMessages', label: 'View Chat Messages', icon: '💬' },
-  { key: 'sendMessages', label: 'Send Messages', icon: '🗨️' },
-  { key: 'viewNotifications', label: 'View Notifications', icon: '🔔' },
+  { key: 'viewAssessments', label: 'View Assessments & Results', icon: 'analytics' },
+  { key: 'submitAssessments', label: 'Submit Assessments', icon: 'edit_pedia' },
+  { key: 'viewResults', label: 'View Assessment Results', icon: 'tracker_summary' },
+  { key: 'uploadDocuments', label: 'Upload Documents & Photos', icon: 'change_photo' },
+  { key: 'manageAppointments', label: 'Manage Appointments', icon: 'appointment' },
+  { key: 'viewMedicalRecords', label: 'View Medical Records', icon: 'logs' },
+  { key: 'modifyChild', label: 'Modify Child Profile', icon: 'child' },
+  { key: 'inviteGuardians', label: 'Invite Other Guardians', icon: 'parent_assign' },
+  { key: 'revokeAccess', label: 'Revoke Access', icon: 'reject_mark' },
+  { key: 'viewMessages', label: 'View Chat Messages', icon: 'chat' },
+  { key: 'sendMessages', label: 'Send Messages', icon: 'chatbubble' },
+  { key: 'viewNotifications', label: 'View Notifications', icon: 'notif_bell' },
 ];
 
 // ===== Main Component =====
@@ -331,7 +331,7 @@ function GuardianManagement() {
         <label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
           <input type="checkbox" data-key="${p.key}" ${editingGuardian.permissions?.[p.key] ? 'checked' : ''}
             onchange="window.gmUpdatePermPreview()" />
-          <span>${p.icon}</span><span>${p.label}</span>
+          <img src="/icons/${p.icon}.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;"><span>${p.label}</span>
         </label>
       `).join('');
       window.gmUpdatePermPreview = () => {

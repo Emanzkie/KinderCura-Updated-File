@@ -232,7 +232,7 @@
                 </div>
 
                 <div class="tracker-box">
-                    <h3 style="margin-top:0;color:var(--status-positive-fg);">✅ Already Answered by Parent</h3>
+                    <h3 style="margin-top:0;color:var(--status-positive-fg);"><img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Already Answered by Parent</h3>
                     <div id="answeredAssignmentsList">
                         <div class="empty-small">Loading answered assignments…</div>
                     </div>
@@ -253,7 +253,7 @@
             <div id="multiQuestionHeader"
                 style="background:var(--surface-tint);border:1px solid var(--border);border-radius:8px;padding:.8rem 1rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;">
                 <div>
-                    <p style="font-weight:600;font-size:.85rem;color:var(--primary);margin:0;">📝 Multi-Question Mode
+                    <p style="font-weight:600;font-size:.85rem;color:var(--primary);margin:0;"><img src="/icons/edit_pedia.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Multi-Question Mode
                     </p>
                     <p style="font-size:.75rem;color:var(--text-light);margin:.2rem 0 0;">Add multiple questions and
                         submit them together</p>
@@ -262,7 +262,7 @@
                     <span id="questionsInBatch" style="font-size:.8rem;font-weight:600;color:var(--primary);">0
                         questions</span>
                     <button class="btn-outline" onclick="submitAllQuestions()"
-                        style="font-size:.78rem;padding:.3rem .7rem;">✅ Submit All</button>
+                        style="font-size:.78rem;padding:.3rem .7rem;"><img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Submit All</button>
                 </div>
             </div>
 
@@ -316,14 +316,14 @@
 
             <div class="modal-actions">
                 <button class="btn-outline" onclick="closeModal()">Cancel</button>
-                <button class="btn-outline" id="addToBatchBtn" onclick="addToBatch()" style="font-size:.85rem;">➕ Add to
+                <button class="btn-outline" id="addToBatchBtn" onclick="addToBatch()" style="font-size:.85rem;">+ Add to
                     Batch</button>
                 <button class="btn-primary" id="saveQBtn" onclick="saveQuestion()">Save Question</button>
             </div>
 
             <!-- Questions in batch preview -->
             <div id="batchPreviewSection" style="margin-top:1.5rem;display:none;">
-                <h4 style="font-size:.9rem;font-weight:600;color:var(--primary);margin-bottom:.8rem;">📋 Questions Ready
+                <h4 style="font-size:.9rem;font-weight:600;color:var(--primary);margin-bottom:.8rem;"><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Questions Ready
                     to Submit (<span id="batchCount">0</span>)</h4>
                 <div id="batchPreviewList"
                     style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:.5rem;"></div>

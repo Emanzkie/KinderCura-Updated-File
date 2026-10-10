@@ -348,7 +348,7 @@ const API = window.location.origin + '/api';
                     </div>
                     <div style="display:flex;flex-direction:column;gap:0.4rem;align-items:flex-end;">
                         ${aptStatusBadge(p.appointmentStatus)}
-                        <span class="badge ${hasDiag ? 'badge-diagnosed' : 'badge-no-diag'}">${hasDiag ? '&#10003; Diagnosed' : '⏳ Awaiting Diagnosis'}</span>
+                        <span class="badge ${hasDiag ? 'badge-diagnosed' : 'badge-no-diag'}">${hasDiag ? '<img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Diagnosed' : '<img src="/icons/parent_answer_tracker.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Awaiting Diagnosis'}</span>
                         ${mlReviewBadge(p.mlLabel, p.mlReviewStatus)}
                     </div>
                 </div>

@@ -308,7 +308,7 @@ function renderPending(setGroups, standaloneAssignments) {
       <div class="page-card" style="border-left:4px solid var(--primary);">
         <div style="display:flex;justify-content:space-between;align-items:start;gap:1rem;margin-bottom:1rem;">
           <div style="flex:1;">
-            <h4 style="margin:0 0 .25rem;font-size:1rem;color:var(--primary);">📋 ${esc(setTitle)}</h4>
+            <h4 style="margin:0 0 .25rem;font-size:1rem;color:var(--primary);"><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${esc(setTitle)}</h4>
             <p style="margin:0;font-size:.8rem;color:var(--text-light);">From Dr. ${esc(questions[0]?.pediatricianName || 'Pediatrician')} • ${totalCount} question${totalCount !== 1 ? 's' : ''}</p>
           </div>
           <span style="background:var(--status-caution-bg);color:var(--status-caution-fg);border-radius:8px;padding:.25rem .6rem;font-size:.75rem;font-weight:700;">Pending</span>

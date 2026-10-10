@@ -189,7 +189,7 @@ function renderMessages(msgs) {
     const videoHtml = m.videoPath ? `
       <div class="msg-video-wrap">
         <video src="${m.videoPath}" controls playsinline></video>
-        <div class="msg-video-label">📹 ${m.videoName || 'Video'}</div>
+        <div class="msg-video-label"><img src="/icons/change_photo.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${m.videoName || 'Video'}</div>
       </div>` : '';
 
     return `

@@ -107,7 +107,7 @@ const API = window.location.origin + '/api';
                         specialization: document.getElementById('editSpecialization').value.trim()
                     })
                 });
-                suc.textContent = '✅ Professional info updated!'; suc.style.display = 'block';
+                suc.innerHTML = '<img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Professional info updated!'; suc.style.display = 'block';
                 loadProfile();
             } catch (e) { err.textContent = e.message; err.style.display = 'block'; }
         }
@@ -126,7 +126,7 @@ const API = window.location.origin + '/api';
                 });
                 const u = getUser(); u.firstName = firstName; u.lastName = lastName;
                 localStorage.setItem('kc_user', JSON.stringify(u));
-                suc.textContent = '✅ Name updated!'; suc.style.display = 'block';
+                suc.innerHTML = '<img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Name updated!'; suc.style.display = 'block';
                 loadProfile();
             } catch (e) { err.textContent = e.message; err.style.display = 'block'; }
         }
@@ -141,7 +141,7 @@ const API = window.location.origin + '/api';
             if (pw !== cpw)    { err.textContent = 'Passwords do not match.'; err.style.display='block'; return; }
             try {
                 await apiFetch('/auth/change-password', { method:'PUT', body:JSON.stringify({ password: pw }) });
-                suc.textContent = '✅ Password updated!'; suc.style.display = 'block';
+                suc.innerHTML = '<img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Password updated!'; suc.style.display = 'block';
                 document.getElementById('newPw').value = '';
                 document.getElementById('confirmPw').value = '';
             } catch (e) { err.textContent = e.message; err.style.display = 'block'; }

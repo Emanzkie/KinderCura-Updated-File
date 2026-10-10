@@ -106,14 +106,14 @@
 
         <!-- Selected video preview before send -->
         <div class="video-attach-bar" id="videoAttachPreview">
-          <span>🎥</span>
+          <span><img src="/icons/change_photo.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"></span>
           <span id="videoAttachName"></span>
           <button onclick="clearAttach()" style="background:none;border:none;cursor:pointer;color:var(--status-attention-fg);font-size:1rem;">✕</button>
         </div>
 
         <div class="input-row">
           <!-- Video attach button -->
-          <button class="attach-btn" onclick="document.getElementById('chatVideoInput').click()" title="Attach video">📎</button>
+          <button class="attach-btn" onclick="document.getElementById('chatVideoInput').click()" title="Attach video"><img src="/icons/change_photo.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"></button>
           <input type="file" id="chatVideoInput" accept="video/*" style="display:none;" onchange="handleChatVideo(event)">
 
           <textarea class="chat-textarea" id="msgInput" placeholder="Type a message…" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>

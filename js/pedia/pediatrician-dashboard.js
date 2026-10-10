@@ -145,7 +145,7 @@ if (!getToken() || !_u) {
             pendingById = {};
             pending.forEach(function(p){ pendingById[String(p.id)] = p; });
             const el=document.getElementById('pendingList');
-            if(pending.length===0){el.innerHTML='<div class="empty-state"><span>✅</span>No pending appointment requests.<br><small style="color:var(--text-light);">Requests from parents will appear here once booked.</small></div>';return;}
+            if(pending.length===0){el.innerHTML='<div class="empty-state"><span><img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"></span>No pending appointment requests.<br><small style="color:var(--text-light);">Requests from parents will appear here once booked.</small></div>';return;}
             el.innerHTML=pending.map(n=>`
                 <div class="apt-card" id="apt-${n.id}">
                     <div class="apt-header">
