@@ -393,8 +393,7 @@ async function getLatestCompletedAssessment(childId) {
 
 function diffColor(diff) {
     if (diff == null) return 'var(--text-light)';
-    if (diff > 0) return '#5A7560';
-    if (diff < 0) return '#3D4738';
+    if (diff > 0 || diff < 0) return '#6B8E6F';
     return 'var(--text-light)';
 }
 

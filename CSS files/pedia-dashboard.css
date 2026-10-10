@@ -27,7 +27,7 @@
 }
 
 .stat-num.red {
-    color: var(--text-dark);
+    color: var(--primary);
 }
 
 .stat-sub {

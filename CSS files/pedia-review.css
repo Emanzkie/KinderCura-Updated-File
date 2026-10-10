@@ -229,7 +229,7 @@
 
 /* Domain risk level color coding */
 .ra-domain-high .ra-domain-score {
-    color: var(--text-dark);
+    color: var(--primary);
 }
 
 .ra-domain-high .ra-domain-status {
@@ -238,7 +238,7 @@
 }
 
 .ra-domain-moderate .ra-domain-score {
-    color: var(--text-dark);
+    color: var(--primary);
 }
 
 .ra-domain-moderate .ra-domain-status {

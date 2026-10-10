@@ -217,7 +217,7 @@
 .mps-stat .mps-v {
   font-size: 1.3rem;
   font-weight: 700;
-  color: var(--primary-dark);
+  color: var(--primary);
 }
 
 .mps-stat .mps-v.is-empty {
@@ -462,7 +462,7 @@
   display: block;
   font-size: 1.55rem;
   font-weight: 700;
-  color: var(--primary-dark);
+  color: var(--primary);
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }

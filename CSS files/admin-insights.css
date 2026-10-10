@@ -413,7 +413,7 @@
     border-color: var(--accent-red);
 }
 
-.rate-item.rate-critical .rate-value { color: var(--text-dark); }
+.rate-item.rate-critical .rate-value { color: var(--primary); }
 
 /* ── Pipeline strip (the concordance empty state) ────────────────────────── */
 .pipeline-strip {
@@ -452,7 +452,7 @@
     border-color: var(--accent);
 }
 
-.pipeline-step.pipeline-blocked .pipeline-count { color: var(--status-caution-fg); }
+.pipeline-step.pipeline-blocked .pipeline-count { color: var(--primary); }
 
 /* ── Methods note ────────────────────────────────────────────────────────── */
 .methods-note {

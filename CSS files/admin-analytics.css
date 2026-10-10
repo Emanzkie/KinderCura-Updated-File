@@ -57,7 +57,7 @@
 }
 
 .insight-card .value.orange {
-    color: var(--text-dark);
+    color: var(--primary);
 }
 
 .auto-indicator {

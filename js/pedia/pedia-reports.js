@@ -369,7 +369,7 @@ function renderClassification(overview) {
         return `
             <div class="risk-item">
                 <p class="risk-count" style="color:${escapeHtml(
-                    n > 0 ? '#3D4738' : '#6B7967')};">${n}</p>
+                    n > 0 ? '#6B8E6F' : '#6B7967')};">${n}</p>
                 <p class="risk-label">${escapeHtml(d.label)}</p>
             </div>`;
     }).join('');
@@ -476,7 +476,7 @@ function renderClassification(overview) {
                 ${riskItems}
                 <div class="risk-item">
                     <p class="risk-count" style="color:${escapeHtml(
-                        anyDomain > 0 ? '#3D4738' : '#6B7967')};">${anyDomain}</p>
+                        anyDomain > 0 ? '#6B8E6F' : '#6B7967')};">${anyDomain}</p>
                     <p class="risk-label"><strong>Any domain</strong></p>
                 </div>
             </div>

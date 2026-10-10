@@ -469,8 +469,8 @@
     white-space: nowrap;
 }
 
-.delta-up   { color: var(--primary-dark); }
-.delta-down { color: var(--text-dark); }
+.delta-up   { color: var(--primary); }
+.delta-down { color: var(--primary); }
 .delta-flat { color: var(--text-light); }
 
 .warn-chip {
