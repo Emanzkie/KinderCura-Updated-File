@@ -467,6 +467,123 @@
     justify-content: flex-end;
 }
 
+/* ── Review Assessment additions (View Assessment merged into this modal) ── */
+.ra-parent-line {
+    margin: 0.45rem 0 0;
+    font-size: 0.82rem;
+    color: var(--text-light);
+}
+
+.ra-parent-line strong {
+    color: var(--text-dark);
+}
+
+.ra-area-scores {
+    padding: 1.25rem 1.75rem 0.5rem;
+}
+
+.ra-section-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--primary-dark);
+    margin: 0 0 0.7rem;
+}
+
+.ra-full-report {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 1rem 1.75rem;
+    border-top: 1px solid var(--border);
+}
+
+.ra-full-report-title {
+    margin: 0 0 0.2rem;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.ra-full-report-text {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-light);
+    max-width: 34rem;
+    line-height: 1.45;
+}
+
+.ra-notes-hint {
+    margin: 0 0 0.7rem;
+    font-size: 0.78rem;
+    color: var(--text-light);
+    line-height: 1.45;
+}
+
+.ra-remarks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.9rem;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.ra-remark {
+    padding: 0.6rem 0.8rem;
+    background: var(--bg-secondary);
+    border-left: 3px solid var(--primary);
+    border-radius: 8px;
+}
+
+.ra-remark-meta {
+    margin: 0 0 0.2rem;
+    font-size: 0.72rem;
+    color: var(--text-light);
+}
+
+.ra-remark-text {
+    margin: 0;
+    font-size: 0.86rem;
+    color: var(--text-dark);
+    line-height: 1.45;
+    white-space: pre-wrap;
+}
+
+.ra-remarks-empty {
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--text-light);
+}
+
+.ra-notes-label {
+    display: block;
+    margin: 0 0 0.35rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+.ra-note-status {
+    margin: 0.6rem 0 0;
+    font-size: 0.82rem;
+    color: var(--text-dark);
+}
+
+.ra-note-status:empty {
+    display: none;
+}
+
+.ra-note-status.is-success,
+.ra-note-status.is-error {
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+}
+
+.ra-note-status.is-success { background: var(--status-positive-bg); }
+.ra-note-status.is-error   { background: var(--status-attention-bg); }
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
     .review-modal-content {

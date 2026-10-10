@@ -398,14 +398,10 @@ const API = window.location.origin + '/api';
 
                 <!-- Actions -->
                 <div style="display:flex;gap:0.8rem;flex-wrap:wrap;">
-                    <button class="btn btn-primary" onclick="viewAssessment('${p.assessmentId||''}','${p.childId}','${childNameEsc}',${p.paymentConfirmed ? 'true' : 'false'})"
-                        style="flex:1;min-width:130px;padding:0.7rem;${!p.paymentConfirmed ? 'opacity:0.6;' : ''}"
-                        title="${!p.paymentConfirmed ? 'Payment must be confirmed before viewing assessment results' : 'View assessment results'}">
-                        <img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> View Assessment
-                    </button>
-                    <button class="btn btn-secondary" onclick="openReviewAnswers('${p.childId}','${childNameEsc}')"
-                        style="flex:1;min-width:130px;padding:0.7rem;border-color:var(--status-info-fg);color:var(--status-info-fg);">
-                        <img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Review Pre-Assessment
+                    <button class="btn btn-primary" onclick="openAssessmentReview('${p.childId}')"
+                        style="flex:1;min-width:130px;padding:0.7rem;"
+                        title="Review the latest completed assessment: scores, answers and your review remarks">
+                        <img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Review Assessment
                     </button>
                     <button class="btn btn-secondary" onclick="openDiagnosis('${p.childId}','${childNameEsc}','${diagEsc}','${recEsc}','${nextDateEsc}','${nextReasonEsc}','${overallScore}','${p.assessmentId||''}')"
                         style="flex:1;min-width:130px;padding:0.7rem;">
@@ -1258,9 +1254,46 @@ function toggleProfileMenu() {
         if (e.target === document.getElementById('notificationsModal')) closeNotifications();
     });
 
-    // ── Review Pre-Assessment Modal ─────────────────────────────────────────
-    function openReviewModal() { document.getElementById('reviewModal').style.display = 'flex'; }
-    function closeReviewModal() { document.getElementById('reviewModal').style.display = 'none'; }
+    // ── Review Assessment Modal ─────────────────────────────────────────────
+    // One modal for what used to be two buttons: "View Assessment" (opened the
+    // parent Results page in a new tab) and "Review Pre-Assessment" (this
+    // modal). It loads the child's latest completed assessment from
+    // GET /assessments/:childId/review-answers — the same record the card's
+    // scores and care plan come from (resultAssessmentId) — and keeps the full
+    // Results report one click away, behind the same payment check as before.
+    let _reviewRequestId = 0;      // bumps on every open/close; stale responses are dropped
+    let _reviewReturnFocus = null; // the button that opened the modal
+    let _reviewSaving = false;     // blocks a second save while one is in flight
+
+    function openReviewModal() {
+        const modal = document.getElementById('reviewModal');
+        modal.style.display = 'flex';
+        const closeBtn = modal.querySelector('.close-btn');
+        if (closeBtn) closeBtn.focus();
+    }
+
+    function reviewHasUnsavedNote() {
+        const textarea = document.getElementById('reviewNotesText');
+        return Boolean(textarea && textarea.value.trim());
+    }
+
+    // Asks before discarding a remark that was typed but not saved.
+    function closeReviewModal() {
+        const modal = document.getElementById('reviewModal');
+        if (modal.style.display === 'none') return;
+        if (reviewHasUnsavedNote()
+            && !confirm('You have an unsaved review remark. Close without saving it?')) return;
+        modal.style.display = 'none';
+        _reviewRequestId++;
+        if (_reviewReturnFocus && document.body.contains(_reviewReturnFocus)) _reviewReturnFocus.focus();
+        _reviewReturnFocus = null;
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.getElementById('reviewModal').style.display === 'flex') {
+            closeReviewModal();
+        }
+    });
 
     function insightIcon(level) {
         if (level === 'positive') return '<span class="ra-insight-dot ra-dot-positive"></span>';
@@ -1291,34 +1324,55 @@ function toggleProfileMenu() {
         return 'ra-domain-low';
     }
 
-    async function openReviewAnswers(childId, childName) {
-        document.getElementById('reviewModalTitle').textContent = `Review Pre-Assessment — ${childName}`;
+    async function openAssessmentReview(childId) {
+        const patient = _allPatients.find((p) => p.childId === childId) || null;
+        const childName = patient ? `${patient.childFirstName} ${patient.childLastName}`.trim() : '';
+        const requestId = ++_reviewRequestId;
+        _reviewReturnFocus = document.activeElement;
+
+        document.getElementById('reviewModalTitle').textContent =
+            childName ? `Review Assessment — ${childName}` : 'Review Assessment';
         document.getElementById('reviewModalBody').innerHTML =
-            '<p style="text-align:center;color:var(--text-light);padding:2rem;">Loading pre-assessment data...</p>';
+            '<p style="text-align:center;color:var(--text-light);padding:2rem;">Loading assessment...</p>';
         openReviewModal();
 
         try {
             const data = await apiFetch(`/assessments/${childId}/review-answers`);
-            renderReviewModal(data);
+            if (requestId !== _reviewRequestId) return;
+            renderReviewModal(data, patient);
+            loadReviewRemarks(childId, requestId);
         } catch (err) {
+            if (requestId !== _reviewRequestId) return;
             document.getElementById('reviewModalBody').innerHTML = `
                 <div style="text-align:center;padding:3rem 2rem;">
                     <p style="font-size:1.5rem;margin-bottom:1rem;"><img src="/icons/smart_notif.png" alt="" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"></p>
-                    <p style="font-weight:600;color:var(--text-dark);margin-bottom:0.5rem;">${err.message}</p>
-                    <p style="font-size:0.85rem;color:var(--text-light);">This patient may not have a completed pre-assessment yet.</p>
+                    <p style="font-weight:600;color:var(--text-dark);margin-bottom:0.5rem;">${escapeHtml(err.message)}</p>
+                    <p style="font-size:0.85rem;color:var(--text-light);">This patient may not have a completed assessment yet.</p>
                 </div>`;
         }
     }
 
-    function renderReviewModal(data) {
+    // `patient` is this child's row from /assessments/pedia-patients (the card
+    // data). It supplies what review-answers does not return: the parent's
+    // name, the Developmental Band / Risk Category / Care Stage, and whether
+    // the appointment payment is confirmed.
+    function renderReviewModal(data, patient) {
         const c = data.child;
         const a = data.assessment;
+        const childName = `${c.firstName} ${c.lastName}`.trim();
         const childAge = c.age != null ? `${c.age} years old` : '—';
         const genderLabel = c.gender === 'female' ? 'Female' : c.gender === 'male' ? 'Male' : '—';
         const completedDate = a.completedAt
             ? new Date(a.completedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
             : '—';
         const riskClass = riskBadgeClass(data.overallRisk);
+        const parentName = patient
+            ? (`${patient.parentFirstName || ''} ${patient.parentLastName || ''}`.trim() || patient.parentEmail || '')
+            : '';
+        // Only show the card's care-plan row when it describes this exact
+        // assessment (a newer one may have completed since the list loaded).
+        const samePrediction = patient && patient.resultAssessmentId === a.id;
+        const paymentConfirmed = Boolean(patient && patient.paymentConfirmed);
 
         let html = '';
 
@@ -1327,23 +1381,45 @@ function toggleProfileMenu() {
         <div class="ra-child-header">
             <div class="ra-child-info">
                 <div>
-                    <p class="ra-child-name">${c.firstName} ${c.lastName}</p>
+                    <p class="ra-child-name">${escapeHtml(childName)}</p>
                     <div class="ra-child-meta">
-                        <span class="ra-meta-chip">Age: ${childAge}</span>
+                        <span class="ra-meta-chip">Age: ${escapeHtml(childAge)}</span>
                         <span class="ra-meta-chip">${genderLabel}</span>
-                        <span class="ra-meta-chip">${c.ageLabel || '—'}</span>
+                        <span class="ra-meta-chip">${escapeHtml(c.ageLabel || '—')}</span>
                     </div>
+                    ${parentName ? `<p class="ra-parent-line">Parent: <strong>${escapeHtml(parentName)}</strong></p>` : ''}
                 </div>
                 <div class="ra-header-right">
                     <div class="ra-overall-score">
                         <span class="ra-score-num">${data.overallScore != null ? data.overallScore + '%' : '—'}</span>
                         <span class="ra-score-label">Overall Score</span>
                     </div>
-                    <span class="ra-risk-badge ${riskClass}">${data.overallRisk || 'N/A'}</span>
+                    <span class="ra-risk-badge ${riskClass}">${escapeHtml(data.overallRisk || 'N/A')}</span>
                 </div>
             </div>
             <p class="ra-completed-date">Assessment completed: <strong>${completedDate}</strong></p>
         </div>`;
+
+        // ── All four area scores, even an area with no recorded answers ──
+        const domainOrder = ['Communication', 'Social Skills', 'Cognitive', 'Motor Skills'];
+        const summaries = data.domainSummaries || {};
+        if (domainOrder.some((d) => summaries[d])) {
+            html += `
+            <div class="ra-area-scores">
+                <p class="ra-section-label">Developmental Area Scores</p>
+                <div class="score-grid">
+                    ${domainOrder.map((d) => {
+                        const s = summaries[d];
+                        return `<div class="score-item">
+                            <div class="score-val">${s && s.score != null ? Math.round(s.score) + '%' : '—'}</div>
+                            <div class="score-lbl">${d}</div>
+                            <div class="score-band">${escapeHtml(s && s.status ? s.status : '—')}</div>
+                        </div>`;
+                    }).join('')}
+                </div>
+                ${samePrediction ? renderCarePlanRow(patient.developmentalBand, patient.prediction) : ''}
+            </div>`;
+        }
 
         // ── Risk flags ──
         if (data.riskFlags && data.riskFlags.length) {
@@ -1351,18 +1427,17 @@ function toggleProfileMenu() {
             html += '<p class="ra-flags-title"><img src="/icons/smart_notif.png" alt="" style="width:1em;height:1em;object-fit:contain;vertical-align:-0.15em;"> Risk Flags Detected</p>';
             html += '<div class="ra-flags-list">';
             data.riskFlags.forEach(f => {
-                html += `<span class="ra-flag-chip">${f}</span>`;
+                html += `<span class="ra-flag-chip">${escapeHtml(f)}</span>`;
             });
             html += '</div></div>';
         }
 
-        // ── Domain sections ──
-        const domainOrder = ['Communication', 'Social Skills', 'Cognitive', 'Motor Skills'];
+        // ── Questions and parent answers, by domain ──
         for (const domain of domainOrder) {
             const answers = data.answersByDomain[domain];
             if (!answers || !answers.length) continue;
 
-            const summary = data.domainSummaries[domain];
+            const summary = summaries[domain];
             const dRisk = summary ? domainRiskClass(summary.riskLevel) : '';
             const scoreVal = summary ? summary.score + '%' : '—';
             const statusLabel = summary ? summary.status : '—';
@@ -1376,7 +1451,7 @@ function toggleProfileMenu() {
                     </div>
                     <div class="ra-domain-score-wrap">
                         <span class="ra-domain-score">${scoreVal}</span>
-                        <span class="ra-domain-status">${statusLabel}</span>
+                        <span class="ra-domain-status">${escapeHtml(statusLabel)}</span>
                     </div>
                 </div>
                 <div class="ra-answers-list">`;
@@ -1389,16 +1464,16 @@ function toggleProfileMenu() {
                 <div class="ra-answer-card ${answerClass}">
                     <div class="ra-q-row">
                         <span class="ra-q-num">Q${idx + 1}</span>
-                        <p class="ra-q-text">${q.questionText}</p>
+                        <p class="ra-q-text">${escapeHtml(q.questionText)}</p>
                     </div>
                     <div class="ra-comparison-row">
                         <div class="ra-comp-block ra-parent-block">
                             <span class="ra-comp-label">Parent's Answer</span>
-                            <p class="ra-comp-value">${q.answer}</p>
+                            <p class="ra-comp-value">${escapeHtml(q.answer)}</p>
                         </div>
                         <div class="ra-comp-block ra-ai-block">
                             <span class="ra-comp-label">AI Interpretation</span>
-                            <p class="ra-comp-value">${insightIcon(q.insightLevel)} ${q.aiInsight}</p>
+                            <p class="ra-comp-value">${insightIcon(q.insightLevel)} ${escapeHtml(q.aiInsight)}</p>
                         </div>
                     </div>
                 </div>`;
@@ -1407,24 +1482,40 @@ function toggleProfileMenu() {
             html += '</div></div>';
         }
 
-        // ── Existing diagnosis (read-only) ──
+        // ── Existing diagnosis (read-only; edited through Provide Diagnosis) ──
         if (a.diagnosis) {
             html += `
             <div class="ra-existing-diag">
                 <h4><img src="/icons/clipboard.png" alt="" style="width:1em;height:1em;object-fit:contain;vertical-align:-0.15em;"> Current Diagnosis</h4>
-                <p class="ra-diag-text">${a.diagnosis}</p>
-                ${a.recommendations ? `<p class="ra-diag-rec"><strong>Recommendations:</strong> ${a.recommendations}</p>` : ''}
+                <p class="ra-diag-text">${escapeHtml(a.diagnosis)}</p>
+                ${a.recommendations ? `<p class="ra-diag-rec"><strong>Recommendations:</strong> ${escapeHtml(a.recommendations)}</p>` : ''}
                 ${a.nextAssessmentDate ? `<p class="ra-diag-rec"><strong>Next assessment:</strong> ${formatDisplayDate(a.nextAssessmentDate)}${a.nextAssessmentReason ? ` - ${escapeHtml(a.nextAssessmentReason)}` : ''}</p>` : ''}
             </div>`;
         }
 
-        // ── Review notes textarea ──
+        // ── Full results report (what "View Assessment" used to open) ──
+        html += `
+        <div class="ra-full-report">
+            <div>
+                <p class="ra-full-report-title">Full results report</p>
+                <p class="ra-full-report-text">Opens the Results page in a new tab: score guide, previous vs present comparison, progress since the last assessment and recommendations.${paymentConfirmed ? '' : ' Available once the appointment payment is confirmed.'}</p>
+            </div>
+            <button class="btn btn-secondary" style="padding:0.6rem 1.1rem;${paymentConfirmed ? '' : 'opacity:0.6;'}"
+                onclick="viewAssessment('${inlineArg(a.id)}','${inlineArg(c.id)}','${inlineArg(childName)}',${paymentConfirmed ? 'true' : 'false'})"
+                title="${paymentConfirmed ? 'Open the full results report' : 'Payment must be confirmed before viewing assessment results'}">Open full report</button>
+        </div>`;
+
+        // ── Review remarks ──
         html += `
         <div class="ra-review-notes">
             <h4><img src="/icons/logs.png" alt="" style="width:1em;height:1em;object-fit:contain;vertical-align:-0.15em;"> Review Remarks</h4>
-            <textarea id="reviewNotesText" class="ra-notes-textarea" placeholder="Add your validation notes, observations, or remarks about this pre-assessment..."></textarea>
+            <p class="ra-notes-hint">Saved to this patient's progress history (also listed under Check-up History), separate from the parent's answers and from the official diagnosis.</p>
+            <div class="ra-remarks-list" id="reviewRemarksList"><p class="ra-remarks-empty">Loading saved remarks...</p></div>
+            <label for="reviewNotesText" class="ra-notes-label">New remark</label>
+            <textarea id="reviewNotesText" class="ra-notes-textarea" placeholder="Add your validation notes, observations, or remarks about this assessment..."></textarea>
+            <p class="ra-note-status" id="reviewNoteStatus" role="status" aria-live="polite"></p>
             <div class="ra-notes-actions">
-                <button class="btn btn-primary" onclick="saveReviewNote('${c.id}')" style="padding:0.7rem 1.5rem;">Save Review Note</button>
+                <button class="btn btn-primary" id="reviewSaveBtn" onclick="saveReviewNote('${inlineArg(c.id)}')" style="padding:0.7rem 1.5rem;">Save Review Note</button>
                 <button class="btn btn-secondary" onclick="closeReviewModal()" style="padding:0.7rem 1.5rem;">Close</button>
             </div>
         </div>`;
@@ -1432,18 +1523,67 @@ function toggleProfileMenu() {
         document.getElementById('reviewModalBody').innerHTML = html;
     }
 
+    // Review remarks are stored as progress notes with this prefix (the format
+    // the modal has always used), so earlier remarks load here too.
+    const REVIEW_NOTE_PREFIX = '[Pre-Assessment Review]';
+
+    async function loadReviewRemarks(childId, requestId) {
+        try {
+            const data = await apiFetch(`/assessments/child/${childId}/progress-notes`);
+            if (requestId !== _reviewRequestId) return;
+            const list = document.getElementById('reviewRemarksList');
+            if (!list) return;
+            const remarks = (data.notes || []).filter((n) => String(n.note || '').startsWith(REVIEW_NOTE_PREFIX));
+            list.innerHTML = remarks.length
+                ? remarks.map((n) => `
+                    <div class="ra-remark">
+                        <p class="ra-remark-meta">${n.createdAt ? new Date(n.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}</p>
+                        <p class="ra-remark-text">${escapeHtml(n.note.slice(REVIEW_NOTE_PREFIX.length).trim())}</p>
+                    </div>`).join('')
+                : '<p class="ra-remarks-empty">No review remarks saved yet.</p>';
+        } catch (err) {
+            if (requestId !== _reviewRequestId) return;
+            const list = document.getElementById('reviewRemarksList');
+            if (list) list.innerHTML = `<p class="ra-remarks-empty">Could not load saved remarks: ${escapeHtml(err.message)}</p>`;
+        }
+    }
+
+    function setReviewNoteStatus(message, kind) {
+        const el = document.getElementById('reviewNoteStatus');
+        if (!el) return;
+        el.textContent = message;
+        el.className = `ra-note-status${kind ? ` is-${kind}` : ''}`;
+    }
+
     async function saveReviewNote(childId) {
-        const note = document.getElementById('reviewNotesText').value.trim();
-        if (!note) { alert('Please write a review note first.'); return; }
+        if (_reviewSaving) return;
+        const textarea = document.getElementById('reviewNotesText');
+        const note = textarea.value.trim();
+        if (!note) {
+            setReviewNoteStatus('Please write a review remark first.', 'error');
+            textarea.focus();
+            return;
+        }
+        const requestId = _reviewRequestId;
+        const saveBtn = document.getElementById('reviewSaveBtn');
+        _reviewSaving = true;
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        setReviewNoteStatus('', '');
         try {
             await apiFetch(`/assessments/child/${childId}/progress-notes`, {
                 method: 'POST',
-                body: JSON.stringify({ progressStatus: 'initial_review', note: `[Pre-Assessment Review] ${note}` })
+                body: JSON.stringify({ progressStatus: 'initial_review', note: `${REVIEW_NOTE_PREFIX} ${note}` })
             });
-            alert('✅ Review note saved to patient progress history.');
-            document.getElementById('reviewNotesText').value = '';
+            textarea.value = '';
+            setReviewNoteStatus('Review remark saved to this patient\'s progress history.', 'success');
+            loadReviewRemarks(childId, requestId);
         } catch (err) {
-            alert('Failed to save review note: ' + err.message);
+            setReviewNoteStatus('Could not save the review remark: ' + err.message, 'error');
+        } finally {
+            _reviewSaving = false;
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Review Note';
         }
     }
 

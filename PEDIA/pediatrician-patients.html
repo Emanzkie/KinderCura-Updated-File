@@ -329,15 +329,15 @@
         </div>
     </div>
 
-    <!-- Review Pre-Assessment Modal -->
-    <div class="notifications-modal" id="reviewModal" style="display:none;">
+    <!-- Review Assessment Modal (scores, answers, review remarks) -->
+    <div class="notifications-modal" id="reviewModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="reviewModalTitle">
         <div class="notifications-content review-modal-content">
             <div class="notifications-header review-modal-header">
-                <h3 id="reviewModalTitle">Review Pre-Assessment</h3>
-                <button class="close-btn" onclick="closeReviewModal()">&#215;</button>
+                <h3 id="reviewModalTitle">Review Assessment</h3>
+                <button class="close-btn" onclick="closeReviewModal()" aria-label="Close">&#215;</button>
             </div>
             <div class="review-modal-body" id="reviewModalBody">
-                <p style="text-align:center;color:var(--text-light);padding:2rem;">Loading pre-assessment data...</p>
+                <p style="text-align:center;color:var(--text-light);padding:2rem;">Loading assessment...</p>
             </div>
         </div>
     </div>
