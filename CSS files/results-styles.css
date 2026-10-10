@@ -1233,6 +1233,15 @@ body {
 .domain-list-support {
     box-sizing: border-box;
     min-width: 0;
+    /* Heading colours in the --accent and --accent-red hues, darkened only
+       enough to pass WCAG AA (4.5:1) on each section's tinted background;
+       the palette values themselves are ~1.3:1 and ~1.8:1 as text. */
+    --domain-list-amber: #8D681E;
+    --domain-list-rose: #A95656;
+}
+
+.domain-list-strength h4 {
+    color: var(--primary);
 }
 
 .domain-list-strength {
@@ -1251,12 +1260,12 @@ body {
 }
 
 .domain-list-developing h4 {
-    color: var(--status-caution-fg);
+    color: var(--domain-list-amber);
 }
 
 .domain-list-developing li::before {
     content: '◐';
-    color: var(--text-dark);
+    color: var(--domain-list-amber);
 }
 
 .domain-list-support {
@@ -1265,7 +1274,7 @@ body {
 }
 
 .domain-list-support h4 {
-    color: var(--status-attention-fg);
+    color: var(--domain-list-rose);
 }
 
 .domain-list-support li::before {
