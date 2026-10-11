@@ -874,8 +874,7 @@
     font-size: 0.88rem;
 }
 
-.terms-open-link,
-.terms-dialog-footer a {
+.terms-open-link {
     font-weight: 600;
     color: var(--primary-dark, #5A7560);
     text-decoration: underline;
@@ -1142,7 +1141,6 @@
 }
 
 .terms-dialog-close:focus-visible,
-.terms-dialog-footer a:focus-visible,
 .terms-open-link:focus-visible {
     outline: 3px solid var(--primary-dark, #5A7560);
     outline-offset: 2px;
@@ -1196,12 +1194,6 @@
 .terms-meta {
     color: var(--text-light, #6B7967);
     margin-bottom: 0.2rem !important;
-}
-
-.terms-dialog-footer {
-    padding: 0.7rem 1.1rem;
-    border-top: 1px solid var(--border, #DDD9CC);
-    font-size: 0.85rem;
 }
 
 @media (max-width: 480px) {

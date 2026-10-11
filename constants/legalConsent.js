@@ -2,10 +2,11 @@
 // Sign-up consent rules.
 //
 // The WORDING of the three selections (Terms acceptance, Privacy Notice
-// acknowledgment, optional machine-learning consent) lives only in
-// SIGN-UP,LOGIN/legal/KINDERCURA-TERMS-OF-SERVICE.txt, section 17. Nothing in
-// this file restates or paraphrases it: this module only decides whether the two
-// REQUIRED selections were made and shapes the record stored on User.consents.
+// acknowledgment, optional machine-learning consent) lives only in the consent
+// dialogs of SIGN-UP,LOGIN/signup.html (it came from the former section 17 of the
+// Terms, removed on 2026-10-11). Nothing in this file restates or paraphrases it:
+// this module only decides whether the two REQUIRED selections were made and
+// shapes the record stored on User.consents.
 //
 // Machine-learning consent is deliberately independent: it never affects
 // whether registration is allowed.

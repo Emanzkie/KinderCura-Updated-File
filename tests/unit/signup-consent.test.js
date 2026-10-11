@@ -1,9 +1,11 @@
 // Unit tests for the sign-up Terms of Service / consent flow.
 //
-// Source of truth for every word of the Terms and the three selections:
-//   SIGN-UP,LOGIN/legal/KINDERCURA-TERMS-OF-SERVICE.txt  (section 17)
-// The checkbox labels in signup.html are compared against that file line by line,
-// so a wording drift fails this test instead of shipping.
+// Source of truth for every word of the Terms:
+//   SIGN-UP,LOGIN/legal/KINDERCURA-TERMS-OF-SERVICE.txt  (sections 1-15 + dates at the end)
+// The three selections used to be section 17 of that file. Section 17 was removed from
+// the Terms on 2026-10-11, so their wording is frozen below and the parent and
+// pediatrician checkbox labels in signup.html are compared against it, so a wording
+// drift (or the two roles diverging) fails this test instead of shipping.
 //
 // No DB and no network: models are monkey-patched, the /register route is exercised
 // over an in-process HTTP server, and js/auth/signup.js runs in a fake DOM (node vm).
@@ -25,10 +27,11 @@ const html = fs.readFileSync(HTML_PATH, 'utf8');
 const css = fs.readFileSync(CSS_PATH, 'utf8');
 const signupJs = fs.readFileSync(JS_PATH, 'utf8');
 
-// The three selections, exactly as written in the source file (minus the leading ☐).
-const checkboxLines = termsLines.filter((l) => l.startsWith('☐')).map((l) => l.replace(/^☐\s*/, ''));
-assert.strictEqual(checkboxLines.length, 3, 'the Terms file must define exactly three selections');
-const [TERMS_LABEL, PRIVACY_LABEL, ML_LABEL] = checkboxLines;
+// The three selections, exactly as former section 17 of the Terms wrote them (minus the leading ☐).
+const TERMS_LABEL = 'I have read, understood, and agree to the KinderCura Terms of Service. I understand that KinderCura is a developmental assessment and monitoring support system and does not provide medical diagnosis, treatment, therapy, or emergency medical services.';
+const PRIVACY_LABEL = 'I have read and understood the KinderCura Privacy Notice and acknowledge the information provided regarding the collection, processing, storage, access, sharing, retention, and protection of personal information.';
+const ML_LABEL = "I voluntarily consent to the use of eligible information that I submit through KinderCura for the training, testing, evaluation, research, and improvement of KinderCura's machine learning models, subject to the KinderCura Privacy Notice and applicable data privacy requirements. I understand that this consent is optional and may be withdrawn subject to applicable law and the procedures provided by KinderCura.";
+const TERMS_DATE = 'October 11, 2026';
 
 const { TERMS_VERSION, parseSignupConsent } = require('../../constants/legalConsent');
 const User = require('../../models/User');
@@ -40,8 +43,25 @@ const ok = (label) => results.push(label);
 {
   const versionLine = termsLines.find((l) => /^Version:/.test(l));
   assert.strictEqual(versionLine, `Version: ${TERMS_VERSION}`, 'TERMS_VERSION must match the "Version:" line of the Terms file');
-  assert.ok(termsLines.includes('[Insert Date]') || termsLines.some((l) => l.includes('[Insert Date]')), 'placeholders stay as written in the source');
   ok('constants: TERMS_VERSION matches the Terms file');
+}
+
+// ── 0b. Terms content: sections 1-15 only, dates once and at the very end ─────
+{
+  assert.ok(!/\[Insert/.test(termsText), 'no [Insert ...] placeholders remain');
+  for (const field of ['Effective Date:', 'Last Updated:', 'Version:']) {
+    assert.strictEqual(termsLines.filter((l) => l.startsWith(field)).length, 1, `${field} appears exactly once`);
+  }
+  assert.deepStrictEqual(termsLines.slice(-3), [`Effective Date: ${TERMS_DATE}`, `Last Updated: ${TERMS_DATE}`, `Version: ${TERMS_VERSION}`],
+    'Effective Date, Last Updated and Version are the last lines of the Terms');
+  assert.ok(/^_{5,}$/.test(termsLines[termsLines.length - 4]), 'a divider separates section 15 from the dates');
+  assert.deepStrictEqual(termsLines.slice(0, 2), ['KINDERCURA', 'TERMS OF SERVICE'], 'title block unchanged, no dates at the top');
+  const headings = termsLines.filter((l) => /^\d+\.\s/.test(l) && l === l.toUpperCase());
+  assert.deepStrictEqual(headings.map((h) => Number(/^(\d+)\./.exec(h)[1])), Array.from({ length: 15 }, (_, i) => i + 1), 'sections 1-15, in order, nothing else');
+  assert.ok(!termsLines.some((l) => /CONTACT INFORMATION|ACCEPTANCE AND CONSENT|^☐/.test(l)), 'sections 16 and 17 removed entirely');
+  assert.ok(termsLines.includes('The Last Updated date displayed at the end of these Terms indicates when the Terms were most recently revised.'),
+    'section 14 points to where the date is now shown');
+  ok('Terms content: sections 1-15 in order, 16/17 removed, no placeholders, dates (October 11, 2026) + version once at the end');
 }
 
 // ── 1. Server rule: cases A–E ────────────────────────────────────────────────
@@ -214,7 +234,7 @@ async function routeTests() {
       assert.match(tag, /\btype="checkbox"/, `${id} is a real <input type="checkbox">`);
       assert.strictEqual(/\brequired\b/.test(tag), required, `${id} required=${required}`);
       assert.ok(!/\bdisabled\b|tabindex="-1"|\bhidden\b|style=|onclick=|onkeydown=|onkeypress=|onkeyup=/.test(tag), `${id}: natively focusable, no key/click interception, not hidden`);
-      assert.strictEqual(labelText(id), expected, `${id}: label wording equals the Terms file exactly`);
+      assert.strictEqual(labelText(id), expected, `${id}: label wording unchanged (former section 17 of the Terms)`);
       assert.strictEqual([...html.matchAll(new RegExp(`\\bid="${id}"`, 'g'))].length, 1, `${id} is unique`);
     }
     assert.match(inputTag(g.terms), new RegExp(`aria-describedby="${g.error}"`));
@@ -223,13 +243,26 @@ async function routeTests() {
   assert.ok(!/role="checkbox"/.test(html), 'no fake role="checkbox" controls');
   const allIds = [...html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
   assert.strictEqual(allIds.length, new Set(allIds).size, 'no duplicate ids on the page');
-  // Section-17 headings and statements are present as written in the source.
+  // Former section-17 headings and statements stay in both consent dialogs (no longer in the Terms).
   for (const line of ['Required Terms Acceptance', 'Privacy Notice Acknowledgment', 'Optional Machine Learning Consent',
     'The Optional Machine Learning Consent is separate from acceptance of the KinderCura Terms of Service and acknowledgment of the KinderCura Privacy Notice.',
     'Before creating an account or using KinderCura, users should review these Terms of Service and the KinderCura Privacy Notice.',
     'The following selections are presented separately to distinguish acceptance of the Terms from optional consent:']) {
-    assert.ok(termsLines.includes(line), `source line exists: ${line.slice(0, 40)}`);
-    assert.ok(html.includes(line), `signup.html shows it verbatim: ${line.slice(0, 40)}`);
+    assert.ok(!termsLines.includes(line), `no longer part of the Terms text: ${line.slice(0, 40)}`);
+    for (const id of ['pConsentDialog', 'dConsentDialog']) {
+      const dlg = new RegExp(`<dialog id="${id}"[\\s\\S]*?</dialog>`).exec(html)[0];
+      assert.ok(dlg.includes(line), `${id} shows it verbatim: ${line.slice(0, 40)}`);
+    }
+  }
+  // One review control for the complete Terms per consent dialog, and no plain-text link in the reader.
+  {
+    const reviewLinks = [...html.matchAll(/<a\b[^>]*class="terms-open-link"[^>]*>([^<]*)<\/a>/g)].filter((m) => !m[0].includes('data-terms-section'));
+    assert.strictEqual(reviewLinks.length, 2, 'one full-Terms review control per role');
+    for (const m of reviewLinks) assert.strictEqual(m[1], 'Review Terms of Service');
+    const reader = /<dialog id="termsDialog"[\s\S]*?<\/dialog>/.exec(html)[0];
+    assert.ok(!/<a\b|terms-dialog-footer|plain text/i.test(reader), 'the Terms reader has no plain-text link or footer');
+    assert.strictEqual([...html.matchAll(/<dialog id="termsDialog"/g)].length, 1, 'a single shared Terms reader for both roles');
+    ok('review: one "Review Terms of Service" control per role opens the single shared Terms reader; plain-text footer link removed');
   }
   // Privacy Notice Acknowledgment -> a way to review the privacy content that exists in the Terms file.
   {
@@ -252,7 +285,7 @@ async function routeTests() {
   // Login page is untouched by the consent UI.
   const login = fs.readFileSync(path.join(ROOT, 'SIGN-UP,LOGIN', 'login.html'), 'utf8');
   assert.ok(!/AcceptTerms|AckPrivacy|MlConsent|termsDialog/.test(login), 'login flow has no consent UI');
-  ok('signup.html: 6 real checkboxes, one matching <label for> each, wording == Terms file, Terms+Privacy required, ML optional, no fake controls, login untouched');
+  ok('signup.html: 6 real checkboxes, one matching <label for> each, wording identical for both roles and unchanged, Terms+Privacy required, ML optional, no fake controls, login untouched');
 
   // Dialog accessibility + visible focus
   assert.ok(html.indexOf('id="pConsentError"') < html.indexOf('id="pAcceptTerms"') && html.indexOf('id="dConsentError"') < html.indexOf('id="dAcceptTerms"'), 'consent message sits above the checkboxes so it is seen without scrolling');
@@ -588,17 +621,25 @@ async function clientTests() {
     assert.strictEqual(container.children.filter((c) => c.tag === 'hr').length, termsLines.filter((l) => /^_{5,}$/.test(l)).length, 'separators become dividers');
     assert.strictEqual(container.children[0].textContent, 'KINDERCURA');
     assert.strictEqual(container.children[1].textContent, 'TERMS OF SERVICE');
-    assert.strictEqual(container.children.filter((c) => c.tag === 'h4').length, 17, '17 numbered section headings preserved');
+    assert.strictEqual(container.children.filter((c) => c.tag === 'h4').length, 15, '15 numbered section headings preserved');
     const text = rendered.join('\n');
-    for (const keep of ['Effective Date: [Insert Date]', 'Last Updated: [Insert Date]', 'Version: 1.0', 'Organization/Institution: [Insert Organization/Institution Name]', 'Email Address: [Insert Official Email Address]', 'Telephone: [Insert Contact Number, if applicable]', 'Address: [Insert Official Address]', '17. ACCEPTANCE AND CONSENT']) {
-      assert.ok(text.includes(keep), `kept as written: ${keep}`);
+    for (const keep of ['1. INTRODUCTION', '15. GOVERNING LAW AND DISPUTE RESOLUTION', `Effective Date: ${TERMS_DATE}`, `Last Updated: ${TERMS_DATE}`, 'Version: 1.0']) {
+      assert.ok(text.includes(keep), `rendered: ${keep}`);
     }
-    assert.strictEqual(rendered.filter((l) => l.startsWith('☐')).length, 3, 'the acceptance section is shown as written');
+    for (const gone of ['[Insert', '16. CONTACT INFORMATION', '17. ACCEPTANCE AND CONSENT', '☐']) {
+      assert.ok(!text.includes(gone), `not rendered: ${gone}`);
+    }
+    // Dates are the last thing the reader shows, after section 15 and a divider.
+    const tail = container.children.slice(-4);
+    assert.strictEqual(tail[0].tag, 'hr');
+    assert.deepStrictEqual(tail.slice(1).map((c) => [c.textContent, c.className]),
+      [[`Effective Date: ${TERMS_DATE}`, 'terms-meta'], [`Last Updated: ${TERMS_DATE}`, 'terms-meta'], ['Version: 1.0', 'terms-meta']]);
+    assert.ok(!container.children.slice(0, -3).some((c) => c.className === 'terms-meta'), 'no dates rendered anywhere else');
     // Text goes in via textContent — markup in the source could never become elements.
     const evil = { children: [], appendChild(c) { this.children.push(c); }, textContent: '' };
     env.run('renderTermsDocument')('KINDERCURA\nTERMS OF SERVICE\n<img src=x onerror=alert(1)>', evil);
     assert.strictEqual(evil.children[2].textContent, '<img src=x onerror=alert(1)>'); assert.strictEqual(evil.children[2].tag, 'p');
-    ok('Terms reader: all source lines rendered verbatim + in order, placeholders/version/section numbers untouched, text inserted as text');
+    ok('Terms reader: all source lines rendered verbatim + in order, sections 1-15 only, dates + version once at the end, text inserted as text');
 
     // open / fallback behaviour
     const dlg = env.el('termsDialog'); let shown = 0; dlg.showModal = () => { shown += 1; dlg.open = true; };
@@ -618,7 +659,7 @@ async function clientTests() {
     const container4 = { children: [], appendChild(c) { this.children.push(c); }, textContent: '' };
     env4.run('renderTermsDocument')(termsText, container4);
     const sectionHeadings = container4.children.filter((c) => c.tag === 'h4');
-    assert.strictEqual(sectionHeadings.length, 17);
+    assert.strictEqual(sectionHeadings.length, 15);
     for (const h of sectionHeadings) {
       const n = /^(\d+)\./.exec(h.textContent)[1];
       assert.strictEqual(h.id, `terms-section-${n}`, `${h.textContent}: anchored by the source's own section number`);
@@ -650,5 +691,5 @@ async function clientTests() {
   await routeTests();
   await clientTests();
   console.log(results.map((r) => `  ok - ${r}`).join('\n'));
-  console.log(`Sign-up consent tests OK — ${results.length} groups: cases A–E (server, route, client), labels, wording vs Terms file, required vs optional, field preservation, verbatim Terms rendering.`);
+  console.log(`Sign-up consent tests OK — ${results.length} groups: cases A–E (server, route, client), labels, Terms content (sections 1-15, dates at the end), required vs optional, field preservation, verbatim Terms rendering.`);
 })().catch((err) => { console.error(err); process.exit(1); });

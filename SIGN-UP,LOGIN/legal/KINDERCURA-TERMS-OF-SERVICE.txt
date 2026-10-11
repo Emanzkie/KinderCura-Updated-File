@@ -1,8 +1,5 @@
 KINDERCURA
 TERMS OF SERVICE
-Effective Date: [Insert Date]
-Last Updated: [Insert Date]
-Version: 1.0
 These Terms of Service ("Terms") govern your access to and use of KinderCura, a web-based early childhood developmental assessment and monitoring system ("KinderCura," "the System," "we," "us," or "our").
 By creating an account, accessing, or using KinderCura, you acknowledge that you have read, understood, and agreed to these Terms. If you do not agree to these Terms, you should not create an account or use the System.
 These Terms apply to all authorized users of KinderCura, including parents or legal guardians, pediatricians, authorized secretaries or staff, and administrators, as applicable to their respective roles within the System.
@@ -98,7 +95,7 @@ ________________________________________
 14. CHANGES TO THE SYSTEM AND THESE TERMS
 KinderCura may update, modify, suspend, or discontinue portions of the System when reasonably necessary for maintenance, security, development, operational requirements, or other legitimate purposes.
 KinderCura may also revise these Terms to reflect changes to the System, applicable laws, privacy requirements, security practices, or other operational matters.
-The Last Updated date displayed at the beginning of these Terms indicates when the Terms were most recently revised.
+The Last Updated date displayed at the end of these Terms indicates when the Terms were most recently revised.
 Where appropriate and required by applicable law, users will be provided with notice of material changes before the revised Terms take effect.
 ________________________________________
 15. GOVERNING LAW AND DISPUTE RESOLUTION
@@ -107,27 +104,7 @@ The parties shall first attempt to resolve any dispute or concern relating to th
 Where a dispute cannot be resolved through such communication, the matter may be referred to the appropriate Philippine court, government agency, or other dispute-resolution mechanism having jurisdiction over the matter.
 Nothing in this section prevents a user from exercising any rights or remedies available under applicable Philippine law.
 ________________________________________
-16. CONTACT INFORMATION
-For questions, concerns, account-related matters, technical issues, privacy requests, or other inquiries regarding KinderCura, users may contact the designated System Administrator or official KinderCura contact.
-KinderCura System Administrator / Data Privacy Contact
-Organization/Institution: [Insert Organization/Institution Name]
-Email Address: [Insert Official Email Address]
-Telephone: [Insert Contact Number, if applicable]
-Address: [Insert Official Address]
-For privacy-related concerns or requests involving personal information, users may use the contact information provided in the KinderCura Privacy Notice.
-________________________________________
-17. ACCEPTANCE AND CONSENT
-Before creating an account or using KinderCura, users should review these Terms of Service and the KinderCura Privacy Notice.
-The following selections are presented separately to distinguish acceptance of the Terms from optional consent:
-Required Terms Acceptance
-☐ I have read, understood, and agree to the KinderCura Terms of Service. I understand that KinderCura is a developmental assessment and monitoring support system and does not provide medical diagnosis, treatment, therapy, or emergency medical services.
-Privacy Notice Acknowledgment
-☐ I have read and understood the KinderCura Privacy Notice and acknowledge the information provided regarding the collection, processing, storage, access, sharing, retention, and protection of personal information.
-Optional Machine Learning Consent
-☐ I voluntarily consent to the use of eligible information that I submit through KinderCura for the training, testing, evaluation, research, and improvement of KinderCura's machine learning models, subject to the KinderCura Privacy Notice and applicable data privacy requirements. I understand that this consent is optional and may be withdrawn subject to applicable law and the procedures provided by KinderCura.
-The Optional Machine Learning Consent is separate from acceptance of the KinderCura Terms of Service and acknowledgment of the KinderCura Privacy Notice.
-________________________________________
-Effective Date: [Insert Date]
-Last Updated: [Insert Date]
+Effective Date: October 11, 2026
+Last Updated: October 11, 2026
 Version: 1.0
 
