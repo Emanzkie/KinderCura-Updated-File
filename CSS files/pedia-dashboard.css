@@ -42,6 +42,13 @@
     gap: 2rem;
 }
 
+/* The first row's top margin is inline in the markup; later rows had none,
+   so the Pending Requests / Recent Activity panels sat flush against the
+   chart panels above them. */
+.two-col + .two-col {
+    margin-top: 2rem;
+}
+
 @media(max-width: 900px) {
     .two-col {
         grid-template-columns: 1fr;

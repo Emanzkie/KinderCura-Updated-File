@@ -113,6 +113,11 @@ iframe {
         gap: 1.5rem;
     }
 
+    /* Stacked, the seam between rows matches the gap within a row. */
+    .two-col + .two-col {
+        margin-top: 1.5rem;
+    }
+
     /* My Questions: library column above the tracker column. */
     .main-two-col {
         grid-template-columns: 1fr;
