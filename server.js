@@ -318,7 +318,8 @@ app.get('*', (req, res) => {
     });
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
+const HOST = '0.0.0.0';
 let server = null;
 
 // Helper: check whether something is already responding on the port
@@ -423,8 +424,11 @@ async function startApp() {
         process.exit(1);
     });
 
-        server.listen(PORT, () => {
-            console.log(`\n🚀 KinderCura running → http://localhost:${PORT}`);
+        server.listen(PORT, HOST, () => {
+            const address = server.address();
+            const boundHost = address && typeof address === 'object' ? address.address : HOST;
+            const boundPort = address && typeof address === 'object' ? address.port : PORT;
+            console.log(`\n🚀 KinderCura running on ${boundHost}:${boundPort}`);
         });
     } catch (err) {
         console.error('❌ Failed to start application:', err && err.stack ? err.stack : err);
