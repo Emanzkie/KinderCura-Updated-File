@@ -6,11 +6,19 @@
 // trusted: the amount shown comes from the server, and the server ignores any
 // amount the browser might send back.
 
-requireAuth();
+// Login, then straight back to this page — including the ?ref= of a scanned
+// Pay at Clinic QR. login.js already honours ?next= for same-site paths.
+function loginUrlForThisPage() {
+    return `/login.html?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+}
+
+if (!KC.token()) window.location.href = loginUrlForThisPage();
 
 // Only assistant/secretary accounts (and admins, who may supervise) belong here.
+// Checked only when signed in, so a leftover stored user cannot override the
+// login redirect above.
 const _u = KC.user();
-if (_u && !['secretary', 'admin'].includes(_u.role)) {
+if (KC.token() && _u && !['secretary', 'admin'].includes(_u.role)) {
     const roleMap = {
         pediatrician: '/pedia/pediatrician-dashboard.html',
         parent: '/parent/dashboard.html',
@@ -59,6 +67,22 @@ function methodLabel(method) {
     }[method] || (method ? String(method) : '—');
 }
 
+// A scan arrives either as a bare KC-PAY reference (typed by hand, or a QR
+// issued before the QR became a link) or as the Cashier page URL the parent's
+// QR now encodes. Only the reference is kept; a scanned URL is never followed.
+const PAYMENT_REF_RE = /^KC-PAY-\d{4}-\d{6}$/;
+
+function refFromScan(raw) {
+    const text = String(raw ?? '').trim();
+    if (/^https?:\/\//i.test(text)) {
+        try {
+            const ref = new URL(text).searchParams.get('ref');
+            if (ref) return ref.trim().toUpperCase();
+        } catch { /* not a valid URL: let the server reject it below */ }
+    }
+    return text.toUpperCase();
+}
+
 function showScanError(msg) {
     const el = document.getElementById('scanError');
     el.textContent = msg;
@@ -77,7 +101,7 @@ async function lookupPayment(rawRef) {
     document.getElementById('paidBanner').style.display = 'none';
 
     const typed = document.getElementById('refInput').value || '';
-    const ref = String(rawRef ?? typed).trim().toUpperCase();
+    const ref = refFromScan(rawRef ?? typed);
     if (!ref) {
         showScanError('Scan a QR code or type a payment reference first.');
         return;
@@ -95,6 +119,12 @@ async function lookupPayment(rawRef) {
     } catch (err) {
         currentLookup = null;
         document.getElementById('resultCard').style.display = 'none';
+        // Expired or invalid session (the server's 401 messages): sign in again
+        // and come back to this payment instead of leaving a dead end.
+        if (/please log in/i.test(err.message || '')) {
+            window.location.href = loginUrlForThisPage();
+            return;
+        }
         showScanError(err.message || 'That payment reference could not be found.');
     } finally {
         btn.disabled = false;
@@ -277,7 +307,7 @@ async function startCameraScan() {
             if (!cameraStream) return;
             try {
                 const codes = await detector.detect(video);
-                const hit = codes.find((c) => /^KC-PAY-\d{4}-\d{6}$/i.test(String(c.rawValue || '').trim()));
+                const hit = codes.find((c) => PAYMENT_REF_RE.test(refFromScan(c.rawValue)));
                 if (hit) {
                     stopCameraScan();
                     await lookupPayment(hit.rawValue);
@@ -316,6 +346,12 @@ document.addEventListener('DOMContentLoaded', () => {
     input.focus();
 
     loadToday();
+
+    // Opened from a scanned Pay at Clinic QR (…/secretary-cashier.html?ref=KC-PAY-…):
+    // look that payment up straight away. Looking up never marks anything paid;
+    // Confirm Payment is still a separate, explicit step.
+    const linkedRef = new URLSearchParams(window.location.search).get('ref');
+    if (linkedRef && KC.token()) lookupPayment(linkedRef);
 });
 
 window.addEventListener('beforeunload', stopCameraScan);

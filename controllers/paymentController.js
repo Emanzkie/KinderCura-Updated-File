@@ -968,9 +968,25 @@ async function handlePaymongoWebhook(req, res) {
 
 // ── Pay at Clinic ─────────────────────────────────────────────────────────
 
+// What the Pay at Clinic QR encodes: the secretary Cashier page with the
+// KC-PAY reference in the query string. A phone camera opens it as a link
+// (a bare reference only showed up as text); the Cashier page also pulls the
+// reference back out of this URL when a USB scanner types it into the box.
+// The URL carries nothing but the reference, and the page behind it only
+// shows details to signed-in clinic staff. Origin resolution follows the
+// PayMongo return URLs: APP_URL, then Vercel's public host, then the request
+// (local development, including a phone on the same network).
+function clinicCounterUrl(req, paymentRef) {
+  const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+  const origin = process.env.APP_URL
+    ? String(process.env.APP_URL).replace(/\/$/, '')
+    : (vercelHost ? `https://${vercelHost}` : `${req.protocol}://${req.get('host')}`);
+  return `${origin}/secretary/secretary-cashier.html?ref=${encodeURIComponent(paymentRef)}`;
+}
+
 // POST /api/payments/appointments/:appointmentId/pay-at-clinic
-// Creates the pending payment and returns a QR encoding ONLY the KC-PAY
-// reference. No patient data is ever placed in the QR.
+// Creates the pending payment and returns a QR encoding the Cashier page URL
+// for its KC-PAY reference. No patient data is ever placed in the QR.
 async function startPayAtClinic(req, res) {
   try {
     const appointment = await Appointment.findOne({ id: Number(req.params.appointmentId) });
@@ -1000,9 +1016,9 @@ async function startPayAtClinic(req, res) {
     }
     await appointment.save();
 
-    // The QR payload is the bare reference — nothing else. Anyone who scans it
-    // outside the clinic learns a meaningless string.
-    const qrDataUrl = await QRCode.toDataURL(payment.paymentRef, {
+    // The QR payload is the Cashier page URL for this reference — nothing else.
+    // Anyone who scans it outside the clinic reaches a staff-only page.
+    const qrDataUrl = await QRCode.toDataURL(clinicCounterUrl(req, payment.paymentRef), {
       errorCorrectionLevel: 'M',
       margin: 2,
       width: 320,
@@ -1386,6 +1402,7 @@ module.exports = {
   reconcileCheckout,
   handlePaymongoWebhook,
   startPayAtClinic,
+  clinicCounterUrl,
   lookupClinicPayment,
   confirmClinicPayment,
   getClinicToday,
