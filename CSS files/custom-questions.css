@@ -8,6 +8,18 @@
     margin-bottom: 1.5rem;
 }
 
+/* Section headings ("Pending Answers", "Answered Questions"): the global
+   reset zeroes heading margins, which left them sitting on the first card. */
+.page-card > h3 {
+    margin-bottom: 1.25rem;
+}
+
+/* Question-set cards nested in a section card: the section's own padding
+   already spaces the last one from the section border. */
+.page-card .page-card:last-child {
+    margin-bottom: 0;
+}
+
 .question-card {
     background: var(--bg-primary);
     border-radius: var(--radius-card);

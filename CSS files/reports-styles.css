@@ -178,10 +178,13 @@
 }
 
 /* ── Domain breakdown (most recent assessment) ─────────────────────────── */
+/* margin-top: the grid follows the overall Interpretation block, and without
+   it the block's left border ran straight into the domain cards' borders. */
 .domain-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 1.2rem;
+    margin-top: 1.25rem;
 }
 
 .domain-card {

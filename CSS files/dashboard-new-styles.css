@@ -1131,11 +1131,14 @@ body {
 
 /* ==================== PARENT DASHBOARD CHARTS ==================== */
 
+/* gap matches .overview-grid on the same page; margin-bottom separates the
+   charts from the Latest Notifications .card, which has no top margin. */
 .parent-charts {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 1.5rem;
+    gap: 2rem;
     margin-top: 1.5rem;
+    margin-bottom: 2rem;
 }
 
 .parent-chart-card {
