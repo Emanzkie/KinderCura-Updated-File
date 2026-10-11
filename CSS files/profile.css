@@ -230,3 +230,326 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* ==================== PARENT PROFILE: MINIMALIST LAYOUT ====================
+   PARENT/profile.html only (.parent-profile-page on its .dashboard-container).
+   PEDIA/pediatrician-profile.html also loads this file and has no such
+   wrapper, so nothing below reaches it. Palette tokens only; pastels are
+   fills, never text. */
+
+/* -- Page header: bold title, subtitle under it, soft corner shapes -- */
+.parent-profile-page .profile-header {
+    position: relative;
+    overflow: hidden;
+    padding: 2.25rem 2.5rem;
+}
+
+.parent-profile-page .profile-header h1,
+.parent-profile-page .profile-header p {
+    position: relative;
+    z-index: 1;
+}
+
+.parent-profile-page .profile-header h1 {
+    font-size: 2.25rem;
+    color: var(--text-dark);
+    margin-bottom: 0.35rem;
+}
+
+.parent-profile-page .profile-header p {
+    font-size: 1.02rem;
+}
+
+/* Decorative only: behind the text, never clickable. */
+.parent-profile-page .profile-header::before,
+.parent-profile-page .profile-header::after {
+    content: '';
+    position: absolute;
+    z-index: 0;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.parent-profile-page .profile-header::before {
+    width: 220px;
+    height: 220px;
+    top: -95px;
+    right: -55px;
+    background: var(--bg-tertiary);
+    opacity: 0.75;
+}
+
+.parent-profile-page .profile-header::after {
+    width: 260px;
+    height: 170px;
+    bottom: -120px;
+    right: 120px;
+    background: var(--success);
+    opacity: 0.2;
+}
+
+/* -- Two cards side by side, top-aligned, natural height -- */
+.parent-profile-page .profile-grid {
+    align-items: start;
+    gap: 2rem;
+}
+
+.parent-profile-page .profile-card {
+    padding: 2rem 2.25rem;
+}
+
+.parent-profile-page .profile-section-title {
+    color: var(--primary-dark);
+    font-size: 1.5rem;
+    margin-bottom: 0.3rem;
+}
+
+.parent-profile-page .profile-section-subtitle {
+    color: var(--text-light);
+    font-size: var(--fs-small);
+    line-height: 1.5;
+    margin: 0 0 1.75rem;
+}
+
+/* -- Centered circular photos on a soft blob; the whole photo is the
+      upload target (the label covers it), so no camera badge is needed -- */
+.parent-profile-page .profile-photo-upload,
+.parent-profile-page .child-photo-upload {
+    position: relative;
+    isolation: isolate;
+    width: 132px;
+    margin: 0 auto;
+}
+
+.parent-profile-page .profile-photo-upload img,
+.parent-profile-page .child-photo-upload img {
+    display: block;
+    width: 132px;
+    height: 132px;
+    border: 3px solid var(--primary-dark);
+    box-shadow: var(--shadow-card);
+    transition: opacity 0.2s ease;
+}
+
+.parent-profile-page .profile-photo-upload::before,
+.parent-profile-page .child-photo-upload::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    top: -10px;
+    bottom: -6px;
+    left: -44px;
+    right: -38px;
+    border-radius: 48% 52% 44% 56% / 56% 44% 56% 44%;
+    pointer-events: none;
+}
+
+.parent-profile-page .profile-photo-upload::before {
+    background: var(--bg-tertiary);
+}
+
+.parent-profile-page .child-photo-upload::before {
+    background: rgba(168, 196, 157, 0.35);
+}
+
+.parent-profile-page .profile-photo-edit,
+.parent-profile-page .child-photo-edit {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    border-radius: 50%;
+}
+
+.parent-profile-page .profile-photo-upload:hover img,
+.parent-profile-page .child-photo-upload:hover img {
+    opacity: 0.88;
+}
+
+.parent-profile-page .profile-photo-hint,
+.parent-profile-page .child-photo-hint {
+    display: block;
+    margin: 0.85rem 0 1.5rem;
+    text-align: center;
+    font-size: var(--fs-small);
+    color: var(--text-light);
+    cursor: pointer;
+}
+
+/* -- Label | value rows -- */
+.parent-profile-page #parentFields,
+.parent-profile-page .fields-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.parent-profile-page .field-row {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.parent-profile-page .field-label {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--text-light);
+}
+
+.parent-profile-page .field-value {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-dark);
+    overflow-wrap: anywhere;
+}
+
+/* -- Full-width actions: solid sage primary, outlined secondary -- */
+.parent-profile-page .profile-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+}
+
+.parent-profile-page .btn-full,
+.parent-profile-page .btn-full-small {
+    width: 100%;
+    min-height: 48px;
+    margin-top: 0;
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius-btn);
+    font-size: 0.98rem;
+}
+
+.parent-profile-page .btn-primary {
+    background: var(--primary-dark);
+    color: var(--bg-primary);
+}
+
+.parent-profile-page .btn-secondary {
+    background: var(--bg-primary);
+    color: var(--primary-dark);
+    border: 2px solid var(--primary);
+}
+
+.parent-profile-page .btn-secondary:hover {
+    background: var(--bg-secondary);
+}
+
+/* -- Child section: no nested box; several children are separated by a
+      divider, each with its own photo, rows and Start Assessment -- */
+/* .child-card is also a dashboard card in dashboard-new-styles.css, so its
+   background, shadow and phone-width centring are reset here as well. */
+.parent-profile-page .child-card {
+    display: block;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    text-align: left;
+}
+
+.parent-profile-page .child-card + .child-card {
+    margin-top: 1.75rem;
+    padding-top: 1.75rem;
+    border-top: 1px solid var(--border);
+}
+
+.parent-profile-page .child-card-left {
+    display: block;
+}
+
+.parent-profile-page .child-card-right {
+    gap: 0;
+}
+
+.parent-profile-page .child-card-right .btn-full-small {
+    margin-top: 1.5rem;
+}
+
+.parent-profile-page .profile-add-child-btn {
+    margin-top: 0.75rem;
+}
+
+/* -- Tablet: one column once two cards would squeeze the rows -- */
+@media (max-width: 900px) {
+    .parent-profile-page .profile-grid {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+}
+
+/* -- Phone -- */
+@media (max-width: 600px) {
+    .parent-profile-page .profile-header {
+        padding: 1.5rem 1.25rem;
+    }
+
+    .parent-profile-page .profile-header h1 {
+        font-size: 1.75rem;
+    }
+
+    .parent-profile-page .profile-header p {
+        font-size: 0.95rem;
+    }
+
+    .parent-profile-page .profile-header::before {
+        width: 140px;
+        height: 140px;
+        top: -70px;
+        right: -50px;
+    }
+
+    .parent-profile-page .profile-header::after {
+        display: none;
+    }
+
+    .parent-profile-page .profile-card {
+        padding: 1.5rem 1.15rem;
+    }
+
+    .parent-profile-page .profile-section-title {
+        font-size: 1.35rem;
+    }
+
+    .parent-profile-page .profile-photo-upload,
+    .parent-profile-page .child-photo-upload,
+    .parent-profile-page .profile-photo-upload img,
+    .parent-profile-page .child-photo-upload img {
+        width: 112px;
+    }
+
+    .parent-profile-page .profile-photo-upload img,
+    .parent-profile-page .child-photo-upload img {
+        height: 112px;
+    }
+
+    .parent-profile-page .profile-photo-upload::before,
+    .parent-profile-page .child-photo-upload::before {
+        left: -30px;
+        right: -26px;
+    }
+
+    .parent-profile-page .field-row {
+        gap: 0.6rem;
+        padding: 0.7rem 0.8rem;
+    }
+
+    .parent-profile-page .field-label {
+        font-size: 0.85rem;
+    }
+
+    .parent-profile-page .field-value {
+        font-size: 0.92rem;
+    }
+}

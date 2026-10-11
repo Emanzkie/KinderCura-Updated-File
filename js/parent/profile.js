@@ -282,11 +282,11 @@ async function loadProfile() {
                 <div class="child-card">
                     <div class="child-card-left">
                         <div class="child-photo-upload">
-                            <img id="childProfilePic_${c.id}" src="${childPic}">
-                            <label for="childPhotoUpload_${c.id}" class="child-photo-edit" title="Change photo"><img src="/icons/change_photo.png" alt="Change photo" style="width:15px;height:15px;object-fit:contain;border:0;border-radius:0;display:block;"></label>
+                            <img id="childProfilePic_${c.id}" src="${childPic}" alt="Child profile photo">
+                            <label for="childPhotoUpload_${c.id}" class="child-photo-edit" title="Change photo"></label>
                             <input type="file" id="childPhotoUpload_${c.id}" accept="image/*" style="display:none;" onchange="uploadProfilePhoto(this,'child','${c.id}')">
                         </div>
-                        <p class="child-photo-hint">Click <img src="/icons/change_photo.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> to update</p>
+                        <label for="childPhotoUpload_${c.id}" class="child-photo-hint">Click to update photo</label>
                     </div>
                     <div class="child-card-right">
                         <div class="fields-grid">
