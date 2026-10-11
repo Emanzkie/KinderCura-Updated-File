@@ -512,6 +512,13 @@ async function getParentPreAssessmentState(parentId) {
   const children = await Child.find({ _id: { $in: [...childIds] } }).sort({ createdAt: -1 }).select('_id').lean();
   const defaultChildId = children.length ? String(children[0]._id) : null;
 
+  // The required first screening is the registering parent's step. A linked
+  // guardian with no child of their own goes to the dashboard instead — their
+  // access level may not even allow submitting an assessment.
+  if (!own.length) {
+    return { defaultChildId, needsPreAssessment: false, preAssessmentChildId: null };
+  }
+
   // Important:
   // Treat the first completed screening as the end of the required pre-assessment flow.
   // If the parent has not completed any screening yet, send them to screening on first login.

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "kc-guardian-e2e",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["C:\\Users\\user\\AppData\\Local\\Temp\\claude\\C--Users-user-Documents-KinderCura-by-Dumzkie-KinderCura-System-Final--claude-worktrees-guardianlink-bugs-ui-712de9\\59cee47c-3a5e-47a3-a8f3-60c589ca7380\\scratchpad\\e2e-server.js"],
+      "port": 3099
+    }
+  ]
+}
