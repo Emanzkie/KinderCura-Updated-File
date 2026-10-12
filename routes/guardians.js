@@ -8,6 +8,8 @@ const guardianController = require('../controllers/guardianController');
 router.post('/invite', authMiddleware, guardianController.generateInvitation);
 router.get('/verify/:token', guardianController.verifyInvitation);
 router.post('/accept', authMiddleware, guardianController.acceptInvitation);
+// Invitee without an account: creates it for the invited email and links it (no login yet).
+router.post('/accept-new-account', guardianController.acceptWithNewAccount);
 
 // Guardian management endpoints
 router.get('/list/:childId', authMiddleware, guardianController.listGuardians);

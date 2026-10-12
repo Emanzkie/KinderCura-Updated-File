@@ -7,7 +7,6 @@
   <link rel="stylesheet" href="/css/dashboard-new-styles.css">
   <link rel="stylesheet" href="/css/notifications-styles.css">
   <link rel="stylesheet" href="/notifications-card-ui.css">
-  <link rel="stylesheet" href="/css/styles.css">
   <link rel="stylesheet" href="/css/guardian-management.css">
   <link rel="stylesheet" href="/css/mobile-nav.css">
   <link rel="stylesheet" href="/css/nav-drawer.css">
@@ -68,9 +67,9 @@
     <div id="gmPermToggles"></div>
     <div id="gmPermImpact" style="margin-top:14px;padding:10px 14px;background:var(--bg-primary);
       border:1px solid var(--border);border-radius:8px;font-size:0.86rem;color:var(--text-light)"></div>
-    <div style="margin-top:22px;display:flex;gap:10px;justify-content:flex-end">
-      <button class="btn btn-secondary" onclick="gmClosePermModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="gmSavePerms()">Save Permissions</button>
+    <div style="margin-top:22px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+      <button type="button" class="gm-btn gm-btn--secondary" onclick="gmClosePermModal()">Cancel</button>
+      <button type="button" id="gmPermSaveBtn" class="gm-btn gm-btn--primary" onclick="gmSavePerms()">Save Permissions</button>
     </div>
   </div>
 </div>
@@ -91,9 +90,10 @@
       aria-label="Close">&times;</button>
     <h3 style="color:var(--primary);margin-bottom:6px">Transfer Primary Guardian</h3>
     <p id="gmTransferBody" style="color:var(--text-light);font-size:0.9rem;margin-bottom:20px;line-height:1.6"></p>
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button class="btn btn-secondary" onclick="gmCloseTransferModal()">Cancel</button>
-      <button id="gmTransferConfirmBtn" class="btn btn-primary">Confirm Transfer</button>
+    <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+      <button type="button" class="gm-btn gm-btn--secondary" onclick="gmCloseTransferModal()">Cancel</button>
+      <!-- Was missing its click handler, so Confirm Transfer did nothing. -->
+      <button type="button" id="gmTransferConfirmBtn" class="gm-btn gm-btn--primary" onclick="gmConfirmTransfer()">Confirm Transfer</button>
     </div>
   </div>
 </div>

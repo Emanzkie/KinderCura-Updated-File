@@ -5,6 +5,7 @@
 require('dotenv').config();
 const nodemailer = require('nodemailer');
 const { wrapEmail } = require('../routes/appointments');
+const httpEmail = require('./httpEmail');
 
 // Public origin used for links and images inside outgoing emails.
 // APP_URL wins when set. On Vercel it falls back to the deployment's own
@@ -78,6 +79,7 @@ const permissionLabelMap = {
   viewAssessments:    'View Assessments & Results',
   submitAssessments:  'Submit / Complete Assessments',
   viewResults:        'View Assessment Results',
+  viewRecommendations:'View Recommendations',
   uploadDocuments:    'Upload Documents & Photos',
   manageAppointments: 'Manage Appointments',
   viewMedicalRecords: 'View Medical Records',
@@ -93,8 +95,9 @@ const permissionLabelMap = {
 };
 
 function buildPermissionBlock(perms = {}) {
+  // viewMedicalRecords is a level ('none' | 'partial' | 'full'), not a boolean.
   const rows = Object.entries(perms).map(([key, val]) =>
-    permRow(permissionLabelMap[key] || key, Boolean(val))
+    permRow(permissionLabelMap[key] || key, typeof val === 'string' ? val !== 'none' : Boolean(val))
   ).join('');
   return rows || '<p class="km-muted">— No permissions set —</p>';
 }
@@ -170,175 +173,193 @@ function wrap(name, brand, body, brandColor = '#E8A5A5') {
 </body></html>`;
 }
 
+/* ─────────────────── delivery ─────────────────── */
+
+// Guardian emails used to go out over Gmail SMTP only. The production host
+// blocks outbound SMTP (see services/httpEmail.js), so they never arrived while
+// the OTP emails — which already use the HTTPS API — did. Same choice as
+// routes/auth.js: EMAIL_API_KEY → provider HTTPS API, otherwise SMTP.
+//
+// Never throws. `sent: true` means the provider accepted the message; anything
+// else is reported back so the caller never claims an email went out when it
+// did not. Recipients, links and invitation codes are never logged.
+const GUARDIAN_MAIL_DEADLINE_MS = 15000;
+
+async function deliver({ to, subject, html, text, kind }) {
+  const recipient = String(to || '').trim();
+  if (!recipient) return { sent: false, reason: 'NO_RECIPIENT' };
+  try {
+    if (httpEmail.httpEmailConfigured()) {
+      await httpEmail.sendViaHttp({ to: recipient, subject, html, fromName: 'KinderCura' }, GUARDIAN_MAIL_DEADLINE_MS);
+      return { sent: true, transport: 'https-api' };
+    }
+    const transporter = getTransporter();
+    if (!transporter) {
+      console.warn(`[emailService] ${kind}: no email transport configured (EMAIL_API_KEY or EMAIL_USER/EMAIL_PASS) — not sent.`);
+      return { sent: false, reason: 'NOT_CONFIGURED' };
+    }
+    let timer;
+    const deadline = new Promise((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(`MAIL_TIMEOUT after ${GUARDIAN_MAIL_DEADLINE_MS}ms`)), GUARDIAN_MAIL_DEADLINE_MS);
+    });
+    await Promise.race([
+      transporter.sendMail({ from: `"KinderCura" <${process.env.EMAIL_USER}>`, to: recipient, subject, html, text }),
+      deadline,
+    ]).finally(() => clearTimeout(timer));
+    return { sent: true, transport: 'smtp' };
+  } catch (err) {
+    console.error(`[emailService] ${kind} failed: ${err?.code || 'ERROR'} ${err?.message || ''}`.trim());
+    return { sent: false, reason: 'SEND_FAILED' };
+  }
+}
+
+function loginUrl() {
+  return `${appUrl()}/login.html`;
+}
+
+// The page the invitation email links to. Also returned to the inviter so a
+// failed email can still be shared another way.
+function acceptUrlFor(code) {
+  return `${appUrl()}/accept-invitation?code=${encodeURIComponent(code)}`;
+}
+
+function namesList(names = []) {
+  const clean = names.filter(Boolean);
+  if (clean.length <= 1) return clean[0] || 'your child';
+  return `${clean.slice(0, -1).join(', ')} and ${clean[clean.length - 1]}`;
+}
+
 /* ─────────────────── PUBLIC API ─────────────────── */
 
 /**
- * Send a guardian invitation acceptance email.
- * @param {Object} opts
- * @param {string} opts.to            – recipient email
- * @param {string} opts.inviterName   – name of the person who sent the invite
- * @param {string} opts.inviterEmail  – email of inviter
- * @param {Array}  opts.children      – child detail objects attached to the invite
- * @param {Object} opts.permissions   – permissions map from GuardianInvitation
- * @param {Object} [opts.invitation]  – full GuardianInvitation document (for childIds fallback, relationship, preset)
- * @param {string} [opts.code]        – raw invitation code (pre-registration only)
- * @param {string} [opts.acceptUrl]   – override the accept-link base URL
- * @param {string} [opts.relationship] – relationship label for the email body
- * @param {string} [opts.permissionPreset] – preset name for context
- * @param {string} [opts.personalMessage]  – optional personal note from inviter
+ * Invitation email for a prospective linked guardian.
+ * Child details are limited to names: no assessment, result or medical data.
+ * @returns {Promise<{sent:boolean, reason?:string, transport?:string}>}
  */
 async function sendInvitationEmail({
-  to, inviterName, inviterEmail, children: invitedChildren, permissions, invitation, code,
+  to, inviterName, children: invitedChildren = [], permissions, code,
   relationship, permissionPreset, personalMessage, expiresAt,
 }) {
-  const childDisplay = invitedChildren && invitedChildren.length
-    ? invitedChildren
-    : (invitation && invitation.childIds && invitation.childIds.length
-        ? invitation.childIds.map(ci => ({ firstName: '', lastName: '' }))
-        : [{ firstName: '', lastName: '' }]);
+  const childNames = invitedChildren.map(c => `${c.firstName || ''} ${c.lastName || ''}`.trim());
+  const childLabel = namesList(childNames);
+  const relLabel = _relationshipLabels[relationship] || 'Guardian';
+  const presetLabel = { full: 'Full', standard: 'Standard', medical: 'Medical Only', limited: 'Limited', custom: 'Custom' }[permissionPreset] || 'Standard';
+  const fromName = inviterName || 'A KinderCura parent';
 
-  const permHtml    = buildPermissionBlock(permissions || {});
-  const relLabel    = (invitation?.relationship && _relationshipLabels[invitation.relationship])
-    || relationship || 'a KinderCura user';
-  const presetLabel = (permissionPreset || invitation?.permissionPreset || 'standard')
-    .charAt(0).toUpperCase() + (permissionPreset || invitation?.permissionPreset || 'standard').slice(1);
+  const acceptUrl = acceptUrlFor(code);
+  const expiry = expiresAt ? new Date(expiresAt) : null;
+  const expiryStr = expiry
+    ? expiry.toLocaleString('en-PH', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' })
+    : null;
 
-  const baseUrl  = appUrl();
-  const codePath = code ? `?code=${encodeURIComponent(code)}` : '';
-  const acceptBtn = `<a href="${baseUrl}/accept-invitation${codePath}"
-    class="km-btn" style="background:#6B8E6F">Accept</a>`;
-
-  const expiryStr = expiresAt
-    ? `${Math.max(0, Math.round((new Date(expiresAt) - Date.now()) / 86400000))} days`
-    : '7 days';
-
-  const personalMsgBlock = personalMessage || invitation?.personalMessage
-    ? `<div class="km-msg"><strong>Message from the inviter:</strong><br/>${escapeHtml(personalMessage || invitation.personalMessage)}</div>`
+  const personalMsgBlock = personalMessage
+    ? `<div class="km-msg"><strong>Message from ${escapeHtml(fromName)}:</strong><br/>${escapeHtml(personalMessage)}</div>`
     : '';
 
   const body = `
     <p style="margin-bottom:18px">Hello,</p>
     <p style="margin-bottom:18px;font-size:1rem">
-      <strong>${escapeHtml(inviterName)}</strong> has invited you to join KinderCura as a
-      <strong>${escapeHtml(relLabel)}</strong> for the following child${childDisplay.length > 1 ? 'ren' : ''}
-      <em>(${escapeHtml(presetLabel)} Access)</em>:
+      <strong>${escapeHtml(fromName)}</strong> has invited you to become a linked guardian
+      (<strong>${escapeHtml(relLabel)}</strong>) for <strong>${escapeHtml(childLabel)}</strong> on KinderCura,
+      with <em>${escapeHtml(presetLabel)} Access</em>.
     </p>
-    <div class="km-section"><h3>👶 Child${childDisplay.length > 1 ? 'ren' : ''} Included</h3>${childCardsHtml(childDisplay)}</div>
-    <div class="km-section"><h3>🔐 Permissions Granted</h3><div class="km-perm-list">${permHtml}</div></div>
+    <div class="km-section"><h3>👶 Child${childNames.length > 1 ? 'ren' : ''}</h3>${childCardsHtml(invitedChildren.map(c => ({ firstName: c.firstName, lastName: c.lastName })))}</div>
+    <div class="km-section"><h3>🔐 What you will be able to do</h3><div class="km-perm-list">${buildPermissionBlock(permissions || {})}</div></div>
     ${personalMsgBlock}
-    <p style="margin:18px 0 10px;font-size:0.9rem;color:#6B7967">
-      Once you accept, you'll be able to access the child's profile, appointments,
-      medical records, and assessments in line with the permissions listed above.
-    </p>
-    <div style="text-align:center;margin:24px 0">${acceptBtn}</div>
+    <div class="km-section">
+      <h3>How to accept</h3>
+      <p style="font-size:0.92rem;line-height:1.6">
+        1. Open the invitation with the button below.<br/>
+        2. Already have a KinderCura account with <strong>${escapeHtml(to)}</strong>? Choose <strong>Log In</strong>, then <strong>Accept</strong>.<br/>
+        3. New to KinderCura? Choose <strong>Create Account</strong> on that page — use this same email address.
+      </p>
+    </div>
+    <div style="text-align:center;margin:24px 0">${actionButton('Open Invitation', acceptUrl)}</div>
     <div class="km-warn" role="alert">
-      ⚠️ This invitation expires in ${expiryStr}. If you did not expect this email, you may safely ignore it.
+      ${expiryStr ? `This invitation expires on ${escapeHtml(expiryStr)}.` : 'This invitation expires soon.'}
+      If you did not expect this email, you can safely ignore it.
     </div>
   `;
 
-  const html = wrap('Guardian Invitation', `${inviterName || 'A KinderCura user'} has invited you as ${relLabel}.`, body);
+  const html = wrap('Guardian Invitation', `${fromName} invited you as a linked guardian.`, body);
+  const text = [
+    'KinderCura – Guardian Invitation',
+    '',
+    `${fromName} has invited you to become a linked guardian (${relLabel}) for ${childLabel} on KinderCura (${presetLabel} Access).`,
+    '',
+    `Open the invitation: ${acceptUrl}`,
+    `If you already have an account with ${to}, log in and accept. Otherwise choose "Create Account" on that page using this email.`,
+    expiryStr ? `This invitation expires on ${expiryStr}.` : '',
+  ].join('\n').trim();
 
-  const text = `
-KinderCura – Guardian Invitation
-
-${inviterName || 'A KinderCura user'} has invited you as ${relLabel} (${presetLabel} access).
-
-To accept: ${baseUrl}/accept-invitation${codePath}
-
-This invitation expires in ${expiryStr}.
-  `.trim();
-
-  const transporter = getTransporter();
-  if (!transporter) {
-    console.log(`\n[EMAIL – INVITATION]\nTo: ${to}\n${text}\n`);
-    return { sent: false, message: 'No transporter configured — logged to console.' };
-  }
-
-  try {
-    await transporter.sendMail({
-      from: `"KinderCura" <${process.env.EMAIL_USER}>`,
-      to: to.trim(),
-      subject: `${inviterName || 'Someone'} invited you to join KinderCura as a guardian`,
-      html,
-      text,
-    });
-    return { sent: true };
-  } catch (err) {
-    console.error('Invitation email error:', err.message);
-    return { sent: false, message: err.message };
-  }
+  return deliver({
+    to, html, text, kind: 'invitation',
+    subject: `${fromName} invited you to KinderCura as a linked guardian`,
+  });
 }
 
 /**
- * Send a welcome email after a guardian accepts the invitation.
+ * Confirmation that a guardian is now linked to one or more children.
+ * Sent only after the GuardianLink records were saved.
+ * `accountCreatedBy` is set when the parent created the account directly — the
+ * password is never included; the guardian gets it from that parent.
  */
-async function sendWelcomeEmail({ to, guardianName, childName, inviterName, inviterEmail }) {
+async function sendWelcomeEmail({ to, guardianName, childNames, childName, inviterName, accountCreatedBy }) {
+  const label = namesList(childNames || (childName ? [childName] : []));
+  const signInHelp = accountCreatedBy
+    ? `<p style="margin-bottom:14px">
+         ${escapeHtml(accountCreatedBy)} created your KinderCura account. Sign in with
+         <strong>${escapeHtml(to)}</strong> and the password ${escapeHtml(accountCreatedBy)} set for you —
+         for your security it is not included in this email. After signing in, you can change it from
+         <strong>Profile &rsaquo; Change Password</strong>.
+       </p>`
+    : `<p style="margin-bottom:14px">Sign in with <strong>${escapeHtml(to)}</strong> and your KinderCura password.</p>`;
+
   const body = `
-    <p style="margin-bottom:18px">Hi ${escapeHtml(guardianName)},</p>
+    <p style="margin-bottom:18px">Hi ${escapeHtml(guardianName || 'there')},</p>
     <p style="margin-bottom:18px">
-      Welcome to KinderCura! You now have access to <strong>${escapeHtml(childName)}</strong>'s profile.
+      You are now a linked guardian for <strong>${escapeHtml(label)}</strong> on KinderCura${inviterName ? `, added by ${escapeHtml(inviterName)}` : ''}.
     </p>
-    <div style="margin:18px 0">
-      <a href="${appUrl()}/parent/dashboard.html"
-         class="km-btn" style="background:#6B8E6F">Go to Dashboard</a>
-    </div>
+    ${signInHelp}
+    <p style="margin-bottom:14px">
+      Once signed in, ${escapeHtml(label)} appears on your dashboard. What you can see and do follows the
+      access level the primary parent chose for you.
+    </p>
+    <div style="margin:18px 0;text-align:center">${actionButton('Sign In to KinderCura', loginUrl())}</div>
     <p style="margin-bottom:8px;color:#6B7967;font-size:0.9rem">
-      If you have questions, reach out to the primary guardian, ${escapeHtml(inviterName)} (${escapeHtml(inviterEmail)}),
-      or contact KinderCura support.
+      If you were not expecting this, contact the child's primary parent or KinderCura support.
     </p>
   `;
+  const html = wrap('Guardian Linked', 'You are now a linked guardian.', body);
+  const text = [
+    `Hi ${guardianName || 'there'},`,
+    '',
+    `You are now a linked guardian for ${label} on KinderCura${inviterName ? `, added by ${inviterName}` : ''}.`,
+    accountCreatedBy
+      ? `${accountCreatedBy} created your account. Sign in with ${to} and the password they set for you (not included here for security). You can change it in Profile > Change Password.`
+      : `Sign in with ${to} and your KinderCura password.`,
+    '',
+    `Sign in: ${loginUrl()}`,
+  ].join('\n');
 
-  const html = wrap('Welcome to KinderCura', 'You are now a linked guardian.', body);
-
-  const transporter = getTransporter();
-  if (!transporter) {
-    console.log(`\n[EMAIL – WELCOME]\nTo: ${to}\n`);
-    return;
-  }
-  try {
-    await transporter.sendMail({
-      from: `"KinderCura" <${process.env.EMAIL_USER}>`,
-      to: to.trim(),
-      subject: `Welcome to KinderCura — you now have access to ${escapeHtml(childName)}`,
-      html,
-    });
-  } catch (err) {
-    console.error('Welcome email error:', err.message);
-  }
+  return deliver({ to, html, text, kind: 'guardian-linked', subject: `You are now linked to ${label} on KinderCura` });
 }
 
 /**
- * Notify the primary guardian that someone accepted the invitation.
+ * Tell the inviter that their invitation was accepted.
  */
 async function sendAcceptanceNotification({ to, inviterName, acceptorName, acceptorEmail, childName }) {
+  const who = acceptorName || acceptorEmail || 'Your invited guardian';
   const body = `
-    <p style="margin-bottom:18px">Hi ${escapeHtml(inviterName)},</p>
+    <p style="margin-bottom:18px">Hi ${escapeHtml(inviterName || 'there')},</p>
     <p style="margin-bottom:18px">
-      <strong>${escapeHtml(acceptorName || acceptorEmail)}</strong> has accepted your guardian invitation
-      and now has access to <strong>${escapeHtml(childName)}</strong>'s profile.
+      <strong>${escapeHtml(who)}</strong> accepted your guardian invitation
+      and is now linked to <strong>${escapeHtml(childName || 'your child')}</strong>.
     </p>
-    <div style="margin:18px 0">
-      <a href="${appUrl()}/parent/guardians"
-         class="km-btn" style="background:#6B8E6F">Manage Guardians</a>
-    </div>
+    <div style="margin:18px 0">${actionButton('Manage Guardians', `${appUrl()}/parent/guardians`)}</div>
   `;
-  const html = wrap('Invitation Accepted', `${acceptorName} accepted your invitation.`, body);
-
-  const transporter = getTransporter();
-  if (!transporter) {
-    console.log(`\n[EMAIL – ACCEPTANCE NOTIFICATION]\nTo: ${to}\n`);
-    return;
-  }
-  try {
-    await transporter.sendMail({
-      from: `"KinderCura" <${process.env.EMAIL_USER}>`,
-      to: to.trim(),
-      subject: `${acceptorName || 'Someone'} accepted your KinderCura guardian invitation`,
-      html,
-    });
-  } catch (err) {
-    console.error('Acceptance notification error:', err.message);
-  }
+  const html = wrap('Invitation Accepted', `${who} accepted your invitation.`, body);
+  return deliver({ to, html, kind: 'acceptance-notice', subject: `${who} accepted your KinderCura guardian invitation` });
 }
 
 /* ─────────────────── payment receipt ─────────────────── */
@@ -503,4 +524,5 @@ module.exports = {
   sendAcceptanceNotification,
   sendPaymentReceiptEmail,
   getTransporter,
+  acceptUrlFor,
 };

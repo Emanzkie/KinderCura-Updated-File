@@ -1,12 +1,17 @@
 // models/GuardianLink.js
 const mongoose = require('mongoose');
+const { LINK_ROLES, RELATIONSHIPS } = require('../constants/guardianLink');
 
 const guardianLinkSchema = new mongoose.Schema(
   {
     childId: { type: mongoose.Schema.Types.ObjectId, ref: 'Child', required: true, index: true },
     guardianId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     isPrimary: { type: Boolean, default: false },
-    role: { type: String, enum: ['parent', 'legal_guardian', 'foster_parent', 'court_appointed'], default: 'parent' },
+    // role = legal standing (mirrors the guardian values of User.role).
+    // relationship = family relationship picked in the UI (mother, father, nanny, ...).
+    // See constants/guardianLink.js — the two must not be mixed up.
+    role: { type: String, enum: LINK_ROLES, default: 'parent' },
+    relationship: { type: String, enum: [...RELATIONSHIPS, null], default: null },
     status: { type: String, enum: ['pending', 'active', 'revoked', 'suspended', 'archived'], default: 'pending' },
     // Embedded permissions for fast checks; permissionSet may also be referenced.
     permissions: {

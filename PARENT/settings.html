@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/css/mobile-nav.css">
     <link rel="stylesheet" href="/css/nav-drawer.css">
     <link rel="stylesheet" href="/css/parent-responsive.css">
+    <link rel="stylesheet" href="/css/guardian-management.css">
 </head>
 <body>
     <!-- Top Navigation Bar -->
@@ -205,53 +206,53 @@
 
                 <!-- Family Management -->
                 <div id="family-tab" class="parent-card" style="background: var(--bg-primary); border-radius: 15px; box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08); display: none;">
-                    <h2 style="color: var(--primary); margin-bottom: 1.5rem;">Family Management</h2>
-                    <p style="color: var(--text-light); margin-bottom: 1.5rem;">Manage family members linked to your children's accounts</p>
-
-                    <!-- Linked Guardians Section -->
-                    <div id="familyLinkedSection" style="margin-bottom: 2rem;">
-                        <h3 style="font-weight: 600; margin-bottom: 1rem;">Linked Family Members</h3>
-                        <div id="familyLinkedList">
-                            <p style="color: var(--text-light);">Select a child to view linked family members.</p>
-                        </div>
-                    </div>
+                    <h2 style="color: var(--primary); margin-bottom: 0.5rem;">Family Management</h2>
+                    <p class="gm-card-desc">Manage family members linked to your children's accounts</p>
 
                     <!-- Child selector for family management -->
-                    <div style="margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid var(--border);">
-                        <h3 style="font-weight: 600; margin-bottom: 0.8rem;">Select Child</h3>
-                        <select id="familyChildSelect" onchange="loadFamilyMembers()" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px;">
+                    <div class="gm-section">
+                        <label class="gm-section-title" for="familyChildSelect" style="display:block;">Select Child</label>
+                        <select id="familyChildSelect" class="gm-select" onchange="loadFamilyMembers()">
                             <option value="">-- Select a child --</option>
                         </select>
                     </div>
 
-                    <!-- Create Account Section (shown to primary guardians) -->
-                    <div style="margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid var(--border);">
-                        <h3 style="font-weight: 600; margin-bottom: 1rem;">Add Family Member</h3>
-                        <p style="color: var(--text-light); margin-bottom: 1rem; font-size: 0.9rem;">Create an account for a spouse or co-parent directly. They will receive login credentials via email.</p>
+                    <!-- Linked Guardians Section -->
+                    <div id="familyLinkedSection" class="gm-section">
+                        <h3 class="gm-section-title">Linked Family Members</h3>
+                        <div id="familyLinkedList">
+                            <p class="gm-empty">Select a child to view linked family members.</p>
+                        </div>
+                    </div>
 
-                        <div id="createAccountForm">
-                            <div class="settings-form-grid">
-                                <div>
-                                    <label style="font-size: 0.9rem; font-weight: 600;">First Name</label>
-                                    <input type="text" id="famFirstName" placeholder="First name" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px;">
+                    <!-- Create Account Section (primary guardians only; the server enforces it) -->
+                    <div class="gm-section">
+                        <h3 class="gm-section-title">Add Family Member</h3>
+                        <p class="gm-card-desc">Create an account for a spouse or co-parent directly. They are linked to the selected child right away and get an email confirming it. For security, the password you set is not emailed &mdash; share it with them privately. To link someone who already has a KinderCura account, send an invitation from Guardian Management instead.</p>
+
+                        <form id="createAccountForm" onsubmit="createFamilyAccount(event)" autocomplete="off" novalidate>
+                            <div class="gm-form-grid">
+                                <div class="gm-field">
+                                    <label class="gm-label" for="famFirstName">First Name</label>
+                                    <input type="text" id="famFirstName" class="gm-input" placeholder="First name" autocomplete="off">
                                 </div>
-                                <div>
-                                    <label style="font-size: 0.9rem; font-weight: 600;">Last Name</label>
-                                    <input type="text" id="famLastName" placeholder="Last name" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px;">
+                                <div class="gm-field">
+                                    <label class="gm-label" for="famLastName">Last Name</label>
+                                    <input type="text" id="famLastName" class="gm-input" placeholder="Last name" autocomplete="off">
                                 </div>
-                            </div>
-                            <div style="margin-bottom: 1rem;">
-                                <label style="font-size: 0.9rem; font-weight: 600;">Email</label>
-                                <input type="email" id="famEmail" placeholder="family@example.com" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px;">
-                            </div>
-                            <div style="margin-bottom: 1rem;">
-                                <label style="font-size: 0.9rem; font-weight: 600;">Password</label>
-                                <input type="password" id="famPassword" placeholder="Min 8 characters" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px;">
-                            </div>
-                            <div class="settings-form-grid">
-                                <div>
-                                    <label style="font-size: 0.9rem; font-weight: 600;">Relationship</label>
-                                    <select id="famRelationship" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px;">
+                                <div class="gm-field gm-field--full">
+                                    <label class="gm-label" for="famEmail">Email</label>
+                                    <input type="email" id="famEmail" class="gm-input" placeholder="family@example.com" autocomplete="off">
+                                </div>
+                                <div class="gm-field gm-field--full">
+                                    <label class="gm-label" for="famPassword">Password</label>
+                                    <!-- new-password stops the browser filling in YOUR saved password here. -->
+                                    <input type="password" id="famPassword" class="gm-input" placeholder="Min 8 characters" autocomplete="new-password">
+                                    <span class="gm-hint">They can change it later from Profile &rsaquo; Change Password.</span>
+                                </div>
+                                <div class="gm-field">
+                                    <label class="gm-label" for="famRelationship">Relationship</label>
+                                    <select id="famRelationship" class="gm-select">
                                         <option value="mother">Mother</option>
                                         <option value="father">Father</option>
                                         <option value="grandparent">Grandparent</option>
@@ -260,9 +261,9 @@
                                         <option value="other">Other</option>
                                     </select>
                                 </div>
-                                <div>
-                                    <label style="font-size: 0.9rem; font-weight: 600;">Permission Level</label>
-                                    <select id="famPermissionPreset" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px;">
+                                <div class="gm-field">
+                                    <label class="gm-label" for="famPermissionPreset">Permission Level</label>
+                                    <select id="famPermissionPreset" class="gm-select">
                                         <option value="full">Full Access</option>
                                         <option value="standard" selected>Standard Access</option>
                                         <option value="medical">Medical Only</option>
@@ -270,16 +271,18 @@
                                     </select>
                                 </div>
                             </div>
-                            <button class="btn btn-primary" onclick="createFamilyAccount()" style="padding: 0.7rem 1.5rem;">Create Account</button>
-                            <span id="createAccountMsg" style="margin-left: 1rem; font-size: 0.9rem;"></span>
-                        </div>
+                            <div class="gm-form-actions">
+                                <button type="submit" id="createAccountBtn" class="gm-btn gm-btn--primary">Create Account</button>
+                                <p id="createAccountMsg" class="gm-inline-msg" role="status" aria-live="polite"></p>
+                            </div>
+                        </form>
                     </div>
 
                     <!-- Go to Guardian Management -->
-                    <div style="background: var(--bg-primary); padding: 1.5rem; border-radius: 8px;">
-                        <h3 style="font-weight: 600; margin-bottom: 0.5rem;">Advanced Guardian Management</h3>
-                        <p style="color: var(--text-light); margin-bottom: 1rem; font-size: 0.9rem;">Manage invitations, permissions, and transfer primary guardianship.</p>
-                        <a href="/parent/guardians" class="btn btn-secondary" style="display: inline-block; padding: 0.6rem 1rem; font-size: 0.9rem; text-decoration: none;">Open Guardian Management</a>
+                    <div class="gm-section" style="background: var(--bg-secondary); padding: 1.5rem; border-radius: var(--radius-panel);">
+                        <h3 class="gm-section-title">Advanced Guardian Management</h3>
+                        <p class="gm-card-desc">Invite guardians by email, adjust permissions, revoke access, and transfer primary guardianship.</p>
+                        <a href="/parent/guardians" class="gm-btn gm-btn--secondary">Open Guardian Management</a>
                     </div>
                 </div>
 
