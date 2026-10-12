@@ -21,6 +21,7 @@ const guardianInvitationSchema = new mongoose.Schema(
       viewAssessments:    { type: Boolean, default: true },
       submitAssessments:  { type: Boolean, default: false },
       viewResults:        { type: Boolean, default: true },
+      viewRecommendations:{ type: Boolean, default: true },
       uploadDocuments:    { type: Boolean, default: false },
       manageAppointments: { type: Boolean, default: false },
       viewMedicalRecords: { type: String, enum: ['none','partial','full'], default: 'partial' },
@@ -45,7 +46,10 @@ const guardianInvitationSchema = new mongoose.Schema(
     note: { type: String, trim: true, default: null },
     // --- Email tracking ---
     sentTo: { type: String, trim: true, default: null },
+    // true only when the email provider accepted the message (not merely attempted).
     emailSent: { type: Boolean, default: false },
+    // Set once the linked-confirmation emails went out, so a retry never sends them twice.
+    acceptanceEmailSentAt: { type: Date, default: null },
     viewCount: { type: Number, default: 0 },
     viewTokenHash: { type: String, default: null }, // rotated on each page view to prevent replay
     lastViewedAt: { type: Date, default: null },
