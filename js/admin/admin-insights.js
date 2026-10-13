@@ -15,7 +15,7 @@
 // header of routes/admin-reports.js for why that distinction is load-bearing.
 //
 // Shared helpers (apiFetch, the notification modal, toggleProfileMenu) come from
-// /api.js and /assets/js/notifications.js, matching admin-reports.html. Only
+// /api.js and /notifications-card-ui.js, matching admin-reports.html. Only
 // escapeHtml is redefined locally so the escaping this page relies on is visible
 // in this file.
 

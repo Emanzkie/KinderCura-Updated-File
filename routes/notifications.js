@@ -66,6 +66,14 @@ function buildNotificationQuery(id) {
   return { $or: or };
 }
 
+// One notification, and only if it belongs to this user. Both halves are $or
+// queries, so they must be combined with $and: spreading them into one object
+// keeps only the second $or, which used to drop the id and act on whichever of
+// the user's notifications Mongo returned first.
+function buildOwnedNotificationQuery(id, userId) {
+  return { $and: [buildNotificationQuery(id), buildUserQuery(userId)] };
+}
+
 function resolveNotificationModel() {
   if (!Notification) return null;
   if (typeof Notification.find === 'function') return Notification;
@@ -284,10 +292,7 @@ router.delete('/all', authMiddleware, async (req, res) => {
 // Marks one notification as read.
 router.put('/:id/read', authMiddleware, async (req, res) => {
   try {
-    const filter = {
-      ...buildNotificationQuery(req.params.id),
-      ...buildUserQuery(req.user.userId),
-    };
+    const filter = buildOwnedNotificationQuery(req.params.id, req.user.userId);
 
     const updated = await updateOneNotification(filter, { $set: { isRead: true } });
 
@@ -308,10 +313,7 @@ router.put('/:id/read', authMiddleware, async (req, res) => {
 // Removes one notification from the user's list.
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    const filter = {
-      ...buildNotificationQuery(req.params.id),
-      ...buildUserQuery(req.user.userId),
-    };
+    const filter = buildOwnedNotificationQuery(req.params.id, req.user.userId);
 
     await deleteOneNotification(filter);
     res.json({ success: true });

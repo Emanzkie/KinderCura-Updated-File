@@ -1,4 +1,13 @@
-/* ==================== Standard Notification Modal ==================== */
+/* ==================== Standard Notification Modal ====================
+   The one bell modal for every role (parent, pediatrician, admin, secretary).
+   Markup is #notificationsModal on each page; behaviour is
+   /notifications-card-ui.js. The parent modal is the visual reference. */
+
+/* Page behind the open modal does not scroll. */
+html.kc-notifications-open,
+html.kc-notifications-open body {
+    overflow: hidden;
+}
 
 .notification-btn .notification-icon {
     width: 24px;
@@ -38,6 +47,13 @@
     background: var(--bg-primary);
     border-radius: 12px;
     box-shadow: 0 20px 60px rgba(61, 71, 56, 0.28);
+}
+
+/* Role stylesheets (e.g. secretary-responsive.css) widen .notifications-content
+   at tablet sizes; the bell modal keeps the parent reference width everywhere. */
+#notificationsModal .notifications-content {
+    width: min(92vw, 560px);
+    max-width: 100%;
 }
 
 .notification-modal-header,
@@ -82,12 +98,55 @@
     color: var(--text-dark);
 }
 
+#notificationsModal .notif-close:focus-visible,
+.mark-all-read-btn:focus-visible,
+.clear-all-btn:focus-visible,
+.notif-open-link:focus-visible,
+.notif-delete:focus-visible,
+.notif-retry-btn:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
 .notification-action-bar,
 .clear-all-row {
     padding: 0.85rem 1.5rem;
     text-align: right;
     border-bottom: 1px solid var(--border);
     background: var(--bg-primary);
+}
+
+#notificationsModal .notification-action-bar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    flex: 0 0 auto;
+}
+
+.mark-all-read-btn {
+    border: 1px solid var(--border);
+    background: var(--bg-primary);
+    color: var(--primary);
+    padding: 0.45rem 0.85rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1.25;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.mark-all-read-btn:hover:not(:disabled) {
+    background: var(--bg-secondary);
+    border-color: var(--primary-light);
+    color: var(--primary-dark);
+}
+
+.mark-all-read-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
 }
 
 .clear-all-btn {
@@ -97,8 +156,10 @@
     padding: 0.45rem 0.85rem;
     border-radius: 8px;
     cursor: pointer;
+    font: inherit;
     font-size: 0.85rem;
     font-weight: 600;
+    line-height: 1.25;
     transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
@@ -148,6 +209,37 @@
     margin: 0;
 }
 
+.notifications-retry {
+    text-align: center;
+    margin: 0;
+}
+
+.notif-retry-btn {
+    border: 1px solid var(--border);
+    background: var(--bg-primary);
+    color: var(--primary);
+    padding: 0.45rem 0.85rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+/* Text for screen readers only (e.g. "(unread)" after a title). */
+.notif-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 .notification-card {
     display: flex;
     align-items: flex-start;
@@ -181,6 +273,15 @@
     gap: 0.85rem;
     cursor: pointer;
     outline: none;
+}
+
+#notificationsModal .notification-card-main {
+    cursor: default;
+}
+
+#notificationsModal .notification-card-main.has-target,
+#notificationsModal .notification-card.unread .notification-card-main {
+    cursor: pointer;
 }
 
 .notification-card-main:focus-visible {
@@ -237,10 +338,15 @@
 
 .notif-open-link {
     display: inline-block;
+    border: none;
+    background: none;
+    padding: 0;
     color: var(--primary);
     cursor: pointer;
+    font: inherit;
     font-size: 0.8rem;
     font-weight: 700;
+    text-align: left;
 }
 
 .notif-open-link:hover {
@@ -268,6 +374,12 @@
     color: var(--text-dark);
 }
 
+.notif-delete:disabled,
+.notif-open-link:disabled {
+    cursor: wait;
+    opacity: 0.5;
+}
+
 @media (max-width: 768px) {
     .notification-modal,
     .notifications-modal {
@@ -286,6 +398,12 @@
     .notifications-list {
         max-height: 62vh;
         padding: 0.85rem;
+    }
+
+    /* Role stylesheets load later and resize .notifications-list; the bell
+       list keeps one height on every role. */
+    #notificationsModal #notificationsList {
+        max-height: 62vh;
     }
 
     .notification-card {

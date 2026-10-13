@@ -76,59 +76,6 @@ function initNav() {
     loadNotificationCount();
 }
 
-async function loadNotificationCount() {
-    try {
-        const data = await apiFetch('/notifications/count');
-        const badge = document.querySelector('.notification-badge');
-        if (badge) {
-            badge.textContent = data.unread || 0;
-            badge.style.display = data.unread > 0 ? 'flex' : 'none';
-        }
-    } catch (e) {}
-}
-
-async function openNotifications() {
-    const m = document.getElementById('notificationsModal');
-    if (m) {
-        m.style.display = 'flex';
-        const list = document.querySelector('.notifications-list');
-        if (list) {
-            list.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1rem;">Loading…</p>';
-            try {
-                const data = await apiFetch('/notifications');
-                const notifs = data.notifications || [];
-                if (notifs.length === 0) {
-                    list.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:2rem;">No notifications yet.</p>';
-                } else {
-                    list.innerHTML = notifs.map(n => `
-                        <div style="padding:1rem;border-bottom:1px solid var(--border);${n.isRead?'':'background:var(--surface-tint);'}" onclick="markRead(${n.id},this)">
-                            <p style="font-weight:${n.isRead?'400':'600'};margin:0 0 .3rem;color:var(--text-dark);">${n.title}</p>
-                            <p style="font-size:.82rem;color:var(--text-light);margin:0 0 .3rem;">${n.message||''}</p>
-                            <p style="font-size:.75rem;color:var(--text-light);margin:0;">${new Date(n.createdAt).toLocaleString()}</p>
-                        </div>`).join('');
-                    apiFetch('/notifications/read-all', { method: 'PUT' }).then(() => loadNotificationCount());
-                }
-            } catch (e) {
-                list.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1rem;">Could not load notifications.</p>';
-            }
-        }
-    }
-}
-
-async function markRead(id, el) {
-    try {
-        await apiFetch(`/notifications/${id}/read`, { method: 'PUT' });
-        el.style.background = '';
-        el.querySelector('p').style.fontWeight = '400';
-        loadNotificationCount();
-    } catch (e) {}
-}
-
-function closeNotifications() {
-    const m = document.getElementById('notificationsModal');
-    if (m) m.style.display = 'none';
-}
-
 function toggleProfileMenu() {
     const menu = document.getElementById('profileMenu');
     if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none';

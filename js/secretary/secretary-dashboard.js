@@ -167,10 +167,6 @@
             }
         }
 
-        // ── Notification bell ────────────────────────────────────────────────
-        function openNotifications()  { loadNotificationCount(); document.getElementById('notificationsModal').style.display = 'flex'; }
-        function closeNotifications() { document.getElementById('notificationsModal').style.display = 'none'; }
-
         // ── Profile menu toggle ──────────────────────────────────────────────
         function toggleProfileMenu() {
             const m = document.getElementById('profileMenu');

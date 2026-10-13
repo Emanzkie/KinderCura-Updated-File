@@ -132,14 +132,15 @@
 </div>
 
 <!-- Notifications modal -->
-<div class="notification-modal notifications-modal" id="notificationsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle">
+<div class="notification-modal notifications-modal" id="notificationsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle" aria-hidden="true">
     <div class="notification-modal-content notifications-content" role="document">
         <div class="notification-modal-header notifications-header">
             <h3 id="notificationsTitle">Notifications</h3>
             <button type="button" class="notif-close close-btn" onclick="closeNotifications()" aria-label="Close notifications">&times;</button>
         </div>
         <div class="notification-action-bar clear-all-row">
-            <button type="button" class="clear-all-btn" id="clearNotificationsBtn" onclick="clearAllNotifications()">Clear all</button>
+            <button type="button" class="mark-all-read-btn" id="markAllNotificationsReadBtn" onclick="markAllNotificationsRead()" disabled>Mark all read</button>
+            <button type="button" class="clear-all-btn" id="clearNotificationsBtn" onclick="clearAllNotifications()" disabled>Clear all</button>
         </div>
         <div class="notification-list notifications-list" id="notificationsList" role="list">
             <p class="notifications-empty">Loading...</p>

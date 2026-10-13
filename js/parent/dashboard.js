@@ -228,180 +228,9 @@ function renderRecs(recs) {
         </div>`).join('');
 }
 
-function notificationDestination(n) {
-    const relatedPage = String(n?.relatedPage || '').trim();
-    if (relatedPage) return relatedPage;
-
-    const title = String(n?.title || '').toLowerCase();
-    const type = String(n?.type || '').toLowerCase();
-    const msg = String(n?.message || '').toLowerCase();
-
-    if (title.includes('review completed') || title.includes('diagnosis') || msg.includes('diagnosis') || msg.includes('open results')) return '/parent/results.html';
-    if (title.includes('recommendation') || msg.includes('recommendation')) return '/parent/recommendations.html';
-    if (type === 'appointment' || title.includes('appointment') || msg.includes('appointment')) return '/parent/appointments.html';
-    if (type === 'chat' || title.includes('chat') || title.includes('message') || msg.includes('message from')) return '/parent/chat.html';
-    if (type === 'assessment' || title.includes('assessment question') || title.includes('custom question') || title.includes('new assessment question') || title.includes('question assigned') || msg.includes('assigned a new custom question')) return '/parent/custom-questions.html';
-    return '/parent/dashboard.html';
-}
-
-async function loadNotificationCount() {
-    const badge = document.getElementById('notifCount');
-    if (!badge) return;
-
-    try {
-        const data = await apiFetch('/notifications/count');
-        const unread = data.unread || 0;
-        badge.textContent = unread;
-        badge.style.display = unread > 0 ? 'flex' : 'none';
-    } catch {
-        badge.textContent = '0';
-        badge.style.display = 'none';
-    }
-}
-
-async function deleteNotification(id) {
-    if (!id) return;
-
-    try {
-        await apiFetch(`/notifications/${encodeURIComponent(id)}`, { method: 'DELETE' });
-        await loadNotificationCount();
-        await loadNotifPreview();
-        await openNotifications();
-    } catch (err) {
-        alert('Could not delete notification: ' + err.message);
-    }
-}
-
-async function clearAllNotifications() {
-    const button = document.getElementById('clearNotificationsBtn');
-    if (button) button.disabled = true;
-
-    try {
-        await apiFetch('/notifications/all', { method: 'DELETE' });
-        await loadNotificationCount();
-        await loadNotifPreview();
-        await openNotifications();
-    } catch (err) {
-        alert('Could not clear notifications: ' + err.message);
-        if (button) button.disabled = false;
-    }
-}
-
-async function openNotificationTarget(id, target) {
-    if (id) {
-        try {
-            await apiFetch(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PUT' });
-            await loadNotificationCount();
-        } catch {}
-    }
-
-    if (!target) return;
-    if (typeof applyNotificationContext === 'function') applyNotificationContext(target);
-    window.location.href = target;
-}
-
-async function openNotifications() {
-    const modal = document.getElementById('notificationsModal');
-    if (!modal) return;
-
-    modal.style.display = 'flex';
-
-    const list = document.getElementById('notificationsList');
-    const clearButton = document.getElementById('clearNotificationsBtn');
-    if (!list) return;
-
-    list.innerHTML = '<p class="notifications-empty">Loading...</p>';
-    list.onclick = null;
-    list.onkeydown = null;
-
-    try {
-        const data = await apiFetch('/notifications');
-        const notifications = Array.isArray(data.notifications) ? data.notifications : [];
-        if (clearButton) clearButton.disabled = notifications.length === 0;
-
-        if (!notifications.length) {
-            list.innerHTML = '<p class="notifications-empty">No notifications yet.</p>';
-            await loadNotificationCount();
-            return;
-        }
-
-        const esc = typeof escapeHtml === 'function' ? escapeHtml : (value) => String(value ?? '');
-        const format = typeof formatDateTime === 'function'
-            ? formatDateTime
-            : (value) => value ? new Date(value).toLocaleString() : '';
-
-        notifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        list.innerHTML = notifications.map(n => {
-            const target = notificationDestination(n);
-            const id = String(n.id ?? '');
-            const cardClass = n.isRead ? 'notification-card' : 'notification-card unread';
-            return `
-                <div class="${cardClass}" role="listitem">
-                    <div class="notification-card-main" data-notification-id="${esc(id)}" data-notification-target="${esc(target)}" tabindex="0" role="button" aria-label="Open notification">
-                        <span class="notification-card-icon" aria-hidden="true">!</span>
-                        <div class="notification-card-copy">
-                            <p class="notification-card-title">${esc(n.title || 'Notification')}</p>
-                            <p class="notification-card-message">${esc(n.message || '')}</p>
-                            <p class="notification-card-time">${esc(format(n.createdAt))}</p>
-                            <span class="notification-open-link" data-open-notification-id="${esc(id)}" data-open-target="${esc(target)}">Open related page -&gt;</span>
-                        </div>
-                    </div>
-                    <button type="button" class="notification-delete-btn" data-delete-notification-id="${esc(id)}" aria-label="Delete notification">X</button>
-                </div>`;
-        }).join('');
-
-        const handleNotificationOpen = async (item) => {
-            if (!item) return;
-
-            const id = item.getAttribute('data-notification-id');
-            const target = item.getAttribute('data-notification-target');
-            await openNotificationTarget(id, target);
-        };
-
-        list.onclick = async (event) => {
-            const deleteButton = event.target.closest('[data-delete-notification-id]');
-            if (deleteButton) {
-                event.preventDefault();
-                event.stopPropagation();
-                await deleteNotification(deleteButton.getAttribute('data-delete-notification-id'));
-                return;
-            }
-
-            const openLink = event.target.closest('[data-open-notification-id]');
-            if (openLink) {
-                event.preventDefault();
-                event.stopPropagation();
-                await openNotificationTarget(
-                    openLink.getAttribute('data-open-notification-id'),
-                    openLink.getAttribute('data-open-target')
-                );
-                return;
-            }
-
-            await handleNotificationOpen(event.target.closest('[data-notification-id]'));
-        };
-
-        list.onkeydown = async (event) => {
-            if (event.key !== 'Enter' && event.key !== ' ') return;
-            const item = event.target.closest('[data-notification-id]');
-            if (!item) return;
-            event.preventDefault();
-            await handleNotificationOpen(item);
-        };
-
-        apiFetch('/notifications/read-all', { method: 'PUT' }).then(() => loadNotificationCount()).catch(() => {});
-    } catch {
-        if (clearButton) clearButton.disabled = true;
-        list.innerHTML = '<p class="notifications-empty">Could not load notifications.</p>';
-    }
-}
-
-function closeNotifications() {
-    const modal = document.getElementById('notificationsModal');
-    if (!modal) return;
-
-    modal.style.display = 'none';
-}
+// The bell modal (notifications-card-ui.js) announces dismiss / clear / mark
+// read, so this preview never keeps showing a notification that is gone.
+document.addEventListener('kc:notifications-changed', () => { loadNotifPreview(); });
 
 async function loadNotifPreview() {
     try {
@@ -417,10 +246,12 @@ async function loadNotifPreview() {
         }
 
         preview.innerHTML = notifications.slice(0,3).map(n => {
-            const target = notificationDestination(n) || '/parent/appointments.html';
-            return `<div onclick="window.location.href='${target}'" style="cursor:pointer;padding:1rem;background:var(--bg-primary);border-radius:8px;border-left:4px solid ${n.isRead ? 'var(--border)' : 'var(--primary)'};">
-                <div style="font-weight:600;margin-bottom:0.3rem;">${n.title}</div>
-                <div style="font-size:0.85rem;color:var(--text-light);">${n.message || ''}</div>
+            // No related page: the card is informational and not clickable.
+            const target = notificationDestination(n);
+            const link = target ? `onclick="window.location.href=this.dataset.href" data-href="${escapeHtml(target)}" ` : '';
+            return `<div ${link}style="cursor:${target ? 'pointer' : 'default'};padding:1rem;background:var(--bg-primary);border-radius:8px;border-left:4px solid ${n.isRead ? 'var(--border)' : 'var(--primary)'};">
+                <div style="font-weight:600;margin-bottom:0.3rem;">${escapeHtml(n.title)}</div>
+                <div style="font-size:0.85rem;color:var(--text-light);">${escapeHtml(n.message || '')}</div>
             </div>`;
         }).join('');
 

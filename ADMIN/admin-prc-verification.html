@@ -140,14 +140,15 @@
     <div class="prc-toast-container" id="prcToastContainer"></div>
 
     <!-- Notifications Modal -->
-    <div class="notification-modal notifications-modal" id="notificationsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle">
+    <div class="notification-modal notifications-modal" id="notificationsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle" aria-hidden="true">
         <div class="notification-modal-content notifications-content" role="document">
             <div class="notification-modal-header notifications-header">
                 <h3 id="notificationsTitle">Notifications</h3>
                 <button type="button" class="notif-close close-btn" onclick="closeNotifications()" aria-label="Close notifications">&times;</button>
             </div>
             <div class="notification-action-bar clear-all-row">
-                <button type="button" class="clear-all-btn" id="clearNotificationsBtn" onclick="clearAllNotifications()">Clear all</button>
+                <button type="button" class="mark-all-read-btn" id="markAllNotificationsReadBtn" onclick="markAllNotificationsRead()" disabled>Mark all read</button>
+                <button type="button" class="clear-all-btn" id="clearNotificationsBtn" onclick="clearAllNotifications()" disabled>Clear all</button>
             </div>
             <div class="notification-list notifications-list" id="notificationsList" role="list">
                 <p class="notifications-empty">Loading...</p>
@@ -158,7 +159,6 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/api.js"></script>
     <script src="/notifications-card-ui.js"></script>
-    <script src="/assets/js/notifications.js"></script>
     <script src="/assets/js/admin-nav.js"></script>
     <script src="/js/shared/mobile-nav.js"></script>
     <script src="/assets/js/prc-verification.js"></script>

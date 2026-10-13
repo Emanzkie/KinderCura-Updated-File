@@ -28,14 +28,6 @@ function switchTab(tab) {
             menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
         }
 
-        function openNotifications() {
-            document.getElementById('notificationsModal').style.display = 'flex';
-        }
-
-        function closeNotifications() {
-            document.getElementById('notificationsModal').style.display = 'none';
-        }
-
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.profile-btn')) {
                 document.getElementById('profileMenu').style.display = 'none';

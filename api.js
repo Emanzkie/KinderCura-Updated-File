@@ -1,7 +1,7 @@
 // api.js - shared helpers for KinderCura
 // Important:
 // - keeps login/session helpers in one place
-// - keeps parent/pedia notification bell behavior consistent on every page
+// - decides where a notification leads (notificationDestination) and keeps the bell badge count current
 // - keeps parent child/assessment context in sync across dashboard, results, and recommendations
 // - refreshes the saved user from /auth/me so the latest profile picture appears after signup/profile updates
 
@@ -134,13 +134,6 @@ function getNotificationBadge() {
     return document.querySelector('.notification-badge') || document.getElementById('notificationBadge') || null;
 }
 
-// Returns the modal list container used to render notification items.
-// Parent and admin pages both use the same .notifications-list container.
-function getNotificationList(modal) {
-    if (!modal) return null;
-    return modal.querySelector('.notifications-list') || modal.querySelector('#notificationsList') || null;
-}
-
 // Parent pages use one selected child at a time.
 // These helpers keep dashboard/results/recommendations in sync.
 function setParentContext(childId, assessmentId = null) {
@@ -188,62 +181,69 @@ function calcAgeDisplay(dob) {
         : `${m} month${m !== 1 ? 's' : ''}`;
 }
 
-// Decide where a notification should send the current user.
-// If the backend saved an exact relatedPage, use that first.
+// Appends the id a target page knows how to open. Only pages that actually read
+// the parameter get one: the pediatrician appointments page focuses the card
+// for ?appointmentId=, and the admin PRC page opens the review for
+// ?pediatricianId= (the pediatrician's user _id, which auth.js stores as
+// relatedId on "New PRC Verification Request").
+function notificationDeepLink(page, relatedId) {
+    if (!relatedId || page.includes('?')) return page;
+    const path = page.split('#')[0].toLowerCase();
+    if (path === '/pedia/pediatrician-appointments.html') return `${page}?appointmentId=${encodeURIComponent(relatedId)}`;
+    if (path === '/admin/prc-verification') return `${page}?pediatricianId=${encodeURIComponent(relatedId)}`;
+    return page;
+}
+
+// Decide where a notification should send the current user. The backend's
+// relatedPage wins; otherwise the title/type decide, per role. Returns null
+// when no page fits, and the bell then only marks the notification read
+// instead of sending the user somewhere unrelated.
 function notificationDestination(n) {
     const role = String(KC.user()?.role || '').toLowerCase();
-    const path = window.location.pathname.toLowerCase();
     const title = String(n?.title || '').toLowerCase();
     const type = String(n?.type || '').toLowerCase();
     const msg = String(n?.message || '').toLowerCase();
     const relatedPage = String(n?.relatedPage || '').trim();
+    const relatedId = String(n?.relatedId ?? '').trim();
+    const says = (...words) => words.some((w) => title.includes(w) || msg.includes(w));
 
-    if (relatedPage) {
-        return relatedPage;
+    if (relatedPage) return notificationDeepLink(relatedPage, relatedId);
+
+    if (role === 'admin') {
+        if (type === 'prc_verification' || title.includes('prc') || title.includes('license') || says('prc verification', 'pediatrician registration')) {
+            return notificationDeepLink('/admin/prc-verification', relatedId);
+        }
+        if (title.includes('pending') || title.includes('registration') || says('approval')) return '/admin/admin-users.html';
+        if (type === 'payment' || title.includes('payment')) return '/admin/payments';
+        return null;
     }
 
     if (role === 'pediatrician') {
+        if (type === 'payment' || title.includes('payment')) return notificationDeepLink('/pedia/pediatrician-appointments.html', relatedId);
         if (type === 'chat' || title.includes('message') || msg.includes('message from')) return '/pedia/pedia-chat.html';
-        if (type === 'appointment' || title.includes('appointment') || msg.includes('appointment')) return '/pedia/pediatrician-appointments.html';
-        if (title.includes('custom question') || title.includes('assessment question') || title.includes('question answered') || type === 'assessment') return '/pedia/pedia-questions.html';
-        if (title.includes('diagnosis') || title.includes('review') || title.includes('recommendation')) return '/pedia/pediatrician-patients.html';
-        return '/pedia/pediatrician-dashboard.html';
+        if (type === 'appointment' || says('appointment')) return '/pedia/pediatrician-appointments.html';
+        if (type === 'assessment' || title.includes('custom question') || title.includes('assessment question') || title.includes('question answered') || title.includes('question set')) return '/pedia/pedia-questions.html';
+        if (says('diagnosis', 'recommendation') || title.includes('review')) return '/pedia/pediatrician-patients.html';
+        return null;
     }
 
     if (role === 'secretary') {
-        if (type === 'appointment' || title.includes('appointment') || msg.includes('appointment')) {
-            return title.includes('request') || msg.includes('request')
-                ? '/secretary/secretary-approval.html'
-                : '/secretary/secretary-appointments.html';
+        if (type === 'appointment' || says('appointment')) {
+            return says('request') ? '/secretary/secretary-approval.html' : '/secretary/secretary-appointments.html';
         }
-        if (title.includes('patient') || msg.includes('patient')) return '/secretary/secretary-patients.html';
-        return '/secretary/secretary-dashboard.html';
+        if (says('patient')) return '/secretary/secretary-patients.html';
+        return null;
     }
 
-    // PRC Verification notifications route to the admin verification page
-    if (role === 'admin' || path.includes('/admin/')) {
-        if (title.includes('prc') || title.includes('verification') || title.includes('license') || type === 'prc_verification' || msg.includes('prc verification') || msg.includes('pediatrician registration')) {
-            var pediaId = n && n.relatedId ? Number(n.relatedId) : null;
-            return pediaId ? '/admin/prc-verification?pediatricianId=' + pediaId : '/admin/prc-verification';
-        }
-    }
-
-    if (title.includes('review completed') || title.includes('diagnosis') || msg.includes('diagnosis') || msg.includes('open results')) {
-        return '/parent/results.html';
-    }
-    if (title.includes('recommendation') || msg.includes('recommendation')) {
-        return '/parent/recommendations.html';
-    }
-    if (type === 'appointment' || title.includes('appointment') || msg.includes('appointment')) {
-        return '/parent/appointments.html';
-    }
-    if (type === 'chat' || title.includes('message') || msg.includes('message from')) {
-        return '/parent/chat.html';
-    }
-    if (type === 'assessment' || title.includes('assessment question') || title.includes('custom question') || title.includes('new assessment question') || title.includes('question assigned') || msg.includes('assigned a new custom question')) {
+    // Parent and the other guardian roles share the /parent pages.
+    if (title.includes('review completed') || says('diagnosis', 'open results') || title.includes('result')) return '/parent/results.html';
+    if (says('recommendation')) return '/parent/recommendations.html';
+    if (type === 'payment' || type === 'appointment' || says('appointment')) return '/parent/appointments.html';
+    if (type === 'chat' || title.includes('message') || msg.includes('message from')) return '/parent/chat.html';
+    if (type === 'assessment' || title.includes('assessment question') || title.includes('custom question') || title.includes('question assigned') || msg.includes('assigned a new custom question')) {
         return '/parent/custom-questions.html';
     }
-    return '/parent/dashboard.html';
+    return null;
 }
 
 // When a notification already knows the exact child/assessment, store that context
@@ -402,162 +402,8 @@ async function loadNotificationCount() {
     }
 }
 
-async function markNotificationRead(id) {
-    try {
-        await apiFetch(`/notifications/${id}/read`, { method: 'PUT' });
-        await loadNotificationCount();
-    } catch {}
-}
-
-async function deleteNotification(id) {
-    if (!confirm('Remove this notification?')) return;
-    try {
-        await apiFetch(`/notifications/${id}`, { method: 'DELETE' });
-        await openNotifications();
-        await loadNotificationCount();
-    } catch (err) {
-        alert('Could not remove notification: ' + err.message);
-    }
-}
-
-async function clearAllNotifications() {
-    if (!confirm('Clear all notifications?')) return;
-    try {
-        await apiFetch('/notifications/clear-all', { method: 'DELETE' });
-        await openNotifications();
-        await loadNotificationCount();
-    } catch (err) {
-        alert('Could not clear notifications: ' + err.message);
-    }
-}
-
-async function markAllNotificationsRead() {
-    try {
-        await apiFetch('/notifications/read-all', { method: 'PUT' });
-        await openNotifications();
-        await loadNotificationCount();
-    } catch (err) {
-        alert('Could not mark notifications as read: ' + err.message);
-    }
-}
-
-// Mark read first, then move to the related page
-async function goToNotificationTarget(id, target) {
-    await markNotificationRead(id);
-    applyNotificationContext(target);
-    window.location.href = target;
-}
-
-// Shared notification modal renderer used by parent and pediatrician pages.
-// The related-page action uses data attributes plus one delegated click handler
-// so URLs with childId/assessmentId query params stay safe and clickable.
-async function openNotifications() {
-    const modal = document.getElementById('notificationsModal');
-    const listEl = getNotificationList(modal);
-    if (!modal || !listEl) return;
-
-    modal.style.display = 'flex';
-    listEl.innerHTML = '<p style="text-align:center;color:#888;padding:1rem;">Loading...</p>';
-    listEl.onclick = null;
-
-    try {
-        const data = await apiFetch('/notifications');
-        const notifications = Array.isArray(data.notifications) ? data.notifications : [];
-
-        if (!notifications.length) {
-            listEl.innerHTML = '<p style="text-align:center;color:#888;padding:1.5rem;">No notifications yet.</p>';
-            return;
-        }
-
-        const hasUnread = notifications.some((n) => !n.isRead);
-        const tools = `
-            <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem;border-bottom:1px solid var(--border);background:white;position:sticky;top:0;z-index:1;">
-                ${hasUnread ? '<button onclick="markAllNotificationsRead()" style="border:1px solid var(--border);background:white;color:var(--primary);padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Mark all read</button>' : ''}
-                <button onclick="clearAllNotifications()" style="border:1px solid #e6b0b0;background:white;color:#c0392b;padding:.45rem .8rem;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Clear all</button>
-            </div>`;
-
-        const items = notifications.map((n) => {
-            const dest = notificationDestination(n);
-            const unreadStyle = n.isRead ? '' : 'background:#f0f7f0;border-left:3px solid var(--primary);';
-            const safeId = escapeHtml(String(n.id ?? ''));
-            const safeDest = escapeHtml(String(dest || ''));
-
-            return `
-                <div class="notification-item" style="display:flex;gap:.75rem;align-items:flex-start;justify-content:space-between;padding:1rem;border-bottom:1px solid var(--border);${unreadStyle}">
-                    <div
-                        data-notification-id="${safeId}"
-                        ${dest ? `data-notification-target="${safeDest}"` : ''}
-                        style="flex:1;cursor:${dest ? 'pointer' : 'default'};min-width:0;"
-                    >
-                        <p style="font-weight:${n.isRead ? '400' : '700'};font-size:.9rem;margin:0 0 .2rem;color:var(--text-dark);">${escapeHtml(n.title || '')}</p>
-                        <p style="font-size:.82rem;color:#555;margin:0 0 .25rem;line-height:1.45;">${escapeHtml(n.message || '')}</p>
-                        <p style="font-size:.75rem;color:#aaa;margin:0;">${formatDateTime(n.createdAt)}</p>
-                        ${dest ? `
-                            <button
-                                type="button"
-                                data-open-notification-id="${safeId}"
-                                data-open-target="${safeDest}"
-                                style="margin-top:.45rem;border:none;background:none;color:var(--primary);padding:0;cursor:pointer;font-size:.78rem;font-weight:600;"
-                            >
-                                Open related page ->
-                            </button>` : ''}
-                    </div>
-                    <button
-                        type="button"
-                        data-delete-notification-id="${safeId}"
-                        title="Remove notification"
-                        style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:1rem;line-height:1;padding:.15rem .25rem;"
-                    >
-                        X
-                    </button>
-                </div>`;
-        }).join('');
-
-        listEl.innerHTML = tools + items;
-
-        listEl.onclick = async (event) => {
-            const deleteBtn = event.target.closest('[data-delete-notification-id]');
-            if (deleteBtn) {
-                event.preventDefault();
-                event.stopPropagation();
-                await deleteNotification(deleteBtn.getAttribute('data-delete-notification-id'));
-                return;
-            }
-
-            const openBtn = event.target.closest('[data-open-notification-id]');
-            if (openBtn) {
-                event.preventDefault();
-                event.stopPropagation();
-                await goToNotificationTarget(
-                    openBtn.getAttribute('data-open-notification-id'),
-                    openBtn.getAttribute('data-open-target')
-                );
-                return;
-            }
-
-            const item = event.target.closest('[data-notification-id]');
-            if (!item) return;
-
-            const notificationId = item.getAttribute('data-notification-id');
-            const target = item.getAttribute('data-notification-target');
-
-            if (target) {
-                await goToNotificationTarget(notificationId, target);
-            } else {
-                await markNotificationRead(notificationId);
-                await openNotifications();
-            }
-        };
-    } catch {
-        listEl.innerHTML = '<p style="text-align:center;color:#888;padding:1rem;">Could not load notifications.</p>';
-        listEl.onclick = null;
-    }
-}
-
-function closeNotifications() {
-    const modal = document.getElementById('notificationsModal');
-    if (modal) modal.style.display = 'none';
-}
+// The bell modal itself (open, close, dismiss, mark all read, clear all) lives
+// in /notifications-card-ui.js, which every page with a bell loads after this file.
 
 function toggleProfileMenu() {
     const menu = document.getElementById('profileMenu');
@@ -604,12 +450,4 @@ document.addEventListener('DOMContentLoaded', () => {
             logout();
         });
     });
-});
-
-// Close the notifications modal when clicking the dark backdrop.
-document.addEventListener('click', (e) => {
-    const modal = document.getElementById('notificationsModal');
-    if (modal && e.target === modal) {
-        closeNotifications();
-    }
 });

@@ -1,26 +1,31 @@
+// notifications-card-ui.js — the one notification bell + modal controller.
+//
+// Every role (parent, pediatrician, admin, secretary) loads this after api.js
+// and uses the same markup (#notificationsModal / #notificationsList), so the
+// bell behaves and looks the same everywhere. Page scripts must NOT declare
+// their own openNotifications()/closeNotifications()/clearAllNotifications()…:
+// a top-level function declaration in a later classic script silently replaces
+// these, which is how most admin and pediatrician pages ended up with an older
+// renderer and how some bells stopped opening at all.
+//
+// Server routes (routes/notifications.js), all scoped to the signed-in user:
+//   GET    /notifications            list
+//   PUT    /notifications/:id/read   mark one read
+//   PUT    /notifications/read-all   mark all read
+//   DELETE /notifications/:id        dismiss one (deletes it)
+//   DELETE /notifications/clear-all  clear all (deletes them)
+// Where a notification leads is decided by notificationDestination() in api.js.
 (() => {
-    const sampleNotificationData = [
-        {
-            id: 'sample-appointment',
-            title: 'Appointment reminder',
-            message: 'Your upcoming appointment details are ready to review.',
-            type: 'appointment',
-            relatedPage: '/parent/appointments.html',
-            isRead: false,
-            createdAt: new Date().toISOString()
-        },
-        {
-            id: 'sample-results',
-            title: 'Assessment review completed',
-            message: 'A pediatrician has completed a review for the latest assessment.',
-            type: 'assessment',
-            relatedPage: '/parent/results.html',
-            isRead: true,
-            createdAt: new Date(Date.now() - 3600000).toISOString()
-        }
-    ];
+    if (window.__kcNotificationsReady) return;
+    window.__kcNotificationsReady = true;
 
-    window.KC_SAMPLE_NOTIFICATIONS = window.KC_SAMPLE_NOTIFICATIONS || sampleNotificationData;
+    const state = {
+        items: [],
+        loaded: false,  // true only after a successful load
+        busy: false,    // a mark/clear/dismiss request is in flight
+        loadToken: 0,   // ignores responses from an older open
+        lastFocus: null,
+    };
 
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
         '&': '&amp;',
@@ -30,14 +35,15 @@
         "'": '&#39;'
     }[ch]));
 
+    // Same format as the parent reference modal, e.g. "10/11/2026, 11:30 PM".
     const fmt = (value) => {
         if (!value) return '';
         const d = new Date(value);
-        if (Number.isNaN(d.getTime())) return String(value);
+        if (Number.isNaN(d.getTime())) return '';
         return d.toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
             year: 'numeric',
+            month: 'numeric',
+            day: 'numeric',
             hour: 'numeric',
             minute: '2-digit'
         });
@@ -46,234 +52,326 @@
     const getModal = () => document.getElementById('notificationsModal');
     const getList = () => document.getElementById('notificationsList') || document.querySelector('#notificationsModal .notifications-list');
     const getClearButton = () => document.getElementById('clearNotificationsBtn');
-    const canUseApi = () => typeof window.apiFetch === 'function';
+    const getMarkAllButton = () => document.getElementById('markAllNotificationsReadBtn');
+    const isOpen = () => {
+        const modal = getModal();
+        return Boolean(modal && modal.classList.contains('is-open'));
+    };
 
-    function notificationTarget(n) {
-        if (typeof window.notificationDestination === 'function') return window.notificationDestination(n);
-        const related = String(n?.relatedPage || '').trim();
-        if (related) return related;
+    const idOf = (n) => String(n?.id ?? n?._id ?? '');
+    const findItem = (id) => state.items.find((n) => idOf(n) === String(id));
 
-        const path = window.location.pathname.toLowerCase();
-        const role = String(window.KC?.user?.()?.role || '').toLowerCase();
-        const title = String(n?.title || '').toLowerCase();
-        const type = String(n?.type || '').toLowerCase();
-        const msg = String(n?.message || '').toLowerCase();
-
-        if (role === 'admin' || path.includes('/admin/')) {
-            if (title.includes('prc') || title.includes('verification') || title.includes('license') || type === 'prc_verification' || msg.includes('prc verification') || msg.includes('pediatrician registration')) {
-                var pediaId = n && n.relatedId ? Number(n.relatedId) : null;
-                return pediaId ? '/admin/prc-verification?pediatricianId=' + pediaId : '/admin/prc-verification';
-            }
-            if (title.includes('user') || msg.includes('user')) return '/admin/admin-users.html';
-            if (title.includes('report') || msg.includes('report')) return '/admin/admin-reports.html';
-            if (title.includes('training') || msg.includes('training')) return '/admin/admin-training.html';
-            if (title.includes('setting') || msg.includes('setting')) return '/admin/admin-settings.html';
-            return '/admin/admin-dashboard.html';
-        }
-
-        if (role === 'pediatrician' || path.includes('/pedia/')) {
-            if (type === 'chat' || title.includes('message') || msg.includes('message from')) return '/pedia/pedia-chat.html';
-            if (type === 'appointment' || title.includes('appointment') || msg.includes('appointment')) return '/pedia/pediatrician-appointments.html';
-            if (title.includes('question') || type === 'assessment') return '/pedia/pedia-questions.html';
-            if (title.includes('diagnosis') || title.includes('review') || title.includes('recommendation')) return '/pedia/pediatrician-patients.html';
-            return '/pedia/pediatrician-dashboard.html';
-        }
-
-        if (title.includes('review completed') || title.includes('diagnosis') || msg.includes('diagnosis') || msg.includes('open results')) return '/parent/results.html';
-        if (title.includes('recommendation') || msg.includes('recommendation')) return '/parent/recommendations.html';
-        if (type === 'appointment' || title.includes('appointment') || msg.includes('appointment')) return '/parent/appointments.html';
-        if (type === 'chat' || title.includes('message') || msg.includes('message from')) return '/parent/chat.html';
-        if (type === 'assessment' || title.includes('question') || msg.includes('question')) return '/parent/custom-questions.html';
-        return '/parent/dashboard.html';
+    function api(endpoint, options) {
+        if (typeof window.apiFetch !== 'function') return Promise.reject(new Error('Not signed in.'));
+        return window.apiFetch(endpoint, options);
     }
 
-    function notificationIcon(n) {
-        const text = `${n?.type || ''} ${n?.title || ''}`.toLowerCase();
-        if (text.includes('appointment')) return 'A';
-        if (text.includes('message') || text.includes('chat')) return 'M';
-        if (text.includes('question')) return 'Q';
-        if (text.includes('diagnosis') || text.includes('assessment') || text.includes('review')) return 'R';
-        return '!';
+    function destinationOf(n) {
+        const target = typeof window.notificationDestination === 'function'
+            ? window.notificationDestination(n)
+            : String(n?.relatedPage || '').trim();
+        return target ? String(target) : null;
     }
 
     async function refreshCount() {
-        if (typeof window.loadNotificationCount === 'function') {
-            try {
-                await window.loadNotificationCount();
-                return;
-            } catch {}
+        if (typeof window.loadNotificationCount !== 'function') return;
+        try {
+            await window.loadNotificationCount();
+        } catch {}
+    }
+
+    // Lets a page keep its own notification widgets (e.g. the parent dashboard
+    // preview card) in sync after a dismiss/clear/mark.
+    function announceChange() {
+        document.dispatchEvent(new CustomEvent('kc:notifications-changed'));
+    }
+
+    // Older markup may lack the Mark all read button or the whole action bar.
+    function ensureActionBar(modal) {
+        const header = modal.querySelector('.notifications-header, .notification-modal-header');
+        let bar = modal.querySelector('.notification-action-bar, .clear-all-row');
+        if (!bar && header) {
+            bar = document.createElement('div');
+            bar.className = 'notification-action-bar clear-all-row';
+            header.insertAdjacentElement('afterend', bar);
         }
-
-        if (!canUseApi()) return;
-        try {
-            const data = await window.apiFetch('/notifications/count');
-            const badge = document.querySelector('.notification-badge');
-            if (badge) {
-                const unread = data.unread || 0;
-                badge.textContent = unread;
-                badge.style.display = unread > 0 ? 'flex' : 'none';
-            }
-        } catch {}
+        if (!bar) return;
+        if (!getMarkAllButton()) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'mark-all-read-btn';
+            btn.id = 'markAllNotificationsReadBtn';
+            btn.textContent = 'Mark all read';
+            btn.setAttribute('onclick', 'markAllNotificationsRead()');
+            bar.insertBefore(btn, bar.firstChild);
+        }
+        if (!getClearButton()) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'clear-all-btn';
+            btn.id = 'clearNotificationsBtn';
+            btn.textContent = 'Clear all';
+            btn.setAttribute('onclick', 'clearAllNotifications()');
+            bar.appendChild(btn);
+        }
     }
 
-    async function loadNotifications() {
-        if (window.KC_USE_SAMPLE_NOTIFICATIONS || !canUseApi()) return sampleNotificationData;
-        const data = await window.apiFetch('/notifications');
-        return Array.isArray(data.notifications) ? data.notifications : [];
-    }
-
-    async function markRead(id) {
-        if (!id || !canUseApi() || String(id).startsWith('sample-')) return;
-        try {
-            await window.apiFetch(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PUT' });
-        } catch {}
-        await refreshCount();
-    }
-
-    function renderNotifications(notifications) {
-        const list = getList();
+    function syncControls() {
+        const hasItems = state.loaded && state.items.length > 0;
+        const hasUnread = state.loaded && state.items.some((n) => !n.isRead);
         const clearButton = getClearButton();
+        const markAllButton = getMarkAllButton();
+        if (clearButton) clearButton.disabled = state.busy || !hasItems;
+        if (markAllButton) markAllButton.disabled = state.busy || !hasUnread;
+
+        const list = getList();
+        if (!list) return;
+        list.setAttribute('aria-busy', String(state.busy || !state.loaded));
+        list.querySelectorAll('[data-notif-action]').forEach((btn) => {
+            btn.disabled = state.busy;
+        });
+    }
+
+    function renderMessage(text, withRetry) {
+        const list = getList();
+        if (!list) return;
+        list.innerHTML = `<p class="notifications-empty">${esc(text)}</p>`
+            + (withRetry ? '<p class="notifications-retry"><button type="button" class="notif-retry-btn" data-notif-action="retry">Try again</button></p>' : '');
+    }
+
+    function renderList() {
+        const list = getList();
         if (!list) return;
 
-        const items = Array.isArray(notifications)
-            ? notifications.slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-            : [];
-        if (clearButton) clearButton.disabled = items.length === 0;
-
-        if (!items.length) {
-            list.innerHTML = '<p class="notifications-empty">No notifications yet.</p>';
+        if (!state.items.length) {
+            renderMessage('No notifications yet.');
             return;
         }
 
-        list.innerHTML = items.map((n) => {
-            const id = String(n.id ?? n._id ?? '');
-            const target = notificationTarget(n);
-            const unreadClass = n.isRead ? '' : ' unread';
+        list.innerHTML = state.items.map((n) => {
+            const id = idOf(n);
+            const target = destinationOf(n);
+            const title = n.title || 'Notification';
+            const time = fmt(n.createdAt);
+            const unread = !n.isRead;
             return `
-                <article class="notification-card${unreadClass}" role="listitem" data-card-id="${esc(id)}">
-                    <div class="notification-card-main" tabindex="0" role="button" data-notification-id="${esc(id)}" data-notification-target="${esc(target)}" aria-label="Open notification">
-                        <span class="notif-icon" aria-hidden="true">${esc(notificationIcon(n))}</span>
+                <article class="notification-card${unread ? ' unread' : ''}" role="listitem" data-card-id="${esc(id)}">
+                    <div class="notification-card-main${target ? ' has-target' : ''}" data-notif-card="${esc(id)}">
+                        <span class="notif-icon" aria-hidden="true">!</span>
                         <div class="notif-content">
-                            <p class="notif-title">${esc(n.title || 'Notification')}</p>
-                            <p class="notif-preview">${esc(n.message || '')}</p>
-                            <p class="notif-time">${esc(fmt(n.createdAt))}</p>
-                            <span class="notif-open-link" data-open-notification-id="${esc(id)}" data-open-target="${esc(target)}">Open related page -&gt;</span>
+                            <p class="notif-title">${esc(title)}${unread ? '<span class="notif-sr-only"> (unread)</span>' : ''}</p>
+                            ${n.message ? `<p class="notif-preview">${esc(n.message)}</p>` : ''}
+                            ${time ? `<p class="notif-time"><time datetime="${esc(new Date(n.createdAt).toISOString())}">${esc(time)}</time></p>` : ''}
+                            ${target ? `<button type="button" class="notif-open-link" data-notif-action="open" data-id="${esc(id)}">Open related page -&gt;</button>` : ''}
                         </div>
                     </div>
-                    <button type="button" class="notif-delete" data-delete-notification-id="${esc(id)}" aria-label="Delete notification">X</button>
+                    ${id ? `<button type="button" class="notif-delete" data-notif-action="delete" data-id="${esc(id)}" aria-label="Dismiss notification: ${esc(title)}" title="Dismiss">X</button>` : ''}
                 </article>`;
         }).join('');
     }
 
-    async function reloadModal() {
-        const list = getList();
-        if (!list) return;
-        list.innerHTML = '<p class="notifications-empty">Loading...</p>';
+    async function loadList() {
+        const token = ++state.loadToken;
+        state.loaded = false;
+        state.items = [];
+        renderMessage('Loading...');
+        syncControls();
 
         try {
-            const notifications = await loadNotifications();
-            renderNotifications(notifications);
-            if (canUseApi() && notifications.some((n) => !n.isRead)) {
-                window.apiFetch('/notifications/read-all', { method: 'PUT' }).then(refreshCount).catch(() => {});
-            }
+            const data = await api('/notifications');
+            if (token !== state.loadToken) return;
+            const items = Array.isArray(data.notifications) ? data.notifications : [];
+            state.items = items.slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+            state.loaded = true;
+            renderList();
         } catch {
-            list.innerHTML = '<p class="notifications-empty">Could not load notifications.</p>';
-            const clearButton = getClearButton();
-            if (clearButton) clearButton.disabled = true;
+            if (token !== state.loadToken) return;
+            // Never show "No notifications yet." for a failed request.
+            renderMessage('Could not load notifications.', true);
+        } finally {
+            if (token === state.loadToken) syncControls();
         }
     }
 
-    window.openNotifications = async function openNotifications() {
+    // Runs one mutating request at a time; the buttons stay disabled until it settles.
+    async function exclusive(task) {
+        if (state.busy) return;
+        state.busy = true;
+        syncControls();
+        try {
+            await task();
+        } finally {
+            state.busy = false;
+            syncControls();
+        }
+    }
+
+    function focusables(modal) {
+        return Array.from(modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+            .filter((el) => !el.disabled && el.offsetParent !== null);
+    }
+
+    window.openNotifications = function openNotifications() {
         const modal = getModal();
-        if (!modal) return;
-        modal.classList.add('is-open');
-        modal.style.display = 'flex';
-        modal.onclick = (event) => {
-            if (event.target === modal) window.closeNotifications();
-        };
-        await reloadModal();
+        if (!modal) return Promise.resolve();
+        ensureActionBar(modal);
+
+        if (!isOpen()) {
+            state.lastFocus = document.activeElement;
+            modal.classList.add('is-open');
+            modal.style.display = 'flex';
+            modal.setAttribute('aria-hidden', 'false');
+            document.documentElement.classList.add('kc-notifications-open');
+            const closeButton = modal.querySelector('.notif-close, .close-btn');
+            if (closeButton) closeButton.focus({ preventScroll: true });
+        }
+
+        return loadList();
     };
 
     window.closeNotifications = function closeNotifications() {
         const modal = getModal();
         if (!modal) return;
+        state.loadToken += 1; // drop any response still on its way
         modal.classList.remove('is-open', 'show');
         modal.style.display = 'none';
+        modal.setAttribute('aria-hidden', 'true');
+        document.documentElement.classList.remove('kc-notifications-open');
+        const back = state.lastFocus;
+        state.lastFocus = null;
+        if (back && typeof back.focus === 'function' && document.contains(back)) back.focus({ preventScroll: true });
     };
 
-    window.clearAllNotifications = async function clearAllNotifications() {
-        const clearButton = getClearButton();
-        if (clearButton) clearButton.disabled = true;
-
-        try {
-            if (canUseApi()) {
-                try {
-                    await window.apiFetch('/notifications/all', { method: 'DELETE' });
-                } catch {
-                    await window.apiFetch('/notifications/clear-all', { method: 'DELETE' });
-                }
+    window.markAllNotificationsRead = function markAllNotificationsRead() {
+        return exclusive(async () => {
+            if (!state.items.some((n) => !n.isRead)) return;
+            try {
+                await api('/notifications/read-all', { method: 'PUT' });
+            } catch (err) {
+                alert('Could not mark notifications as read: ' + err.message);
+                return;
             }
+            state.items.forEach((n) => { n.isRead = true; });
+            renderList();
             await refreshCount();
-            await reloadModal();
-        } catch (err) {
-            alert('Could not clear notifications: ' + err.message);
-            if (clearButton) clearButton.disabled = false;
-        }
+            announceChange();
+        });
     };
 
-    window.deleteNotification = async function deleteNotification(element) {
-        const button = element && typeof element.closest === 'function' ? element.closest('[data-delete-notification-id]') : null;
-        const id = button ? button.getAttribute('data-delete-notification-id') : String(element || '');
-        if (!id) return;
-
-        try {
-            if (canUseApi() && !id.startsWith('sample-')) {
-                await window.apiFetch(`/notifications/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    window.clearAllNotifications = function clearAllNotifications() {
+        return exclusive(async () => {
+            if (!state.items.length) return;
+            if (!window.confirm('Clear all notifications? They will be removed permanently.')) return;
+            try {
+                await api('/notifications/clear-all', { method: 'DELETE' });
+            } catch (err) {
+                alert('Could not clear notifications: ' + err.message);
+                return;
             }
-            const card = Array.from(document.querySelectorAll('[data-card-id]')).find((item) => item.getAttribute('data-card-id') === id);
-            if (card) card.remove();
+            state.items = [];
+            renderList();
             await refreshCount();
-            await reloadModal();
-        } catch (err) {
-            alert('Could not delete notification: ' + err.message);
+            announceChange();
+        });
+    };
+
+    // Accepts an id or an element carrying data-id.
+    window.deleteNotification = function deleteNotification(ref) {
+        const id = ref && typeof ref.getAttribute === 'function'
+            ? (ref.getAttribute('data-id') || '')
+            : String(ref ?? '');
+        if (!id) return Promise.resolve();
+
+        return exclusive(async () => {
+            try {
+                await api(`/notifications/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            } catch (err) {
+                alert('Could not dismiss notification: ' + err.message);
+                return;
+            }
+            state.items = state.items.filter((n) => idOf(n) !== id);
+            renderList();
+            await refreshCount();
+            announceChange();
+        });
+    };
+
+    // Marks the notification read, then goes to its page. Without a page it is
+    // only marked read, so a click never lands somewhere unrelated.
+    async function openNotification(id) {
+        const n = findItem(id);
+        if (!n || state.busy) return;
+        const target = destinationOf(n);
+
+        if (!n.isRead) {
+            try {
+                await api(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PUT' });
+                n.isRead = true;
+            } catch {}
+            await refreshCount();
         }
-    };
 
-    window.navigateTo = async function navigateTo(page, notificationId) {
-        await markRead(notificationId);
-        if (!page) return;
-        if (typeof window.applyNotificationContext === 'function') window.applyNotificationContext(page);
-        window.location.href = page;
-    };
-
-    document.addEventListener('click', async (event) => {
-        const deleteButton = event.target.closest('#notificationsModal [data-delete-notification-id]');
-        if (deleteButton) {
-            event.preventDefault();
-            event.stopPropagation();
-            await window.deleteNotification(deleteButton);
+        if (!target) {
+            renderList();
+            syncControls();
+            announceChange();
             return;
         }
 
-        const openLink = event.target.closest('#notificationsModal [data-open-notification-id]');
-        if (openLink) {
+        if (typeof window.applyNotificationContext === 'function') window.applyNotificationContext(target);
+        window.location.href = target;
+    }
+
+    document.addEventListener('click', (event) => {
+        const modal = getModal();
+        if (!modal || !isOpen()) return;
+
+        // Backdrop only — clicks inside the panel never close it.
+        if (event.target === modal) {
+            window.closeNotifications();
+            return;
+        }
+        if (!modal.contains(event.target)) return;
+
+        const action = event.target.closest('[data-notif-action]');
+        if (action) {
             event.preventDefault();
             event.stopPropagation();
-            await window.navigateTo(openLink.getAttribute('data-open-target'), openLink.getAttribute('data-open-notification-id'));
+            const kind = action.getAttribute('data-notif-action');
+            if (kind === 'delete') window.deleteNotification(action);
+            else if (kind === 'open') openNotification(action.getAttribute('data-id'));
+            else if (kind === 'retry') loadList();
             return;
         }
 
-        const cardMain = event.target.closest('#notificationsModal [data-notification-id]');
-        if (cardMain) {
-            await window.navigateTo(cardMain.getAttribute('data-notification-target'), cardMain.getAttribute('data-notification-id'));
-        }
+        // Clicking the card body behaves like its "Open related page" link.
+        const card = event.target.closest('[data-notif-card]');
+        if (card) openNotification(card.getAttribute('data-notif-card'));
     });
 
-    document.addEventListener('keydown', async (event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        const cardMain = event.target.closest('#notificationsModal [data-notification-id]');
-        if (!cardMain) return;
-        event.preventDefault();
-        await window.navigateTo(cardMain.getAttribute('data-notification-target'), cardMain.getAttribute('data-notification-id'));
+    document.addEventListener('keydown', (event) => {
+        if (!isOpen()) return;
+        const modal = getModal();
+
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            window.closeNotifications();
+            return;
+        }
+
+        // Keep keyboard focus inside the dialog while it is open.
+        if (event.key === 'Tab') {
+            const items = focusables(modal);
+            if (!items.length) return;
+            const first = items[0];
+            const last = items[items.length - 1];
+            if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+                event.preventDefault();
+                first.focus();
+            }
+        }
     });
 })();
