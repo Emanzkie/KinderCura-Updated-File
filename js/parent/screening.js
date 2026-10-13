@@ -123,9 +123,18 @@ requireAuth();
         }
 
         // Important: we keep the interview checklist progressive by age, then Easy before Moderate.
-        function buildQuestionSet(child) {
+        // datasetQuestions: approved, admin-activated Dataset Questions from
+        // /assessments/initialize. They go through the SAME age filter and
+        // ordering as the core bank, and an id already present is never added twice.
+        function buildQuestionSet(child, datasetQuestions = []) {
             const ageMonths = getAgeInMonths(child.dateOfBirth);
-            return DOCTOR_QUESTION_BANK
+            const seen = new Set(DOCTOR_QUESTION_BANK.map(q => q.id));
+            const extra = (Array.isArray(datasetQuestions) ? datasetQuestions : []).filter(q => {
+                if (!q || !q.id || !q.text || !q.scoreDomain || !Number.isFinite(q.minAgeMonths) || seen.has(q.id)) return false;
+                seen.add(q.id);
+                return true;
+            });
+            return DOCTOR_QUESTION_BANK.concat(extra)
                 .filter(q => ageMonths >= q.minAgeMonths)
                 .sort((a, b) => {
                     if (a.minAgeMonths !== b.minAgeMonths) return a.minAgeMonths - b.minAgeMonths;
@@ -325,7 +334,7 @@ requireAuth();
 
                     <div class="assessment-question-box">
                         <p class="assessment-question-text">${q?.text ?? ''}</p>
-                        <p class="assessment-helper-text">${q?.difficulty ?? ''} difficulty • Scored under ${q?.scoreDomain ?? ''}</p>
+                        <p class="assessment-helper-text">${q?.difficulty ? `${q.difficulty} difficulty • ` : ''}Scored under ${q?.scoreDomain ?? ''}</p>
                     </div>
 
                     <h3 class="assessment-answer-title">How would you answer?</h3>
@@ -511,6 +520,7 @@ requireAuth();
                 });
                 assessmentId = initData.assessmentId;
                 CUSTOM_QUESTION_SET = Array.isArray(initData.customQuestions) ? initData.customQuestions : [];
+                QUESTION_SET = buildQuestionSet(selectedChild, initData.datasetQuestions);
                 buildFullSet();
 
                 const exactAge = formatExactAge(selectedChild.dateOfBirth);
@@ -521,9 +531,11 @@ requireAuth();
                 // was still 20. The breakdown is kept for transparency, but the
                 // headline number now matches what "Question X of Y" below counts.
                 const totalQuestions = FULL_SET.length;
-                const breakdown = CUSTOM_QUESTION_SET.length
-                    ? ` (${QUESTION_SET.length} core + ${CUSTOM_QUESTION_SET.length} pediatrician)`
-                    : '';
+                const datasetCount = QUESTION_SET.filter(q => q.origin === 'dataset_question').length;
+                const breakdownParts = [`${QUESTION_SET.length - datasetCount} core`];
+                if (datasetCount) breakdownParts.push(`${datasetCount} dataset`);
+                if (CUSTOM_QUESTION_SET.length) breakdownParts.push(`${CUSTOM_QUESTION_SET.length} pediatrician`);
+                const breakdown = breakdownParts.length > 1 ? ` (${breakdownParts.join(' + ')})` : '';
                 document.getElementById('assessmentMeta').textContent = `Interview-based checklist loaded for age ${exactAge} • ${totalQuestions} questions${breakdown}`;
                 document.getElementById('ageRangeLabel').textContent = ageRange;
                 document.getElementById('ageRangeDetails').innerHTML = `Current child age: ${exactAge}<br>Question set for this child: ${totalQuestions}${breakdown}`;

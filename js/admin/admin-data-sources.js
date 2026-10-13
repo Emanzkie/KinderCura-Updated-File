@@ -95,7 +95,45 @@ requireAuth();
             const openMap = r.hasOpenMappingQuestion
                 ? '<div class="approval-note approval-note--open">Open clinical mapping question &mdash; pediatrician to rule</div>'
                 : '';
-            return `${reviewerLine}${pediaLine}${activeLine}${openMap}`;
+            return `${reviewerLine}${pediaLine}${activeLine}${activationControl(r)}${openMap}`;
+        }
+
+        // Activate / Deactivate for one Dataset Question. Offered only once a
+        // pediatrician has approved it (r.canActivate, decided by the server) —
+        // a pending or rejected question shows why it cannot be switched on.
+        function activationControl(r) {
+            if (r.category !== 'dataset_question') return '';
+            if (!r.canActivate) {
+                return '<div class="approval-note">Activation requires pediatrician approval.</div>';
+            }
+            const next = !r.isActive;
+            const label = next ? 'Activate' : 'Deactivate';
+            return `<button type="button" class="btn btn-secondary" style="padding:0.3rem 0.75rem;font-size:0.78rem;margin-top:0.45rem;"
+                onclick="setDatasetQuestionActive('${escapeHtml(r.id)}', ${next}, this)"
+                aria-label="${label} ${escapeHtml(r.questionId || 'question')}">${label}</button>`;
+        }
+
+        // Persists first; the row only changes after the server confirms it,
+        // by reloading the list and the source counts from the database.
+        async function setDatasetQuestionActive(id, isActive, btn) {
+            const prompt = isActive
+                ? 'Activate this Dataset Question?\n\nIt will be included in new screenings for children old enough for it. Assessments already started or completed are not changed.'
+                : 'Deactivate this Dataset Question?\n\nIt will no longer appear in new screenings. Answers and results already recorded are kept.';
+            if (!confirm(prompt)) return;
+            const original = btn ? btn.textContent : '';
+            if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+            try {
+                await apiFetch(`/admin/data-origin/dataset-questions/${encodeURIComponent(id)}/activation`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ isActive }),
+                });
+            } catch (err) {
+                if (btn) { btn.disabled = false; btn.textContent = original; }
+                alert('Could not change the activation status: ' + err.message + '\nNothing was changed.');
+                return;
+            }
+            await Promise.all([loadSummary(), loadList()]);
+            alert(isActive ? 'Dataset Question activated.' : 'Dataset Question deactivated.');
         }
 
         // The three states req 4 keeps separate for the Dataset Question set as

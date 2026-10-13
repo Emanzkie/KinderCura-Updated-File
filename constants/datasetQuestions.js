@@ -104,9 +104,10 @@
 // ---------
 // Every row below is created PENDING and isActive:false. The model refuses to
 // activate a dataset_question that is not approved, so "pending" is enforced,
-// not decorative. Nothing here reaches a parent assessment: the parent
-// screening flow renders the hardcoded DOCTOR_QUESTION_BANK in
-// js/parent/screening.js and does not read this collection at all.
+// not decorative. A question reaches a parent screening only once it is
+// approved AND an admin has activated it on the Question Origin page; it is
+// then added to the core checklist by /api/assessments/initialize for children
+// at least minAgeMonths old — see services/datasetQuestionEligibility.js.
 
 const { APPROVAL_STATUS, GENERATION_METHOD } = require('./dataOrigin');
 

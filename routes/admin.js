@@ -46,6 +46,8 @@ const {
 // REVIEWER decision as a fact distinct from PEDIATRICIAN approval. A reviewer
 // "approve" never implies a pediatrician sign-off and never activates anything.
 const { DATASET_REVIEW, DATASET_QUESTIONS } = require('../constants/datasetQuestions');
+const datasetEligibility = require('../services/datasetQuestionEligibility');
+const AuditLog = require('../models/AuditLog');
 // Admin-facing TWO-category view (Dataset Question / Pediatrician Question)
 // over the three real origins above. Presentation/aggregation only — see the
 // header comment in services/adminDataSourceView.js for why the real three-
@@ -2696,6 +2698,75 @@ router.get('/data-origin/summary', authMiddleware, adminOnly, async (req, res) =
   }
 });
 
+// PATCH /api/admin/data-origin/dataset-questions/:id/activation
+// Body: { isActive: true | false }. :id is the row's Mongo _id (the `id` the
+// list below returns).
+//
+// The admin's activation switch for ONE Dataset Question. Activation is
+// separate from approval: only a pediatrician-approved question can be
+// switched on (pending/rejected are refused here, and again by the model's
+// isActive validator on save). Core-bank and pediatrician questions are not
+// matched by this route at all. Once active, the question reaches the next
+// age-appropriate screening via /api/assessments/initialize — see
+// services/datasetQuestionEligibility.js. Deactivating never touches answers
+// or results already recorded.
+async function setDatasetQuestionActivation(id, isActive, actorId) {
+  if (typeof isActive !== 'boolean') {
+    return { status: 400, body: { error: 'isActive must be true or false.' } };
+  }
+  if (!mongoose.Types.ObjectId.isValid(String(id))) {
+    return { status: 404, body: { error: 'Dataset Question not found.' } };
+  }
+  const question = await CoreBankQuestion.findOne({ _id: id, origin: DATA_ORIGIN.DATASET_QUESTION });
+  if (!question) return { status: 404, body: { error: 'Dataset Question not found.' } };
+
+  if (isActive && !datasetEligibility.canActivate(question)) {
+    return {
+      status: 409,
+      body: { error: 'Only a Dataset Question with pediatrician approval can be activated. This question is '
+        + `"${approvalStatusLabel(question.approvalStatus) || 'not approved'}".` },
+    };
+  }
+
+  const changed = question.isActive !== isActive;
+  if (changed) {
+    question.isActive = isActive;
+    await question.save();
+    await AuditLog.create({
+      actorId,
+      action: isActive ? 'dataset_question_activated' : 'dataset_question_deactivated',
+      targetType: 'CoreBankQuestion',
+      targetId: question._id,
+      details: { questionId: question.questionId },
+    });
+  }
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      changed,
+      question: {
+        id: String(question._id),
+        questionId: question.questionId,
+        approvalStatus: question.approvalStatus,
+        isActive: question.isActive === true,
+        isUsableInAssessment: datasetEligibility.isUsableInAssessment(question),
+      },
+    },
+  };
+}
+
+router.patch('/data-origin/dataset-questions/:id/activation', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { status, body } = await setDatasetQuestionActivation(req.params.id, (req.body || {}).isActive, req.user.userId);
+    res.status(status).json(body);
+  } catch (error) {
+    console.error('dataset question activation error:', error);
+    res.status(500).json({ error: 'The activation status could not be saved.' });
+  }
+});
+
 // GET /api/admin/data-origin/list
 //
 // Query params:
@@ -2778,7 +2849,8 @@ router.get('/data-origin/list', authMiddleware, adminOnly, async (req, res) => {
           generationMethodLabel: generationMethodLabel(q.generationMethod),
           approvedAt: q.approvedAt || null,
           isActive: q.isActive !== false,
-          isUsableInAssessment: q.approvalStatus === APPROVAL_STATUS.APPROVED && q.isActive === true,
+          isUsableInAssessment: datasetEligibility.isUsableInAssessment(q),
+          canActivate: datasetEligibility.canActivate(q),
 
           reviewerDecision: DATASET_REVIEW.decision,
           reviewerDecisionLabel: REVIEWER_DECISION_LABELS[DATASET_REVIEW.decision] || DATASET_REVIEW.decision,
@@ -2950,4 +3022,5 @@ router.__testables = {
   summarizeReviewers, summarizeClassDistribution, QUALITY, resolveTrainingQualityGate,
   computeDatasetProvenance,
   COMPLETED_ASSESSMENT_FILTER,
+  setDatasetQuestionActivation,
 };

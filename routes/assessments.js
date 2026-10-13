@@ -23,6 +23,7 @@ const { normalizeDomain } = require('../constants/assessmentDomains');
 const scoring = require('../constants/scoring');
 const staging = require('../constants/developmental-staging');
 const assessmentProgress = require('../services/assessmentProgress');
+const datasetEligibility = require('../services/datasetQuestionEligibility');
 const sse = require('../sse');
 
 // The core bank is 34 static rows that only change on deploy, so it is cached
@@ -36,8 +37,8 @@ async function getCoreBankIds() {
     return coreBankCache.ids;
   }
   // Scoped to core_bank on purpose. core_bank_questions also holds
-  // dataset_question rows, which are a different origin and are not part of
-  // the parent screening flow. Including them here would let a dataset
+  // dataset_question rows, which are a different origin and are resolved
+  // separately (screeningAnswerFields). Including them here would let a dataset
   // question's id resolve into sourceQuestionRef on an answer stamped
   // origin=core_bank — a mislabelled answer. See constants/dataOrigin.js.
   // Written as "not dataset_question" rather than "== core_bank" so a legacy
@@ -52,10 +53,39 @@ async function getCoreBankIds() {
 // req.body — a client must not be able to label its own answers as core-bank
 // content. See constants/dataOrigin.js.
 //
-// This endpoint serves the parent screening flow, which only ever presents
-// core-bank questions, so origin is always CORE_BANK. sourceQuestionRef is set
+// Used for every screening answer that is NOT a Dataset Question (those are
+// handled by screeningAnswerFields above), so origin is CORE_BANK. sourceQuestionRef is set
 // only when the id actually resolves against the seeded bank; an unresolved id
 // is left blank and warned about rather than given a fabricated reference.
+// Fields to store for one submitted screening answer, or null when it must not
+// be stored. A Dataset Question id is resolved against the database row, never
+// the client: it is stored as origin dataset_question (sourceQuestionRef = its
+// questionId, which the admin "Times Answered" count reads) with the row's own
+// domain and wording, and ONLY while the question is approved, active and
+// age-appropriate for this child. Any other dataset id is refused rather than
+// falling through to the core-bank path below and being mislabelled.
+function screeningAnswerFields(a, bankIds, datasetIndex, ageMonths) {
+  const id = String(a.questionId);
+  const dq = datasetIndex.get(id);
+  if (dq) {
+    if (!datasetEligibility.isUsableInAssessment(dq) || !datasetEligibility.fitsAge(dq, ageMonths)) {
+      console.warn(`assessments: Dataset Question "${id}" is not active/approved/age-appropriate — answer not stored.`);
+      return null;
+    }
+    return {
+      domain: dq.domain,
+      questionText: dq.text,
+      origin: DATA_ORIGIN.DATASET_QUESTION,
+      sourceQuestionRef: dq.questionId,
+    };
+  }
+  return {
+    domain: a.domain || 'Unknown',
+    questionText: a.questionText || '',
+    ...originFieldsFor(a.questionId, bankIds),
+  };
+}
+
 function originFieldsFor(questionId, bankIds) {
   const id = String(questionId);
   const resolved = bankIds.has(id);
@@ -625,6 +655,18 @@ router.post('/initialize', authMiddleware, async (req, res) => {
     // assignment against an incomplete Assessment.
     const pendingCustomQuestions = await findPendingCustomQuestions(child._id);
 
+    // Approved AND admin-activated Dataset Questions old enough for this child,
+    // read live from the database (see services/datasetQuestionEligibility.js).
+    // The screening page adds them to its core checklist. A failure here must
+    // not block the screening: it simply runs on the core checklist alone.
+    let datasetQuestions = [];
+    try {
+      const index = await datasetEligibility.loadDatasetQuestionIndex();
+      datasetQuestions = datasetEligibility.selectForAge(index, datasetEligibility.ageInMonths(child.dateOfBirth));
+    } catch (err) {
+      console.error('assessments initialize: dataset questions unavailable:', err.message);
+    }
+
     res.json({
       success: true,
       assessmentId: String(assessment._id),
@@ -634,6 +676,7 @@ router.post('/initialize', authMiddleware, async (req, res) => {
       totalQuestions: 20,
       questions: [], // frontend already has the question list hardcoded
       customQuestions: pendingCustomQuestions.map(serializePendingCustomQuestion),
+      datasetQuestions,
     });
   } catch (err) {
     console.error('assessments initialize error:', err);
@@ -651,17 +694,25 @@ router.post('/save-draft', authMiddleware, async (req, res) => {
 
     const answersArray = normalizeAnswers(answers);
     const bankIds = await getCoreBankIds();
+    const datasetIndex = await datasetEligibility.loadDatasetQuestionIndex();
+    // The child's age is only needed to check a Dataset Question answer.
+    let ageMonths = NaN;
+    if (answersArray.some((a) => datasetIndex.has(String(a.questionId)))) {
+      const draftAssessment = await Assessment.findById(assessmentId).select('childId').lean();
+      const draftChild = draftAssessment ? await Child.findById(draftAssessment.childId).select('dateOfBirth').lean() : null;
+      ageMonths = draftChild ? datasetEligibility.ageInMonths(draftChild.dateOfBirth) : NaN;
+    }
     for (const a of answersArray) {
       if (!a.questionId || !a.answer) continue;
+      const fields = screeningAnswerFields(a, bankIds, datasetIndex, ageMonths);
+      if (!fields) continue;
       await AssessmentAnswer.findOneAndUpdate(
         { assessmentId, questionId: String(a.questionId) },
         {
           assessmentId,
           questionId: String(a.questionId),
-          domain: a.domain || 'Unknown',
-          questionText: a.questionText || '',
           answer: a.answer,
-          ...originFieldsFor(a.questionId, bankIds),
+          ...fields,
         },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
@@ -705,17 +756,19 @@ router.post('/submit', authMiddleware, async (req, res) => {
     }
 
     const submitBankIds = await getCoreBankIds();
+    const submitDatasetIndex = await datasetEligibility.loadDatasetQuestionIndex();
+    const childAgeMonths = datasetEligibility.ageInMonths(child.dateOfBirth);
     for (const a of answersArray) {
       if (!a.questionId || !a.answer) continue;
+      const fields = screeningAnswerFields(a, submitBankIds, submitDatasetIndex, childAgeMonths);
+      if (!fields) continue;
       await AssessmentAnswer.findOneAndUpdate(
         { assessmentId, questionId: String(a.questionId) },
         {
           assessmentId,
           questionId: String(a.questionId),
-          domain: a.domain || 'Unknown',
-          questionText: a.questionText || '',
           answer: a.answer,
-          ...originFieldsFor(a.questionId, submitBankIds),
+          ...fields,
         },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
@@ -733,6 +786,18 @@ router.post('/submit', authMiddleware, async (req, res) => {
     // for why a pedia_entry answer must never fall into this loop by accident.
     const storedCoreAnswers = await AssessmentAnswer.find({ assessmentId, origin: DATA_ORIGIN.CORE_BANK }).lean();
     for (const a of storedCoreAnswers) {
+      if (!totals[a.domain]) continue;
+      totals[a.domain].total += 2;
+      totals[a.domain].earned += scoreAnswer(a.answer);
+    }
+
+    // Dataset Question answers count toward their domain exactly like a core
+    // item: same Yes/Sometimes/No answers, same scoreAnswer() 2/1/0 scale. The
+    // catalogue was written for that scale (constants/datasetQuestions.js).
+    // They are kept OUT of coreAnswersByQuestion below, so the ML model's
+    // per-question Q01–Q34 features are unchanged.
+    const storedDatasetAnswers = await AssessmentAnswer.find({ assessmentId, origin: DATA_ORIGIN.DATASET_QUESTION }).lean();
+    for (const a of storedDatasetAnswers) {
       if (!totals[a.domain]) continue;
       totals[a.domain].total += 2;
       totals[a.domain].earned += scoreAnswer(a.answer);
@@ -1812,4 +1877,5 @@ module.exports = router;
 router.__testables = {
   ML_LABEL_VALUES, getMlLabelValidationError, reviewAssessmentMlLabel,
   scoreAnswer, interpretAnswer, describeItem, buildDomainExplanation, buildDomainDetails,
+  screeningAnswerFields,
 };
