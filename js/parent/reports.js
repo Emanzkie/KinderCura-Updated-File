@@ -579,7 +579,49 @@ function checkupVisitTypeLabel(visitType) {
     return visitType === 'follow_up_checkup' ? 'Follow-up Check-up' : 'Initial Check-up';
 }
 
-function renderCheckupHistory(checkups, loadError) {
+// A "Refer to a Specialist" entry recorded by the pediatrician. It is a
+// recommendation: nothing is booked, sent or transferred by KinderCura, and the
+// check-up it is based on keeps its own entry below/above it unchanged.
+function renderReferralEntry(r, checkups) {
+    const source = (checkups || []).find((c) => String(c.id) === String(r.sourceCheckupId));
+    const sourceText = source
+        ? `${checkupVisitTypeLabel(source.visitType)} on ${fmtDate(source.checkupDate) || 'an earlier visit'}`
+        : null;
+    return `
+            <div class="timeline-item" style="border-left-color:var(--primary);">
+                <div class="timeline-top">
+                    <div>
+                        <div class="timeline-date">${escapeHtml(fmtDate(r.referredAt) || 'Date not recorded')}</div>
+                        <div class="timeline-age">Specialist Referral</div>
+                    </div>
+                    <span style="background:var(--surface-tint);color:var(--primary-dark);padding:0.3rem 0.75rem;border-radius:999px;font-size:0.78rem;font-weight:700;white-space:nowrap;">Referral Recommendation</span>
+                </div>
+                <p class="timeline-note">Your pediatrician recommends that your child be evaluated further by a specialist.</p>
+                <p class="timeline-note"><strong>Recommended specialty:</strong> ${escapeHtml(r.specialty)}</p>
+                ${r.specialistName ? `<p class="timeline-note"><strong>Recommended specialist:</strong> ${escapeHtml(r.specialistName)}</p>` : ''}
+                ${r.specialistContact ? `<p class="timeline-note"><strong>Clinic / contact details:</strong> ${escapeHtml(r.specialistContact)}</p>` : ''}
+                ${r.reason ? `<p class="timeline-note"><strong>Reason for referral:</strong> ${escapeHtml(r.reason)}</p>` : ''}
+                ${sourceText ? `<p class="timeline-note"><strong>Based on:</strong> ${escapeHtml(sourceText)}</p>` : ''}
+                <p class="timeline-note">This is a recommendation only. No appointment has been booked and your child's records have not been sent anywhere — please contact a specialist to arrange the evaluation.</p>
+                <p class="timeline-pedia">Referred by ${escapeHtml(r.pediatricianName || 'your pediatrician')}</p>
+            </div>`;
+}
+
+// Newest first; a referral sorts above check-ups from the same day, since it is
+// recorded after the visit it is based on.
+function mergeCheckupTimeline(checkups, referrals) {
+    const dayKey = (d) => { const x = new Date(d); return Number.isNaN(x.getTime()) ? '' : x.toDateString(); };
+    const entries = [
+        ...(checkups || []).map((c) => ({ kind: 'checkup', date: c.checkupDate || c.createdAt, item: c })),
+        ...(referrals || []).map((r) => ({ kind: 'referral', date: r.referredAt || r.createdAt, item: r })),
+    ];
+    return entries.sort((a, b) => {
+        if (dayKey(a.date) === dayKey(b.date) && a.kind !== b.kind) return a.kind === 'referral' ? -1 : 1;
+        return new Date(b.date || 0) - new Date(a.date || 0);
+    });
+}
+
+function renderCheckupHistory(checkups, loadError, referrals, referralsError) {
     // A failed request is NOT the same as "no check-ups": say so explicitly
     // instead of falling through to the empty state below.
     if (loadError) {
@@ -594,7 +636,12 @@ function renderCheckupHistory(checkups, loadError) {
             </div>`;
     }
 
-    if (!checkups || !checkups.length) {
+    referrals = referrals || [];
+    const referralsNote = referralsError
+        ? '<p class="card-sub">Specialist referrals could not be loaded right now. This does not mean none has been recorded — please refresh the page.</p>'
+        : '';
+
+    if ((!checkups || !checkups.length) && !referrals.length) {
         return `
             <div class="report-card">
                 <h2>Check-up / Medical History</h2>
@@ -603,14 +650,18 @@ function renderCheckupHistory(checkups, loadError) {
                     assessment results above, and read-only here. No check-up visits have been
                     recorded yet.
                 </p>
+                ${referralsNote}
             </div>`;
     }
 
+    checkups = checkups || [];
     // API returns newest first.
-    const latest = checkups[0];
-    const latestMeta = checkupStatusMeta(latest.status);
+    const latest = checkups[0] || null;
+    const latestMeta = latest ? checkupStatusMeta(latest.status) : null;
+    const latestReferral = referrals[0] || null;
 
-    const rows = checkups.map((c) => {
+    const rows = mergeCheckupTimeline(checkups, referrals).map(({ kind, item: c }) => {
+        if (kind === 'referral') return renderReferralEntry(c, checkups);
         const meta = checkupStatusMeta(c.status);
         const dateStr = fmtDate(c.checkupDate) || 'Date not recorded';
         const nextFollowStr = c.nextFollowUpDate ? fmtScheduledDate(c.nextFollowUpDate) : null;
@@ -640,7 +691,7 @@ function renderCheckupHistory(checkups, loadError) {
                 pediatrician's own clinical record of each visit, not an assessment result, and it
                 cannot be edited from this page.
             </p>
-            <div class="interp-block" style="margin-bottom:1.2rem;">
+            ${latest ? `<div class="interp-block" style="margin-bottom:1.2rem;">
                 <p class="interp-label">Latest recorded follow-up</p>
                 <p class="interp-text">
                     The latest recorded follow-up is from ${escapeHtml(fmtDate(latest.checkupDate) || 'an earlier visit')},
@@ -648,7 +699,17 @@ function renderCheckupHistory(checkups, loadError) {
                     Recorded history shows every visit below in order; this is a pediatrician
                     follow-up record, not an automated diagnosis or a claim of medical recovery.
                 </p>
-            </div>
+            </div>` : ''}
+            ${latestReferral ? `<div class="interp-block" style="margin-bottom:1.2rem;">
+                <p class="interp-label">Specialist referral recommended</p>
+                <p class="interp-text">
+                    On ${escapeHtml(fmtDate(latestReferral.referredAt) || 'a recent visit')}, your pediatrician recommended
+                    further evaluation by a specialist (${escapeHtml(latestReferral.specialty)}). KinderCura has not booked
+                    an appointment or contacted the specialist — please reach out to a specialist to arrange the
+                    evaluation. Earlier visits below remain part of your child's record.
+                </p>
+            </div>` : ''}
+            ${referralsNote}
             <div class="timeline-list">${rows}</div>
         </div>`;
 }
@@ -716,19 +777,21 @@ async function loadReport() {
         const [reportResult, checkupsResult] = await Promise.all([
             apiFetch(`/parent/children/${encodeURIComponent(activeChild.id)}/report`),
             apiFetch(`/checkups/child/${encodeURIComponent(activeChild.id)}`)
-                .then((r) => ({ checkups: r.checkups || [], error: null }))
-                .catch((err) => ({ checkups: [], error: err })),
+                .then((r) => ({ checkups: r.checkups || [], referrals: r.referrals || [], referralsError: r.referralsError || null, error: null }))
+                .catch((err) => ({ checkups: [], referrals: [], referralsError: null, error: err })),
         ]);
         reportData = reportResult;
         const checkups = checkupsResult.checkups;
         const checkupsError = checkupsResult.error;
+        const referrals = checkupsResult.referrals;
+        const referralsError = checkupsResult.referralsError;
 
         const assessments = reportData.assessments || [];
         meta.textContent = `${activeChild.firstName} ${activeChild.lastName} • ${
             assessments.length} completed assessment${assessments.length === 1 ? '' : 's'}`;
 
         if (!assessments.length) {
-            content.innerHTML = renderEmptyState() + renderCheckupHistory(checkups, checkupsError);
+            content.innerHTML = renderEmptyState() + renderCheckupHistory(checkups, checkupsError, referrals, referralsError);
             return;
         }
 
@@ -743,7 +806,7 @@ async function loadReport() {
             ${renderDiscussPrompt(latest)}
             ${renderTimeline(assessments)}
             ${renderPediatricianReview(reportData)}
-            ${renderCheckupHistory(checkups, checkupsError)}
+            ${renderCheckupHistory(checkups, checkupsError, referrals, referralsError)}
             ${renderDataNote(reportData.unrenderable)}`;
 
         drawTrendChart(assessments);

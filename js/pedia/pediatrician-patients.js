@@ -768,6 +768,7 @@ const API = window.location.origin + '/api';
     }
 
     let _currentCheckups = [];
+    let _currentReferrals = [];
     let _currentCheckupAssessments = [];
     window.editingCheckupId = null;
 
@@ -796,21 +797,63 @@ const API = window.location.origin + '/api';
         return new Date(a.completedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     }
 
-    function renderCheckupHistory(items) {
+    // Check-ups and specialist referrals in one newest-first timeline. A
+    // referral sorts above check-ups from the same day, since it is recorded
+    // after the visit it is based on.
+    function mergeCheckupTimeline(checkups, referrals) {
+        const dayKey = (d) => { const x = new Date(d); return Number.isNaN(x.getTime()) ? '' : x.toDateString(); };
+        const entries = [
+            ...(checkups || []).map((c) => ({ kind: 'checkup', date: c.checkupDate || c.createdAt, item: c })),
+            ...(referrals || []).map((r) => ({ kind: 'referral', date: r.referredAt || r.createdAt, item: r })),
+        ];
+        return entries.sort((a, b) => {
+            if (dayKey(a.date) === dayKey(b.date) && a.kind !== b.kind) return a.kind === 'referral' ? -1 : 1;
+            return new Date(b.date || 0) - new Date(a.date || 0);
+        });
+    }
+
+    function renderReferralEntry(r) {
+        const source = _currentCheckups.find(c => String(c.id) === String(r.sourceCheckupId));
+        const sourceText = source && source.checkupDate
+            ? `${checkupVisitTypeLabel(source.visitType)} on ${new Date(source.checkupDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`
+            : null;
+        const when = r.referredAt ? new Date(r.referredAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+        return `
+                <div style="background:#FAFAF6;border:1px solid var(--border);border-left:4px solid var(--primary);border-radius:10px;padding:1.1rem 1.3rem;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+                        <div>
+                            <p style="margin:0;font-weight:700;color:var(--text-dark);">${escapeHtml(when)}</p>
+                            <p style="margin:0.15rem 0 0;font-size:0.8rem;color:var(--text-light);">Specialist Referral</p>
+                        </div>
+                        <span style="background:var(--surface-tint);color:var(--primary-dark);padding:0.25rem 0.7rem;border-radius:999px;font-size:0.76rem;font-weight:700;white-space:nowrap;">Referral Recommendation</span>
+                    </div>
+                    <p style="margin:0.75rem 0 0;font-size:0.85rem;color:var(--text-dark);line-height:1.5;"><strong>Recommended specialty:</strong> ${escapeHtml(r.specialty)}</p>
+                    ${r.specialistName ? `<p style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--text-dark);"><strong>Recommended specialist:</strong> ${escapeHtml(r.specialistName)}</p>` : ''}
+                    ${r.specialistContact ? `<p style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--text-dark);"><strong>Clinic / contact:</strong> ${escapeHtml(r.specialistContact)}</p>` : ''}
+                    <p style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--text-dark);line-height:1.5;"><strong>Reason:</strong> ${escapeHtml(r.reason)}</p>
+                    ${sourceText ? `<p style="margin:0.5rem 0 0;font-size:0.8rem;color:var(--status-info-fg);">Based on: ${escapeHtml(sourceText)}</p>` : ''}
+                    <p style="margin:0.75rem 0 0;font-size:0.74rem;color:var(--text-light);">Referred by ${escapeHtml(r.pediatricianName || 'Pediatrician')} · recommendation only — no appointment was booked</p>
+                </div>`;
+    }
+
+    function renderCheckupHistory(items, referrals) {
         _currentCheckups = items || [];
+        _currentReferrals = referrals || [];
         const wrap = document.getElementById('checkupHistoryList');
         if (!wrap) return;
-        if (!_currentCheckups.length) {
+        if (!_currentCheckups.length && !_currentReferrals.length) {
             wrap.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1.5rem;background:var(--bg-primary);border-radius:10px;">No check-up history recorded yet for this patient. Use "+ Add Check-up" to start the record.</p>';
             return;
         }
-        // Newest first — the API already sorts by checkupDate desc.
-        wrap.innerHTML = _currentCheckups.map((c, idx) => {
+        const latestCheckupId = _currentCheckups.length ? _currentCheckups[0].id : null;
+        // Newest first — the API already sorts each list newest first.
+        wrap.innerHTML = mergeCheckupTimeline(_currentCheckups, _currentReferrals).map(({ kind, item: c }) => {
+            if (kind === 'referral') return renderReferralEntry(c);
             const meta = checkupStatusMeta(c.status);
             const dateText = c.checkupDate ? new Date(c.checkupDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—';
             const nextFollowText = c.nextFollowUpDate ? new Date(c.nextFollowUpDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : null;
             const linkedAssessmentLabel = c.assessmentId ? assessmentDateLabel(c.assessmentId) : null;
-            const isLatest = idx === 0;
+            const isLatest = c.id === latestCheckupId;
             return `
                 <div style="background:#FAFAF6;border:1px solid var(--border);border-left:4px solid ${meta.color};border-radius:10px;padding:1.1rem 1.3rem;">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
@@ -827,7 +870,10 @@ const API = window.location.origin + '/api';
                     ${linkedAssessmentLabel ? `<p style="margin:0.5rem 0 0;font-size:0.8rem;color:var(--status-info-fg);">Linked Assessment: ${escapeHtml(linkedAssessmentLabel)} Assessment</p>` : ''}
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75rem;">
                         <p style="margin:0;font-size:0.74rem;color:var(--text-light);">Recorded by ${escapeHtml(c.pediatricianName || 'Pediatrician')}${c.editedAt ? ' · edited' : ''}</p>
-                        <button type="button" onclick="editCheckup('${c.id}')" style="border:none;background:none;color:var(--primary);cursor:pointer;font-size:0.78rem;font-weight:600;">Edit</button>
+                        <div style="display:flex;gap:0.9rem;flex-wrap:wrap;justify-content:flex-end;">
+                            <button type="button" onclick="openReferralForm('${c.id}')" style="border:none;background:none;color:var(--primary);cursor:pointer;font-size:0.78rem;font-weight:600;">Refer to a Specialist</button>
+                            <button type="button" onclick="editCheckup('${c.id}')" style="border:none;background:none;color:var(--primary);cursor:pointer;font-size:0.78rem;font-weight:600;">Edit</button>
+                        </div>
                     </div>
                 </div>`;
         }).join('');
@@ -837,6 +883,7 @@ const API = window.location.origin + '/api';
     // error is never mistaken for "no check-ups recorded yet".
     function renderCheckupHistoryError(err) {
         _currentCheckups = [];
+        _currentReferrals = [];
         console.warn('Check-up history could not be loaded:', err && err.message);
         const wrap = document.getElementById('checkupHistoryList');
         if (!wrap) return;
@@ -847,7 +894,7 @@ const API = window.location.origin + '/api';
     async function loadCheckupHistory(childId) {
         try {
             const data = await apiFetch(`/checkups/child/${childId}`);
-            renderCheckupHistory(data.checkups || []);
+            renderCheckupHistory(data.checkups || [], data.referrals || []);
         } catch (err) {
             renderCheckupHistoryError(err);
         }
@@ -857,7 +904,7 @@ const API = window.location.origin + '/api';
         const wrap = document.getElementById('checkupFormWrap');
         if (!wrap) return;
         const show = wrap.style.display === 'none';
-        if (show) resetCheckupForm();
+        if (show) { resetCheckupForm(); cancelReferral(); }
         wrap.style.display = show ? 'block' : 'none';
     }
 
@@ -904,6 +951,7 @@ const API = window.location.origin + '/api';
         if (!record) { alert('Could not find that check-up record.'); return; }
 
         window.editingCheckupId = record.id;
+        cancelReferral();
         document.getElementById('checkupFormWrap').style.display = 'block';
         document.getElementById('checkupFormTitle').textContent = 'Edit Check-up';
         document.getElementById('checkupSubmitBtn').textContent = 'Save Changes';
@@ -999,6 +1047,96 @@ const API = window.location.origin + '/api';
         }
     }
 
+    // ── Refer to a Specialist ───────────────────────────────────────────────
+    // Saves an ADDITIONAL referral entry (POST /checkups/child/:childId/referrals).
+    // The check-up it is based on is not edited, and no appointment is booked.
+    let _referralRequestId = null;
+    let _referralSaving = false;
+
+    function newReferralRequestId() {
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+        return `ref-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+    }
+
+    function openReferralForm(checkupId) {
+        const source = _currentCheckups.find(c => String(c.id) === String(checkupId));
+        if (!source) { alert('Could not find that check-up record.'); return; }
+
+        // Switching to a different check-up starts a new referral; reopening the
+        // same one keeps whatever was typed (e.g. after a failed save).
+        if (window.referralSourceId !== source.id) {
+            ['referral-specialty', 'referral-specialist-name', 'referral-specialist-contact', 'referral-reason']
+                .forEach((id) => { document.getElementById(id).value = ''; });
+            _referralRequestId = newReferralRequestId();
+        }
+        window.referralSourceId = source.id;
+
+        const dateText = source.checkupDate
+            ? new Date(source.checkupDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+            : 'an undated visit';
+        document.getElementById('referralSourceText').textContent =
+            `Based on the ${checkupVisitTypeLabel(source.visitType)} of ${dateText}${source.diagnosis ? ` (diagnosis: ${source.diagnosis})` : ''}.`;
+
+        document.getElementById('checkupFormWrap').style.display = 'none';
+        const wrap = document.getElementById('referralFormWrap');
+        wrap.style.display = 'block';
+        wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        document.getElementById('referral-specialty').focus({ preventScroll: true });
+    }
+
+    function cancelReferral() {
+        const wrap = document.getElementById('referralFormWrap');
+        if (wrap) wrap.style.display = 'none';
+        window.referralSourceId = null;
+        _referralRequestId = null;
+    }
+
+    async function submitReferral() {
+        if (_referralSaving) return;
+        const childId = window.currentProgressChildId;
+        const sourceCheckupId = window.referralSourceId;
+        if (!childId || !sourceCheckupId) { alert('Please choose the check-up this referral is based on.'); return; }
+
+        const specialty = document.getElementById('referral-specialty').value.trim();
+        const specialistName = document.getElementById('referral-specialist-name').value.trim();
+        const specialistContact = document.getElementById('referral-specialist-contact').value.trim();
+        const reason = document.getElementById('referral-reason').value.trim();
+
+        // Mirrors routes/checkups.js createReferralRecord().
+        if (specialty.length < 3) { alert('Please enter the recommended specialty.'); return; }
+        if (reason.length < 10) { alert('Please describe the reason for referral (at least 10 characters).'); return; }
+        if (!_referralRequestId) _referralRequestId = newReferralRequestId();
+
+        const btn = document.getElementById('referralSubmitBtn');
+        _referralSaving = true;
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        try {
+            await apiFetch(`/checkups/child/${childId}/referrals`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    sourceCheckupId,
+                    specialty,
+                    specialistName: specialistName || null,
+                    specialistContact: specialistContact || null,
+                    reason,
+                    clientRequestId: _referralRequestId,
+                }),
+            });
+            alert('✅ Specialist referral recorded. The parent can see it in the child\'s history and will contact the specialist. Earlier check-ups and assessments remain unchanged.');
+            cancelReferral();
+            await loadCheckupHistory(childId);
+        } catch (err) {
+            // The form keeps its contents and the same request id, so retrying
+            // can never save the referral twice.
+            alert('Could not save the referral: ' + err.message + '\nYour entries have been kept so you can try again.');
+        } finally {
+            _referralSaving = false;
+            btn.disabled = false;
+            btn.textContent = 'Save Referral';
+        }
+    }
+
     async function loadProgressData(childId) {
         const [historyData, notesData, checkupsResult] = await Promise.all([
             apiFetch(`/assessments/${childId}/history`),
@@ -1006,14 +1144,14 @@ const API = window.location.origin + '/api';
             // Isolated on purpose: a check-up failure only affects the Check-up
             // panel and never takes down Assessment History or Progress Notes.
             apiFetch(`/checkups/child/${childId}`)
-                .then((d) => ({ checkups: d.checkups || [], error: null }))
-                .catch((err) => ({ checkups: [], error: err }))
+                .then((d) => ({ checkups: d.checkups || [], referrals: d.referrals || [], error: null }))
+                .catch((err) => ({ checkups: [], referrals: [], error: err }))
         ]);
         renderAssessmentHistory(historyData.assessments || []);
         renderProgressNotes(notesData.notes || []);
         populateLinkedAssessmentOptions(historyData.assessments || []);
         if (checkupsResult.error) renderCheckupHistoryError(checkupsResult.error);
-        else renderCheckupHistory(checkupsResult.checkups);
+        else renderCheckupHistory(checkupsResult.checkups, checkupsResult.referrals);
     }
 
     function openProgressModal(childId, childName) {
@@ -1024,6 +1162,7 @@ const API = window.location.origin + '/api';
         document.getElementById('progress-status').value = 'monitoring';
         document.getElementById('checkupFormWrap').style.display = 'none';
         resetCheckupForm();
+        cancelReferral();
         document.getElementById('progressModal').style.display = 'flex';
         document.getElementById('checkupHistoryList').innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1rem;">Loading check-up history...</p>';
         document.getElementById('progressTimeline').innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1rem;">Loading progress notes...</p>';

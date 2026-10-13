@@ -27,6 +27,7 @@ const Child = require('../models/Child');
 const Appointment = require('../models/Appointment');
 const Assessment = require('../models/Assessment');
 const PediatricianCheckup = require('../models/PediatricianCheckup');
+const SpecialistReferral = require('../models/SpecialistReferral');
 const Notification = require('../models/Notification');
 const AuditLog = require('../models/AuditLog');
 
@@ -408,7 +409,164 @@ async function updateCheckupRecord(childId, checkupId, user, body) {
   return record;
 }
 
+// ── Refer to a Specialist ────────────────────────────────────────────────
+// A referral is an ADDITIONAL record (models/SpecialistReferral.js). Nothing
+// below writes to PediatricianCheckup, Assessment or Appointment: the source
+// check-up keeps its own diagnosis, status, dates and pediatrician, and no
+// appointment, specialist account or consultation is created. There is no
+// update/delete for referrals.
+
+function requiredText(value, minLen, maxLen, label, emptyMessage) {
+  const text = String(value ?? '').trim();
+  if (!text) throw new HttpError(400, emptyMessage);
+  if (text.length < minLen) throw new HttpError(400, `${label} is too short (at least ${minLen} characters).`);
+  if (text.length > maxLen) throw new HttpError(400, `${label} is too long (${maxLen} characters max).`);
+  return text;
+}
+
+function parseClientRequestId(value) {
+  if (value == null || String(value).trim() === '') return null;
+  const text = String(value).trim();
+  if (!/^[A-Za-z0-9_-]{8,100}$/.test(text)) throw new HttpError(400, 'clientRequestId is invalid.');
+  return text;
+}
+
+// The referral must come from one of THIS pediatrician's own check-ups for
+// THIS child — a request cannot point it at another patient or at another
+// pediatrician's record by changing an id.
+async function resolveSourceCheckup(rawCheckupId, child, pediatricianId) {
+  const id = String(rawCheckupId ?? '').trim();
+  if (!id) throw new HttpError(400, 'Choose the check-up this referral is based on.');
+  if (!mongoose.Types.ObjectId.isValid(id)) throw new HttpError(400, 'sourceCheckupId is not a valid id.');
+  const checkup = await PediatricianCheckup.findOne({ _id: id, childId: child._id }).lean();
+  if (!checkup) throw new HttpError(400, 'The selected check-up does not belong to this child.');
+  if (String(checkup.pediatricianId) !== String(pediatricianId)) {
+    throw new HttpError(403, 'You can only refer from your own check-up records.');
+  }
+  return checkup;
+}
+
+async function notifyParentOfReferral(child, doc) {
+  if (!child?.parentId) return;
+  try {
+    const childName = [child.firstName, child.lastName].filter(Boolean).join(' ').trim() || 'your child';
+    await Notification.create({
+      userId: child.parentId,
+      title: 'Specialist referral recommended',
+      message: `Your pediatrician recommended that ${childName} be evaluated by a specialist (${doc.specialty}). `
+        + 'This is a recommendation only — no appointment has been booked. Please contact a specialist to arrange the evaluation.',
+      type: 'referral',
+      relatedPage: `/parent/reports.html?childId=${String(child._id)}`,
+      isRead: false,
+    });
+  } catch (err) {
+    console.warn('referral notification create failed:', err.message);
+  }
+}
+
+// Returns { referral, duplicate }. A resubmission carrying the same
+// clientRequestId returns the referral already saved (duplicate: true).
+async function createReferralRecord(childId, user, body) {
+  if (user.role !== 'pediatrician') throw new HttpError(403, 'Pediatricians only.');
+
+  const { child, canWrite } = await loadChildAndAccess(childId, user);
+  if (!canWrite) {
+    throw new HttpError(403, 'You are not linked to this patient — only a pediatrician with an appointment for this child may record a referral.');
+  }
+
+  const specialty = requiredText(body.specialty, 3, 200, 'Recommended specialty', 'Recommended specialty is required.');
+  const reason = requiredText(body.reason, 10, 2000, 'Reason for referral', 'Reason for referral is required.');
+  const specialistName = optionalText(body.specialistName, 200, 'Specialist name');
+  const specialistContact = optionalText(body.specialistContact, 300, 'Specialist contact details');
+  const clientRequestId = parseClientRequestId(body.clientRequestId);
+
+  const findPrevious = async () => {
+    if (!clientRequestId) return null;
+    const existing = await SpecialistReferral.findOne({ pediatricianId: user.userId, clientRequestId }).lean();
+    if (existing && String(existing.childId) !== String(child._id)) {
+      throw new HttpError(409, 'This request was already used for a different referral.');
+    }
+    return existing;
+  };
+
+  const previous = await findPrevious();
+  if (previous) return { referral: previous, duplicate: true };
+
+  const source = await resolveSourceCheckup(body.sourceCheckupId, child, user.userId);
+
+  let created;
+  try {
+    created = await SpecialistReferral.create({
+      childId: child._id,
+      pediatricianId: user.userId,
+      sourceCheckupId: source._id,
+      assessmentId: source.assessmentId || null,
+      specialty,
+      specialistName,
+      specialistContact,
+      reason,
+      referredAt: new Date(),
+      clientRequestId,
+    });
+  } catch (err) {
+    // Two identical submissions raced past findPrevious(): the unique index
+    // kept only one, so hand that one back.
+    if (err && err.code === 11000) {
+      const raced = await findPrevious();
+      if (raced) return { referral: raced, duplicate: true };
+    }
+    throw err;
+  }
+
+  await AuditLog.create({
+    actorId: user.userId,
+    action: 'specialist_referral_created',
+    targetType: 'SpecialistReferral',
+    targetId: created._id,
+    details: { childId: String(child._id), sourceCheckupId: String(source._id), specialty },
+  });
+
+  await notifyParentOfReferral(child, created);
+
+  return { referral: created, duplicate: false };
+}
+
+// Same visibility as the check-up list: parent owner, guardians granted
+// 'viewMedicalRecords' and admins see every referral for the child; a
+// pediatrician sees only the referrals they made.
+async function listReferralsForChild(childId, user) {
+  const { child, canRead } = await loadChildAndAccess(childId, user);
+  if (!canRead) throw new HttpError(403, 'Access denied.');
+
+  const filter = { childId: child._id };
+  if (user.role === 'pediatrician') filter.pediatricianId = user.userId;
+
+  return SpecialistReferral.find(filter)
+    .populate('pediatricianId', 'firstName lastName')
+    .sort({ referredAt: -1, createdAt: -1 })
+    .lean();
+}
+
 // ── Response shaping ─────────────────────────────────────────────────────
+function shapeReferral(doc) {
+  const pedia = doc.pediatricianId;
+  const pediaPopulated = Boolean(pedia) && typeof pedia === 'object' && pedia.firstName !== undefined;
+  return {
+    id: String(doc._id),
+    childId: String(doc.childId),
+    pediatricianId: pediaPopulated ? String(pedia._id) : String(pedia),
+    pediatricianName: pediaPopulated ? formatPersonName(pedia, 'Pediatrician') : null,
+    sourceCheckupId: doc.sourceCheckupId ? String(doc.sourceCheckupId) : null,
+    assessmentId: doc.assessmentId ? String(doc.assessmentId) : null,
+    specialty: doc.specialty,
+    specialistName: doc.specialistName || null,
+    specialistContact: doc.specialistContact || null,
+    reason: doc.reason,
+    referredAt: doc.referredAt || doc.createdAt,
+    createdAt: doc.createdAt,
+  };
+}
+
 function shapeCheckup(doc) {
   const pedia = doc.pediatricianId;
   const pediaPopulated = Boolean(pedia) && typeof pedia === 'object' && pedia.firstName !== undefined;
@@ -441,7 +599,17 @@ function shapeCheckup(doc) {
 router.get('/child/:childId', authMiddleware, async (req, res) => {
   try {
     const records = await listCheckupsForChild(req.params.childId, req.user);
-    res.json({ success: true, checkups: records.map(shapeCheckup) });
+    // Referrals are an extra field; if they cannot be read the check-up
+    // history still loads, and referralsError tells the page why.
+    let referrals = [];
+    let referralsError = null;
+    try {
+      referrals = (await listReferralsForChild(req.params.childId, req.user)).map(shapeReferral);
+    } catch (err) {
+      console.error('referrals list error:', err);
+      referralsError = 'Referrals could not be loaded.';
+    }
+    res.json({ success: true, checkups: records.map(shapeCheckup), referrals, referralsError });
   } catch (err) {
     if (err instanceof HttpError) return res.status(err.statusCode).json({ error: err.message });
     console.error('checkups list error:', err);
@@ -459,6 +627,20 @@ router.post('/child/:childId', authMiddleware, async (req, res) => {
     if (err instanceof HttpError) return res.status(err.statusCode).json({ error: err.message });
     console.error('checkups create error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/checkups/child/:childId/referrals
+// "Refer to a Specialist" — records a NEW referral linked to one of the
+// pediatrician's check-ups. Must stay above the /:checkupId routes.
+router.post('/child/:childId/referrals', authMiddleware, async (req, res) => {
+  try {
+    const { referral, duplicate } = await createReferralRecord(req.params.childId, req.user, req.body || {});
+    res.status(duplicate ? 200 : 201).json({ success: true, duplicate, referral: shapeReferral(referral) });
+  } catch (err) {
+    if (err instanceof HttpError) return res.status(err.statusCode).json({ error: err.message });
+    console.error('referral create error:', err);
+    res.status(500).json({ error: 'The referral could not be saved. Please try again.' });
   }
 });
 
@@ -509,4 +691,8 @@ router.__testables = {
   validateStatus,
   validateDiagnosisText,
   shapeCheckup,
+  createReferralRecord,
+  listReferralsForChild,
+  resolveSourceCheckup,
+  shapeReferral,
 };

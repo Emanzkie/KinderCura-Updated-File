@@ -274,6 +274,37 @@
                     </div>
                 </div>
 
+                <!-- Refer to a Specialist — opened from a check-up card below. Saves an
+                     additional referral entry; the check-up it is based on and every
+                     earlier record stay exactly as they are. -->
+                <div id="referralFormWrap" style="display:none;background:var(--bg-primary);border-radius:12px;padding:1.2rem;margin:1rem 0 1.5rem;">
+                    <h5 style="margin:0 0 0.4rem;color:var(--primary);">Refer to a Specialist</h5>
+                    <p id="referralSourceText" style="margin:0 0 0.9rem;font-size:0.8rem;color:var(--text-light);"></p>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="referral-specialty" style="font-weight:600;">Recommended Specialty</label>
+                            <input type="text" id="referral-specialty" maxlength="200" placeholder="e.g., Developmental Pediatrics" style="width:100%;padding:0.85rem;border:2px solid var(--border);border-radius:8px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="referral-specialist-name" style="font-weight:600;">Specialist Name <span style="font-weight:400;color:var(--text-light);">(optional)</span></label>
+                            <input type="text" id="referral-specialist-name" maxlength="200" placeholder="Only if a specific specialist is recommended" style="width:100%;padding:0.85rem;border:2px solid var(--border);border-radius:8px;">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-top:1rem;">
+                        <label for="referral-specialist-contact" style="font-weight:600;">Specialist Clinic / Contact Details <span style="font-weight:400;color:var(--text-light);">(optional)</span></label>
+                        <input type="text" id="referral-specialist-contact" maxlength="300" placeholder="Only details you want the parent to see" style="width:100%;padding:0.85rem;border:2px solid var(--border);border-radius:8px;">
+                    </div>
+                    <div class="form-group">
+                        <label for="referral-reason" style="font-weight:600;">Reason for Referral</label>
+                        <textarea id="referral-reason" maxlength="2000" placeholder="Why further evaluation by a specialist is recommended..." style="width:100%;height:100px;padding:0.9rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;resize:vertical;"></textarea>
+                    </div>
+                    <p style="font-size:0.76rem;color:var(--text-light);margin:0;">This records a recommendation only. KinderCura does not book an appointment, contact the specialist, or send the child's records; the parent or guardian contacts the specialist. Earlier check-ups and assessments are not changed.</p>
+                    <div style="display:flex;justify-content:flex-end;gap:0.8rem;margin-top:1rem;">
+                        <button type="button" class="btn btn-secondary" onclick="cancelReferral()" style="padding:0.75rem 1.2rem;">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="referralSubmitBtn" onclick="submitReferral()" style="padding:0.75rem 1.2rem;">Save Referral</button>
+                    </div>
+                </div>
+
                 <div id="checkupHistoryList" style="display:grid;gap:1rem;margin-bottom:2rem;">
                     <p style="text-align:center;color:var(--text-light);padding:1rem;">Loading check-up history...</p>
                 </div>
