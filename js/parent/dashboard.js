@@ -18,7 +18,7 @@ function calcAge(dob) {
 let allChildren = [];
 let activeChild = null;
 // Signature of the last rendered switcher so we can skip redundant re-renders
-// (loadDashboard runs every 5s via setInterval and we don't want the dropdown
+// (loadDashboard re-runs every 30s via KC.poll and we don't want the dropdown
 // to visibly flicker when the list of children has not actually changed).
 let _switcherSignature = null;
 let _dashboardLoadCounter = 0;
@@ -377,4 +377,4 @@ function renderChildrenLegend(summary) {
         }
 
         // Start dashboard data load after page is ready
-        document.addEventListener('DOMContentLoaded', () => { initNav(); initParentCharts(); loadDashboard(); loadParentAnalytics(); setInterval(()=>{loadDashboard();loadParentAnalytics();},5000); });
+        document.addEventListener('DOMContentLoaded', () => { initNav(); initParentCharts(); loadDashboard(); loadParentAnalytics(); window.KC.poll(() => Promise.all([loadDashboard(), loadParentAnalytics()]), 30000); });

@@ -41,6 +41,45 @@ window.KC = {
     }
 };
 
+// Repeats fn every intervalMs, but only while the tab is visible, and never
+// starts a run while the previous one is still waiting on the server. A plain
+// setInterval kept the dashboard firing its API calls every few seconds in
+// background tabs that nobody was looking at. When the tab becomes visible
+// again after missing at least one interval, fn runs once straight away so
+// the page catches up. It does not run on start — callers already do their
+// first load. Returns { stop() }.
+window.KC.poll = function poll(fn, intervalMs) {
+    let running = false;
+    let stopped = false;
+    let lastRun = Date.now();
+
+    const tick = async () => {
+        if (stopped || running || document.visibilityState === 'hidden') return;
+        running = true;
+        lastRun = Date.now();
+        try {
+            await fn();
+        } catch (err) {
+            console.error('[KC.poll]', err);
+        } finally {
+            running = false;
+        }
+    };
+    const onVisibilityChange = () => {
+        if (document.visibilityState === 'visible' && Date.now() - lastRun >= intervalMs) tick();
+    };
+
+    const timer = setInterval(tick, intervalMs);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return {
+        stop() {
+            stopped = true;
+            clearInterval(timer);
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+        },
+    };
+};
+
 // Shared fetch helper that automatically sends the JWT token
 async function apiFetch(endpoint, options = {}) {
     const res = await fetch(`${API}${endpoint}`, {

@@ -85,7 +85,7 @@ async function loadThreads() {
 
 /* Open selected conversation */
 async function openThread(apptId) {
-  if (pollTimer) clearInterval(pollTimer);
+  if (pollTimer) pollTimer.stop();
 
   activeApptId = apptId;
   lastMsgId = 0;
@@ -95,8 +95,8 @@ async function openThread(apptId) {
 
   await loadMessages();
 
-  /* Poll every 4 seconds for new messages */
-  pollTimer = setInterval(pollMessages, 4000);
+  /* Poll every 4 seconds for new messages while the tab is visible */
+  pollTimer = window.KC.poll(pollMessages, 4000);
 }
 
 /* Load all messages of current thread */
@@ -354,5 +354,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
 /* Stop polling when leaving the page */
 window.addEventListener('beforeunload', () => {
-  if (pollTimer) clearInterval(pollTimer);
+  if (pollTimer) pollTimer.stop();
 });

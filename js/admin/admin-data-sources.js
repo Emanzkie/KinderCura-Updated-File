@@ -1057,12 +1057,12 @@ requireAuth();
 
         function startPipelinePoll() {
             if (pipelinePollTimer) return;
-            pipelinePollTimer = setInterval(loadPipelineStatus, 5000);
+            pipelinePollTimer = window.KC.poll(loadPipelineStatus, 5000);
         }
 
         function stopPipelinePoll() {
             if (!pipelinePollTimer) return;
-            clearInterval(pipelinePollTimer);
+            pipelinePollTimer.stop();
             pipelinePollTimer = null;
         }
 
