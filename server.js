@@ -120,9 +120,22 @@ app.get('/api.js', (req, res) => {
 const SERVER_ONLY_DIRS = /^\/(routes|models|controllers|middleware|services|ml|scripts|tests|node_modules|api|views|private|backups|mongodump-kindercura|database|docs)(\/|$)/i;
 const SERVER_ONLY_FILES = /^\/(server|db|sse|seed-admin|test-email|preload-dns|api)\.js$|^\/package(-lock)?\.json$|^\/vercel\.json$/i;
 
+// The patterns must be tested against the file express.static will actually
+// open, not the raw URL: static decodes %2F (and %5C on Windows) and then
+// collapses "..", so "/x/..%2Froutes%2Fauth.js" passed a raw-path check and was
+// served as /routes/auth.js. Undecodable paths are left for static to reject.
+function rootStaticTarget(urlPath) {
+    try {
+        return path.posix.normalize('/' + decodeURIComponent(urlPath).replace(/\\/g, '/'));
+    } catch {
+        return null;
+    }
+}
+
 const rootStatic = express.static(__dirname, { index: false });
 app.use((req, res, next) => {
-    if (SERVER_ONLY_DIRS.test(req.path) || SERVER_ONLY_FILES.test(req.path)) return next();
+    const target = rootStaticTarget(req.path);
+    if (target === null || SERVER_ONLY_DIRS.test(target) || SERVER_ONLY_FILES.test(target)) return next();
     rootStatic(req, res, next);
 });
 app.use(express.static(path.join(__dirname, 'SIGN-UP,LOGIN')));
@@ -168,9 +181,30 @@ app.get('/parent/payment', (req, res) => {
   res.sendFile(path.join(__dirname, 'PARENT', 'payment.html'));
 });
 
+// Role page folders are served by bare file name. The name comes straight from
+// the URL, and Express decodes %2F before routing, so "/parent/..%2Fserver.js"
+// arrived here as "../server.js" — path.join resolved it to the project root
+// and handed out backend source and private/payment-proofs images even with
+// the SERVER_ONLY_* guard above fixed. Every file in these folders is a flat .html
+// page, so anything else is refused, and `root` makes send() reject traversal
+// as a second line of defence.
+const PAGE_NAME = /^[A-Za-z0-9_-]+\.html$/;
+function servePage(dir) {
+    const root = path.join(__dirname, dir);
+    return (req, res, next) => {
+        const page = req.params.page;
+        if (!PAGE_NAME.test(page)) return res.status(404).send('Not found');
+        res.sendFile(page, { root }, (err) => {
+            if (!err || res.headersSent) return;
+            if (err.status === 404) return res.status(404).send('Not found');
+            next(err);
+        });
+    };
+}
+
 // Friendly page routes for parent / pedia / admin pages
-app.get('/parent/:page', (req, res) => res.sendFile(path.join(__dirname, 'PARENT', req.params.page)));
-app.get('/pedia/:page', (req, res) => res.sendFile(path.join(__dirname, 'PEDIA', req.params.page)));
+app.get('/parent/:page', servePage('PARENT'));
+app.get('/pedia/:page', servePage('PEDIA'));
 
 // Admin payment verification page — review e-wallet proofs
 app.get('/admin/payments', (req, res) => {
@@ -182,9 +216,9 @@ app.get('/admin/prc-verification', (req, res) => {
     res.sendFile(path.join(__dirname, 'ADMIN', 'admin-prc-verification.html'));
 });
 
-app.get('/admin/:page', (req, res) => res.sendFile(path.join(__dirname, 'ADMIN', req.params.page)));
+app.get('/admin/:page', servePage('ADMIN'));
 // Important: serves the new SECRETARY HTML pages under /secretary/
-app.get('/secretary/:page', (req, res) => res.sendFile(path.join(__dirname, 'SECRETARY', req.params.page)));
+app.get('/secretary/:page', servePage('SECRETARY'));
 
 // Step 1 routes already converted to MongoDB
 app.use('/api/auth', require('./routes/auth'));
