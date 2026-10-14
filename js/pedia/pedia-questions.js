@@ -966,124 +966,167 @@
             }
         }
 
-        // Open assign modal for a specific question
-        async function openAssignModal(qId) {
-            assigningQId = qId;
+        // ── Assign modal (question or question set → patients) ─────────────
+        // One table for both modes. Which endpoint a row uses is decided by
+        // assigningSetId / assigningQId, exactly as before:
+        //   set      → assignSetToPatient()  POST /questions/set/:setId/assign
+        //   question → assignToPatient()     POST /questions/:id/assign
+        // The rows come from patientList (unfiltered) or from the existing
+        // /assessments/patients filter (filtered). patientList itself is never
+        // overwritten by a filter: the Answer Tracker reads it too.
+        let assignFilteredRows = null;      // null = no filter active
+        let assignScoresByChild = new Map(); // childId → score data from /assessments/patients
+        let assignScoresError = false;
+        let assignRequestToken = 0;          // latest filter request
+        let assignScoreToken = 0;            // latest score request
 
-            const q = allQuestions.find(x => String(x.id) === String(qId));
-            document.getElementById('assignModalSub').textContent = `"${q ? q.questionText.substring(0, 60) + (q.questionText.length > 60 ? '…' : '') : 'Question'}"`;
+        function setAssignModalHeader(title, subtitle) {
+            document.getElementById('assignModalTitle').textContent = title;
+            document.getElementById('assignModalSub').textContent = subtitle;
+        }
 
+        function resetAssignFilterControls() {
+            document.getElementById('filterCategory').value = '';
+            document.getElementById('filterThreshold').value = '';
+            assignFilteredRows = null;
+            syncThresholdAvailability();
+        }
+
+        // The status filter only has a meaning per domain (the server ignores
+        // it without a category), so it waits for a category to be chosen.
+        function syncThresholdAvailability() {
+            const category = document.getElementById('filterCategory').value;
+            const sel = document.getElementById('filterThreshold');
+            sel.disabled = !category;
+            sel.title = category ? '' : 'Choose a category first';
+            if (!category) sel.value = '';
+        }
+
+        // Maps one /assessments/patients record to a modal row. Scores and
+        // statuses are the server's values, used as-is.
+        function assignRowFromAssessment(p) {
+            return {
+                childId: String(p.childId),
+                childName: `${p.childFirstName || ''} ${p.childLastName || ''}`.trim() || 'Child',
+                parentName: `${p.parentFirstName || ''} ${p.parentLastName || ''}`.trim() || 'Parent',
+                appointmentId: p.appointmentId || null,
+                lastAssessmentDate: p.lastAssessmentDate || null,
+                scores: { motor: p.motorScore, communication: p.communicationScore, social: p.socialScore, cognitive: p.cognitiveScore },
+                statuses: { motor: p.motorStatus, communication: p.communicationStatus, social: p.socialStatus, cognitive: p.cognitiveStatus },
+            };
+        }
+
+        // Latest-assessment date and domain scores for the unfiltered table.
+        // Same endpoint the filters use, called without a filter.
+        async function loadAssignScores() {
+            const token = ++assignScoreToken;
+            try {
+                const response = await apiFetch('/assessments/patients');
+                if (token !== assignScoreToken) return;
+                assignScoresByChild = new Map((response.patients || []).map(p => [String(p.childId), assignRowFromAssessment(p)]));
+                assignScoresError = false;
+            } catch (err) {
+                if (token !== assignScoreToken) return;
+                console.error('Assign modal score load error:', err);
+                assignScoresByChild = new Map();
+                assignScoresError = true;
+            }
+        }
+
+        async function openAssignDialog() {
+            selectedPatients.clear();
+            resetAssignFilterControls();
+            document.getElementById('selectAllPatients').checked = false;
             document.getElementById('assignModal').style.display = 'flex';
-            document.getElementById('assignPatientList').innerHTML = '<div style="text-align:center;padding:1rem;color:var(--text-light);">Loading patients…</div>';
+            document.getElementById('assignPatientList').innerHTML = '<div class="assign-state">Loading patients…</div>';
+            document.getElementById('assignVisibleCount').textContent = '';
+            updateSelectedCount();
 
             if (!patientList.length) {
                 await loadPatientsOnly();
             }
-
+            await loadAssignScores();
             renderAssignList();
+        }
+
+        // Open assign modal for a specific question
+        async function openAssignModal(qId) {
+            assigningQId = qId;
+            assigningSetId = null;
+
+            const q = allQuestions.find(x => String(x.id) === String(qId));
+            setAssignModalHeader('Assign Question to Patient',
+                `"${q ? q.questionText.substring(0, 60) + (q.questionText.length > 60 ? '…' : '') : 'Question'}"`);
+            await openAssignDialog();
         }
 
         // Open assign modal for an entire Question Set
         let assigningSetId = null;
         async function openAssignSetModal(setId) {
             assigningSetId = setId;
+            assigningQId = null;
 
             const set = allQuestionSets.find(s => String(s.setId) === String(setId));
             const qCount = set ? set.questions.length : 0;
-            document.getElementById('assignModalSub').textContent = `Set: "${set ? set.title : 'Question Set'}" (${qCount} question${qCount !== 1 ? 's' : ''})`;
-
-            document.getElementById('assignModal').style.display = 'flex';
-            document.getElementById('assignPatientList').innerHTML = '<div style="text-align:center;padding:1rem;color:var(--text-light);">Loading patients…</div>';
-
-            if (!patientList.length) {
-                await loadPatientsOnly();
-            }
-
-            renderAssignSetList();
+            setAssignModalHeader('Assign Question Set to Patient',
+                `Set: "${set ? set.title : 'Question Set'}" (${qCount} question${qCount !== 1 ? 's' : ''})`);
+            await openAssignDialog();
         }
 
-        // Render patient list inside assign modal for Question Set assignment
+        // Kept for existing callers: both modes now share renderAssignList().
         function renderAssignSetList() {
-            const list = document.getElementById('assignPatientList');
-
-            if (!patientList.length) {
-                list.innerHTML = '<p style="color:var(--text-light);text-align:center;padding:1rem;">No patients yet. Approve some appointments first.</p>';
-                return;
-            }
-
-            list.innerHTML = patientList.map(p => `
-            <div class="patient-row">
-                <div>
-                    <p style="font-weight:600;font-size:.88rem;margin:0;"><img src="/icons/profile_icon.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${p.childName}</p>
-                    <p style="font-size:.78rem;color:var(--text-light);margin:.1rem 0 0;"><img src="/icons/account.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${p.parentName}</p>
-                </div>
-                <button class="btn-outline" style="font-size:.78rem;padding:.3rem .7rem;" onclick="assignSetToPatient('${p.childId}', ${p.appointmentId || 'null'})">Assign Set</button>
-            </div>
-        `).join('');
+            renderAssignList();
         }
 
-        // Filter patients by assessment category and threshold
+        // Filter patients by assessment category and threshold, using the
+        // existing /assessments/patients endpoint. Without a status the
+        // endpoint is called unfiltered (with only a category it returns no
+        // one), and the table then shows that category's score for every
+        // patient with a result.
         async function filterPatientsByAssessment() {
+            syncThresholdAvailability();
             const category = document.getElementById('filterCategory')?.value || '';
             const threshold = document.getElementById('filterThreshold')?.value || '';
             const list = document.getElementById('assignPatientList');
+            const token = ++assignRequestToken;
 
-            if (!category && !threshold) {
-                await loadPatientsOnly();
-                if (typeof renderAssignList === 'function') renderAssignList();
+            if (!category) {
+                assignFilteredRows = null;
+                renderAssignList();
                 return;
             }
 
-            list.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--text-light);">Filtering patients...</div>';
+            list.innerHTML = '<div class="assign-state">Filtering patients…</div>';
 
             try {
                 const params = new URLSearchParams();
-                if (category) params.append('category', category);
-                if (threshold) params.append('threshold', threshold);
-
-                const response = await apiFetch(`/assessments/patients?${params.toString()}`);
-                const filteredPatients = response.patients || [];
-
-                if (!filteredPatients.length) {
-                    list.innerHTML = '<p style="color:var(--text-light);text-align:center;padding:1rem;">No patients match this filter.<br><small>Try selecting different criteria.</small></p>';
-                    return;
+                if (threshold) {
+                    params.append('category', category);
+                    params.append('threshold', threshold);
                 }
-
-                const categoryLabels = { motor: 'Motor Skills', communication: 'Communication', social: 'Social Skills', cognitive: 'Cognitive' };
-                const statusColors = window.KCScoring.STATUS_COLORS;
-
-                patientList = filteredPatients.map(p => ({
-                    childId: p.childId,
-                    childName: `${p.childFirstName} ${p.childLastName}`.trim(),
-                    parentName: `${p.parentFirstName} ${p.parentLastName}`.trim(),
-                    appointmentId: p.appointmentId,
-                    scores: {
-                        motor: p.motorScore,
-                        communication: p.communicationScore,
-                        social: p.socialScore,
-                        cognitive: p.cognitiveScore
-                    },
-                    statuses: {
-                        motor: p.motorStatus,
-                        communication: p.communicationStatus,
-                        social: p.socialStatus,
-                        cognitive: p.cognitiveStatus
-                    }
-                }));
-
-                if (typeof renderAssignList === 'function') renderAssignList();
+                const query = params.toString();
+                const response = await apiFetch(`/assessments/patients${query ? `?${query}` : ''}`);
+                if (token !== assignRequestToken) return;
+                assignFilteredRows = (response.patients || []).map(assignRowFromAssessment);
+                renderAssignList();
             } catch (err) {
+                if (token !== assignRequestToken) return;
                 console.error('Filter error:', err);
-                list.innerHTML = '<p style="color:var(--status-attention-fg);text-align:center;padding:1rem;">Error filtering patients.</p>';
+                assignFilteredRows = [];
+                list.innerHTML = '<div class="assign-state">Error filtering patients. Please try again.</div>';
+                pruneSelectionToVisible();
+                updateVisibleCount(0);
+                updateSelectedCount();
             }
         }
 
         // Clear assessment filters and show all patients
         async function clearAssessmentFilters() {
-            document.getElementById('filterCategory').value = '';
-            document.getElementById('filterThreshold').value = '';
+            resetAssignFilterControls();
+            ++assignRequestToken;
             await loadPatientsOnly();
-            if (typeof renderAssignList === 'function') renderAssignList();
+            await loadAssignScores();
+            renderAssignList();
         }
 
         // Assign selected Question Set to one child (all questions in the set)
@@ -1267,55 +1310,178 @@
 
         // Selected patients tracking
         let selectedPatients = new Set();
+        let assignBulkBusy = false;
 
-        // Render patient list inside assign modal with checkboxes
+        const ASSIGN_DOMAINS = [
+            ['communication', 'Communication', 'Communication'],
+            ['social', 'Social', 'Social Skills'],
+            ['cognitive', 'Cognitive', 'Cognitive'],
+            ['motor', 'Motor', 'Motor Skills'],
+        ];
+
+        // Rows currently in the table: the filter result, or every patient
+        // with the latest-assessment data merged in by childId.
+        function assignVisibleRows() {
+            if (assignFilteredRows) return assignFilteredRows;
+            return patientList.map(p => {
+                const s = assignScoresByChild.get(String(p.childId));
+                return {
+                    childId: String(p.childId),
+                    childName: p.childName,
+                    parentName: p.parentName,
+                    appointmentId: p.appointmentId || null,
+                    lastAssessmentDate: s ? s.lastAssessmentDate : null,
+                    scores: s ? s.scores : null,
+                    statuses: s ? s.statuses : null,
+                };
+            });
+        }
+
+        // Display only, from the Answer Tracker data already on the page. It
+        // mirrors the server's duplicate rule (routes/custom-questions.js): one
+        // assignment per question + child + appointment. The server still
+        // decides, and answers "Already assigned" without creating a copy.
+        function assignmentStatusFor(row) {
+            const appt = row.appointmentId == null ? null : Number(row.appointmentId);
+            const mine = trackerAssignments.filter(a => String(a.childId) === String(row.childId)
+                && (a.appointmentId == null ? null : Number(a.appointmentId)) === appt);
+            if (assigningSetId) {
+                const set = allQuestionSets.find(s => String(s.setId) === String(assigningSetId));
+                const ids = (set && Array.isArray(set.questions) ? set.questions : []).map(q => String(q.id));
+                if (!ids.length) return { key: 'none' };
+                const done = ids.filter(id => mine.some(a => String(a.questionId) === id)).length;
+                if (done === ids.length) return { key: 'assigned' };
+                return done ? { key: 'partial', done, total: ids.length } : { key: 'none' };
+            }
+            return { key: mine.some(a => String(a.questionId) === String(assigningQId)) ? 'assigned' : 'none' };
+        }
+
+        function isAssignable(row) {
+            return assignmentStatusFor(row).key !== 'assigned';
+        }
+
+        // Score badges show the server's score and stored status (KCScoring
+        // only supplies the label text and band colour; nothing is recomputed).
+        function assignScoreBadge(row, key, shortLabel, small) {
+            const S = window.KCScoring;
+            const value = row.scores ? row.scores[key] : null;
+            if (value == null) return '';
+            const status = row.statuses ? row.statuses[key] : null;
+            const statusLabel = status ? S.clinicalLabel(status) : '';
+            const fill = (status && S.STATUS_COLORS[status]) || 'var(--surface-muted)';
+            const fullName = (ASSIGN_DOMAINS.find(d => d[0] === key) || [])[2] || key;
+            const title = `${fullName}: ${value}%${statusLabel ? ` (${statusLabel})` : ''}`;
+            const text = small ? `${shortLabel} ${value}%` : `${statusLabel ? `${statusLabel} ` : ''}${value}%`;
+            const srText = small && statusLabel ? `<span class="assign-sr-only"> (${esc(statusLabel)})</span>` : '';
+            return `<span class="assign-badge${small ? ' assign-badge--small' : ''}" style="background:${fill};" title="${esc(title)}">${esc(text)}${srText}</span>`;
+        }
+
+        function assignDomainScoreCell(row) {
+            const hasScores = row.scores && Object.values(row.scores).some(v => v != null);
+            if (!hasScores) {
+                const text = assignScoresError && !assignFilteredRows ? 'Unavailable' : 'No score';
+                return `<span class="assign-badge assign-badge--none">${text}</span>`;
+            }
+            const category = document.getElementById('filterCategory').value;
+            if (category) {
+                return assignScoreBadge(row, category, '', false) || '<span class="assign-badge assign-badge--none">No score</span>';
+            }
+            return `<div class="assign-domain-badges">${ASSIGN_DOMAINS.map(([key, label]) => assignScoreBadge(row, key, label, true)).join('')}</div>`;
+        }
+
+        function assignDateCell(row) {
+            if (row.lastAssessmentDate) {
+                return esc(new Date(row.lastAssessmentDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }));
+            }
+            const text = assignScoresError && !assignFilteredRows ? 'Unavailable' : 'No assessment result yet';
+            return `<span class="assign-muted">${text}</span>`;
+        }
+
+        function assignStatusCell(status) {
+            if (status.key === 'assigned') return '<span class="assign-badge assign-badge--assigned">Already assigned</span>';
+            if (status.key === 'partial') return `<span class="assign-badge assign-badge--partial">Partly assigned (${status.done}/${status.total})</span>`;
+            return '<span class="assign-badge assign-badge--none">Not assigned</span>';
+        }
+
+        function renderAssignRow(row) {
+            const status = assignmentStatusFor(row);
+            const assignable = status.key !== 'assigned';
+            const isSelected = assignable && selectedPatients.has(row.childId);
+            const id = esc(row.childId);
+            const appt = row.appointmentId == null ? 'null' : Number(row.appointmentId);
+            const actionLabel = assigningSetId ? 'Assign Set' : 'Assign';
+            return `
+                <tr class="${isSelected ? 'is-selected' : ''}">
+                    <td class="col-select">
+                        <input type="checkbox" class="patient-checkbox" value="${id}" ${isSelected ? 'checked' : ''} ${assignable ? '' : 'disabled'}
+                            aria-label="Select ${esc(row.childName)}" onchange="togglePatientSelection('${id}')">
+                    </td>
+                    <td class="col-name">${esc(row.childName)}</td>
+                    <td class="col-name">${esc(row.parentName)}</td>
+                    <td>${assignDateCell(row)}</td>
+                    <td>${assignDomainScoreCell(row)}</td>
+                    <td>${assignStatusCell(status)}</td>
+                    <td class="col-action">${assignable
+                        ? `<button type="button" class="btn-outline assign-row-btn" onclick="assignRowAction(this, '${id}', ${appt})">${actionLabel}</button>`
+                        : '<span class="assign-muted" aria-label="No action">&mdash;</span>'}</td>
+                </tr>`;
+        }
+
+        // Render patient table inside the assign modal
         function renderAssignList() {
             const list = document.getElementById('assignPatientList');
+            const rows = assignVisibleRows();
+            pruneSelectionToVisible(rows);
+            updateVisibleCount(rows.length);
 
-            if (!patientList.length) {
-                list.innerHTML = '<p style="color:var(--text-light);text-align:center;padding:1rem;">No patients yet. Approve some appointments first.</p>';
+            if (!rows.length) {
+                list.innerHTML = assignFilteredRows
+                    ? '<div class="assign-state">No patients match this filter.<br><small>Try selecting different criteria.</small></div>'
+                    : '<div class="assign-state">No patients yet. Approve some appointments first.</div>';
+                updateSelectedCount();
                 return;
             }
 
-            const statusColors = window.KCScoring.STATUS_COLORS;
-
-            list.innerHTML = patientList.map(p => {
-                const hasScores = p.scores && Object.values(p.scores).some(s => s != null);
-                const isSelected = selectedPatients.has(p.childId);
-                // Domain assessment scores from the child's latest assessment.
-                // Full domain names + the stored status as text (colour dot is a
-                // second cue, never the only one). Values are unchanged.
-                const scoreChip = (key, label) => {
-                    const v = p.scores[key];
-                    if (v == null) return '';
-                    const st = p.statuses?.[key];
-                    const stLabel = st ? window.KCScoring.clinicalLabel(st) : '';
-                    return `<span class="assign-score-chip"><span class="assign-score-dot" style="background:${statusColors[st] || '#DDD9CC'};" aria-hidden="true"></span>${label}: <strong>${v}%</strong>${stLabel ? ` (${stLabel})` : ''}</span>`;
-                };
-                const scoresHtml = hasScores ? `
-                    <div style="display:flex;gap:0.4rem;margin-top:0.4rem;flex-wrap:wrap;">
-                        ${scoreChip('motor', 'Motor Skills')}
-                        ${scoreChip('communication', 'Communication')}
-                        ${scoreChip('social', 'Social Skills')}
-                        ${scoreChip('cognitive', 'Cognitive')}
-                    </div>
-                ` : '';
-
-                return `
-            <div class="patient-row" style="${isSelected ? 'background:var(--status-positive-bg);border-left:3px solid #6b8e6f;' : ''}">
-                <label style="display:flex;align-items:flex-start;gap:0.75rem;cursor:pointer;flex:1;">
-                    <input type="checkbox" class="patient-checkbox" value="${p.childId}" ${isSelected ? 'checked' : ''} onchange="togglePatientSelection('${p.childId}')" style="margin-top:0.3rem;">
-                    <div>
-                        <p style="font-weight:600;font-size:.88rem;margin:0;"><img src="/icons/profile_icon.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${p.childName}</p>
-                        <p style="font-size:.78rem;color:var(--text-light);margin:.1rem 0 0;"><img src="/icons/account.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${p.parentName}</p>
-                        ${scoresHtml}
-                    </div>
-                </label>
-                <button class="btn-outline" style="font-size:.78rem;padding:.3rem .7rem;flex-shrink:0;" onclick="assignToPatient('${p.childId}', ${p.appointmentId || 'null'})">Assign</button>
-            </div>
-        `}).join('');
+            list.innerHTML = `
+                <table class="assign-table">
+                    <thead>
+                        <tr>
+                            <th class="col-select"><span class="assign-sr-only">Select</span></th>
+                            <th>Patient Name</th>
+                            <th>Parent Name</th>
+                            <th>Latest Assessment</th>
+                            <th>Domain Score</th>
+                            <th>Status</th>
+                            <th class="col-action">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows.map(renderAssignRow).join('')}</tbody>
+                </table>`;
 
             updateSelectedCount();
+        }
+
+        // A selection never outlives a filter change: only visible patients
+        // that can still be assigned stay selected.
+        function pruneSelectionToVisible(rows = assignVisibleRows()) {
+            const keep = new Set(rows.filter(isAssignable).map(r => r.childId));
+            [...selectedPatients].forEach(id => { if (!keep.has(id)) selectedPatients.delete(id); });
+        }
+
+        function updateVisibleCount(n) {
+            document.getElementById('assignVisibleCount').textContent = `${n} patient${n === 1 ? '' : 's'} shown`;
+        }
+
+        // Individual "Assign" / "Assign Set": the existing handlers, guarded
+        // against a double click.
+        async function assignRowAction(btn, childId, appointmentId) {
+            if (btn) btn.disabled = true;
+            try {
+                if (assigningSetId) await assignSetToPatient(childId, appointmentId);
+                else await assignToPatient(childId, appointmentId);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
         }
 
         // Toggle individual patient selection
@@ -1323,7 +1489,8 @@
             if (selectedPatients.has(childId)) {
                 selectedPatients.delete(childId);
             } else {
-                selectedPatients.add(childId);
+                const row = assignVisibleRows().find(r => r.childId === childId);
+                if (row && isAssignable(row)) selectedPatients.add(childId);
             }
             renderAssignList();
         }
@@ -1331,43 +1498,61 @@
         // Toggle select all visible patients
         function toggleSelectAllPatients() {
             const selectAll = document.getElementById('selectAllPatients');
+            const eligible = assignVisibleRows().filter(isAssignable);
             if (selectAll.checked) {
-                patientList.forEach(p => selectedPatients.add(p.childId));
+                eligible.forEach(p => selectedPatients.add(p.childId));
             } else {
-                patientList.forEach(p => selectedPatients.delete(p.childId));
+                eligible.forEach(p => selectedPatients.delete(p.childId));
             }
             renderAssignList();
         }
 
-        // Update selected count display
+        // Update selected count display (toolbar + footer) and Select All state
         function updateSelectedCount() {
             const count = selectedPatients.size;
             document.getElementById('selectedCount').textContent = count;
-            const btn = document.getElementById('assignSelectedBtn');
-            if (btn) {
-                btn.disabled = count === 0;
-                btn.style.opacity = count === 0 ? '0.5' : '1';
+            document.querySelectorAll('#assignModal .assign-selected-count').forEach(el => { el.textContent = count; });
+            ['assignSelectedBtn', 'assignSelectedFooterBtn'].forEach(btnId => {
+                const btn = document.getElementById(btnId);
+                if (btn) btn.disabled = count === 0 || assignBulkBusy;
+            });
+
+            const selectAll = document.getElementById('selectAllPatients');
+            if (selectAll) {
+                const eligible = assignVisibleRows().filter(isAssignable);
+                const picked = eligible.filter(r => selectedPatients.has(r.childId)).length;
+                selectAll.disabled = eligible.length === 0;
+                selectAll.checked = eligible.length > 0 && picked === eligible.length;
+                selectAll.indeterminate = picked > 0 && picked < eligible.length;
             }
         }
 
-        // Assign to selected patients (bulk)
+        // Assign to selected patients (bulk) — the same endpoint as the
+        // matching single action, once per selected, visible, assignable row.
         async function assignToSelectedPatients() {
-            if (selectedPatients.size === 0) return;
+            if (assignBulkBusy || selectedPatients.size === 0) return;
 
-            const selectedArray = Array.from(selectedPatients);
+            const rows = assignVisibleRows().filter(r => selectedPatients.has(r.childId) && isAssignable(r));
+            if (!rows.length) return;
+
+            const endpoint = assigningSetId
+                ? `/questions/set/${assigningSetId}/assign`
+                : `/questions/${assigningQId}/assign`;
+            const isSet = Boolean(assigningSetId);
+
+            assignBulkBusy = true;
+            updateSelectedCount();
+
             let successCount = 0;
             let failCount = 0;
 
-            for (const childId of selectedArray) {
-                const patient = patientList.find(p => p.childId === childId);
-                if (!patient) continue;
-
+            for (const row of rows) {
                 try {
-                    await apiFetch(`/questions/${assigningQId}/assign`, {
+                    await apiFetch(endpoint, {
                         method: 'POST',
                         body: JSON.stringify({
-                            childId,
-                            appointmentId: patient.appointmentId || undefined
+                            childId: row.childId,
+                            appointmentId: row.appointmentId || undefined
                         })
                     });
                     successCount++;
@@ -1376,8 +1561,12 @@
                 }
             }
 
+            assignBulkBusy = false;
+
             if (failCount === 0) {
-                flash(`Question assigned to ${successCount} patient(s)! Parents have been notified.`);
+                flash(isSet
+                    ? `Question set assigned to ${successCount} patient(s)! Parents have been notified.`
+                    : `Question assigned to ${successCount} patient(s)! Parents have been notified.`);
             } else {
                 flash(`Assigned to ${successCount} patient(s). ${failCount} failed.`, 'error');
             }
@@ -1412,6 +1601,10 @@
             assigningSetId = null;
             selectedPatients.clear();
             document.getElementById('selectAllPatients').checked = false;
+            // Drop the filter result and ignore any request still in flight.
+            assignFilteredRows = null;
+            assignRequestToken++;
+            assignScoreToken++;
         }
 
         // Refresh everything on the page
@@ -1481,10 +1674,9 @@
             const el = document.getElementById('assignScoreNote');
             if (!el || !window.KCScoring) return;
             const S = window.KCScoring;
-            el.innerHTML = 'Percentages under each patient are <strong>domain assessment scores</strong> from the child\'s latest assessment: '
-                + 'the share of possible points earned on that domain\'s questions (Yes = 2, Sometimes = 1, No = 0). '
-                + 'The label and dot show the classification: '
-                + S.ACTIVE_BANDS.map(b => `<span class="assign-score-key"><span class="assign-score-dot" style="background:${S.colorForBand(b.key)};" aria-hidden="true"></span>${S.clinicalLabel(b.key)} ${b.min}&ndash;${b.max}%</span>`).join(' ');
+            el.innerHTML = 'Percentages are <strong>domain assessment scores</strong> from the child\'s latest assessment '
+                + '(share of possible points on that domain\'s questions: Yes = 2, Sometimes = 1, No = 0):<br>'
+                + S.ACTIVE_BANDS.map(b => `<span class="assign-score-key"><span class="assign-score-dot" style="background:${S.colorForBand(b.key)};" aria-hidden="true"></span>${S.clinicalLabel(b.key)} ${b.min}&ndash;${b.max}%</span>`).join(' &nbsp;|&nbsp; ');
         }
 
         function syncThresholdFilterOptions() {

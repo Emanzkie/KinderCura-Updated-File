@@ -332,21 +332,27 @@
     </div>
 
     <!-- Modal for assigning question to patient -->
-    <div class="modal-overlay" id="assignModal" style="display:none;">
-        <div class="modal-box">
-            <p class="modal-title">Assign Question to Patient</p>
-            <p class="modal-sub" id="assignModalSub">Select one or more patients to assign this question to</p>
+    <!-- Modal for assigning a question / question set to patients.
+         Layout only lives here; the rows are rendered by renderAssignList()
+         in js/pedia/pedia-questions.js. Styles: .assign-modal in
+         CSS files/pedia-questions.css. -->
+    <div class="modal-overlay" id="assignModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="assignModalTitle">
+        <div class="modal-box assign-modal">
+            <div class="assign-modal-head">
+                <p class="modal-title" id="assignModalTitle">Assign Question to Patient</p>
+                <p class="modal-sub" id="assignModalSub">Select one or more patients to assign this question to</p>
+            </div>
 
             <!-- Filter by Assessment Category and Threshold -->
-            <div style="display:flex;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap;">
-                <select id="filterCategory" class="filter-input" style="flex:1;min-width:140px;" onchange="filterPatientsByAssessment()">
+            <div class="assign-filters">
+                <select id="filterCategory" class="filter-input" aria-label="Filter by category" onchange="filterPatientsByAssessment()">
                     <option value="">All Categories</option>
                     <option value="motor">Motor Skills</option>
                     <option value="communication">Communication</option>
                     <option value="social">Social Skills</option>
                     <option value="cognitive">Cognitive</option>
                 </select>
-                <select id="filterThreshold" class="filter-input" style="flex:1;min-width:140px;" onchange="filterPatientsByAssessment()">
+                <select id="filterThreshold" class="filter-input" aria-label="Filter by status" onchange="filterPatientsByAssessment()">
                     <!-- Options are rebuilt from window.KCScoring.filterOptions()
                          on load; these are the no-JS fallback and must match
                          constants/scoring.js ACTIVE_BANDS. -->
@@ -356,25 +362,31 @@
                     <option value="at-risk">At-Risk (40-59%)</option>
                     <option value="delayed">Delayed (0-39%)</option>
                 </select>
-                <button class="btn-outline" style="padding:0.5rem 0.75rem;font-size:0.8rem;" onclick="clearAssessmentFilters()">Clear Filters</button>
+                <button type="button" class="btn-outline assign-clear-btn" onclick="clearAssessmentFilters()">Clear Filters</button>
             </div>
 
-            <!-- Select All / Clear Selection -->
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;padding:0.5rem;background:var(--bg-primary);border-radius:8px;">
-                <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;">
-                    <input type="checkbox" id="selectAllPatients" onchange="toggleSelectAllPatients()">
-                    <span style="font-size:0.85rem;font-weight:600;">Select All Visible</span>
-                </label>
-                <button class="btn-primary" id="assignSelectedBtn" onclick="assignToSelectedPatients()" disabled style="opacity:0.5;">Assign Selected (<span id="selectedCount">0</span>)</button>
+            <!-- Select All / visible count / bulk assign -->
+            <div class="assign-toolbar">
+                <div class="assign-toolbar-left">
+                    <label class="assign-select-all">
+                        <input type="checkbox" id="selectAllPatients" onchange="toggleSelectAllPatients()">
+                        <span>Select All Visible</span>
+                    </label>
+                    <span class="assign-toolbar-divider" aria-hidden="true"></span>
+                    <span class="assign-visible-count" id="assignVisibleCount" aria-live="polite"></span>
+                </div>
+                <button type="button" class="btn-primary assign-selected-btn" id="assignSelectedBtn" onclick="assignToSelectedPatients()" disabled>Assign Selected (<span id="selectedCount">0</span>)</button>
+            </div>
+
+            <div class="assign-modal-list" id="assignPatientList">
+                <div class="assign-state">Loading patients…</div>
             </div>
 
             <p class="assign-score-note" id="assignScoreNote"></p>
-            <div class="assign-modal-list" id="assignPatientList">
-                <div style="text-align:center;padding:1rem;color:var(--text-light);">Loading patients…</div>
-            </div>
 
-            <div style="margin-top:1rem;text-align:right;">
-                <button class="btn-outline" onclick="closeAssignModal()">Close</button>
+            <div class="assign-footer">
+                <button type="button" class="btn-outline" onclick="closeAssignModal()">Cancel</button>
+                <button type="button" class="btn-primary assign-selected-btn" id="assignSelectedFooterBtn" onclick="assignToSelectedPatients()" disabled>Assign Selected (<span class="assign-selected-count">0</span>)</button>
             </div>
         </div>
     </div>
