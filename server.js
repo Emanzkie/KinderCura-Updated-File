@@ -86,28 +86,69 @@ app.use(express.urlencoded({ extended: true }));
 // stays obvious — each handler calls next() when it is not the blob case.
 const fileStorage = require('./services/fileStorage');
 
+// ── Cache headers for the app's own static files ────────────────
+// express.static defaults to "max-age=0", so browsers re-requested every
+// stylesheet, script and icon on every page view, and on Vercel each of those
+// requests started the serverless function. s-maxage lets Vercel's CDN keep
+// the file until the next deploy (Vercel purges its cache on every deploy),
+// while the short browser max-age keeps an already-open tab from holding an
+// old script for long after a deploy. HTML is always revalidated by the
+// browser so a deploy shows up on the next page view.
+// Uploads are left alone: users can replace or delete them at the same URL.
+// /api responses never pass through here and stay uncached.
+const ONE_YEAR = 31536000;
+const CACHE_RULES = [
+    [/\.(css|js)$/i, `public, max-age=600, s-maxage=${ONE_YEAR}, stale-while-revalidate=86400`],
+    [/\.(png|jpe?g|gif|svg|webp|ico|woff2?)$/i, `public, max-age=86400, s-maxage=${ONE_YEAR}`],
+    [/\.html$/i, `public, max-age=0, must-revalidate, s-maxage=${ONE_YEAR}`],
+];
+const UPLOADS_PATH = /(^|[\\/])uploads([\\/]|$)/i;
+
+function cacheControlFor(filePath) {
+    if (UPLOADS_PATH.test(path.relative(__dirname, filePath))) return null;
+    const rule = CACHE_RULES.find(([pattern]) => pattern.test(filePath));
+    return rule ? rule[1] : null;
+}
+
+// For express.static: send() keeps a Cache-Control that is already set.
+function setCacheHeaders(res, filePath) {
+    const value = cacheControlFor(filePath);
+    if (value) res.setHeader('Cache-Control', value);
+}
+const cachedStatic = (dir, options = {}) => express.static(dir, { ...options, setHeaders: setCacheHeaders });
+
+// For res.sendFile: `headers` is only applied when the file is actually sent,
+// so a 404 or error response is never cached.
+function sendFileOptions(filePath, options = {}) {
+    const value = cacheControlFor(filePath);
+    return value ? { ...options, headers: { 'Cache-Control': value } } : options;
+}
+function sendPage(res, filePath) {
+    res.sendFile(filePath, sendFileOptions(filePath));
+}
+
 // Enable EJS view rendering for minimal UI test pages
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 // Serve our local public assets (JS/CSS used by the test pages)
-app.use('/public', express.static(path.join(__dirname, 'public')));
+app.use('/public', cachedStatic(path.join(__dirname, 'public')));
 
 // Static folders so the browser can load styles, icons, and uploaded files
-app.use('/css', express.static(path.join(__dirname, 'CSS files')));
-app.use('/icons', express.static(path.join(__dirname, 'ICONS')));
+app.use('/css', cachedStatic(path.join(__dirname, 'CSS files')));
+app.use('/icons', cachedStatic(path.join(__dirname, 'ICONS')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/uploads', fileStorage.staticFallback('uploads'));
 app.use('/public/uploads', fileStorage.staticFallback('public/uploads'));
-app.use('/assets/css', express.static(path.join(__dirname, 'CSS files')));
-app.use('/assets/images', express.static(path.join(__dirname, 'ICONS')));
+app.use('/assets/css', cachedStatic(path.join(__dirname, 'CSS files')));
+app.use('/assets/images', cachedStatic(path.join(__dirname, 'ICONS')));
 /* Serve JS modules referenced by admin pages */
-app.use('/assets/js', express.static(path.join(__dirname, 'assets/js')));
+app.use('/assets/js', cachedStatic(path.join(__dirname, 'assets/js')));
 /* Serve role-specific JS from /js/ directory (parent, pedia, admin, secretary, auth) */
-app.use('/js', express.static(path.join(__dirname, 'js')));
+app.use('/js', cachedStatic(path.join(__dirname, 'js')));
 
 // Serve root api.js at /api.js (full version with fetchParentChildren, etc.)
 app.get('/api.js', (req, res) => {
-    res.sendFile(path.join(__dirname, 'api.js'));
+    sendPage(res, path.join(__dirname, 'api.js'));
 });
 
 // Serving the project root is what makes root-level browser assets such as
@@ -132,13 +173,13 @@ function rootStaticTarget(urlPath) {
     }
 }
 
-const rootStatic = express.static(__dirname, { index: false });
+const rootStatic = cachedStatic(__dirname, { index: false });
 app.use((req, res, next) => {
     const target = rootStaticTarget(req.path);
     if (target === null || SERVER_ONLY_DIRS.test(target) || SERVER_ONLY_FILES.test(target)) return next();
     rootStatic(req, res, next);
 });
-app.use(express.static(path.join(__dirname, 'SIGN-UP,LOGIN')));
+app.use(cachedStatic(path.join(__dirname, 'SIGN-UP,LOGIN')));
 
 // Minimal EJS test routes for guardian UI (rendered pages)
 // ⚠️ DEPRECATED — /parent/invite-guardian is the older standalone invite page.
@@ -153,32 +194,32 @@ app.get('/admin/guardian-management', (req, res) => res.render('admin/guardian-m
 
 // Guardian Management page (handles /parent/guardians and /parent/guardians.html)
 app.get('/parent/guardians', (req, res) => {
-  res.sendFile(path.join(__dirname, 'PARENT', 'guardian-management.html'));
+  sendPage(res, path.join(__dirname, 'PARENT', 'guardian-management.html'));
 });
 app.get('/parent/guardians.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'PARENT', 'guardian-management.html'));
+  sendPage(res, path.join(__dirname, 'PARENT', 'guardian-management.html'));
 });
 
 // Public invitation-acceptance page
 // Serves the standalone accept-invitation page (route kept for backward compat;
 // email links and direct navigation continue to work as before).
 app.get('/parent/accept-invitation', (req, res) => {
-  res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
+  sendPage(res, path.join(__dirname, 'PARENT', 'accept-invitation.html'));
 });
 app.get('/guardian/accept-invitation', (req, res) => {
-  res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
+  sendPage(res, path.join(__dirname, 'PARENT', 'accept-invitation.html'));
 });
 // Short friendly route to accept guardian invitations (kept for backward compat).
 // Serves the same accept-invitation page so existing email links still work.
 app.get('/accept-invitation', (req, res) => {
-  res.sendFile(path.join(__dirname, 'PARENT', 'accept-invitation.html'));
+  sendPage(res, path.join(__dirname, 'PARENT', 'accept-invitation.html'));
 });
 
 // Payment page — parent selects walk-in or e-wallet after booking.
 // Must stay above /parent/:page: the generic handler would match "payment",
 // try to send PARENT/payment (no extension), and 404 the clean URL.
 app.get('/parent/payment', (req, res) => {
-  res.sendFile(path.join(__dirname, 'PARENT', 'payment.html'));
+  sendPage(res, path.join(__dirname, 'PARENT', 'payment.html'));
 });
 
 // Role page folders are served by bare file name. The name comes straight from
@@ -194,7 +235,7 @@ function servePage(dir) {
     return (req, res, next) => {
         const page = req.params.page;
         if (!PAGE_NAME.test(page)) return res.status(404).send('Not found');
-        res.sendFile(page, { root }, (err) => {
+        res.sendFile(page, sendFileOptions(path.join(root, page), { root }), (err) => {
             if (!err || res.headersSent) return;
             if (err.status === 404) return res.status(404).send('Not found');
             next(err);
@@ -208,12 +249,12 @@ app.get('/pedia/:page', servePage('PEDIA'));
 
 // Admin payment verification page — review e-wallet proofs
 app.get('/admin/payments', (req, res) => {
-  res.sendFile(path.join(__dirname, 'ADMIN', 'admin-payments.html'));
+  sendPage(res, path.join(__dirname, 'ADMIN', 'admin-payments.html'));
 });
 
 /* Explicit route for PRC Verification clean URL: /admin/prc-verification maps to ADMIN/admin-prc-verification.html */
 app.get('/admin/prc-verification', (req, res) => {
-    res.sendFile(path.join(__dirname, 'ADMIN', 'admin-prc-verification.html'));
+    sendPage(res, path.join(__dirname, 'ADMIN', 'admin-prc-verification.html'));
 });
 
 app.get('/admin/:page', servePage('ADMIN'));
@@ -317,7 +358,7 @@ app.get('/api/admin/sse', (req, res) => {
 app.get('/favicon.ico', (req, res) => {
     // Try to serve logo.png as favicon; if it fails, return 204 No Content
     const faviconPath = path.join(__dirname, 'ICONS', 'logo.png');
-    res.sendFile(faviconPath, (err) => {
+    res.sendFile(faviconPath, sendFileOptions(faviconPath), (err) => {
         if (err && !res.headersSent) {
             res.status(204).end();
         }
@@ -344,7 +385,10 @@ app.get('*', (req, res) => {
     if (accept && !accept.includes('text/html') && !accept.includes('*/*')) {
         return res.status(404).json({ error: 'Not found' });
     }
-    res.sendFile(path.join(__dirname, 'SIGN-UP,LOGIN', 'landing.html'), (err) => {
+    // Only "/" itself is CDN-cached. Any other unknown path also lands here,
+    // and that URL may answer JSON for a non-HTML Accept header above.
+    const landing = path.join(__dirname, 'SIGN-UP,LOGIN', 'landing.html');
+    res.sendFile(landing, req.path === '/' ? sendFileOptions(landing) : {}, (err) => {
         if (err && !res.headersSent) {
             console.error('[CATCH-ALL] Failed to serve landing.html:', err.message);
             res.status(500).json({ error: 'Failed to load page' });

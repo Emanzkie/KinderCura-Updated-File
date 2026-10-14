@@ -80,7 +80,7 @@ async function loadThreads(){
 
 // Open one conversation thread
 async function openThread(apptId){
-    if(pollTimer) clearInterval(pollTimer);
+    if(pollTimer) pollTimer.stop();
     activeApptId=apptId; lastMsgId=0;
     document.querySelectorAll('.thread-item').forEach(el=>el.classList.remove('active'));
     const el = document.querySelector(`.thread-item[onclick="openThread(${apptId})"]`);
@@ -89,7 +89,7 @@ async function openThread(apptId){
     document.getElementById('chatInputArea').style.display = 'block';
     document.getElementById('chatMessages').innerHTML     = '<div style="text-align:center;padding:2rem;color:var(--text-light);">Loading…</div>';
     await loadMessages();
-    pollTimer = setInterval(pollMessages, 4000);
+    pollTimer = window.KC.poll(pollMessages, 4000);
 }
 
 /* ── Load messages + populate header ───────────────────── */
@@ -290,4 +290,4 @@ document.addEventListener('click',e=>{ if(!e.target.closest('.profile-btn')) doc
 // Initial page load
 document.addEventListener('DOMContentLoaded', () => {
     loadNotificationCount(); loadThreads(); loadNotificationCount(); });
-window.addEventListener('beforeunload',()=>{ if(pollTimer) clearInterval(pollTimer); });
+window.addEventListener('beforeunload',()=>{ if(pollTimer) pollTimer.stop(); });
