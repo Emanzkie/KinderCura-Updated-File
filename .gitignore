@@ -104,3 +104,8 @@ public/uploads/datasets/*.json
 
 # Trained model artifacts (.joblib) produced by ml/trainer.py
 uploads/models/
+
+# graphify: machine-specific interpreter/root pointers, regenerated on every run.
+# The graph outputs, manifest and extraction cache in graphify-out/ are committed.
+graphify-out/.graphify_python
+graphify-out/.graphify_root
