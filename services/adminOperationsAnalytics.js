@@ -128,7 +128,56 @@ function splitBySynthetic(rows) {
   return Array.from(map.values()).sort((a, b) => b.total - a.total || String(a.key).localeCompare(String(b.key)));
 }
 
+/**
+ * New user accounts per calendar month of createdAt, with how many of them
+ * are synthetic demo accounts. One definition, shared by GET /analytics and
+ * GET /analytics/operations so the two can never report different months.
+ */
+function monthlySignupsPipeline() {
+  return [
+    {
+      $group: {
+        _id: {
+          year: { $year: '$createdAt' },
+          month: { $month: '$createdAt' },
+        },
+        count: { $sum: 1 },
+        // How many of `count` are synthetic demo accounts (isSynthetic: true).
+        syntheticCount: { $sum: { $cond: [{ $eq: ['$isSynthetic', true] }, 1, 0] } },
+      },
+    },
+    { $sort: { '_id.year': -1, '_id.month': -1 } },
+  ];
+}
+
+/**
+ * The last six calendar months, oldest first, ending with the current
+ * (in-progress) month; a month with no accounts is 0. rows come from
+ * monthlySignupsPipeline().
+ */
+function buildMonthlySignups(rows, now) {
+  const monthlyMap = {};
+  const monthlySyntheticMap = {};
+  (Array.isArray(rows) ? rows : []).forEach((m) => {
+    monthlyMap[`${m._id.year}-${String(m._id.month).padStart(2, '0')}`] = m.count;
+    monthlySyntheticMap[`${m._id.year}-${String(m._id.month).padStart(2, '0')}`] = m.syntheticCount || 0;
+  });
+  const monthlySignups = [];
+  for (let i = 5; i >= 0; i -= 1) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    monthlySignups.push({
+      month: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+      count: monthlyMap[key] || 0,
+      syntheticCount: monthlySyntheticMap[key] || 0,
+    });
+  }
+  return monthlySignups;
+}
+
 module.exports = {
+  monthlySignupsPipeline,
+  buildMonthlySignups,
   PAYMENT_STATUS_GROUPS,
   paymentGroupFor,
   parsePeriod,

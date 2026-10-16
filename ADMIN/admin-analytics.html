@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/css/dashboard-new-styles.css">
     <link rel="stylesheet" href="/css/dashboard-new-styles.css">
     <link rel="stylesheet" href="/css/analytics-styles.css">
-    <link rel="stylesheet" href="/css/admin-analytics.css">
+    <link rel="stylesheet" href="/css/admin-analytics.css?v=94aad2d403">
     <!-- Reused for .simple-table / .pr-notice / .pr-kpi-note / .muted — the
          same table + interpretation-note styles already used on Admin
          Reports, so the two pages read as one visual system. -->
@@ -65,35 +65,38 @@
 
         <p class="analytics-error" id="analyticsError" role="alert" hidden></p>
 
-        <!-- Developmental assessment monitoring (score averages, score
-             distribution, domains needing monitoring, monthly trends and the
-             pediatrician assessment comparison) is no longer shown here: it
-             is clinical monitoring, which belongs to the pediatrician. The
-             same figures are still returned by GET /api/admin/analytics for
-             Admin Reports, and each pediatrician sees their own patients'
-             results in Pediatrician Reports. -->
+        <!-- Developmental assessment monitoring is not shown here: it is
+             clinical monitoring, which belongs to the pediatrician. The same
+             figures are still returned by GET /api/admin/analytics for Admin
+             Reports. -->
 
         <!-- Reporting period: applies to New Registrations and Clinic
-             Transactions only. Every other figure is labelled with its own
-             scope. -->
-        <div class="card mb-2 ops-period">
+             Transactions only. Every other figure states its own scope. -->
+        <section class="ops-period" aria-labelledby="opsPeriodTitle">
+            <div class="ops-period-head">
+                <h2 id="opsPeriodTitle" class="ops-period-title">Reporting period</h2>
+                <p class="ops-applied" id="opsAppliedRange" aria-live="polite">Showing: All time</p>
+            </div>
             <div class="ops-period-fields">
                 <div class="ops-field">
-                    <label for="opsFrom">Period from</label>
+                    <label for="opsFrom">From</label>
                     <input type="date" id="opsFrom">
                 </div>
                 <div class="ops-field">
-                    <label for="opsTo">Period to</label>
+                    <label for="opsTo">To</label>
                     <input type="date" id="opsTo">
                 </div>
-                <button type="button" class="btn btn-primary" onclick="applyOpsPeriod()">Apply</button>
-                <button type="button" class="btn btn-secondary" onclick="resetOpsPeriod()">All time</button>
+                <div class="ops-actions">
+                    <button type="button" class="btn btn-primary ops-btn" id="opsApply">Apply</button>
+                    <button type="button" class="btn btn-secondary ops-btn" id="opsReset">All time</button>
+                </div>
             </div>
-            <p class="chart-note ops-period-note" id="opsPeriodNote">The period applies to New Registrations and Clinic Transactions (whole days, UTC). Leave both dates blank for all time.</p>
-        </div>
+            <p class="ops-period-error" id="opsPeriodError" role="alert" hidden></p>
+            <p class="ops-period-note">Applies to New Registrations and Clinic Transactions (whole days, UTC). Other figures are all-time and say so.</p>
+        </section>
 
         <!-- Headline figures -->
-        <div class="insights-row" id="insightsRow">
+        <div class="insights-row ops-insights">
             <div class="insight-card">
                 <div class="label">New Sign-ups, Month over Month</div>
                 <div class="value green" id="growthRate">—</div>
@@ -108,133 +111,135 @@
                 <div class="label">Collected Payments</div>
                 <div class="value" id="collectedAmount">—</div>
                 <p class="insight-def" id="collectedDef">Loading…</p>
+                <details class="calc-details">
+                    <summary>How this is calculated</summary>
+                    <p class="calc-source" id="collectedSource"></p>
+                </details>
             </div>
             <div class="insight-card">
                 <div class="label">Pending Appointments</div>
                 <div class="value orange" id="pendingRate">—</div>
-                <p class="insight-def">Appointments with status Pending, waiting for approval, all dates. A count, not a percentage.</p>
+                <p class="insight-def">Waiting for approval · all dates</p>
                 <details class="calc-details">
                     <summary>How this is counted</summary>
-                    <p class="calc-source">The number of appointment records whose stored status is <code>pending</code>, taken from the Appointment Status table below. No date filter is applied, and no division or rounding is involved.</p>
+                    <p class="calc-source">The number of appointment records whose stored status is <code>pending</code>. No date filter, no division and no rounding. A count, not a percentage.</p>
+                </details>
+            </div>
+            <div class="insight-card">
+                <div class="label">Active Appointments</div>
+                <div class="value" id="activeAppointments">—</div>
+                <p class="insight-def">Pending + approved · all dates</p>
+                <details class="calc-details">
+                    <summary>How this is counted</summary>
+                    <p class="calc-source">Appointment records whose stored status is <code>pending</code> or <code>approved</code>: not yet completed, and not cancelled or rejected.</p>
                 </details>
             </div>
         </div>
 
-        <!-- User accounts (people who sign in) — kept apart from child
-             records, which are not accounts. -->
+        <!-- User accounts (people who sign in), kept apart from child records. -->
         <h2 class="ops-section-title">User accounts</h2>
-        <div class="overview-grid mb-2">
+        <div class="ops-kpi-grid">
             <div class="overview-card">
-                <h3><img src="/icons/account.png" alt="" aria-hidden="true" class="icon-inline"> Total User Accounts</h3>
+                <h3>Total User Accounts</h3>
                 <p id="totalUsers" class="kpi-value">—</p>
-                <p class="pr-kpi-note" id="totalUsersNote">All registered accounts across every role: parent, legal guardian, foster parent, court-appointed guardian, pediatrician, secretary, and admin.</p>
+                <p class="pr-kpi-note" id="totalUsersNote">Loading…</p>
             </div>
             <div class="overview-card">
-                <h3><img src="/icons/account.png" alt="" aria-hidden="true" class="icon-inline"> New Registrations</h3>
+                <h3>New Registrations</h3>
                 <p id="newRegistrations" class="kpi-value">—</p>
                 <p class="pr-kpi-note" id="newRegistrationsNote">Loading…</p>
             </div>
             <div class="overview-card">
-                <h3><img src="/icons/child.png" alt="" aria-hidden="true" class="icon-inline"> Child Records</h3>
+                <h3>Child Records</h3>
                 <p id="totalChildren" class="kpi-value">—</p>
-                <p class="pr-kpi-note">Child/patient records registered by parents and guardians. These are records, not user accounts, and are not included in Total User Accounts.</p>
-            </div>
-            <div class="overview-card">
-                <h3><img src="/icons/appointment.png" alt="" aria-hidden="true" class="icon-inline"> Active Appointments</h3>
-                <p id="activeAppointments" class="kpi-value">—</p>
-                <p class="pr-kpi-note">Appointment records currently pending or approved (not yet completed, and not cancelled or rejected).</p>
+                <p class="pr-kpi-note">Registered by parents and guardians · all dates. Records, not accounts: not part of Total User Accounts.</p>
             </div>
         </div>
 
-        <div class="chart-row">
+        <div class="ops-table-grid">
             <div class="card">
                 <h3>Account Status</h3>
-                <div style="overflow-x:auto;">
-                    <table class="simple-table">
-                        <thead><tr><th>Status</th><th>Real accounts</th><th>Synthetic demo</th><th>Total</th></tr></thead>
+                <div class="ops-table-scroll">
+                    <table class="simple-table ops-table">
+                        <thead><tr><th>Status</th><th class="num">Real</th><th class="num">Synthetic</th><th class="num">Total</th></tr></thead>
                         <tbody id="accountStatusTable"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
                     </table>
                 </div>
-                <p class="pr-kpi-note" style="margin-top:0.6rem;">Active, Pending and Suspended are the account statuses stored on each user (pending accounts are awaiting approval; suspended accounts cannot sign in). All dates. Synthetic demo accounts are generated test records marked <code>isSynthetic</code>.</p>
+                <p class="pr-kpi-note">All dates. Pending accounts await approval; suspended accounts cannot sign in. Synthetic demo accounts are generated test records marked <code>isSynthetic</code>.</p>
             </div>
             <div class="card">
                 <h3>New Registrations by Role</h3>
-                <div style="overflow-x:auto;">
-                    <table class="simple-table">
-                        <thead><tr><th>Role</th><th>Real accounts</th><th>Synthetic demo</th><th>Total</th></tr></thead>
+                <div class="ops-table-scroll">
+                    <table class="simple-table ops-table">
+                        <thead><tr><th>Role</th><th class="num">Real</th><th class="num">Synthetic</th><th class="num">Total</th></tr></thead>
                         <tbody id="newByRoleTable"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
                     </table>
                 </div>
-                <p class="pr-kpi-note" id="newByRoleNote" style="margin-top:0.6rem;">Accounts created in the selected period, by role.</p>
+                <p class="pr-kpi-note" id="newByRoleNote">Accounts created in the reporting period, by role.</p>
+            </div>
+            <div class="card">
+                <h3>All Accounts by Role</h3>
+                <div class="ops-table-scroll">
+                    <table class="simple-table ops-table">
+                        <thead><tr><th>Role</th><th class="num">Count</th><th class="num">Share</th></tr></thead>
+                        <tbody id="userRoleTable"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+                        <tfoot id="userRoleTotal"></tfoot>
+                    </table>
+                </div>
+                <p class="pr-kpi-note" id="userRoleNote">All dates, whatever the reporting period.</p>
             </div>
         </div>
 
-        <!-- Clinic monitoring -->
+        <!-- Clinic -->
         <h2 class="ops-section-title">Clinic</h2>
         <div class="chart-row">
             <div class="card">
                 <h3>Clinic Profile</h3>
                 <div id="clinicProfile"><p class="muted">Loading…</p></div>
-                <p class="pr-kpi-note" style="margin-top:0.6rem;">KinderCura stores one clinic profile per deployment: the clinic settings record used on receipts and payment pages. There is no separate clinic-registration record, so a count of registered clinics or new clinic registrations cannot be reported, and pediatrician accounts are not counted as clinics.</p>
+                <p class="pr-kpi-note">KinderCura stores one clinic profile per deployment, used on receipts and payment pages. There is no clinic-registration record, so registered-clinic counts are not reported, and pediatrician accounts are not counted as clinics.</p>
             </div>
             <div class="card">
                 <h3>Pediatrician License (PRC) Verification</h3>
-                <div style="overflow-x:auto;">
-                    <table class="simple-table">
-                        <thead><tr><th>Verification status</th><th>Real accounts</th><th>Synthetic demo</th><th>Total</th></tr></thead>
+                <div class="ops-table-scroll">
+                    <table class="simple-table ops-table">
+                        <thead><tr><th>Verification status</th><th class="num">Real</th><th class="num">Synthetic</th><th class="num">Total</th></tr></thead>
                         <tbody id="prcTable"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
                     </table>
                 </div>
-                <p class="pr-kpi-note" style="margin-top:0.6rem;">Pediatrician accounts by the PRC license verification status the admin records on the PRC Verification page. All dates.</p>
+                <p class="pr-kpi-note">Pediatrician accounts by the PRC verification status recorded on the PRC Verification page · all dates.</p>
             </div>
         </div>
 
         <!-- Clinic transactions -->
+        <h2 class="ops-section-title">Clinic transactions</h2>
         <div class="card mb-2">
-            <h3><img src="/icons/analytics.png" alt="" aria-hidden="true" class="icon-inline"> Clinic Transactions</h3>
-            <p class="chart-note" id="transactionsNote">Loading…</p>
-            <div style="overflow-x:auto;">
-                <table class="simple-table">
-                    <thead><tr><th>Group</th><th>Stored statuses</th><th>Transactions</th><th>Amount recorded</th></tr></thead>
+            <p class="chart-note ops-card-lead" id="transactionsNote">Loading…</p>
+            <div class="ops-table-scroll">
+                <table class="simple-table ops-table">
+                    <thead><tr><th>Group</th><th>Stored statuses</th><th class="num">Transactions</th><th class="num">Amount recorded</th></tr></thead>
                     <tbody id="transactionGroupsTable"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
                     <tfoot id="transactionGroupsTotal"></tfoot>
                 </table>
             </div>
             <ul class="column-defs" aria-label="Column definitions">
-                <li><strong>Transactions</strong>: payment records created in the selected period (by record creation date, the same date the Payments page filters on). A count, not money.</li>
-                <li><strong>Amount recorded</strong>: the sum of each record's amount. Only the <strong>Paid (collected)</strong> row is money received; pending, failed, refunded and other rows show amounts recorded on those records and are not added to collected money.</li>
-                <li>Groups match the Admin Payments page. Transactions are not split by clinic because there is one clinic profile and no per-clinic link on payment records. Individual payments, payers and patients are listed only on the <a href="/admin/payments">Payments</a> page.</li>
+                <li><strong>Transactions</strong>: payment records created in the reporting period, by creation date (the date the Payments page filters on). A count, not money.</li>
+                <li><strong>Amount recorded</strong>: the sum of each record's amount. Only <strong>Paid (collected)</strong> is money received; other rows are not added to it.</li>
+                <li>Groups match the Admin Payments page. Not split by clinic: there is one clinic profile and no per-clinic link on payment records. Individual payments are listed only on the <a href="/admin/payments">Payments</a> page.</li>
             </ul>
         </div>
 
-        <!-- Appointment Status and User Role Distribution: compact tables. -->
-        <div class="chart-row">
-            <div class="card">
-                <h3><img src="/icons/appointment.png" alt="" aria-hidden="true" class="icon-inline"> Appointment Status</h3>
-                <div style="overflow-x:auto;">
-                    <table class="simple-table">
-                        <thead><tr><th>Status</th><th>Count</th><th>Share</th></tr></thead>
-                        <tbody id="appointmentStatusTable">
-                            <tr><td colspan="3" class="muted">Loading…</td></tr>
-                        </tbody>
-                        <tfoot id="appointmentStatusTotal"></tfoot>
-                    </table>
-                </div>
-                <p class="pr-kpi-note" id="appointmentStatusNote" style="margin-top:0.6rem;">Share = appointments in that status ÷ all appointments, every status including cancelled and rejected, all dates.</p>
+        <!-- Appointments -->
+        <h2 class="ops-section-title">Appointments</h2>
+        <div class="card mb-2">
+            <h3>Appointment Status</h3>
+            <div class="ops-table-scroll ops-table-narrow">
+                <table class="simple-table ops-table">
+                    <thead><tr><th>Status</th><th class="num">Count</th><th class="num">Share</th></tr></thead>
+                    <tbody id="appointmentStatusTable"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+                    <tfoot id="appointmentStatusTotal"></tfoot>
+                </table>
             </div>
-            <div class="card">
-                <h3><img src="/icons/parent.png" alt="" aria-hidden="true" class="icon-inline"> User Role Distribution</h3>
-                <div style="overflow-x:auto;">
-                    <table class="simple-table">
-                        <thead><tr><th>Role</th><th>Count</th><th>Share</th></tr></thead>
-                        <tbody id="userRoleTable">
-                            <tr><td colspan="3" class="muted">Loading…</td></tr>
-                        </tbody>
-                        <tfoot id="userRoleTotal"></tfoot>
-                    </table>
-                </div>
-                <p class="pr-kpi-note" id="userRoleNote" style="margin-top:0.6rem;">Share = accounts with that role ÷ all user accounts (every role; active, pending and suspended).</p>
-            </div>
+            <p class="pr-kpi-note" id="appointmentStatusNote">Every status, all dates.</p>
         </div>
     </div>
 
@@ -258,7 +263,7 @@
     <script src="/notifications-card-ui.js"></script>
     <script src="/assets/js/admin-nav.js"></script>
     <script src="/js/shared/mobile-nav.js"></script>
-    <script src="/js/admin/analytics-interpretations.js"></script>
-    <script src="/js/admin/admin-analytics.js"></script>
+    <script src="/js/admin/analytics-interpretations.js?v=3a19b18133"></script>
+    <script src="/js/admin/admin-analytics.js?v=e03da5d130"></script>
 </body>
 </html>

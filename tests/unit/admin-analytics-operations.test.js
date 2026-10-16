@@ -18,6 +18,8 @@ const Ops = require('../../services/adminOperationsAnalytics');
 const User = require('../../models/User');
 const Payment = require('../../models/Payment');
 const SystemSetting = require('../../models/SystemSetting');
+const Child = require('../../models/Child');
+const Appointment = require('../../models/Appointment');
 const { adminOnly } = require('../../middleware/auth');
 
 function testPaymentGroupsMatchMonitor() {
@@ -72,6 +74,16 @@ function testParsePeriod() {
   assert.deepStrictEqual(Object.keys(Ops.periodMatch('createdAt', p).createdAt), ['$gte', '$lte']);
 }
 
+function testBuildMonthlySignups() {
+  const rows = [{ _id: { year: 2026, month: 9 }, count: 133, syntheticCount: 133 }, { _id: { year: 2026, month: 8 }, count: 257, syntheticCount: 256 }];
+  const months = Ops.buildMonthlySignups(rows, new Date(2026, 9, 16));
+  assert.deepStrictEqual(months.map((m) => m.month), ['May 2026', 'Jun 2026', 'Jul 2026', 'Aug 2026', 'Sep 2026', 'Oct 2026']);
+  assert.deepStrictEqual(months[3], { month: 'Aug 2026', count: 257, syntheticCount: 256 });
+  // A month with no accounts is a real 0, not missing.
+  assert.deepStrictEqual(months[5], { month: 'Oct 2026', count: 0, syntheticCount: 0 });
+  assert.ok(Ops.monthlySignupsPipeline()[0].$group.syntheticCount);
+}
+
 function testSplitBySynthetic() {
   const rows = Ops.splitBySynthetic([
     { _id: { key: 'parent', synthetic: true }, count: 1082 },
@@ -88,7 +100,9 @@ function testSplitBySynthetic() {
 const aggregateCalls = { users: [], payments: [] };
 User.aggregate = async (pipeline) => {
   aggregateCalls.users.push(pipeline);
-  const group = pipeline.find((st) => st.$group).$group._id.key;
+  const groupId = pipeline.find((st) => st.$group).$group._id;
+  if (groupId.year) return [{ _id: { year: 2026, month: 9 }, count: 133, syntheticCount: 133 }, { _id: { year: 2026, month: 8 }, count: 257, syntheticCount: 256 }];
+  const group = groupId.key;
   if (group === '$role') {
     return [
       { _id: { key: 'parent', synthetic: true }, count: 10 },
@@ -103,6 +117,8 @@ Payment.aggregate = async (pipeline) => {
   aggregateCalls.payments.push(pipeline);
   return [{ _id: { status: 'Paid', currency: 'PHP' }, count: 2, amount: 1000 }, { _id: { status: 'Pending', currency: 'PHP' }, count: 1, amount: 0 }];
 };
+Child.countDocuments = async () => 1554;
+Appointment.aggregate = async () => [{ _id: 'pending', count: 233 }, { _id: 'approved', count: 292 }, { _id: 'cancelled', count: 10 }];
 let settingsWrites = 0;
 SystemSetting.findOne = () => ({ select: () => ({ lean: async () => null }) });
 SystemSetting.findOneAndUpdate = () => { settingsWrites += 1; throw new Error('must not write'); };
@@ -129,6 +145,11 @@ async function testRoute() {
   assert.deepStrictEqual(b.accounts.total, { real: 3, synthetic: 10, total: 13 });
   assert.strictEqual(b.clinic.profileSaved, false);
   assert.strictEqual(settingsWrites, 0);
+  // Non-clinical figures the page needs, so it never calls GET /analytics.
+  assert.strictEqual(b.childRecords, 1554);
+  assert.strictEqual(b.appointments.active, 525, 'pending + approved');
+  assert.deepStrictEqual(b.appointments.byStatus.find((a) => a.status === 'pending'), { status: 'pending', count: 233 });
+  assert.strictEqual(b.monthlySignups.length, 6);
   assert.strictEqual(b.transactions.groups.find((g) => g.key === 'collected').amount, 1000);
   // The period reaches registrations and payments only.
   const periodUserPipelines = aggregateCalls.users.filter((p) => p[0].$match && p[0].$match.createdAt);
@@ -141,10 +162,36 @@ async function testRoute() {
   assert.strictEqual((await call({}, { userId: 'p1', role: 'pediatrician' })).statusCode, 403);
 }
 
+// The page and its script must agree. The reported failure was a script
+// writing to elements the page no longer had ("Cannot set properties of
+// null") and calling Chart.js on a page that no longer loads it.
+function testPageScriptContract() {
+  const fs = require('fs');
+  const path = require('path');
+  const root = path.join(__dirname, '..', '..');
+  const html = fs.readFileSync(path.join(root, 'ADMIN', 'admin-analytics.html'), 'utf8');
+  const js = fs.readFileSync(path.join(root, 'js', 'admin', 'admin-analytics.js'), 'utf8');
+  const ids = new Set();
+  for (const m of js.matchAll(/(?:byId|setText|getElementById)\('([A-Za-z0-9_-]+)'/g)) ids.add(m[1]);
+  for (const m of js.matchAll(/\[((?:'[A-Za-z0-9_-]+'(?:, )?)+)\]\.forEach/g)) {
+    for (const id of m[1].match(/[A-Za-z0-9_-]+/g)) ids.add(id);
+  }
+  assert.ok(ids.size > 20, `found ${ids.size} ids`);
+  const missing = [...ids].filter((id) => !html.includes(`id="${id}"`));
+  assert.deepStrictEqual(missing, [], `script writes to ids the page does not have: ${missing.join(', ')}`);
+  const loadsChart = /chart\.js@|chart\.umd/i.test(html);
+  assert.ok(loadsChart || !/\bnew Chart\(|\bChart\./.test(js), 'the script uses Chart.js but the page does not load it');
+  // One data source: the admin-only operations endpoint, never GET /analytics.
+  assert.ok(js.includes('/admin/analytics/operations'));
+  assert.ok(!/apiFetch\('\/admin\/analytics'\)/.test(js), 'the page must not poll GET /api/admin/analytics');
+}
+
 async function run() {
   testPaymentGroupsMatchMonitor();
   testSummarizePayments();
   testParsePeriod();
+  testPageScriptContract();
+  testBuildMonthlySignups();
   testSplitBySynthetic();
   await testRoute();
   console.log('Admin analytics operations OK — payment groups match the payments monitor, collected = Paid only, period on registrations and transactions only, real/synthetic split, admin-only, no clinical fields, no settings write');

@@ -1,4 +1,5 @@
-// Locks the ?v= version on PEDIA/pedia-reports.html's own script and
+// Locks the ?v= version on PEDIA/pedia-reports.html's and
+// ADMIN/admin-analytics.html's own script and
 // stylesheet URLs to the content of those files.
 //
 // The reported defect: after a deploy, Section B (Patient Development
@@ -23,13 +24,23 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..', '..');
-const html = fs.readFileSync(path.join(ROOT, 'PEDIA', 'pedia-reports.html'), 'utf8');
 
-// Served URL -> file on disk (server.js mounts /css on "CSS files").
-const ASSETS = {
-  '/css/pedia-reports-styles.css': 'CSS files/pedia-reports-styles.css',
-  '/js/pedia/pedia-reports-interpretations.js': 'js/pedia/pedia-reports-interpretations.js',
-  '/js/pedia/pedia-reports.js': 'js/pedia/pedia-reports.js',
+// Page -> its own scripts and stylesheets: served URL -> file on disk
+// (server.js mounts /css on "CSS files"). ADMIN/admin-analytics.html was added
+// after the same defect hit it: a browser ran the old cached
+// admin-analytics.js (initCharts, "Chart is not defined") against the new
+// HTML, and every section stayed on "Loading…".
+const PAGES = {
+  'PEDIA/pedia-reports.html': {
+    '/css/pedia-reports-styles.css': 'CSS files/pedia-reports-styles.css',
+    '/js/pedia/pedia-reports-interpretations.js': 'js/pedia/pedia-reports-interpretations.js',
+    '/js/pedia/pedia-reports.js': 'js/pedia/pedia-reports.js',
+  },
+  'ADMIN/admin-analytics.html': {
+    '/css/admin-analytics.css': 'CSS files/admin-analytics.css',
+    '/js/admin/analytics-interpretations.js': 'js/admin/analytics-interpretations.js',
+    '/js/admin/admin-analytics.js': 'js/admin/admin-analytics.js',
+  },
 };
 
 function contentVersion(file) {
@@ -37,12 +48,15 @@ function contentVersion(file) {
   return crypto.createHash('sha1').update(text).digest('hex').slice(0, 10);
 }
 
-for (const [url, file] of Object.entries(ASSETS)) {
-  const expected = `"${url}?v=${contentVersion(file)}"`;
-  const mentions = html.split(`"${url}`).length - 1;
-  assert.strictEqual(mentions, 1, `${url} is referenced exactly once in pedia-reports.html`);
-  assert.ok(html.includes(expected),
-    `${url} must be referenced as ${expected} — update the version in PEDIA/pedia-reports.html`);
+for (const [page, assets] of Object.entries(PAGES)) {
+  const html = fs.readFileSync(path.join(ROOT, page), 'utf8');
+  for (const [url, file] of Object.entries(assets)) {
+    const expected = `"${url}?v=${contentVersion(file)}"`;
+    const mentions = html.split(`"${url}`).length - 1;
+    assert.strictEqual(mentions, 1, `${url} is referenced exactly once in ${page}`);
+    assert.ok(html.includes(expected),
+      `${url} must be referenced as ${expected} — update the version in ${page}`);
+  }
 }
 
-console.log('Pediatrician Reports asset versions OK — the page references the current content of its own script and stylesheet files');
+console.log('Page asset versions OK — Pediatrician Reports and Admin Analytics reference the current content of their own script and stylesheet files');

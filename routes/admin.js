@@ -928,21 +928,7 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
           },
         },
       ]),
-      User.aggregate([
-        {
-          $group: {
-            _id: {
-              year: { $year: '$createdAt' },
-              month: { $month: '$createdAt' },
-            },
-            count: { $sum: 1 },
-            // Additive: how many of `count` are synthetic demo accounts
-            // (isSynthetic: true). `count` itself is unchanged.
-            syntheticCount: { $sum: { $cond: [{ $eq: ['$isSynthetic', true] }, 1, 0] } },
-          },
-        },
-        { $sort: { '_id.year': -1, '_id.month': -1 } },
-      ]),
+      User.aggregate(adminOps.monthlySignupsPipeline()),
       Appointment.aggregate([
         {
           $group: {
@@ -1227,23 +1213,7 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
       avgMotor: avg.avgMotor != null ? Math.round(avg.avgMotor) : 0,
     };
 
-    const now = new Date();
-    const monthlyMap = {};
-    const monthlySyntheticMap = {};
-    monthlySignupsResult.forEach((m) => {
-      monthlyMap[`${m._id.year}-${String(m._id.month).padStart(2, '0')}`] = m.count;
-      monthlySyntheticMap[`${m._id.year}-${String(m._id.month).padStart(2, '0')}`] = m.syntheticCount || 0;
-    });
-    const monthlySignups = [];
-    for (let i = 5; i >= 0; i -= 1) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      monthlySignups.push({
-        month: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
-        count: monthlyMap[key] || 0,
-        syntheticCount: monthlySyntheticMap[key] || 0,
-      });
-    }
+    const monthlySignups = adminOps.buildMonthlySignups(monthlySignupsResult, new Date());
 
     const appointmentStats = apptStatsResult.map((a) => ({
       status: a._id,
@@ -2077,6 +2047,9 @@ router.get('/analytics/operations', authMiddleware, adminOnly, async (req, res) 
       prcRows,
       paymentRows,
       settingsDoc,
+      childCount,
+      appointmentRows,
+      monthlyRows,
     ] = await Promise.all([
       User.aggregate([{ $group: { _id: { key: '$role', synthetic }, count: { $sum: 1 } } }]),
       User.aggregate([{ $group: { _id: { key: '$status', synthetic }, count: { $sum: 1 } } }]),
@@ -2099,6 +2072,12 @@ router.get('/analytics/operations', authMiddleware, adminOnly, async (req, res) 
         },
       ]),
       SystemSetting.findOne({ singleton: 'default' }).select('clinic updatedAt').lean(),
+      // The few non-clinical figures the page used to read from GET /analytics
+      // (a 1–5 s request that also builds every clinical aggregate), read here
+      // with the same definitions so the page needs only this endpoint.
+      Child.countDocuments(),
+      Appointment.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
+      User.aggregate(adminOps.monthlySignupsPipeline()),
     ]);
 
     const sumSplit = (rows) => rows.reduce((acc, r) => ({
@@ -2132,6 +2111,16 @@ router.get('/analytics/operations', authMiddleware, adminOnly, async (req, res) 
         updatedAt: settingsDoc ? settingsDoc.updatedAt || null : null,
       },
       transactions: adminOps.summarizePayments(paymentRows),
+      // All dates, every status. active = pending + approved, the same rule as
+      // summaryTotals.activeAppointments on GET /analytics.
+      appointments: {
+        byStatus: appointmentRows.map((a) => ({ status: a._id, count: a.count })),
+        active: appointmentRows
+          .filter((a) => ['pending', 'approved'].includes(a._id))
+          .reduce((n, a) => n + a.count, 0),
+      },
+      childRecords: childCount,
+      monthlySignups: adminOps.buildMonthlySignups(monthlyRows, new Date()),
     });
   } catch (err) {
     console.error('admin analytics operations error:', err && err.message);
