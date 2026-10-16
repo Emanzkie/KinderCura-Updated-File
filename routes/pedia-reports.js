@@ -32,7 +32,13 @@ const AssessmentResult = require('../models/AssessmentResult');
 const Appointment = require('../models/Appointment');
 const Child = require('../models/Child');
 const PatientProgressNote = require('../models/PatientProgressNote');
+const PediatricianCheckup = require('../models/PediatricianCheckup');
 const scoring = require('../constants/scoring');
+const {
+  CATEGORY_KEYS: CLINICAL_CATEGORY_KEYS,
+  categoryStatusLabels,
+  buildClinicalStatusSummary,
+} = require('../services/pediaClinicalStatus');
 
 // The four scoring domains, in the order the clinician-facing pages display
 // them. Display order and field mapping only — never a scoring input.
@@ -798,6 +804,66 @@ router.get('/export.csv', authMiddleware, pediatriciansOnly, async (req, res) =>
   } catch (err) {
     console.error('pedia-reports export error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// GET /api/pedia-reports/clinical-status
+// ───────────────────────────────────────────────────────────────────────────
+//
+// Clinical Status Summary: each in-scope patient's CURRENT check-up status,
+// from the latest PediatricianCheckup this pediatrician recorded for them
+// (services/pediaClinicalStatus.js documents the latest-record rule and the
+// status -> category mapping). This is the pediatrician's recorded status and
+// is never derived from a score, a band, or an ML prediction.
+//
+// Filters: the patient and classification filters narrow the patients exactly
+// as on every other section (loadScope). The date range is an ASSESSMENT date
+// range; it decides which assessment is shown as "latest" but never filters
+// check-ups, because a status recorded outside an assessment window is still
+// the patient's current status.
+router.get('/clinical-status', authMiddleware, pediatriciansOnly, async (req, res) => {
+  try {
+    const range = parseRange(req.query);
+    if (range.error) return res.status(400).json({ error: range.error });
+    const filters = parseFilters(req.query);
+    if (filters.error) return res.status(400).json({ error: filters.error });
+
+    const { childIds, childMap, resultsByChild } = await loadScope(req, range, filters);
+
+    // Only this pediatrician's check-ups, and only for children already in
+    // their appointment-linked scope.
+    const checkups = childIds.length
+      ? await PediatricianCheckup.find({ childId: { $in: childIds }, pediatricianId: req.user.userId })
+        .select('childId status checkupDate createdAt nextFollowUpDate recommendations')
+        .lean()
+      : [];
+
+    const patients = childIds.map((id) => {
+      const key = String(id);
+      const list = resultsByChild.get(key) || [];
+      const latest = list.length ? screeningView(list[list.length - 1]) : null;
+      return {
+        childId: key,
+        name: fullName(childMap.get(key)),
+        latestAssessmentAt: latest ? latest.generatedAt : null,
+        latestOverallBand: latest ? latest.overallBand : null,
+      };
+    });
+
+    const summary = buildClinicalStatusSummary(patients, checkups);
+    res.json({
+      success: true,
+      range: rangeEcho(range),
+      filters: filtersEcho(filters),
+      categories: CLINICAL_CATEGORY_KEYS,
+      categoryStatuses: categoryStatusLabels(),
+      ...summary,
+    });
+  } catch (err) {
+    // Generic message: nothing from the patient records goes into an error.
+    console.error('pedia-reports clinical-status error:', err && err.message);
+    res.status(500).json({ error: 'Could not load the clinical status summary.' });
   }
 });
 

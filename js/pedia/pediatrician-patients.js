@@ -446,6 +446,7 @@ const API = window.location.origin + '/api';
         try {
             const data = await apiFetch('/assessments/pedia-patients');
             renderPatients(data.patients || []);
+            openRequestedCheckupHistory(data.patients || []);
         } catch (err) {
             console.error('loadPatients error:', err);
             document.getElementById('patientsList').innerHTML = `
@@ -1152,6 +1153,19 @@ const API = window.location.origin + '/api';
         populateLinkedAssessmentOptions(historyData.assessments || []);
         if (checkupsResult.error) renderCheckupHistoryError(checkupsResult.error);
         else renderCheckupHistory(checkupsResult.checkups, checkupsResult.referrals);
+    }
+
+    // Pediatrician Reports links here as ?history=<childId> to open that
+    // patient's Check-up History. Only a child already in this pediatrician's
+    // own patient list opens; anything else is ignored. Runs once per page load.
+    let _historyLinkHandled = false;
+    function openRequestedCheckupHistory(patients) {
+        if (_historyLinkHandled) return;
+        _historyLinkHandled = true;
+        const requested = new URLSearchParams(window.location.search).get('history');
+        if (!requested) return;
+        const p = patients.find((x) => String(x.childId) === requested);
+        if (p) openProgressModal(String(p.childId), `${p.childFirstName || ''} ${p.childLastName || ''}`.trim());
     }
 
     function openProgressModal(childId, childName) {

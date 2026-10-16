@@ -537,6 +537,74 @@
     return `${label}: ${value}, ${movement} from the previous recorded assessment (${row.previous.date}).`;
   }
 
+  // ── Clinical Status Summary ─────────────────────────────────────────────
+  // Wording for the categories built by services/pediaClinicalStatus.js.
+  // These describe the pediatrician's RECORDED check-up status only; nothing
+  // here may say a child has recovered, is cured, or is healthy.
+  const CLINICAL_CATEGORIES = Object.freeze([
+    Object.freeze({
+      key: 'resolved',
+      label: 'Resolved / Ruled Out',
+      meaning: 'These patients have a latest check-up explicitly recorded as Resolved / Ruled Out by the pediatrician.',
+    }),
+    Object.freeze({
+      key: 'needs_follow_up',
+      label: 'Needs Follow-up',
+      meaning: 'These patients have a latest recorded status indicating that further review, attention, or follow-up is required.',
+    }),
+    Object.freeze({
+      key: 'monitoring',
+      label: 'Monitoring',
+      meaning: 'These patients have a latest recorded status indicating that continued monitoring is documented.',
+    }),
+    Object.freeze({
+      key: 'other',
+      label: 'Other Recorded Status',
+      meaning: 'These patients have another recorded check-up status that is displayed as documented and has not been automatically assigned to another category.',
+    }),
+    Object.freeze({
+      key: 'no_checkup',
+      label: 'No Check-up Outcome Recorded',
+      meaning: 'These patients do not have a recorded check-up outcome available in the current report scope.',
+    }),
+  ]);
+
+  /**
+   * Patient-level interpretation and suggested action, from the recorded
+   * status only. dates: { checkup } — an already formatted check-up date.
+   * Returns { interpretation, action }.
+   */
+  function formatClinicalPatientInterpretation(row, dates) {
+    const r = row || {};
+    const on = dates && dates.checkup ? ` (${dates.checkup})` : '';
+    const label = r.statusLabel || r.status || '';
+    let interpretation;
+    if (r.category === 'no_checkup') {
+      interpretation = r.latestAssessmentAt
+        ? 'No check-up outcome is currently recorded for this patient in the applicable report data.'
+        : 'No check-up outcome and no assessment in the selected period are recorded for this patient, so no clinical information is available here.';
+    } else if (r.ambiguity === 'same_timestamp') {
+      interpretation = `This patient has ${r.checkupCount} check-up records, and the newest ones share the same date and time but record different statuses, so the current status cannot be determined automatically.`;
+    } else if (r.ambiguity) {
+      interpretation = 'None of this patient\'s check-up records has a valid check-up date, so the current status cannot be determined automatically.';
+    } else if (r.category === 'resolved') {
+      interpretation = `The latest check-up${on} is recorded as Resolved / Ruled Out. This is the status the pediatrician recorded; this report does not make its own medical conclusion.`;
+    } else if (r.category === 'needs_follow_up') {
+      interpretation = `The latest check-up${on} is recorded as ${label}, which documents that further review, attention, or follow-up is required.`;
+    } else if (r.category === 'monitoring') {
+      interpretation = `The latest check-up${on} is recorded as ${label}, which documents continued monitoring.`;
+    } else {
+      interpretation = `The latest check-up${on} is recorded as ${label}. It is shown as documented and has not been assigned to another category.`;
+    }
+
+    let action;
+    if (r.ambiguity) action = 'Open the check-up history and confirm which record reflects the current status.';
+    else if (r.latestRecommendation) action = `Recorded recommendation: ${r.latestRecommendation}`;
+    else if (r.category === 'no_checkup') action = 'Review the patient\'s existing assessment and clinical history to determine whether a check-up or further documentation is needed.';
+    else action = 'Review the patient\'s check-up history.';
+    return { interpretation, action };
+  }
+
   const api = {
     DOMAIN_LABELS,
     DOMAIN_KEYS,
@@ -559,6 +627,8 @@
     formatDevelopmentProgressInterpretation,
     buildDevelopmentChangeSummary,
     formatChangeSentence,
+    CLINICAL_CATEGORIES,
+    formatClinicalPatientInterpretation,
   };
 
   if (typeof module !== 'undefined' && module.exports) {

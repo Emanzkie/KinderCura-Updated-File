@@ -927,3 +927,175 @@
         height: 200px;
     }
 }
+
+/* ── Section C: Clinical Status Summary ─────────────────────────────────────
+   js/pedia/pedia-reports.js renderClinicalStatus. Every status carries its
+   text label; colour only supports it, and text on pastel fills stays
+   --text-dark (palette rule). */
+.clin-filter-note {
+    margin: 0 0 1.1rem;
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: var(--text-light);
+}
+
+.clin-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 0.8rem;
+    margin-bottom: 1.4rem;
+}
+
+.clin-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    text-align: left;
+    padding: 0.95rem 1rem 0.9rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-top: 4px solid var(--border);
+    border-radius: 10px;
+    font: inherit;
+    color: var(--text-dark);
+    cursor: pointer;
+}
+
+.clin-card:hover,
+.clin-card:focus-visible {
+    border-color: var(--primary);
+}
+
+.clin-card.is-active {
+    border-color: var(--primary-dark);
+    box-shadow: 0 0 0 1px var(--primary-dark);
+}
+
+.clin-card--resolved        { border-top-color: var(--success); }
+.clin-card--needs_follow_up { border-top-color: var(--accent-red); }
+.clin-card--monitoring      { border-top-color: var(--accent); }
+.clin-card--other           { border-top-color: var(--text-light); }
+.clin-card--no_checkup      { border-top-color: var(--border); }
+
+.clin-card-count {
+    font-size: 1.7rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.clin-card-label {
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.clin-card-statuses {
+    font-size: 0.74rem;
+    color: var(--text-light);
+}
+
+.clin-card-meaning {
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--text-dark);
+}
+
+.clin-card-cta {
+    margin-top: auto;
+    padding-top: 0.35rem;
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: var(--primary-dark);
+}
+
+.clin-list-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+}
+
+.clin-show-all {
+    padding: 0.45rem 0.9rem;
+    font-size: 0.8rem;
+}
+
+.clin-table {
+    min-width: 980px;
+}
+
+.clin-table td,
+.clin-table th[scope="row"] {
+    vertical-align: top;
+}
+
+.clin-table th[scope="row"] {
+    white-space: nowrap;
+}
+
+.clin-chip {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: var(--radius-pill, 999px);
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    background: var(--bg-secondary);
+    white-space: nowrap;
+}
+
+.clin-chip--resolved        { background: var(--success); }
+.clin-chip--needs_follow_up { background: var(--accent-red); }
+.clin-chip--monitoring      { background: var(--accent); }
+.clin-chip--other           { background: var(--bg-secondary); border: 1px solid var(--text-light); }
+.clin-chip--no_checkup      { background: transparent; border: 1px dashed var(--text-light); }
+
+.clin-sub {
+    display: block;
+    margin-top: 0.3rem;
+    font-size: 0.72rem;
+    color: var(--text-light);
+}
+
+.clin-sub--first {
+    margin: 0 0 0.3rem;
+}
+
+.clin-notes {
+    min-width: 260px;
+    max-width: 380px;
+}
+
+.clin-notes p {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
+.clin-notes .clin-action {
+    margin-top: 0.4rem;
+}
+
+.clin-link {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+    .clin-cards {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .clin-card-count {
+        font-size: 1.4rem;
+    }
+}
+
+@media (max-width: 420px) {
+    .clin-cards {
+        grid-template-columns: 1fr;
+    }
+}

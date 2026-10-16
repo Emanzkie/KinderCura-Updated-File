@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reports - KinderCura Pediatrician</title>
     <link rel="stylesheet" href="/css/dashboard-new-styles.css">
-    <link rel="stylesheet" href="/css/pedia-reports-styles.css?v=b53a3d3051">
+    <link rel="stylesheet" href="/css/pedia-reports-styles.css?v=26bc4dc5ac">
     <link rel="stylesheet" href="/css/notifications-styles.css">
     <link rel="stylesheet" href="/notifications-card-ui.css">
     <link rel="stylesheet" href="/css/mobile-nav.css">
@@ -146,6 +146,24 @@
                 <div class="report-card"><div class="report-loading">Loading progression…</div></div>
             </div>
         </section>
+
+        <!-- 6. Section C — Clinical Status Summary. Each patient's current
+             check-up status as the pediatrician recorded it in My Patients.
+             Kept apart from the assessment classification above. -->
+        <section class="report-part" aria-labelledby="clinicalPartTitle">
+            <div class="report-part-header">
+                <p class="report-part-kicker">Section C</p>
+                <h2 id="clinicalPartTitle">Clinical Status Summary</h2>
+                <p class="section-lead">
+                    Which patients have a recorded Resolved / Ruled Out status, which need follow-up or monitoring, and
+                    which have no check-up outcome yet. This is the check-up status you recorded, not the assessment
+                    classification from screening scores.
+                </p>
+            </div>
+            <div id="clinicalStatusSection">
+                <div class="report-card"><div class="report-loading">Loading clinical status summary…</div></div>
+            </div>
+        </section>
     </div>
 
     <!-- Notifications Modal -->
@@ -169,7 +187,7 @@
 <script src="/constants/scoring.js"></script>
 <script src="/notifications-card-ui.js"></script>
 <script src="/js/shared/mobile-nav.js"></script>
-<script src="/js/pedia/pedia-reports-interpretations.js?v=d15740e2e4"></script>
-<script src="/js/pedia/pedia-reports.js?v=465bf484a8"></script>
+<script src="/js/pedia/pedia-reports-interpretations.js?v=40f70ffd38"></script>
+<script src="/js/pedia/pedia-reports.js?v=d93aaf4860"></script>
 </body>
 </html>

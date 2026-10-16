@@ -333,6 +333,42 @@ function testDevelopmentChangeSummary() {
   assert.ok(/no score is stored/.test(KC.formatChangeSentence('Motor Skills', KC.buildDevelopmentChangeSummary([]).domains[3])));
 }
 
+function testClinicalPatientInterpretation() {
+  const CS = require('../../services/pediaClinicalStatus');
+  // One wording entry per server category, in the server's order.
+  assert.deepStrictEqual(KC.CLINICAL_CATEGORIES.map((c) => c.key), CS.CATEGORY_KEYS);
+
+  const resolved = KC.formatClinicalPatientInterpretation(
+    { category: 'resolved', status: 'resolved', statusLabel: 'Resolved / Ruled Out' }, { checkup: 'Oct 1, 2026' });
+  assert.ok(/recorded as Resolved \/ Ruled Out/.test(resolved.interpretation), resolved.interpretation);
+  assert.ok(/does not make its own medical conclusion/.test(resolved.interpretation));
+  assert.strictEqual(resolved.action, 'Review the patient\'s check-up history.');
+
+  const attention = KC.formatClinicalPatientInterpretation(
+    { category: 'needs_follow_up', statusLabel: 'Needs Attention', latestRecommendation: 'Recheck speech in 4 weeks.' }, { checkup: 'Oct 15, 2026' });
+  assert.ok(/\(Oct 15, 2026\) is recorded as Needs Attention/.test(attention.interpretation), attention.interpretation);
+  assert.strictEqual(attention.action, 'Recorded recommendation: Recheck speech in 4 weeks.');
+
+  const other = KC.formatClinicalPatientInterpretation({ category: 'other', statusLabel: 'Referred' }, {});
+  assert.ok(/recorded as Referred\. It is shown as documented/.test(other.interpretation), other.interpretation);
+
+  const tie = KC.formatClinicalPatientInterpretation({ category: 'other', ambiguity: 'same_timestamp', checkupCount: 2 }, {});
+  assert.ok(/cannot be determined automatically/.test(tie.interpretation));
+  assert.ok(/confirm which record/.test(tie.action));
+
+  const none = KC.formatClinicalPatientInterpretation({ category: 'no_checkup', latestAssessmentAt: '2026-10-01' }, {});
+  assert.strictEqual(none.interpretation, 'No check-up outcome is currently recorded for this patient in the applicable report data.');
+  assert.ok(/determine whether a check-up or further documentation is needed/.test(none.action));
+  const empty = KC.formatClinicalPatientInterpretation({ category: 'no_checkup', latestAssessmentAt: null }, {});
+  assert.ok(/no clinical information is available/.test(empty.interpretation));
+
+  // Never claims recovery, cure or health for any category.
+  for (const c of KC.CLINICAL_CATEGORIES) {
+    const t = KC.formatClinicalPatientInterpretation({ category: c.key, statusLabel: 'X' }, {}).interpretation + c.meaning;
+    assert.ok(!/recovered|cured|healthy|no developmental problem/i.test(t), t);
+  }
+}
+
 function run() {
   testDomainBandNoPatients();
   testDomainBandAllZeroNeedsSupport();
@@ -363,6 +399,7 @@ function run() {
   testDevelopmentProgressComparison();
   testDevelopmentProgressNeedsTwo();
   testDevelopmentChangeSummary();
+  testClinicalPatientInterpretation();
   console.log('Pediatrician Reports interpretation rules OK — band leaders/ties, needs-support totals, cohort progression, per-domain counts, movement wording, per-patient history, roster totals, activity series/intervals/summaries, and per-patient development progress all verified');
 }
 

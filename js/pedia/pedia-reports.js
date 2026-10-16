@@ -1532,6 +1532,196 @@ function renderDevProgress(activity, roster) {
     }
 }
 
+// ── Section C: Clinical Status Summary ──────────────────────────────────────
+//
+// Each in-scope patient's CURRENT check-up status, from the latest check-up
+// this pediatrician recorded (GET /pedia-reports/clinical-status; the
+// latest-record rule and the status -> category mapping live in
+// services/pediaClinicalStatus.js). The status is the pediatrician's own
+// record. It is shown beside, never derived from, the assessment
+// classification. Counts are taken from the same rows the list shows, so a
+// count can never disagree with the names under it.
+
+let clinicalStatusData = null;
+// Category whose patients are listed: one of the category keys, or 'all'.
+let clinicalCategory = 'all';
+let clinicalRequestSeq = 0;
+let lastClinicalQuery = '';
+
+function clinicalLoadingHtml() {
+    return '<div class="report-card"><div class="report-loading">Loading clinical status summary…</div></div>';
+}
+
+function clinicalErrorHtml() {
+    return `
+        <div class="report-card">
+            <h2>Clinical status</h2>
+            <div class="report-empty report-error" role="alert">
+                <h3>Unable to load the clinical status summary. Please try again.</h3>
+                <p>No counts are shown rather than incomplete ones.</p>
+                <button type="button" class="btn btn-secondary" onclick="loadClinicalStatus(lastClinicalQuery)">Retry</button>
+            </div>
+        </div>`;
+}
+
+async function loadClinicalStatus(query) {
+    const seq = ++clinicalRequestSeq;
+    lastClinicalQuery = query;
+    const section = document.getElementById('clinicalStatusSection');
+    if (!section) return;
+    section.innerHTML = clinicalLoadingHtml();
+    try {
+        const data = await apiFetch(`/pedia-reports/clinical-status${query}`);
+        if (seq !== clinicalRequestSeq) return;
+        if (!data || !Array.isArray(data.patients)) throw new Error('Unexpected response from /pedia-reports/clinical-status.');
+        clinicalStatusData = data;
+        renderClinicalStatus();
+    } catch (err) {
+        if (seq !== clinicalRequestSeq) return;
+        // Details go to the console only; the server's message is not shown.
+        console.error('Pediatrician Reports: clinical status request failed', err);
+        clinicalStatusData = null;
+        section.innerHTML = clinicalErrorHtml();
+    }
+}
+
+function setClinicalCategory(key) {
+    clinicalCategory = key || 'all';
+    renderClinicalStatus();
+    document.getElementById('clinicalPatientList')?.focus();
+}
+
+/** Text label always present; the colour class only supports it. */
+function clinicalChip(row) {
+    if (row.category === 'no_checkup') return '<span class="clin-chip clin-chip--no_checkup">No check-up recorded</span>';
+    const text = row.ambiguity ? 'Cannot be determined' : (row.statusLabel || row.status || 'Recorded status');
+    return `<span class="clin-chip clin-chip--${escapeHtml(row.category)}">${escapeHtml(text)}</span>`;
+}
+
+function clinicalRowHtml(row) {
+    const KCPI = window.KCPediaReportsInterpretations;
+    const checkupText = row.latestCheckupDate ? fmtShortDate(row.latestCheckupDate) : null;
+    const { interpretation, action } = KCPI.formatClinicalPatientInterpretation(row, { checkup: checkupText });
+    const records = row.checkupCount > 1 ? `<span class="clin-sub">${row.checkupCount} check-up records on file</span>` : '';
+    return `
+        <tr>
+            <th scope="row">${escapeHtml(row.name)}</th>
+            <td>${clinicalChip(row)}${records}</td>
+            <td>${checkupText ? escapeHtml(checkupText) : '<span class="muted">None recorded</span>'}</td>
+            <td>${row.nextFollowUpDate ? escapeHtml(fmtShortDate(row.nextFollowUpDate)) : '<span class="muted">Not recorded</span>'}</td>
+            <td>${row.latestAssessmentAt
+                ? `<span class="clin-sub clin-sub--first">${escapeHtml(fmtShortDate(row.latestAssessmentAt))}</span>${bandChip(row.latestOverallBand)}`
+                : '<span class="muted">No assessment in selected period</span>'}</td>
+            <td class="clin-notes">
+                <p>${escapeHtml(interpretation)}</p>
+                <p class="clin-action"><strong>Suggested action:</strong> ${escapeHtml(action)}</p>
+            </td>
+            <td><a class="btn btn-secondary clin-link" href="/pedia/pediatrician-patients.html?history=${encodeURIComponent(row.childId)}">Check-up history</a></td>
+        </tr>`;
+}
+
+function renderClinicalStatus() {
+    const section = document.getElementById('clinicalStatusSection');
+    const data = clinicalStatusData;
+    if (!section || !data) return;
+    const KCPI = window.KCPediaReportsInterpretations;
+    const bandName = (key) => window.KCScoring.clinicalLabel(key);
+    const categories = KCPI.CLINICAL_CATEGORIES;
+    const rows = data.patients;
+
+    if (!rows.length) {
+        section.innerHTML = `
+            <div class="report-card">
+                <h2>Clinical status</h2>
+                <div class="report-empty">
+                    <h3>No patients are in the current report scope.</h3>
+                    <p>Patients appear here once they have an appointment with you and match the filters above.</p>
+                </div>
+            </div>`;
+        return;
+    }
+
+    const byCategory = new Map(categories.map((c) => [c.key, rows.filter((r) => r.category === c.key)]));
+    if (clinicalCategory !== 'all' && !byCategory.has(clinicalCategory)) clinicalCategory = 'all';
+    const selected = clinicalCategory === 'all'
+        ? categories.flatMap((c) => byCategory.get(c.key))
+        : byCategory.get(clinicalCategory);
+    const selectedLabel = clinicalCategory === 'all'
+        ? 'All categories'
+        : categories.find((c) => c.key === clinicalCategory).label;
+
+    const statusesText = (key) => {
+        if (key === 'no_checkup') return 'No check-up recorded by you for this patient';
+        const labels = (data.categoryStatuses && data.categoryStatuses[key]) || [];
+        const text = labels.join(', ');
+        if (key === 'other') return `${text}${text ? ', or ' : ''}a latest record that cannot be determined`;
+        return text;
+    };
+
+    const cards = categories.map((c) => {
+        const n = byCategory.get(c.key).length;
+        const active = clinicalCategory === c.key;
+        return `
+            <button type="button" class="clin-card clin-card--${escapeHtml(c.key)}${active ? ' is-active' : ''}"
+                aria-pressed="${active}" aria-controls="clinicalPatientList" onclick="setClinicalCategory('${escapeHtml(c.key)}')">
+                <span class="clin-card-count">${n}</span>
+                <span class="clin-card-label">${escapeHtml(c.label)}</span>
+                <span class="clin-card-statuses">Recorded status: ${escapeHtml(statusesText(c.key))}</span>
+                <span class="clin-card-meaning">${escapeHtml(c.meaning)}</span>
+                <span class="clin-card-cta">${active ? 'Showing these patients' : `Show ${n} ${plural(n, 'patient')}`}</span>
+            </button>`;
+    }).join('');
+
+    section.innerHTML = `
+        <div class="report-card">
+            <h2>Clinical status</h2>
+            <p class="section-lead">
+                <strong>${data.total}</strong> ${plural(data.total, 'patient')} in the current report scope. Each patient is counted
+                once, under the status of the latest check-up you recorded for them in My Patients (newest check-up
+                date first, then the most recently saved record). Older check-ups stay in the patient's check-up history.
+            </p>
+            <p class="filter-note clin-filter-note">
+                The Patient and Latest classification filters apply here. The assessment date range does not filter
+                check-ups: it only decides which assessment is shown as the latest. Only check-ups you recorded are
+                counted, the same records your check-up history in My Patients shows.
+            </p>
+
+            <div class="clin-cards">${cards}</div>
+
+            <div class="clin-list-head">
+                <h3 class="dev-subhead" id="clinicalListTitle">Patients &mdash; ${escapeHtml(selectedLabel)} (${selected.length})</h3>
+                ${clinicalCategory !== 'all' ? `<button type="button" class="btn btn-secondary clin-show-all" onclick="setClinicalCategory('all')">Show all ${data.total} patients</button>` : ''}
+            </div>
+            <div class="table-scroll" id="clinicalPatientList" tabindex="-1" aria-labelledby="clinicalListTitle">
+                ${selected.length ? `
+                <table class="report-table clin-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Patient</th>
+                            <th scope="col">Clinical status<br><span class="th-sub">latest check-up you recorded</span></th>
+                            <th scope="col">Check-up date</th>
+                            <th scope="col">Next follow-up</th>
+                            <th scope="col">Assessment classification<br><span class="th-sub">latest screening, selected period</span></th>
+                            <th scope="col">Interpretation</th>
+                            <th scope="col">Record</th>
+                        </tr>
+                    </thead>
+                    <tbody>${selected.map(clinicalRowHtml).join('')}</tbody>
+                </table>` : `
+                <div class="report-empty">
+                    <h3>No patients in this category.</h3>
+                    <p>No patient in the current report scope has a latest check-up in &ldquo;${escapeHtml(selectedLabel)}&rdquo;.</p>
+                </div>`}
+            </div>
+            <p class="table-note">
+                Clinical status is the check-up status you recorded; it is not calculated from assessment scores. The
+                assessment classification comes from KinderCura's screening scores and is shown separately: an ${escapeHtml(bandName('on-track'))}
+                result does not mean a concern is resolved, and an ${escapeHtml(bandName('at-risk'))} or ${escapeHtml(bandName('delayed'))} result is not a diagnosis.
+                Resolved / Ruled Out is shown as recorded and is not a conclusion made by this report.
+            </p>
+        </div>`;
+}
+
 // ── Loading ─────────────────────────────────────────────────────────────────
 
 async function loadReports() {
@@ -1564,6 +1754,8 @@ async function loadReports() {
     // by them.
     lastReportQuery = query;
     const activityTask = requestActivity(query);
+    // Section C loads and fails on its own, like Sections A and B.
+    loadClinicalStatus(query);
     try {
         [overviewData, progressionData, patientsData] = await Promise.all([
             apiFetch(`/pedia-reports/overview${query}`),
