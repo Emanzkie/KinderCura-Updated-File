@@ -645,6 +645,16 @@
     margin: 0.9rem 0 0;
 }
 
+/* Patient list domain cell: the stored score is the primary value, its
+   classification chip sits underneath as secondary information. */
+.report-table .domain-score {
+    display: block;
+    margin-bottom: 0.3rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
 .report-table .muted {
     color: var(--text-light);
     font-style: italic;

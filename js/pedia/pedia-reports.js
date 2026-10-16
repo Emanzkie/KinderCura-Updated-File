@@ -795,6 +795,21 @@ function toggleProgressionRow(index) {
 // excludes anyone without two assessments, so without this a pediatrician can
 // see that three patients are At-Risk but never which three.
 
+// A stored domain score is round(points earned / points possible × 100) —
+// routes/assessments.js, docs/SCORING.md §2.2 — so 100 is its maximum. Raw
+// points are not stored, so the stored score on its own 0–100 scale is what
+// the domain cells show.
+const DOMAIN_SCORE_MAX = 100;
+
+/** Domain score as "N / 100", or N/A when no score is stored. Never a fabricated 0. */
+function domainScoreText(value) {
+    if (value == null) return 'N/A';
+    const n = Number(value);
+    return Number.isFinite(n) ? `${Math.round(n)} / ${DOMAIN_SCORE_MAX}` : 'N/A';
+}
+
+// Every cell in a row comes from the same latest assessment: the server builds
+// latestDomains, latestOverallScore and latestOverallBand from one result.
 function patientRowHtml(p) {
     const domains = p.latestDomains || {};
     return `
@@ -802,9 +817,12 @@ function patientRowHtml(p) {
             <th scope="row">${escapeHtml(p.name)}</th>
             <td class="num">${count(p.assessmentCount)}</td>
             <td>${p.latestAssessmentAt ? escapeHtml(fmtShortDate(p.latestAssessmentAt)) : '<span class="muted">No assessment in range</span>'}</td>
+            ${DOMAINS.map((d) => {
+                const dom = domains[d.key] || {};
+                return `<td><span class="domain-score">${escapeHtml(domainScoreText(dom.score))}</span>${bandChip(dom.band)}</td>`;
+            }).join('')}
             <td class="num">${p.latestOverallScore == null ? '—' : escapeHtml(scoreText(p.latestOverallScore))}</td>
             <td>${bandChip(p.latestOverallBand)}</td>
-            ${DOMAINS.map((d) => `<td>${bandChip(domains[d.key] ? domains[d.key].band : null)}</td>`).join('')}
         </tr>`;
 }
 
@@ -848,9 +866,9 @@ function renderPatients(data) {
                             <th scope="col">Patient</th>
                             <th scope="col" class="num">Assessments</th>
                             <th scope="col">Latest assessment</th>
+                            ${DOMAINS.map((d) => `<th scope="col">${escapeHtml(d.label)}<br><span class="th-sub">score out of ${DOMAIN_SCORE_MAX}</span></th>`).join('')}
                             <th scope="col" class="num">Overall score<br><span class="th-sub">latest assessment</span></th>
                             <th scope="col">Overall classification</th>
-                            ${DOMAINS.map((d) => `<th scope="col">${escapeHtml(d.label)}</th>`).join('')}
                         </tr>
                     </thead>
                     <tbody>
@@ -859,9 +877,10 @@ function renderPatients(data) {
                 </table>
             </div>
             <p class="table-note">
-                <strong>Overall score</strong> is the latest assessment's overall assessment score (average of the four
-                domain scores). The domain columns show the classification of each domain score in that same
-                assessment, using the Score guide above.
+                The domain columns show each domain's stored score (out of ${DOMAIN_SCORE_MAX}) from the latest
+                assessment, with the classification that score falls in under the Score guide above. N/A means no
+                score is stored for that domain. <strong>Overall score</strong> is that same assessment's overall
+                assessment score (average of the four domain scores).
                 Classifications come from KinderCura's existing scoring rules applied to the stored
                 score. They describe recorded assessment results and are not medical diagnoses.
             </p>
