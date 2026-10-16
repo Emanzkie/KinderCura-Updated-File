@@ -910,6 +910,9 @@ function renderPatients(data) {
 
 /** Calendar day 'YYYY-MM-DD' of a timestamp, in the viewer's time zone. */
 function localDayKey(value) {
+    // new Date(null) is 1 Jan 1970, not an invalid date; a missing timestamp
+    // must not become a 1970 point on the chart.
+    if (value == null || value === '') return null;
     const d = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(d.getTime())) return null;
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -1200,7 +1203,7 @@ function renderDevProgress(activity, roster) {
             <div class="report-card">
                 <h2>Assessment history</h2>
                 <div class="report-empty">
-                    <h3>No assessment history to show</h3>
+                    <h3>No patient development progress records are available for the selected date range.</h3>
                     <p>None of your patients has an assessment under the current filters.</p>
                 </div>
             </div>`;
@@ -1389,13 +1392,17 @@ async function loadReports() {
     activityShowAll = false;
 
     // One query string for all four, so the sections cannot disagree about
-    // which patients they are describing.
+    // which patients they are describing. The activity request (Sections A
+    // and B) starts alongside the other three but settles on its own, with
+    // its own timeout and error state, so it can neither block nor be blocked
+    // by them.
+    lastReportQuery = query;
+    const activityTask = requestActivity(query);
     try {
-        [overviewData, progressionData, patientsData, activityData] = await Promise.all([
+        [overviewData, progressionData, patientsData] = await Promise.all([
             apiFetch(`/pedia-reports/overview${query}`),
             apiFetch(`/pedia-reports/progression${query}`),
             apiFetch(`/pedia-reports/patients${query}`),
-            apiFetch(`/pedia-reports/activity${query}`),
         ]);
     } catch (err) {
         meta.textContent = 'Could not load reports';
@@ -1404,8 +1411,7 @@ async function loadReports() {
             errorCard('We could not load this report', err.message);
         document.getElementById('patientsSection').innerHTML = '';
         document.getElementById('progressionSection').innerHTML = '';
-        document.getElementById('activitySection').innerHTML = '';
-        document.getElementById('devProgressSection').innerHTML = '';
+        applyActivityResult(await activityTask);
         return;
     }
 
@@ -1423,9 +1429,106 @@ async function loadReports() {
     renderCohortTiles(overviewData);
     renderClassification(overviewData);
     renderPatients(patientsData);
-    renderActivity(activityData);
-    renderDevProgress(activityData, patientsData);
     renderProgression(progressionData);
+    // Rendered after the roster arrives, so same-name patients in Section B
+    // can be told apart by date of birth.
+    applyActivityResult(await activityTask);
+}
+
+// ── Sections A and B: the activity request ──────────────────────────────────
+//
+// Both sections read /pedia-reports/activity. The request has a time limit
+// and is aborted when a newer one starts (a filter change or Retry), and only
+// the newest request may change the page, so a slow earlier response can
+// never overwrite a later one. Every outcome — data, no data, error, timeout,
+// or a rendering failure — replaces the loading placeholders.
+
+const ACTIVITY_REQUEST_TIMEOUT_MS = 20000;
+let activityRequestSeq = 0;
+let activityController = null;
+// The query the page last loaded with, so Retry asks for exactly what the
+// other sections are showing even if the filter inputs were edited since.
+let lastReportQuery = '';
+
+/** Resolves (never rejects) to { seq, ok, data } or { seq, ok: false, timedOut, error }. */
+async function requestActivity(query) {
+    const seq = ++activityRequestSeq;
+    if (activityController) activityController.abort();
+    const controller = new AbortController();
+    activityController = controller;
+
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, ACTIVITY_REQUEST_TIMEOUT_MS);
+    try {
+        const data = await apiFetch(`/pedia-reports/activity${query}`, { signal: controller.signal });
+        // apiFetch has already rejected any non-2xx status; this rejects a
+        // 2xx body that is not the documented shape rather than drawing an
+        // empty report from it.
+        if (!data || !Array.isArray(data.records)) throw new Error('Unexpected response from /pedia-reports/activity.');
+        return { seq, ok: true, data };
+    } catch (error) {
+        return { seq, ok: false, timedOut, error };
+    } finally {
+        clearTimeout(timer);
+        if (activityController === controller) activityController = null;
+    }
+}
+
+function devProgressErrorHtml(timedOut) {
+    return `
+        <div class="report-card">
+            <h2>Assessment history</h2>
+            <div class="report-empty report-error" role="alert">
+                <h3>Unable to load patient development progress. Please try again.</h3>
+                <p>${timedOut
+                    ? `The request took longer than ${ACTIVITY_REQUEST_TIMEOUT_MS / 1000} seconds and was stopped.`
+                    : 'The report could not be loaded. No data is shown rather than an incomplete history.'}</p>
+                <button type="button" class="btn btn-secondary" onclick="retryActivityAndProgress()">Retry</button>
+            </div>
+        </div>`;
+}
+
+function applyActivityResult(result) {
+    if (result.seq !== activityRequestSeq) return;
+
+    if (!result.ok) {
+        // Details go to the console only; the server's message is not shown.
+        console.error('Pediatrician Reports: activity request failed', result.error);
+        activityData = null;
+        if (activityChart) { activityChart.destroy(); activityChart = null; }
+        if (devProgressChart) { devProgressChart.destroy(); devProgressChart = null; }
+        document.getElementById('activitySection').innerHTML = errorCard(
+            'We could not load assessment activity',
+            result.timedOut ? 'The request took too long and was stopped. Use Retry below to try again.'
+                : 'Use Retry below to try again.');
+        document.getElementById('devProgressSection').innerHTML = devProgressErrorHtml(result.timedOut);
+        return;
+    }
+
+    activityData = result.data;
+    try {
+        renderActivity(activityData);
+    } catch (err) {
+        console.error('Pediatrician Reports: could not render assessment activity', err);
+        document.getElementById('activitySection').innerHTML =
+            errorCard('We could not display assessment activity', 'Reload the page to try again.');
+    }
+    try {
+        renderDevProgress(activityData, patientsData);
+    } catch (err) {
+        console.error('Pediatrician Reports: could not render patient development progress', err);
+        if (devProgressChart) { devProgressChart.destroy(); devProgressChart = null; }
+        document.getElementById('devProgressSection').innerHTML = devProgressErrorHtml(false);
+    }
+}
+
+/** Retry: a new request for the same filters, then Sections A and B again. */
+async function retryActivityAndProgress() {
+    document.getElementById('activitySection').innerHTML =
+        '<div class="report-card"><div class="report-loading">Loading assessment activity…</div></div>';
+    document.getElementById('devProgressSection').innerHTML =
+        '<div class="report-card"><div class="report-loading">Loading patient development progress…</div></div>';
+    applyActivityResult(await requestActivity(lastReportQuery));
 }
 
 // ── Filter actions ──────────────────────────────────────────────────────────
