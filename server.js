@@ -6,6 +6,7 @@
 // - mount API routes
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 const { exec } = require('child_process');
@@ -85,6 +86,7 @@ app.use(express.urlencoded({ extended: true }));
 // them out of the blob store. Registered before the static mounts so ordering
 // stays obvious — each handler calls next() when it is not the blob case.
 const fileStorage = require('./services/fileStorage');
+const { versionAssetUrls } = require('./services/assetVersions');
 
 // ── Cache headers for the app's own static files ────────────────
 // express.static defaults to "max-age=0", so browsers re-requested every
@@ -124,7 +126,36 @@ function sendFileOptions(filePath, options = {}) {
     return value ? { ...options, headers: { 'Cache-Control': value } } : options;
 }
 function sendPage(res, filePath) {
+    if (/\.html$/i.test(filePath)) return sendHtml(res, filePath);
     res.sendFile(filePath, sendFileOptions(filePath));
+}
+
+// Every page goes out through here so its own script and stylesheet URLs
+// carry content versions (services/assetVersions.js): new HTML can never run
+// against an old cached script after a deploy. `done` gets the read error,
+// with status 404 for a missing file, exactly like res.sendFile's callback.
+function sendHtml(res, filePath, done = res.req.next, { cache = true } = {}) {
+    fs.readFile(filePath, 'utf8', (err, html) => {
+        if (err) {
+            if (['ENOENT', 'ENOTDIR', 'EISDIR', 'ENAMETOOLONG'].includes(err.code)) err.status = 404;
+            return done(err);
+        }
+        const value = cache && cacheControlFor(filePath);
+        if (value) res.setHeader('Cache-Control', value);
+        res.type('html').send(versionAssetUrls(html));
+    });
+}
+
+// Pages a static folder would serve as files are sent through sendHtml
+// instead; anything else, or a page that cannot be read, is left to
+// express.static. Dot-folders are skipped just as express.static skips them.
+function staticPages(dir) {
+    return (req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+        const target = rootStaticTarget(req.path);
+        if (!target || !/\.html$/i.test(target) || target.split('/').some((s) => s.startsWith('.'))) return next();
+        sendHtml(res, path.join(dir, target), () => next());
+    };
 }
 
 // Enable EJS view rendering for minimal UI test pages
@@ -173,20 +204,25 @@ function rootStaticTarget(urlPath) {
     }
 }
 
+const rootPages = staticPages(__dirname);
 const rootStatic = cachedStatic(__dirname, { index: false });
 app.use((req, res, next) => {
     const target = rootStaticTarget(req.path);
     if (target === null || SERVER_ONLY_DIRS.test(target) || SERVER_ONLY_FILES.test(target)) return next();
-    rootStatic(req, res, next);
+    rootPages(req, res, () => rootStatic(req, res, next));
 });
+app.use(staticPages(path.join(__dirname, 'SIGN-UP,LOGIN')));
 app.use(cachedStatic(path.join(__dirname, 'SIGN-UP,LOGIN')));
 
 // Minimal EJS test routes for guardian UI (rendered pages)
 // ⚠️ DEPRECATED — /parent/invite-guardian is the older standalone invite page.
 //   All invite/guardian management functionality has moved to /parent/guardians.
 //   Kept here for backward compatibility; remove after migration is confirmed.
-app.get('/parent/invite-guardian', (req, res) => res.render('parent/invite-guardian'));
-app.get('/admin/guardian-management', (req, res) => res.render('admin/guardian-management'));
+function renderPage(view) {
+    return (req, res, next) => res.render(view, (err, html) => (err ? next(err) : res.send(versionAssetUrls(html))));
+}
+app.get('/parent/invite-guardian', renderPage('parent/invite-guardian'));
+app.get('/admin/guardian-management', renderPage('admin/guardian-management'));
 
 // ── Explicit parent-page routes ────────────────────────────────
 // These MUST appear before /parent/:page so that they are matched
@@ -227,15 +263,15 @@ app.get('/parent/payment', (req, res) => {
 // arrived here as "../server.js" — path.join resolved it to the project root
 // and handed out backend source and private/payment-proofs images even with
 // the SERVER_ONLY_* guard above fixed. Every file in these folders is a flat .html
-// page, so anything else is refused, and `root` makes send() reject traversal
-// as a second line of defence.
+// page, so anything else is refused: a name with no slash or dot segment
+// cannot leave the folder.
 const PAGE_NAME = /^[A-Za-z0-9_-]+\.html$/;
 function servePage(dir) {
     const root = path.join(__dirname, dir);
     return (req, res, next) => {
         const page = req.params.page;
         if (!PAGE_NAME.test(page)) return res.status(404).send('Not found');
-        res.sendFile(page, sendFileOptions(path.join(root, page), { root }), (err) => {
+        sendHtml(res, path.join(root, page), (err) => {
             if (!err || res.headersSent) return;
             if (err.status === 404) return res.status(404).send('Not found');
             next(err);
@@ -388,12 +424,10 @@ app.get('*', (req, res) => {
     // Only "/" itself is CDN-cached. Any other unknown path also lands here,
     // and that URL may answer JSON for a non-HTML Accept header above.
     const landing = path.join(__dirname, 'SIGN-UP,LOGIN', 'landing.html');
-    res.sendFile(landing, req.path === '/' ? sendFileOptions(landing) : {}, (err) => {
-        if (err && !res.headersSent) {
-            console.error('[CATCH-ALL] Failed to serve landing.html:', err.message);
-            res.status(500).json({ error: 'Failed to load page' });
-        }
-    });
+    sendHtml(res, landing, (err) => {
+        console.error('[CATCH-ALL] Failed to serve landing.html:', err.message);
+        res.status(500).json({ error: 'Failed to load page' });
+    }, { cache: req.path === '/' });
 });
 
 const PORT = Number(process.env.PORT) || 3001;

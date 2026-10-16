@@ -18,6 +18,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..', '..');
 const app = require(path.join(ROOT, 'server.js'));
+const { versionAssetUrls } = require(path.join(ROOT, 'services', 'assetVersions.js'));
 
 const results = [];
 const ok = (label) => results.push(label);
@@ -41,7 +42,8 @@ async function run() {
       const page = firstFile(dir, '.html');
       const res = await get(`/${prefix}/${page}`);
       assert.strictEqual(res.status, 200, `/${prefix}/${page} should load`);
-      assert.strictEqual(res.body, fs.readFileSync(path.join(ROOT, dir, page), 'utf8'));
+      // Sent with content versions on its asset URLs (services/assetVersions.js).
+      assert.strictEqual(res.body, versionAssetUrls(fs.readFileSync(path.join(ROOT, dir, page), 'utf8')));
     }
     ok('1: /parent, /pedia, /admin and /secretary still serve their own .html pages');
 
