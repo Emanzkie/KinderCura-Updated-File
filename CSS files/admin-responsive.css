@@ -10,9 +10,12 @@
         that only take effect when content would otherwise push the page
         sideways.
      2. Every layout adaptation lives in a media query at or below 1024px, so
-        the desktop admin screens render exactly as they did before.
+        the desktop admin screens render exactly as they did before. The one
+        exception is section 0: the admin bar carries ten links and did not
+        fit on a desktop screen, so it gets its own spacing above 1024px.
 
    Breakpoints match the other three roles exactly:
+     >  1024px  desktop           — admin top bar tightens (section 0)
      <= 1024px  tablet landscape  — nav collapses into the drawer
      <=  900px  tablet portrait   — the two overview cards go one-up
      <=  768px  phone             — container padding tightens, actions stack
@@ -24,6 +27,63 @@
    That is deliberate: it keeps the markup, the JavaScript and the API calls
    untouched.
    =========================================================================== */
+
+
+/* ===========================================================================
+   0. Desktop top bar (> 1024px)
+   Ten links (two injected by assets/js/admin-nav.js) at the shared 2rem gaps
+   need about 1395px, so the bar pushed the whole page sideways on 1280px and
+   1366px laptops. The other roles have six or seven links and fit, so this
+   stays here rather than in mobile-nav.css.
+
+   Three steps. Each switches over while the wider one still has 50px or more
+   to spare beside the logo and the icon cluster, so a font wider than Segoe
+   UI does not tip the bar over:
+     > 1380px   1.5rem gaps
+     <= 1380px  0.875rem links, 1rem gaps
+     <= 1200px  0.8125rem links, 0.625rem gaps, 1rem side padding
+
+   The floor is 1024.02px, not 1025px: an exact 1025px floor leaves fractional
+   widths (zoomed pages) between the two bands with no rule at all, and 1024px
+   itself must stay with the collapsed drawer.
+   ========================================================================== */
+
+@media (min-width: 1024.02px) {
+
+    .top-nav.has-mobile-nav .nav-container,
+    .top-nav.has-mobile-nav .main-nav {
+        gap: 1.5rem;
+    }
+}
+
+@media (min-width: 1024.02px) and (max-width: 1380px) {
+
+    .top-nav.has-mobile-nav .nav-container,
+    .top-nav.has-mobile-nav .main-nav {
+        gap: 1rem;
+    }
+
+    .top-nav.has-mobile-nav .nav-link {
+        font-size: 0.875rem;
+    }
+}
+
+@media (min-width: 1024.02px) and (max-width: 1200px) {
+
+    .top-nav.has-mobile-nav .nav-container {
+        padding: 0 1rem;
+    }
+
+    .top-nav.has-mobile-nav .nav-container,
+    .top-nav.has-mobile-nav .main-nav,
+    .top-nav.has-mobile-nav .nav-right {
+        gap: 0.625rem;
+    }
+
+    .top-nav.has-mobile-nav .nav-link {
+        font-size: 0.8125rem;
+    }
+}
 
 
 /* ===========================================================================
