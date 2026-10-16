@@ -798,10 +798,102 @@
     box-shadow: none;
 }
 
-/* Two classes, so it wins over the single-class .chart-box-wide heights in
-   pedia-responsive.css: five lines need more room than one. */
-.chart-box.dev-progress-chart {
-    height: 340px;
+/* ── Patient Development Progress: small multiples ──────────────────────────
+   One panel per domain plus a separate overall panel (js/pedia/pedia-reports.js
+   renderDevProgress). Two classes on the chart box, so it wins over the
+   single-class .chart-box heights in pedia-responsive.css. */
+.dev-subhead {
+    margin: 1.6rem 0 0.3rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.dev-subnote {
+    margin: 0 0 0.9rem;
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: var(--text-light);
+}
+
+.dev-multiples {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem 1.4rem;
+}
+
+.dev-panel {
+    margin: 0;
+    min-width: 0;
+}
+
+.dev-panel-title {
+    margin: 0 0 0.2rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.chart-box.dev-panel-chart {
+    height: 210px;
+}
+
+.dev-panel-overall .chart-box.dev-panel-chart {
+    height: 230px;
+}
+
+.dev-change-table th[scope="row"],
+.dev-history-table th[scope="row"] {
+    white-space: nowrap;
+}
+
+.dev-change-table td.num strong {
+    color: var(--primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.dev-change-date {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-light);
+    white-space: nowrap;
+}
+
+.dev-change-table tr.dev-change-overall th,
+.dev-change-table tr.dev-change-overall td {
+    border-top: 2px solid var(--border);
+}
+
+.dev-history-table td,
+.dev-history-table th[scope="row"] {
+    vertical-align: top;
+}
+
+.dev-history-table tr.dev-latest-row {
+    background: var(--bg-primary);
+}
+
+.dev-latest-tag {
+    display: inline-block;
+    margin-left: 0.45rem;
+    padding: 0.05rem 0.45rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill, 999px);
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--text-light);
+    vertical-align: 0.1em;
+}
+
+.dev-zero-note {
+    margin: 1.2rem 0 0;
+    padding: 0.75rem 1rem;
+    border-left: 3px solid var(--accent);
+    background: var(--bg-primary);
+    border-radius: 8px;
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: var(--text-dark);
 }
 
 .record-id {
@@ -826,7 +918,12 @@
         font-size: 1.2rem;
     }
 
-    .chart-box.dev-progress-chart {
-        height: 300px;
+    .dev-multiples {
+        grid-template-columns: 1fr;
+    }
+
+    .chart-box.dev-panel-chart,
+    .dev-panel-overall .chart-box.dev-panel-chart {
+        height: 200px;
     }
 }

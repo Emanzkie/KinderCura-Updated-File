@@ -488,6 +488,55 @@
     return text;
   }
 
+  /**
+   * Latest-vs-previous change for each domain and the overall score.
+   *
+   * history: oldest first, [{ date, scores: { communication, ... }, overallScore }].
+   * For each measure the "latest" is the newest assessment that HAS a stored
+   * score, and the "previous" is the newest earlier assessment that also has
+   * one, so a missing score is skipped rather than compared as 0. A stored 0 is
+   * a recorded score and is compared like any other. change is null when there
+   * is no previous recorded score.
+   */
+  function buildDevelopmentChangeSummary(history) {
+    const list = Array.isArray(history) ? history : [];
+    const isScore = (v) => v != null && Number.isFinite(Number(v));
+    function compare(pick) {
+      const recorded = [];
+      for (const entry of list) {
+        const v = pick(entry);
+        if (isScore(v)) recorded.push({ date: entry.date, score: Number(v) });
+      }
+      const latest = recorded[recorded.length - 1] || null;
+      const previous = recorded[recorded.length - 2] || null;
+      return {
+        latest,
+        previous,
+        change: latest && previous ? latest.score - previous.score : null,
+      };
+    }
+    return {
+      domains: DOMAIN_KEYS.map((key) => Object.assign(
+        { key, label: DOMAIN_LABELS[key] },
+        compare((e) => (e.scores ? e.scores[key] : null)),
+      )),
+      overall: compare((e) => e.overallScore),
+    };
+  }
+
+  /** "Communication: 61/100, down 8 points from the previous recorded assessment (Oct 10, 2026)." */
+  function formatChangeSentence(label, row, unit) {
+    if (!row || !row.latest) return `${label}: no score is stored in the selected period.`;
+    const value = unit === '%' ? `${row.latest.score}%` : `${row.latest.score}/100`;
+    if (!row.previous) return `${label}: ${value}. There is no earlier recorded score to compare with.`;
+    const pts = Math.abs(row.change);
+    const word = pts === 1 ? 'point' : 'points';
+    const movement = row.change > 0 ? `up ${pts} ${word}`
+      : row.change < 0 ? `down ${pts} ${word}`
+      : 'unchanged';
+    return `${label}: ${value}, ${movement} from the previous recorded assessment (${row.previous.date}).`;
+  }
+
   const api = {
     DOMAIN_LABELS,
     DOMAIN_KEYS,
@@ -508,6 +557,8 @@
     buildActivitySeries,
     formatActivityTrendInterpretation,
     formatDevelopmentProgressInterpretation,
+    buildDevelopmentChangeSummary,
+    formatChangeSentence,
   };
 
   if (typeof module !== 'undefined' && module.exports) {

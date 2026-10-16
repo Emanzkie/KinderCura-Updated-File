@@ -50,7 +50,6 @@ let activityData = null;
 let bandDomainChart = null;
 let overallBandChart = null;
 let activityChart = null;
-let devProgressChart = null;
 
 // Activity chart interval: 'auto' picks day/week/month from the period length.
 let activityInterval = 'auto';
@@ -1152,15 +1151,150 @@ function renderActivity(activity) {
 // same activity records. Only patients this pediatrician can see are listed,
 // because the records come from the server's appointment-scoped cohort.
 
-// Line styles for the score chart: palette colours only, and a distinct point
-// shape and dash per series so the lines stay apart without relying on colour.
-const DEV_SERIES = Object.freeze([
-    { key: 'communication', color: '#6B8E6F', pointStyle: 'circle',   dash: [] },
-    { key: 'social',        color: '#E8A5A5', pointStyle: 'triangle', dash: [] },
-    { key: 'cognitive',     color: '#6B7967', pointStyle: 'rectRot',  dash: [2, 3] },
-    { key: 'motor',         color: '#F4D89F', pointStyle: 'rect',     dash: [] },
-]);
-const DEV_OVERALL_COLOR = '#3D4738';
+// Charts are small multiples: one panel per domain plus a separate panel for
+// the overall score, all on the same 0–100 scale and the same assessment
+// sequence, so a reader compares panels instead of untangling five crossing
+// lines. Palette colours only (CSS files/kc-tokens.css): one line colour for
+// every panel, and the latest recorded point drawn darker so the eye lands on
+// it first.
+const DEV_COLORS = Object.freeze({
+    line: '#6B8E6F',      // --primary
+    overall: '#3D4738',   // --text-dark
+    latest: '#3D4738',    // --text-dark
+    text: '#3D4738',      // --text-dark
+    muted: '#6B7967',     // --text-light
+    grid: '#F0EFE8',      // --bg-secondary
+    axis: '#DDD9CC',      // --border
+});
+
+let devProgressCharts = [];
+
+function destroyDevProgressCharts() {
+    devProgressCharts.forEach((c) => c.destroy());
+    devProgressCharts = [];
+}
+
+/**
+ * Chart.js plugin, local to these panels: writes each recorded score next to
+ * its point, and marks an assessment with NO stored score with a dashed
+ * vertical rule and "No score" — so a missing score can never be read as a
+ * point at 0. A stored 0 is a real point on the baseline with "0" beside it.
+ * When points are too close for every number to fit, only the latest
+ * recorded value is written; the tooltip and the table carry the rest.
+ */
+const devPointLabelsPlugin = {
+    id: 'kcDevPointLabels',
+    afterDatasetsDraw(chart) {
+        const { ctx, chartArea, scales } = chart;
+        const dataset = chart.data.datasets[0];
+        const values = dataset.data;
+        const meta = chart.getDatasetMeta(0);
+        const step = values.length > 1 ? (chartArea.right - chartArea.left) / (values.length - 1) : Infinity;
+        const roomForAll = step >= 26;
+        const lastIndex = dataset.kcLatestIndex;
+        const family = Chart.defaults.font.family;
+
+        ctx.save();
+        ctx.textAlign = 'center';
+        values.forEach((v, i) => {
+            const px = scales.x.getPixelForValue(i);
+            if (v == null) {
+                ctx.strokeStyle = DEV_COLORS.axis;
+                ctx.lineWidth = 1;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath();
+                ctx.moveTo(px, chartArea.top + 4);
+                ctx.lineTo(px, chartArea.bottom);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = DEV_COLORS.muted;
+                ctx.font = `italic 10px ${family}`;
+                ctx.textBaseline = 'bottom';
+                ctx.fillText('No score', px, chartArea.top);
+                return;
+            }
+            if (!roomForAll && i !== lastIndex) return;
+            const point = meta.data[i];
+            if (!point) return;
+            ctx.fillStyle = DEV_COLORS.text;
+            ctx.font = `${i === lastIndex ? 700 : 500} 11px ${family}`;
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(dataset.kcFormat(v), point.x, point.y - 7);
+        });
+        ctx.restore();
+    },
+};
+
+/** One line panel. values may hold null (no stored score); 0 stays 0. */
+function devPanelChart(canvas, { label, values, history, format, axisTitle, color }) {
+    let latestIndex = -1;
+    values.forEach((v, i) => { if (v != null) latestIndex = i; });
+    const isLatest = (c) => c.dataIndex === latestIndex;
+    const fullDate = (r) => {
+        const d = new Date(r.assessedAt);
+        return Number.isNaN(d.getTime()) ? '—'
+            : `${fmtShortDate(r.assessedAt)}, ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+    };
+
+    return new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: history.map((r) => fmtShortDate(r.assessedAt)),
+            datasets: [{
+                label,
+                data: values,
+                kcFormat: format,
+                kcLatestIndex: latestIndex,
+                borderColor: color,
+                backgroundColor: color,
+                borderWidth: 1.75,
+                pointRadius: (c) => (isLatest(c) ? 4.5 : 3),
+                pointHoverRadius: 5.5,
+                pointBackgroundColor: (c) => (isLatest(c) ? DEV_COLORS.latest : color),
+                pointBorderColor: (c) => (isLatest(c) ? DEV_COLORS.latest : color),
+                spanGaps: false,
+                tension: 0,
+                clip: 8,
+            }],
+        },
+        plugins: [devPointLabelsPlugin],
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            // Headroom so a label above a score of 100 stays inside the canvas.
+            layout: { padding: { top: 20, right: 14, left: 4 } },
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    border: { color: DEV_COLORS.axis },
+                    ticks: { color: DEV_COLORS.muted, font: { size: 10 }, maxRotation: 0, autoSkip: true, autoSkipPadding: 14 },
+                    title: { display: true, text: 'Assessment Date', color: DEV_COLORS.muted, font: { size: 10 } },
+                },
+                y: {
+                    min: 0,
+                    max: DOMAIN_SCORE_MAX,
+                    grid: { color: DEV_COLORS.grid },
+                    border: { display: false },
+                    ticks: { stepSize: 50, color: DEV_COLORS.muted, font: { size: 10 }, callback: (v) => format(v) },
+                    title: { display: true, text: axisTitle, color: DEV_COLORS.muted, font: { size: 10 } },
+                },
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: (items) => fullDate(history[items[0].dataIndex]),
+                        label: (ctx) => (ctx.parsed.y == null
+                            ? ` ${label}: no score stored`
+                            : ` ${label}: ${format(ctx.parsed.y)}`),
+                    },
+                },
+            },
+        },
+    });
+}
 
 function setDevProgressPatient(childId) {
     devProgressChildId = childId || null;
@@ -1193,6 +1327,37 @@ function devScoreCell(score, band) {
     return `<td><span class="domain-score">${escapeHtml(domainScoreText(score))}</span>${bandChip(band)}</td>`;
 }
 
+/** Latest-vs-previous table: one row per domain plus the overall score. */
+function devChangeTableHtml(summary) {
+    const row = (label, r, unit) => {
+        const fmt = (x) => (x ? `${x.score}${unit === '%' ? '%' : ` / ${DOMAIN_SCORE_MAX}`}` : null);
+        return `
+            <tr${unit === '%' ? ' class="dev-change-overall"' : ''}>
+                <th scope="row">${escapeHtml(label)}</th>
+                <td class="num">${r.latest ? `<strong>${escapeHtml(fmt(r.latest))}</strong><span class="dev-change-date">${escapeHtml(r.latest.date)}</span>` : '<span class="muted">No score stored</span>'}</td>
+                <td class="num">${r.previous ? `${escapeHtml(fmt(r.previous))}<span class="dev-change-date">${escapeHtml(r.previous.date)}</span>` : '<span class="muted">None earlier</span>'}</td>
+                <td class="num">${deltaHtml(r.change)}</td>
+            </tr>`;
+    };
+    return `
+        <div class="table-scroll">
+            <table class="report-table dev-change-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Measure</th>
+                        <th scope="col" class="num">Latest recorded</th>
+                        <th scope="col" class="num">Previous recorded</th>
+                        <th scope="col" class="num">Change</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${summary.domains.map((d) => row(d.label, d)).join('')}
+                    ${row('Overall score', summary.overall, '%')}
+                </tbody>
+            </table>
+        </div>`;
+}
+
 function renderDevProgress(activity, roster) {
     const section = document.getElementById('devProgressSection');
     const KCPI = window.KCPediaReportsInterpretations;
@@ -1207,7 +1372,7 @@ function renderDevProgress(activity, roster) {
                     <p>None of your patients has an assessment under the current filters.</p>
                 </div>
             </div>`;
-        if (devProgressChart) { devProgressChart.destroy(); devProgressChart = null; }
+        destroyDevProgressCharts();
         return;
     }
 
@@ -1224,23 +1389,27 @@ function renderDevProgress(activity, roster) {
 
     const dates = history.map((r) => fmtShortDate(r.assessedAt));
     const sameDay = new Set(dates).size !== dates.length;
-    // Two assessments on one day get their time too, so the chart's points stay distinguishable.
+    // Two assessments on one day get their time too, so the table rows stay distinguishable.
     const pointLabels = history.map((r, i) => (sameDay
         ? `${dates[i]}, ${new Date(r.assessedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
         : dates[i]));
 
     const roundOrNull = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Math.round(Number(v)));
-    const interpretation = KCPI.formatDevelopmentProgressInterpretation(patient.name, history.map((r, i) => ({
-        date: dates[i],
+    const comparable = history.map((r, i) => ({
+        date: pointLabels[i],
         scores: DOMAINS.reduce((acc, d) => { acc[d.key] = roundOrNull(r.domains?.[d.key]?.score); return acc; }, {}),
         overallScore: roundOrNull(r.overallScore),
-    })));
+    }));
+    const interpretation = KCPI.formatDevelopmentProgressInterpretation(patient.name, comparable);
+    const summary = KCPI.buildDevelopmentChangeSummary(comparable);
+    const latestDate = pointLabels[pointLabels.length - 1];
+    const hasStoredZero = comparable.some((c) => DOMAINS.some((d) => c.scores[d.key] === 0));
 
     const rows = history.map((r, i) => `
-        <tr>
-            <th scope="row">${escapeHtml(pointLabels[i])}</th>
+        <tr${i === history.length - 1 ? ' class="dev-latest-row"' : ''}>
+            <th scope="row">${escapeHtml(pointLabels[i])}${i === history.length - 1 ? '<span class="dev-latest-tag">Latest</span>' : ''}</th>
             ${DOMAINS.map((d) => devScoreCell(r.domains?.[d.key]?.score, r.domains?.[d.key]?.band)).join('')}
-            <td class="num">${r.overallScore == null ? '—' : escapeHtml(scoreText(r.overallScore))}</td>
+            <td class="num"><span class="domain-score">${r.overallScore == null ? 'N/A' : escapeHtml(scoreText(r.overallScore))}</span></td>
             <td>${bandChip(r.overallBand)}</td>
         </tr>`).join('');
 
@@ -1262,16 +1431,42 @@ function renderDevProgress(activity, roster) {
                 Only your own patients are listed.
             </p>
 
-            <div class="chart-interp" style="margin-bottom:1.2rem;">
+            <h3 class="dev-subhead">Latest recorded change</h3>
+            <p class="dev-subnote">
+                Latest assessment: <strong>${escapeHtml(latestDate)}</strong>. Each measure's latest stored score is
+                compared with its previous stored score; an assessment with no score for a measure is skipped, never
+                counted as 0.
+            </p>
+            ${devChangeTableHtml(summary)}
+
+            <div class="chart-interp" style="margin-bottom:1.4rem;">
                 <p class="chart-interp-label">Interpretation</p>
                 <p class="chart-interp-text">${escapeHtml(interpretation)}</p>
             </div>
 
             ${canChart ? `
-            <p class="chart-title">Developmental Assessment Progress</p>
-            <p class="chart-subtitle">${escapeHtml(patient.name)}'s recorded scores at each assessment. All four domains and the overall score use the same 0&ndash;${DOMAIN_SCORE_MAX} scale. A gap in a line means no score is stored for that assessment.</p>
-            <div class="chart-box chart-box-wide dev-progress-chart"><canvas id="devProgressChart" role="img"
-                aria-label="Line chart of ${escapeHtml(patient.name)}'s recorded Communication, Social Skills, Cognitive, Motor Skills and overall scores at each assessment. The same values are in the table below."></canvas></div>
+            <h3 class="dev-subhead">Developmental domains</h3>
+            <p class="dev-subnote">
+                One panel per domain, each on the same 0&ndash;${DOMAIN_SCORE_MAX} scale and the same ${history.length}
+                assessments, evenly spaced in date order. The darker point is the latest recorded score.
+                A point on the baseline marked 0 is a stored score of 0; a dashed line marked &ldquo;No score&rdquo;
+                means nothing is stored for that assessment. Hover or tap a point for its date and time.
+            </p>
+            <div class="dev-multiples">
+                ${DOMAINS.map((d, i) => `
+                <figure class="dev-panel">
+                    <figcaption class="dev-panel-title">${escapeHtml(d.label)}</figcaption>
+                    <div class="chart-box dev-panel-chart"><canvas id="devDomainChart${i}" role="img"
+                        aria-label="${escapeHtml(`Line chart of ${patient.name}'s recorded ${d.label} scores. ${KCPI.formatChangeSentence(d.label, summary.domains[i])}`)}"></canvas></div>
+                </figure>`).join('')}
+            </div>
+
+            <h3 class="dev-subhead">Overall assessment score</h3>
+            <p class="dev-subnote">The stored overall percentage at each assessment, shown apart from the four domain scores.</p>
+            <figure class="dev-panel dev-panel-overall">
+                <div class="chart-box dev-panel-chart"><canvas id="devOverallChart" role="img"
+                    aria-label="${escapeHtml(`Line chart of ${patient.name}'s overall assessment score. ${KCPI.formatChangeSentence('Overall score', summary.overall, '%')}`)}"></canvas></div>
+            </figure>
             ` : `
             <div class="report-empty">
                 <h3>Not enough assessments for a trend</h3>
@@ -1279,8 +1474,16 @@ function renderDevProgress(activity, roster) {
                     a progress chart needs at least two assessments.</p>
             </div>`}
 
+            ${hasStoredZero ? `
+            <p class="dev-zero-note">
+                <strong>About scores of 0:</strong> a 0 shown here is the stored result for that domain and is not
+                changed by this report. KinderCura stores 0 both when every answer in a domain was &ldquo;No&rdquo; and
+                when no question in that domain was answered, so review that assessment's answers before relying on a 0.
+            </p>` : ''}
+
+            <h3 class="dev-subhead">All recorded assessments</h3>
             <div class="table-scroll">
-                <table class="report-table">
+                <table class="report-table dev-history-table">
                     <thead>
                         <tr>
                             <th scope="col">Assessment date</th>
@@ -1294,76 +1497,39 @@ function renderDevProgress(activity, roster) {
             </div>
             <p class="table-note">
                 Each row is one stored assessment record. Scores and classifications come from KinderCura's existing
-                scoring rules and are not recomputed here. N/A means no score is stored for that domain. Assessment
-                results support monitoring and do not replace professional clinical evaluation.
+                scoring rules and are not recomputed here. N/A means no score is stored for that domain. Score changes
+                describe recorded results only; they are not a diagnosis and do not show recovery. Assessment results
+                support monitoring and do not replace professional clinical evaluation.
             </p>
         </div>`;
 
-    if (devProgressChart) { devProgressChart.destroy(); devProgressChart = null; }
+    destroyDevProgressCharts();
     if (!canChart || typeof Chart === 'undefined') return;
-    const canvas = document.getElementById('devProgressChart');
-    if (!canvas) return;
 
     const scoreOrNull = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
-    devProgressChart = new Chart(canvas, {
-        type: 'line',
-        data: {
-            labels: pointLabels,
-            datasets: [
-                ...DEV_SERIES.map((s) => ({
-                    label: DOMAINS.find((d) => d.key === s.key).label,
-                    data: history.map((r) => scoreOrNull(r.domains?.[s.key]?.score)),
-                    borderColor: s.color,
-                    backgroundColor: s.color,
-                    pointStyle: s.pointStyle,
-                    borderDash: s.dash,
-                    pointRadius: 4,
-                    borderWidth: 2,
-                    spanGaps: false,
-                    tension: 0,
-                })),
-                {
-                    label: 'Overall score',
-                    data: history.map((r) => scoreOrNull(r.overallScore)),
-                    borderColor: DEV_OVERALL_COLOR,
-                    backgroundColor: DEV_OVERALL_COLOR,
-                    pointStyle: 'star',
-                    borderDash: [8, 4],
-                    pointRadius: 5,
-                    borderWidth: 3,
-                    spanGaps: false,
-                    tension: 0,
-                },
-            ],
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            scales: {
-                x: { title: { display: true, text: 'Assessment Date' } },
-                y: {
-                    min: 0,
-                    max: DOMAIN_SCORE_MAX,
-                    ticks: { stepSize: 20 },
-                    title: { display: true, text: 'Assessment Score' },
-                },
-            },
-            plugins: {
-                legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, boxHeight: 8 } },
-                tooltip: {
-                    callbacks: {
-                        title: (items) => `Assessment: ${pointLabels[items[0].dataIndex]}`,
-                        label: (ctx) => (ctx.parsed.y == null
-                            ? ` ${ctx.dataset.label}: no score stored`
-                            : ctx.dataset.label === 'Overall score'
-                                ? ` Overall score: ${Math.round(ctx.parsed.y)}%`
-                                : ` ${ctx.dataset.label}: ${Math.round(ctx.parsed.y)} / ${DOMAIN_SCORE_MAX}`),
-                    },
-                },
-            },
-        },
+    DOMAINS.forEach((d, i) => {
+        const canvas = document.getElementById(`devDomainChart${i}`);
+        if (!canvas) return;
+        devProgressCharts.push(devPanelChart(canvas, {
+            label: d.label,
+            values: history.map((r) => scoreOrNull(r.domains?.[d.key]?.score)),
+            history,
+            format: (v) => String(Math.round(v)),
+            axisTitle: `Assessment Score (0–${DOMAIN_SCORE_MAX})`,
+            color: DEV_COLORS.line,
+        }));
     });
+    const overallCanvas = document.getElementById('devOverallChart');
+    if (overallCanvas) {
+        devProgressCharts.push(devPanelChart(overallCanvas, {
+            label: 'Overall score',
+            values: history.map((r) => scoreOrNull(r.overallScore)),
+            history,
+            format: (v) => `${Math.round(v)}%`,
+            axisTitle: 'Overall Score (%)',
+            color: DEV_COLORS.overall,
+        }));
+    }
 }
 
 // ── Loading ─────────────────────────────────────────────────────────────────
@@ -1496,7 +1662,7 @@ function applyActivityResult(result) {
         console.error('Pediatrician Reports: activity request failed', result.error);
         activityData = null;
         if (activityChart) { activityChart.destroy(); activityChart = null; }
-        if (devProgressChart) { devProgressChart.destroy(); devProgressChart = null; }
+        destroyDevProgressCharts();
         document.getElementById('activitySection').innerHTML = errorCard(
             'We could not load assessment activity',
             result.timedOut ? 'The request took too long and was stopped. Use Retry below to try again.'
@@ -1517,7 +1683,7 @@ function applyActivityResult(result) {
         renderDevProgress(activityData, patientsData);
     } catch (err) {
         console.error('Pediatrician Reports: could not render patient development progress', err);
-        if (devProgressChart) { devProgressChart.destroy(); devProgressChart = null; }
+        destroyDevProgressCharts();
         document.getElementById('devProgressSection').innerHTML = devProgressErrorHtml(false);
     }
 }

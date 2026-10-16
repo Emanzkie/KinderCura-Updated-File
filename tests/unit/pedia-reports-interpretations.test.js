@@ -304,6 +304,35 @@ function testDevelopmentProgressNeedsTwo() {
   assert.ok(/no recorded assessment/.test(KC.formatDevelopmentProgressInterpretation('Chan', [])));
 }
 
+function testDevelopmentChangeSummary() {
+  const summary = KC.buildDevelopmentChangeSummary([
+    { date: 'May 4, 2026', scores: { communication: 50, social: 0, cognitive: 63, motor: 40 }, overallScore: 38 },
+    { date: 'Jun 1, 2026', scores: { communication: 69, social: 83, cognitive: null, motor: null }, overallScore: 56 },
+    { date: 'Oct 14, 2026', scores: { communication: 61, social: 83, cognitive: 0, motor: null }, overallScore: 48 },
+  ]);
+  const byKey = Object.fromEntries(summary.domains.map((d) => [d.key, d]));
+  // Latest vs the assessment just before it.
+  assert.deepStrictEqual(byKey.communication.latest, { date: 'Oct 14, 2026', score: 61 });
+  assert.strictEqual(byKey.communication.change, -8);
+  assert.strictEqual(KC.formatChangeSentence('Communication', byKey.communication),
+    'Communication: 61/100, down 8 points from the previous recorded assessment (Jun 1, 2026).');
+  assert.strictEqual(byKey.social.change, 0);
+  // A stored 0 is a recorded score: it is compared, and a missing score in
+  // between is skipped instead of being read as 0.
+  assert.deepStrictEqual(byKey.cognitive.latest, { date: 'Oct 14, 2026', score: 0 });
+  assert.deepStrictEqual(byKey.cognitive.previous, { date: 'May 4, 2026', score: 63 });
+  assert.strictEqual(byKey.cognitive.change, -63);
+  // Motor's last stored score is the first assessment; nothing earlier to compare.
+  assert.deepStrictEqual(byKey.motor.latest, { date: 'May 4, 2026', score: 40 });
+  assert.strictEqual(byKey.motor.previous, null);
+  assert.strictEqual(byKey.motor.change, null);
+  assert.ok(/no earlier recorded score/.test(KC.formatChangeSentence('Motor Skills', byKey.motor)));
+  assert.strictEqual(summary.overall.change, -8);
+  assert.strictEqual(KC.formatChangeSentence('Overall score', summary.overall, '%'),
+    'Overall score: 48%, down 8 points from the previous recorded assessment (Jun 1, 2026).');
+  assert.ok(/no score is stored/.test(KC.formatChangeSentence('Motor Skills', KC.buildDevelopmentChangeSummary([]).domains[3])));
+}
+
 function run() {
   testDomainBandNoPatients();
   testDomainBandAllZeroNeedsSupport();
@@ -333,6 +362,7 @@ function run() {
   testActivityTrendInterpretation();
   testDevelopmentProgressComparison();
   testDevelopmentProgressNeedsTwo();
+  testDevelopmentChangeSummary();
   console.log('Pediatrician Reports interpretation rules OK — band leaders/ties, needs-support totals, cohort progression, per-domain counts, movement wording, per-patient history, roster totals, activity series/intervals/summaries, and per-patient development progress all verified');
 }
 
