@@ -23,6 +23,7 @@ const TrainingDataset = require('../models/TrainingDataset');
 const Notification = require('../models/Notification');
 const SystemSetting = require('../models/SystemSetting');
 const paymentService = require('../services/paymentService');
+const adminOps = require('../services/adminOperationsAnalytics');
 const fileStorage = require('../services/fileStorage');
 const scoring = require('../constants/scoring');
 // Requirement B — synthetic MODEL dataset pipeline (generate + clean only;
@@ -935,6 +936,9 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
               month: { $month: '$createdAt' },
             },
             count: { $sum: 1 },
+            // Additive: how many of `count` are synthetic demo accounts
+            // (isSynthetic: true). `count` itself is unchanged.
+            syntheticCount: { $sum: { $cond: [{ $eq: ['$isSynthetic', true] }, 1, 0] } },
           },
         },
         { $sort: { '_id.year': -1, '_id.month': -1 } },
@@ -1225,8 +1229,10 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
 
     const now = new Date();
     const monthlyMap = {};
+    const monthlySyntheticMap = {};
     monthlySignupsResult.forEach((m) => {
       monthlyMap[`${m._id.year}-${String(m._id.month).padStart(2, '0')}`] = m.count;
+      monthlySyntheticMap[`${m._id.year}-${String(m._id.month).padStart(2, '0')}`] = m.syntheticCount || 0;
     });
     const monthlySignups = [];
     for (let i = 5; i >= 0; i -= 1) {
@@ -1235,6 +1241,7 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
       monthlySignups.push({
         month: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
         count: monthlyMap[key] || 0,
+        syntheticCount: monthlySyntheticMap[key] || 0,
       });
     }
 
@@ -2041,6 +2048,94 @@ router.put('/settings/appointments', authMiddleware, adminOnly, async (req, res)
     res.json({ success: true, settings: formatAppointmentSlotSettings(doc) });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/analytics/operations?from=YYYY-MM-DD&to=YYYY-MM-DD
+// Admin-only operational figures for the Admin Analytics page: user accounts
+// (by role, by account status, real vs synthetic), pediatrician PRC license
+// verification, the saved clinic profile, and clinic payment transactions.
+// The optional period filters new registrations (User.createdAt) and
+// transactions (Payment.createdAt, the field the Admin Payments monitor
+// filters on); every other figure is labelled all-time.
+//
+// No clinical field is read or returned. Every figure is a count or a sum
+// from one $group per collection, so nothing is joined and nothing is
+// double-counted. The clinic profile is read with findOne — never
+// SystemSetting.getClinic(), which creates the settings document when it is
+// missing — so this endpoint never writes.
+router.get('/analytics/operations', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const period = adminOps.parsePeriod(req.query);
+    if (period.error) return res.status(400).json({ error: period.error });
+
+    const synthetic = { $eq: ['$isSynthetic', true] };
+    const [
+      roleRows,
+      statusRows,
+      newRoleRows,
+      prcRows,
+      paymentRows,
+      settingsDoc,
+    ] = await Promise.all([
+      User.aggregate([{ $group: { _id: { key: '$role', synthetic }, count: { $sum: 1 } } }]),
+      User.aggregate([{ $group: { _id: { key: '$status', synthetic }, count: { $sum: 1 } } }]),
+      User.aggregate([
+        { $match: adminOps.periodMatch('createdAt', period) },
+        { $group: { _id: { key: '$role', synthetic }, count: { $sum: 1 } } },
+      ]),
+      User.aggregate([
+        { $match: { role: 'pediatrician' } },
+        { $group: { _id: { key: '$prcVerificationStatus', synthetic }, count: { $sum: 1 } } },
+      ]),
+      Payment.aggregate([
+        { $match: adminOps.periodMatch('createdAt', period) },
+        {
+          $group: {
+            _id: { status: '$status', currency: '$currency' },
+            count: { $sum: 1 },
+            amount: { $sum: { $ifNull: ['$amount', 0] } },
+          },
+        },
+      ]),
+      SystemSetting.findOne({ singleton: 'default' }).select('clinic updatedAt').lean(),
+    ]);
+
+    const sumSplit = (rows) => rows.reduce((acc, r) => ({
+      real: acc.real + r.real, synthetic: acc.synthetic + r.synthetic, total: acc.total + r.total,
+    }), { real: 0, synthetic: 0, total: 0 });
+    const usersByRole = adminOps.splitBySynthetic(roleRows);
+    const newByRole = adminOps.splitBySynthetic(newRoleRows);
+    const clinic = settingsDoc && settingsDoc.clinic ? settingsDoc.clinic : null;
+
+    res.json({
+      success: true,
+      period: {
+        from: period.from ? period.from.toISOString() : null,
+        to: period.to ? period.to.toISOString() : null,
+      },
+      accounts: {
+        total: sumSplit(usersByRole),
+        byRole: usersByRole,
+        byStatus: adminOps.splitBySynthetic(statusRows),
+        newInPeriod: { total: sumSplit(newByRole), byRole: newByRole },
+        pediatricianLicense: adminOps.splitBySynthetic(prcRows),
+      },
+      clinic: {
+        // One clinic profile per deployment (models/SystemSetting.js); there
+        // is no separate clinic-registration record to count.
+        profileSaved: Boolean(clinic),
+        name: clinic && clinic.clinicName ? clinic.clinicName : null,
+        active: clinic ? clinic.active !== false : null,
+        onlinePaymentEnabled: clinic ? clinic.onlinePaymentEnabled !== false : null,
+        payAtClinicEnabled: clinic ? clinic.payAtClinicEnabled !== false : null,
+        updatedAt: settingsDoc ? settingsDoc.updatedAt || null : null,
+      },
+      transactions: adminOps.summarizePayments(paymentRows),
+    });
+  } catch (err) {
+    console.error('admin analytics operations error:', err && err.message);
+    res.status(500).json({ error: 'Could not load operations analytics.' });
   }
 });
 

@@ -209,6 +209,26 @@ function testSignupChangeUsesFullMonths() {
   assert.strictEqual(KC.formatSignedPercent(g.change), '−48.2%', '(133 − 257) ÷ 257');
 }
 
+function testSignupChangeExplanation() {
+  // The adviser example: Aug 2026 = 257, Sep 2026 = 133.
+  const g = KC.computeSignupChange(signupMonths([166, 174, 169, 257, 133, 0]));
+  const e = KC.explainSignupChange(g);
+  assert.strictEqual(e.interpretation, 'Sep 2026 recorded 124 fewer new accounts than Aug 2026, a decrease of about 48.2%.');
+  assert.ok(e.steps.includes('Difference: 133 − 257 = −124.'), e.steps.join(' | '));
+  assert.ok(e.steps.includes('Divide: −124 ÷ 257 = −0.48249.'), e.steps.join(' | '));
+  assert.ok(e.steps[e.steps.length - 1].endsWith('−48.2%.'));
+  // The explained percentage is the displayed one.
+  assert.ok(e.steps[e.steps.length - 1].includes(KC.formatSignedPercent(g.change)));
+  const up = KC.explainSignupChange(KC.computeSignupChange(signupMonths([0, 0, 0, 100, 150, 0])));
+  assert.ok(/50 more new accounts .* an increase of about 50.0%/.test(up.interpretation), up.interpretation);
+  const same = KC.explainSignupChange(KC.computeSignupChange(signupMonths([0, 0, 0, 9, 9, 0])));
+  assert.ok(/same number of new accounts/.test(same.interpretation));
+  // No percentage, no explanation: a zero baseline is never divided.
+  assert.strictEqual(KC.explainSignupChange(KC.computeSignupChange(signupMonths([0, 0, 0, 0, 7, 2]))), null);
+  assert.strictEqual(KC.formatMoney(12650, 'PHP'), 'PHP 12,650.00');
+  assert.strictEqual(KC.formatMoney(null, 'PHP'), '—');
+}
+
 function testSignupChangeZeroBaseline() {
   const g = KC.computeSignupChange(signupMonths([0, 0, 0, 0, 7, 2]));
   assert.strictEqual(g.available, false);
@@ -324,6 +344,7 @@ function run() {
   testPercentFormatting();
   testSignupChangeUsesFullMonths();
   testSignupChangeZeroBaseline();
+testSignupChangeExplanation();
   testSignupChangeRealDropToZero();
   testSignupChangeNotEnoughData();
   testCompletionRate();

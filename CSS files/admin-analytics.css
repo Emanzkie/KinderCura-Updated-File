@@ -243,3 +243,80 @@
         flex-direction: column;
     }
 }
+
+/* ==================== OPERATIONS: PERIOD, SECTIONS, CALCULATIONS ==================== */
+
+.ops-period-fields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem 1rem;
+}
+
+.ops-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.ops-field label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.ops-field input {
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input, 10px);
+    font: inherit;
+    color: var(--text-dark);
+    background: var(--bg-primary);
+}
+
+.ops-period .btn {
+    padding: 0.6rem 1.2rem;
+}
+
+.ops-period-note {
+    margin: 0.8rem 0 0;
+}
+
+.ops-section-title {
+    margin: 0.5rem 0 1rem;
+    font-size: 1.15rem;
+    color: var(--text-dark);
+}
+
+/* "How this is calculated": the worked arithmetic behind a figure. */
+.calc-details {
+    margin-top: 0.6rem;
+    text-align: left;
+    font-size: 0.78rem;
+    color: var(--text-dark);
+}
+
+.calc-details summary {
+    cursor: pointer;
+    font-weight: 700;
+    color: var(--primary-dark);
+}
+
+.calc-steps {
+    margin: 0.5rem 0 0;
+    padding-left: 1.2rem;
+    line-height: 1.5;
+}
+
+.calc-source {
+    margin: 0.5rem 0 0;
+    line-height: 1.5;
+    color: var(--text-light);
+}
+
+@media (max-width: 600px) {
+    .ops-period-fields {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}

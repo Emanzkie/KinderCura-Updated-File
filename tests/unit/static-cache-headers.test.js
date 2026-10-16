@@ -158,7 +158,9 @@ async function run() {
           if (refs.length) pages += 1;
         }
       }
-      assert.ok(pages >= 7, `expected the 7 chart pages, found ${pages}`);
+      // 6 since ADMIN/admin-analytics.html stopped drawing charts (it now shows
+      // operations tables only); the count only guards against the scan finding nothing.
+      assert.ok(pages >= 6, `expected the 6 chart pages, found ${pages}`);
     }
     ok('6: every chart page loads Chart.js 4.5.1 by exact URL');
   } finally {

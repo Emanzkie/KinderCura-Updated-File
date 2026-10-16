@@ -344,6 +344,44 @@
     };
   }
 
+  /**
+   * The worked arithmetic behind the month-over-month sign-up card, built from
+   * the SAME computeSignupChange() result the card displays, so every number
+   * in the explanation is the number used. Returns null when no percentage is
+   * shown. { interpretation, steps: [string] }
+   */
+  function explainSignupChange(g) {
+    if (!g || !g.available) return null;
+    const cur = g.latest.count;
+    const prev = g.previous.count;
+    const diff = cur - prev;
+    const ratio = diff / prev;
+    const shown = formatSignedPercent(g.change);
+    const abs = formatSignedPercent(Math.abs(g.change)).replace(/^[+−]/, '');
+    const minus = (n) => (n < 0 ? `−${formatCount(Math.abs(n))}` : formatCount(n));
+    const interpretation = diff === 0
+      ? `${g.latest.month} recorded the same number of new accounts as ${g.previous.month} (${formatCount(cur)}), so there was no change.`
+      : `${g.latest.month} recorded ${formatCount(Math.abs(diff))} ${diff < 0 ? 'fewer' : 'more'} new accounts than ${g.previous.month}, ${diff < 0 ? 'a decrease' : 'an increase'} of about ${abs}.`;
+    return {
+      interpretation,
+      steps: [
+        `Formula: ((current month − previous month) ÷ previous month) × 100.`,
+        `Current month, ${g.latest.month}: ${formatCount(cur)} new accounts. Previous month, ${g.previous.month}: ${formatCount(prev)}.`,
+        `Difference: ${formatCount(cur)} − ${formatCount(prev)} = ${minus(diff)}.`,
+        `Divide: ${minus(diff)} ÷ ${formatCount(prev)} = ${ratio < 0 ? '−' : ''}${Math.abs(ratio).toFixed(5)}.`,
+        `Multiply by 100 and round to one decimal place: ${shown}.`,
+      ],
+    };
+  }
+
+  /** "PHP 12,650.00"; a missing or non-finite amount reads "—". */
+  function formatMoney(amount, currency) {
+    const n = Number(amount);
+    if (amount == null || !Number.isFinite(n)) return '—';
+    const text = n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return currency ? `${currency} ${text}` : text;
+  }
+
   const api = {
     DOMAIN_LABELS,
     DOMAIN_KEYS,
@@ -365,6 +403,8 @@
     computeMonitoringSummary,
     formatPediatricianComparisonNote,
     formatPediatricianRowInterpretation,
+    explainSignupChange,
+    formatMoney,
   };
 
   if (typeof module !== 'undefined' && module.exports) {

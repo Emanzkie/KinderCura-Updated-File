@@ -1,0 +1,138 @@
+// services/adminOperationsAnalytics.js
+//
+// Pure, DB-free helpers behind GET /api/admin/analytics/operations
+// (routes/admin.js): the Admin Analytics figures about accounts, clinic
+// payments and the reporting period. READ-ONLY — nothing here writes, and no
+// clinical field (scores, bands, diagnoses, outcomes) is read or returned.
+//
+// ── Payment status groups ──────────────────────────────────────────────────
+// Identical to the grouping the Admin Payments monitor already uses
+// (controllers/paymentController.js getAdminPaymentMonitor), so the two admin
+// pages can never disagree about what "collected" means:
+//   collected  'Paid'                          (only these amounts are money received)
+//   pending    'Pending', 'Verification Pending'
+//   failed     'Failed', 'Expired'
+//   refunded   'Refunded'
+// Every other stored status (e.g. 'Down Payment', 'Partially Paid',
+// 'Cancelled') is listed under "other" by its own name and never added to the
+// collected total.
+
+const PAYMENT_STATUS_GROUPS = Object.freeze([
+  Object.freeze({ key: 'collected', label: 'Paid (collected)', statuses: Object.freeze(['Paid']) }),
+  Object.freeze({ key: 'pending', label: 'Pending', statuses: Object.freeze(['Pending', 'Verification Pending']) }),
+  Object.freeze({ key: 'failed', label: 'Failed or expired', statuses: Object.freeze(['Failed', 'Expired']) }),
+  Object.freeze({ key: 'refunded', label: 'Refunded', statuses: Object.freeze(['Refunded']) }),
+]);
+
+function paymentGroupFor(status) {
+  const g = PAYMENT_STATUS_GROUPS.find((x) => x.statuses.includes(status));
+  return g ? g.key : 'other';
+}
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Optional ?from=YYYY-MM-DD&to=YYYY-MM-DD, as whole UTC days — the same
+ * day boundaries the Admin Payments monitor applies to its own date filter.
+ * Absent = all time. Returns { from, to } as Dates or null, or { error }.
+ */
+function parsePeriod(query) {
+  const q = query || {};
+  const rawFrom = q.from == null ? '' : String(q.from).trim();
+  const rawTo = q.to == null ? '' : String(q.to).trim();
+  const out = { from: null, to: null };
+  if (rawFrom) {
+    if (!DATE_ONLY.test(rawFrom)) return { error: '`from` must be a date in YYYY-MM-DD format.' };
+    out.from = new Date(`${rawFrom}T00:00:00.000Z`);
+    if (Number.isNaN(out.from.getTime())) return { error: '`from` is not a valid date.' };
+  }
+  if (rawTo) {
+    if (!DATE_ONLY.test(rawTo)) return { error: '`to` must be a date in YYYY-MM-DD format.' };
+    out.to = new Date(`${rawTo}T23:59:59.999Z`);
+    if (Number.isNaN(out.to.getTime())) return { error: '`to` is not a valid date.' };
+  }
+  if (out.from && out.to && out.from > out.to) return { error: '`from` must not be later than `to`.' };
+  return out;
+}
+
+/** Mongo filter on one date field for a parsed period; {} for all time. */
+function periodMatch(field, period) {
+  if (!period || (!period.from && !period.to)) return {};
+  const range = {};
+  if (period.from) range.$gte = period.from;
+  if (period.to) range.$lte = period.to;
+  return { [field]: range };
+}
+
+const round2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+
+/**
+ * rows: [{ _id: { status, currency }, count, amount }] from one $group over
+ * Payment. Returns per-group and per-status counts and amounts. Counts and
+ * amounts are kept as separate measures; only the 'collected' group's amount
+ * is money received.
+ */
+function summarizePayments(rows) {
+  const byStatus = new Map();
+  const currencies = new Set();
+  let missingCurrency = 0;
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const status = r._id && r._id.status != null ? String(r._id.status) : 'No status';
+    const currency = r._id && r._id.currency ? String(r._id.currency) : null;
+    if (currency) currencies.add(currency); else missingCurrency += r.count || 0;
+    const prev = byStatus.get(status) || { status, group: paymentGroupFor(status), count: 0, amount: 0 };
+    prev.count += r.count || 0;
+    prev.amount += Number(r.amount || 0);
+    byStatus.set(status, prev);
+  }
+  const statuses = Array.from(byStatus.values())
+    .map((s) => ({ ...s, amount: round2(s.amount) }))
+    .sort((a, b) => b.count - a.count || a.status.localeCompare(b.status));
+
+  const groups = [...PAYMENT_STATUS_GROUPS.map((g) => ({ key: g.key, label: g.label, statuses: g.statuses.slice() })),
+    { key: 'other', label: 'Other recorded statuses', statuses: [] }]
+    .map((g) => {
+      const members = statuses.filter((s) => s.group === g.key);
+      return {
+        key: g.key,
+        label: g.label,
+        statuses: g.key === 'other' ? members.map((m) => m.status) : g.statuses,
+        count: members.reduce((n, m) => n + m.count, 0),
+        amount: round2(members.reduce((n, m) => n + m.amount, 0)),
+      };
+    });
+
+  return {
+    totalCount: statuses.reduce((n, s) => n + s.count, 0),
+    groups,
+    statuses,
+    currencies: Array.from(currencies).sort(),
+    recordsWithoutCurrency: missingCurrency,
+  };
+}
+
+/**
+ * rows: [{ _id: { key, synthetic }, count }] — counts per key (role, status,
+ * PRC status) split into real and synthetic (isSynthetic: true) records.
+ */
+function splitBySynthetic(rows) {
+  const map = new Map();
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const key = r._id && r._id.key != null ? String(r._id.key) : null;
+    const k = key == null ? '__none' : key;
+    const prev = map.get(k) || { key, real: 0, synthetic: 0, total: 0 };
+    if (r._id && r._id.synthetic) prev.synthetic += r.count || 0; else prev.real += r.count || 0;
+    prev.total = prev.real + prev.synthetic;
+    map.set(k, prev);
+  }
+  return Array.from(map.values()).sort((a, b) => b.total - a.total || String(a.key).localeCompare(String(b.key)));
+}
+
+module.exports = {
+  PAYMENT_STATUS_GROUPS,
+  paymentGroupFor,
+  parsePeriod,
+  periodMatch,
+  summarizePayments,
+  splitBySynthetic,
+};

@@ -13,7 +13,6 @@
          Reports, so the two pages read as one visual system. -->
     <link rel="stylesheet" href="/css/admin-reports.css">
     <link rel="stylesheet" href="/css/notifications-styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
     <!-- Single source of truth for score bands/labels/colours — must load
          before admin-analytics.js. See constants/scoring.js header comment. -->
     <script src="/constants/scoring.js"></script>
@@ -53,7 +52,7 @@
         <div class="page-header analytics-header">
             <div class="header-left">
                 <h1>Analytics</h1>
-                <p>System-wide data insights</p>
+                <p>Platform operations: user accounts, clinic payments and appointments</p>
             </div>
             <div class="header-right">
                 <div class="live-status">
@@ -66,46 +65,79 @@
 
         <p class="analytics-error" id="analyticsError" role="alert" hidden></p>
 
-        <!-- Insights Row -->
+        <!-- Developmental assessment monitoring (score averages, score
+             distribution, domains needing monitoring, monthly trends and the
+             pediatrician assessment comparison) is no longer shown here: it
+             is clinical monitoring, which belongs to the pediatrician. The
+             same figures are still returned by GET /api/admin/analytics for
+             Admin Reports, and each pediatrician sees their own patients'
+             results in Pediatrician Reports. -->
+
+        <!-- Reporting period: applies to New Registrations and Clinic
+             Transactions only. Every other figure is labelled with its own
+             scope. -->
+        <div class="card mb-2 ops-period">
+            <div class="ops-period-fields">
+                <div class="ops-field">
+                    <label for="opsFrom">Period from</label>
+                    <input type="date" id="opsFrom">
+                </div>
+                <div class="ops-field">
+                    <label for="opsTo">Period to</label>
+                    <input type="date" id="opsTo">
+                </div>
+                <button type="button" class="btn btn-primary" onclick="applyOpsPeriod()">Apply</button>
+                <button type="button" class="btn btn-secondary" onclick="resetOpsPeriod()">All time</button>
+            </div>
+            <p class="chart-note ops-period-note" id="opsPeriodNote">The period applies to New Registrations and Clinic Transactions (whole days, UTC). Leave both dates blank for all time.</p>
+        </div>
+
+        <!-- Headline figures -->
         <div class="insights-row" id="insightsRow">
             <div class="insight-card">
                 <div class="label">New Sign-ups, Month over Month</div>
                 <div class="value green" id="growthRate">—</div>
                 <p class="insight-def" id="growthDef">Loading…</p>
+                <details class="calc-details" id="growthCalc" hidden>
+                    <summary>How this is calculated</summary>
+                    <ol class="calc-steps" id="growthSteps"></ol>
+                    <p class="calc-source" id="growthSource"></p>
+                </details>
             </div>
             <div class="insight-card">
-                <div class="label">Assessment Completion Rate</div>
-                <div class="value" id="completionRate">—</div>
-                <p class="insight-def" id="completionDef">Loading…</p>
+                <div class="label">Collected Payments</div>
+                <div class="value" id="collectedAmount">—</div>
+                <p class="insight-def" id="collectedDef">Loading…</p>
             </div>
             <div class="insight-card">
                 <div class="label">Pending Appointments</div>
                 <div class="value orange" id="pendingRate">—</div>
                 <p class="insight-def">Appointments with status Pending, waiting for approval, all dates. A count, not a percentage.</p>
+                <details class="calc-details">
+                    <summary>How this is counted</summary>
+                    <p class="calc-source">The number of appointment records whose stored status is <code>pending</code>, taken from the Appointment Status table below. No date filter is applied, and no division or rounding is involved.</p>
+                </details>
             </div>
         </div>
 
-        <!-- Summary Totals -->
+        <!-- User accounts (people who sign in) — kept apart from child
+             records, which are not accounts. -->
+        <h2 class="ops-section-title">User accounts</h2>
         <div class="overview-grid mb-2">
             <div class="overview-card">
-                <h3><img src="/icons/account.png" alt="" aria-hidden="true" class="icon-inline"> Total Users</h3>
+                <h3><img src="/icons/account.png" alt="" aria-hidden="true" class="icon-inline"> Total User Accounts</h3>
                 <p id="totalUsers" class="kpi-value">—</p>
-                <p class="pr-kpi-note">All registered accounts across every role: parent, legal guardian, foster parent, court-appointed guardian, pediatrician, secretary, and admin.</p>
+                <p class="pr-kpi-note" id="totalUsersNote">All registered accounts across every role: parent, legal guardian, foster parent, court-appointed guardian, pediatrician, secretary, and admin.</p>
             </div>
             <div class="overview-card">
-                <h3><img src="/icons/child.png" alt="" aria-hidden="true" class="icon-inline"> Total Children</h3>
+                <h3><img src="/icons/account.png" alt="" aria-hidden="true" class="icon-inline"> New Registrations</h3>
+                <p id="newRegistrations" class="kpi-value">—</p>
+                <p class="pr-kpi-note" id="newRegistrationsNote">Loading…</p>
+            </div>
+            <div class="overview-card">
+                <h3><img src="/icons/child.png" alt="" aria-hidden="true" class="icon-inline"> Child Records</h3>
                 <p id="totalChildren" class="kpi-value">—</p>
-                <p class="pr-kpi-note">Distinct child/patient records registered in KinderCura.</p>
-            </div>
-            <div class="overview-card">
-                <h3><img src="/icons/clipboard.png" alt="" aria-hidden="true" class="icon-inline"> Completed Assessments</h3>
-                <p id="completedScreenings" class="kpi-value">—</p>
-                <p class="pr-kpi-note">Assessment records with status = complete, each backed by a stored result.</p>
-            </div>
-            <div class="overview-card">
-                <h3><img src="/icons/cognitive.png" alt="" aria-hidden="true" class="icon-inline"> Active Assessments</h3>
-                <p id="activeAssessments" class="kpi-value">—</p>
-                <p class="pr-kpi-note">Assessment records currently marked in-progress (not yet completed). Counts assessment sessions, not children or appointments.</p>
+                <p class="pr-kpi-note">Child/patient records registered by parents and guardians. These are records, not user accounts, and are not included in Total User Accounts.</p>
             </div>
             <div class="overview-card">
                 <h3><img src="/icons/appointment.png" alt="" aria-hidden="true" class="icon-inline"> Active Appointments</h3>
@@ -114,94 +146,68 @@
             </div>
         </div>
 
-        <!-- Average Scores -->
-        <div class="card mb-2">
-            <h3><img src="/icons/analytics.png" alt="" aria-hidden="true" class="icon-inline"> Average Assessment Scores</h3>
-            <p class="chart-note" id="avgScoresNote">Mean domain score across every completed assessment. A domain score is the share of that domain's possible points the child earned (0–100%). It is an average score, not a share of children, a probability or a diagnosis.</p>
-            <div id="avgScores" class="grid-4">
-                <p class="text-center text-muted" style="grid-column:1/-1;">Loading…</p>
+        <div class="chart-row">
+            <div class="card">
+                <h3>Account Status</h3>
+                <div style="overflow-x:auto;">
+                    <table class="simple-table">
+                        <thead><tr><th>Status</th><th>Real accounts</th><th>Synthetic demo</th><th>Total</th></tr></thead>
+                        <tbody id="accountStatusTable"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+                    </table>
+                </div>
+                <p class="pr-kpi-note" style="margin-top:0.6rem;">Active, Pending and Suspended are the account statuses stored on each user (pending accounts are awaiting approval; suspended accounts cannot sign in). All dates. Synthetic demo accounts are generated test records marked <code>isSynthetic</code>.</p>
+            </div>
+            <div class="card">
+                <h3>New Registrations by Role</h3>
+                <div style="overflow-x:auto;">
+                    <table class="simple-table">
+                        <thead><tr><th>Role</th><th>Real accounts</th><th>Synthetic demo</th><th>Total</th></tr></thead>
+                        <tbody id="newByRoleTable"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+                    </table>
+                </div>
+                <p class="pr-kpi-note" id="newByRoleNote" style="margin-top:0.6rem;">Accounts created in the selected period, by role.</p>
             </div>
         </div>
 
-        <!-- Assessment Score Distribution — vertical histogram over the 10
-             existing score bins (replaces the old horizontal per-domain-average
-             bar chart that used to occupy this slot). Monthly Signups has been
-             removed from this page entirely; the underlying signup data is
-             untouched — see ADMIN/admin-analytics.html's sibling insight card
-             "User Growth" above (still fed by the same data) and
-             ADMIN/admin-insights.html if a chart is needed elsewhere. -->
-        <div class="card mb-2">
-            <h3><img src="/icons/clipboard.png" alt="" aria-hidden="true" class="icon-inline"> Assessment Score Distribution</h3>
-            <p class="chart-note">Each bar counts completed assessments whose overall score (0–100) falls in that 10-point range. Bar colour shows the score band the range belongs to.</p>
-            <div class="chart-container">
-                <canvas id="scoreHistogramChart" role="img" aria-label="Bar chart: number of completed assessments in each overall score range"></canvas>
+        <!-- Clinic monitoring -->
+        <h2 class="ops-section-title">Clinic</h2>
+        <div class="chart-row">
+            <div class="card">
+                <h3>Clinic Profile</h3>
+                <div id="clinicProfile"><p class="muted">Loading…</p></div>
+                <p class="pr-kpi-note" style="margin-top:0.6rem;">KinderCura stores one clinic profile per deployment: the clinic settings record used on receipts and payment pages. There is no separate clinic-registration record, so a count of registered clinics or new clinic registrations cannot be reported, and pediatrician accounts are not counted as clinics.</p>
             </div>
-            <ul class="chart-legend" id="scoreBandLegend" aria-label="Legend: score bands"></ul>
-            <p class="pr-kpi-note" id="histogramInterpretation" style="margin-top:0.75rem;">Loading…</p>
-        </div>
-
-        <!-- Developmental Areas Requiring Monitoring -->
-        <div class="card mb-2">
-            <h3><img src="/icons/cognitive.png" alt="" aria-hidden="true" class="icon-inline"> Developmental Areas Requiring Monitoring</h3>
-            <p class="chart-note">Each bar counts completed assessments whose score in that domain is in the needs-support range: At-Risk (40–59) or Delayed (0–39). One assessment can count in several domains, so the bars do not add up to the number of assessments. Counts are assessments, not unique children.</p>
-            <div class="chart-container">
-                <canvas id="domainMonitoringChart" role="img" aria-label="Bar chart: completed assessments with a needs-support result in each developmental domain"></canvas>
-            </div>
-            <ul class="chart-legend" id="domainMonitoringLegend" aria-label="Legend: developmental domains"></ul>
-            <p class="pr-kpi-note" id="domainMonitoringInterpretation" style="margin-top:0.75rem;">Loading…</p>
-        </div>
-
-        <!-- Developmental Monitoring Trends Over Time -->
-        <div class="card mb-2">
-            <h3><img src="/icons/analytics.png" alt="" aria-hidden="true" class="icon-inline"> Developmental Monitoring Trends Over Time</h3>
-            <p class="chart-note" id="domainTrendNote">Each line counts completed assessments, by the month they were completed (UTC), whose score in that domain is At-Risk or Delayed (below 60). Counts rise and fall with how many assessments were completed that month; hover a point to see its share. This is recorded KinderCura data only, not a population-wide clinical trend.</p>
-            <div class="chart-container" id="domainTrendChartWrap">
-                <canvas id="domainTrendChart" role="img" aria-label="Line chart: completed assessments with a needs-support result per developmental domain, by month"></canvas>
-            </div>
-            <p class="muted" id="domainTrendEmptyState" hidden>Not enough completed assessment data is available yet to show a monthly trend.</p>
-            <p class="pr-kpi-note" id="domainTrendInterpretation" style="margin-top:0.75rem;">Loading…</p>
-        </div>
-
-        <!-- Current Monitoring Summary -->
-        <div class="card mb-2">
-            <h3><img src="/icons/logs.png" alt="" aria-hidden="true" class="icon-inline"> Current Monitoring Summary</h3>
-            <div id="monitoringSummary" class="report-grid">
-                <div class="report-card"><p class="report-label">Loading…</p><p class="report-value">—</p></div>
+            <div class="card">
+                <h3>Pediatrician License (PRC) Verification</h3>
+                <div style="overflow-x:auto;">
+                    <table class="simple-table">
+                        <thead><tr><th>Verification status</th><th>Real accounts</th><th>Synthetic demo</th><th>Total</th></tr></thead>
+                        <tbody id="prcTable"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+                    </table>
+                </div>
+                <p class="pr-kpi-note" style="margin-top:0.6rem;">Pediatrician accounts by the PRC license verification status the admin records on the PRC Verification page. All dates.</p>
             </div>
         </div>
 
-        <!-- Pediatrician Assessment Comparison -->
+        <!-- Clinic transactions -->
         <div class="card mb-2">
-            <h3><img src="/icons/parent.png" alt="" aria-hidden="true" class="icon-inline"> Pediatrician Assessment Comparison</h3>
-            <p class="pr-notice" id="pediatricianComparisonNote">Loading…</p>
+            <h3><img src="/icons/analytics.png" alt="" aria-hidden="true" class="icon-inline"> Clinic Transactions</h3>
+            <p class="chart-note" id="transactionsNote">Loading…</p>
             <div style="overflow-x:auto;">
                 <table class="simple-table">
-                    <thead>
-                        <tr>
-                            <th><abbr title="List position, ordered by needs-support cases. Not a performance ranking.">#</abbr></th><th>Pediatrician</th><th>Relevant Children</th>
-                            <th>Completed Assessments</th><th>Needs-Support Cases</th>
-                            <th>Reviewed Assessments</th><th>Interpretation</th>
-                        </tr>
-                    </thead>
-                    <tbody id="pediatricianComparisonTable">
-                        <tr><td colspan="7" class="muted">Loading pediatrician comparison…</td></tr>
-                    </tbody>
+                    <thead><tr><th>Group</th><th>Stored statuses</th><th>Transactions</th><th>Amount recorded</th></tr></thead>
+                    <tbody id="transactionGroupsTable"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+                    <tfoot id="transactionGroupsTotal"></tfoot>
                 </table>
             </div>
-            <p class="muted" id="pediatricianComparisonCapNote" style="margin-top:0.6rem;font-size:0.82rem;"></p>
             <ul class="column-defs" aria-label="Column definitions">
-                <li><strong>Relevant Children</strong>: distinct children with at least one appointment of any status with this pediatrician.</li>
-                <li><strong>Completed Assessments</strong>: every completed assessment of those children, whichever pediatrician they saw. A child seen by two pediatricians counts for both.</li>
-                <li><strong>Needs-Support Cases</strong>: those completed assessments with an overall score below 60 (At-Risk or Delayed).</li>
-                <li><strong>Reviewed Assessments</strong>: those completed assessments that have a recorded pediatrician review.</li>
+                <li><strong>Transactions</strong>: payment records created in the selected period (by record creation date, the same date the Payments page filters on). A count, not money.</li>
+                <li><strong>Amount recorded</strong>: the sum of each record's amount. Only the <strong>Paid (collected)</strong> row is money received; pending, failed, refunded and other rows show amounts recorded on those records and are not added to collected money.</li>
+                <li>Groups match the Admin Payments page. Transactions are not split by clinic because there is one clinic profile and no per-clinic link on payment records. Individual payments, payers and patients are listed only on the <a href="/admin/payments">Payments</a> page.</li>
             </ul>
         </div>
 
-        <!-- Charts Row 2 — Appointment Status and User Role Distribution are
-             compact tables, not charts, per the adviser's request to stop
-             giving them a large visualization now that the page prioritizes
-             assessment monitoring. Values are the SAME appointmentStats /
-             roleBreakdown fields the old pie/donut charts read. -->
+        <!-- Appointment Status and User Role Distribution: compact tables. -->
         <div class="chart-row">
             <div class="card">
                 <h3><img src="/icons/appointment.png" alt="" aria-hidden="true" class="icon-inline"> Appointment Status</h3>
