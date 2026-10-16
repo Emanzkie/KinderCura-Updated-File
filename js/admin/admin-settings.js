@@ -94,7 +94,73 @@
             }
         }
 
+        // Matches CLINIC_NAME_MAX_LENGTH in controllers/paymentController.js.
+        const CLINIC_NAME_MAX_LENGTH = 120;
+
+        function setClinicNameState(message, isError = false) {
+            const el = document.getElementById('clinicNameState');
+            if (!el) return;
+            el.textContent = message;
+            el.style.color = isError ? '#3d4738' : 'var(--text-light)';
+        }
+
+        function showClinicName(data) {
+            const input = document.getElementById('clinicNameInput');
+            if (data.clinicNameConfigured) {
+                input.value = data.clinic.clinicName;
+                return true;
+            }
+            input.value = '';
+            return false;
+        }
+
+        async function loadClinicName() {
+            try {
+                const data = await apiFetch('/payments/clinic-config');
+                setClinicNameState(showClinicName(data)
+                    ? 'This is the saved clinic name.'
+                    : 'Clinic name not configured. Receipts and payment pages use the built-in default name until one is saved.');
+            } catch (err) {
+                setClinicNameState(err.message || 'Could not load the clinic name.', true);
+            }
+        }
+
+        // Sends only clinicName, so the clinic's payment settings stay as they are.
+        async function saveClinicName(event) {
+            event.preventDefault();
+            const input = document.getElementById('clinicNameInput');
+            const button = document.getElementById('clinicNameSaveBtn');
+            const clinicName = input.value.trim();
+            if (!clinicName) {
+                setClinicNameState('Enter a clinic name. It cannot be blank.', true);
+                input.focus();
+                return;
+            }
+            if (clinicName.length > CLINIC_NAME_MAX_LENGTH) {
+                setClinicNameState(`Clinic name must be ${CLINIC_NAME_MAX_LENGTH} characters or fewer.`, true);
+                input.focus();
+                return;
+            }
+            button.disabled = true;
+            setClinicNameState('Saving...');
+            try {
+                const data = await apiFetch('/payments/clinic-config', {
+                    method: 'PUT',
+                    body: JSON.stringify({ clinicName }),
+                });
+                showClinicName(data);
+                setClinicNameState('Saved. Receipts and payment pages now use this clinic name.');
+            } catch (err) {
+                setClinicNameState(err.message || 'Could not save the clinic name.', true);
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        document.getElementById('clinicNameForm').addEventListener('submit', saveClinicName);
+
         loadAppointmentSlotSetting();
+        loadClinicName();
         if (typeof loadNotificationCount === 'function') loadNotificationCount();
         setInterval(() => {
             if (typeof loadNotificationCount === 'function') loadNotificationCount();

@@ -1363,9 +1363,26 @@ async function getPaymentReceipt(req, res) {
 // GET/PUT /api/payments/clinic-config — admin-managed clinic details.
 // Exists so the clinic's real phone number is a single database value rather
 // than a string duplicated across templates and pages.
+const CLINIC_NAME_MAX_LENGTH = 120;
+
+// getClinic() fills a missing field with its schema default, so the merged
+// clinic alone cannot say whether a name was ever saved. clinicNameConfigured
+// reads the stored field, letting the admin settings form tell "not
+// configured" apart from the built-in default.
+async function clinicConfigBody() {
+  const clinic = await SystemSetting.getClinic();
+  const stored = await SystemSetting.findOne({ singleton: 'default' }).select('clinic.clinicName').lean();
+  const storedName = stored && stored.clinic ? stored.clinic.clinicName : null;
+  return {
+    success: true,
+    clinic,
+    clinicNameConfigured: typeof storedName === 'string' && storedName.trim() !== '',
+  };
+}
+
 async function getClinicConfig(req, res) {
   try {
-    res.json({ success: true, clinic: await SystemSetting.getClinic() });
+    res.json(await clinicConfigBody());
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1384,13 +1401,21 @@ async function updateClinicConfig(req, res) {
       if (req.body[key] !== undefined) set[`clinic.${key}`] = req.body[key];
     }
     if (!Object.keys(set).length) return res.status(400).json({ error: 'No clinic fields supplied.' });
+    if (set['clinic.clinicName'] !== undefined) {
+      const name = typeof req.body.clinicName === 'string' ? req.body.clinicName.trim() : '';
+      if (!name) return res.status(400).json({ error: 'Clinic name is required.' });
+      if (name.length > CLINIC_NAME_MAX_LENGTH) {
+        return res.status(400).json({ error: `Clinic name must be ${CLINIC_NAME_MAX_LENGTH} characters or fewer.` });
+      }
+      set['clinic.clinicName'] = name;
+    }
 
     await SystemSetting.findOneAndUpdate(
       { singleton: 'default' },
       { $set: set, $setOnInsert: { singleton: 'default' } },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
-    res.json({ success: true, clinic: await SystemSetting.getClinic() });
+    res.json(await clinicConfigBody());
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

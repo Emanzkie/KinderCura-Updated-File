@@ -145,6 +145,21 @@
                             <button class="btn btn-primary" onclick="saveAppointmentSlotSetting()" style="padding: 0.8rem 1.5rem;">Save Appointment Slot Setting</button>
                         </div>
 
+                        <!-- The one shared clinic profile (system_settings.clinic). Saves only
+                             the clinic name; payment settings are left as they are. -->
+                        <form id="clinicNameForm" novalidate style="margin-bottom: 1.5rem; padding: 1.25rem; border-radius: 12px; background: var(--bg-primary); border-left: 4px solid var(--primary);">
+                            <h3 style="color: var(--primary); margin-bottom: 0.5rem; font-size: 1rem;">Clinic Profile</h3>
+                            <p style="color: var(--text-light); font-size: 0.88rem; margin-bottom: 1rem;">
+                                The clinic name shown on receipts and payment pages. KinderCura has one shared clinic profile; this does not register a clinic.
+                            </p>
+                            <label for="clinicNameInput" style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Clinic name</label>
+                            <input type="text" id="clinicNameInput" maxlength="120" required autocomplete="organization" aria-describedby="clinicNameState" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem; margin-bottom: 0.75rem;">
+                            <p id="clinicNameState" role="status" aria-live="polite" style="color: var(--text-light); font-size: 0.82rem; margin: 0 0 1rem;">
+                                Loading clinic name...
+                            </p>
+                            <button type="submit" id="clinicNameSaveBtn" class="btn btn-primary" style="padding: 0.8rem 1.5rem;">Save Clinic Name</button>
+                        </form>
+
                         <button class="btn btn-primary" onclick="alert('Settings saved!')" style="padding: 0.8rem 1.5rem;">Save Changes</button>
                     </div>
                 </div>
