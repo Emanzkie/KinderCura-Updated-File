@@ -311,7 +311,7 @@ function assessmentsByMonth(results) {
 async function loadAssessments(results) {
   const assessmentIds = results.map((r) => r.assessmentId).filter(Boolean);
   const assessments = await Assessment.find({ _id: { $in: assessmentIds } })
-    .select('clinicalOutcome clinicalOutcomeDomains clinicalOutcomeAt reviewedByPediatrician reviewedAt completedAt')
+    .select('status clinicalOutcome clinicalOutcomeDomains clinicalOutcomeAt reviewedByPediatrician reviewedAt completedAt')
     .lean();
   return new Map(assessments.map((a) => [String(a._id), a]));
 }
@@ -657,6 +657,64 @@ router.get('/patients', authMiddleware, pediatriciansOnly, async (req, res) => {
     });
   } catch (err) {
     console.error('pedia-reports patients error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// GET /api/pedia-reports/activity
+// ───────────────────────────────────────────────────────────────────────────
+//
+// One record per assessment in scope, newest first — the individual events
+// behind the activity chart, and each patient's history for the Patient
+// Development Progress section. AssessmentResult.assessmentId is unique, so a
+// row here is exactly one assessment; the Assessment lookup is a Map keyed by
+// that id, so it can never duplicate a row the way a join could.
+//
+// `status` is the stored Assessment.status, or null when the Assessment
+// document is missing — never a defaulted "complete".
+router.get('/activity', authMiddleware, pediatriciansOnly, async (req, res) => {
+  try {
+    const range = parseRange(req.query);
+    if (range.error) return res.status(400).json({ error: range.error });
+    const filters = parseFilters(req.query);
+    if (filters.error) return res.status(400).json({ error: filters.error });
+
+    const { childMap, results, resultsByChild } = await loadScope(req, range, filters);
+    const assessmentMap = await loadAssessments(results);
+
+    // loadScope sorts ascending with _id as the tiebreaker; reversing keeps
+    // that deterministic order, newest first.
+    const records = results.slice().reverse().map((result) => {
+      const view = screeningView(result);
+      const domains = {};
+      for (const d of DOMAINS) {
+        domains[d.key] = { score: view.domains[d.key].score, band: view.domains[d.key].band };
+      }
+      return {
+        assessmentId: view.assessmentId,
+        childId: String(result.childId),
+        name: fullName(childMap.get(String(result.childId))),
+        assessedAt: view.generatedAt,
+        status: assessmentMap.get(view.assessmentId)?.status ?? null,
+        domains,
+        overallScore: view.overallScore,
+        overallBand: view.overallBand,
+      };
+    });
+
+    res.json({
+      success: true,
+      range: rangeEcho(range),
+      filters: filtersEcho(filters),
+      totals: {
+        assessments: records.length,
+        patientsAssessed: resultsByChild.size,
+      },
+      records,
+    });
+  } catch (err) {
+    console.error('pedia-reports activity error:', err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -45,10 +45,20 @@ function doLogout() {
 let overviewData = null;
 let progressionData = null;
 let patientsData = null;
+let activityData = null;
 
 let bandDomainChart = null;
 let overallBandChart = null;
 let activityChart = null;
+let devProgressChart = null;
+
+// Activity chart interval: 'auto' picks day/week/month from the period length.
+let activityInterval = 'auto';
+// Records table shows the newest ACTIVITY_RECORDS_PAGE rows until expanded.
+let activityShowAll = false;
+// Patient shown in Patient Development Progress; kept across filter changes
+// while that patient is still in the filtered set.
+let devProgressChildId = null;
 
 // Populated once from the patient roster so the patient filter can list names
 // without a second endpoint. Rebuilt only when the filter is not itself
@@ -587,7 +597,7 @@ function renderProgression(progression) {
     if (!children.length) {
         section.innerHTML = `
             <div class="report-card">
-                <h2>How results changed over time</h2>
+                <h2>How results changed over time &mdash; all patients</h2>
                 <div class="report-empty">
                     <h3>Not enough repeat assessments yet</h3>
                     <p>
@@ -609,7 +619,7 @@ function renderProgression(progression) {
 
     section.innerHTML = `
         <div class="report-card">
-            <h2>How results changed over time</h2>
+            <h2>How results changed over time &mdash; all patients</h2>
             <p class="section-lead">
                 Only patients with two or more assessments in this range appear here — a single
                 assessment is one reading, not a change. Each row compares a patient's
@@ -887,75 +897,465 @@ function renderPatients(data) {
         </div>`;
 }
 
-// ── Section 5: assessment activity over time ────────────────────────────────
+// ── Section A: Assessment Activity Report ───────────────────────────────────
+//
+// Built from /pedia-reports/activity: one record per assessment, already
+// scoped and filtered by the server exactly like every other section. The
+// chart, the summary tiles, the interpretation and the records table all read
+// that same list, so their totals always agree.
+//
+// Days are taken in the viewer's time zone — the same one fmtShortDate prints
+// each assessment's date in — so a point on the chart and the dates in the
+// records table cannot disagree.
 
-function renderActivity(overview) {
-    const section = document.getElementById('activitySection');
-    const byMonth = Array.isArray(overview?.assessmentsByMonth) ? overview.assessmentsByMonth : [];
+/** Calendar day 'YYYY-MM-DD' of a timestamp, in the viewer's time zone. */
+function localDayKey(value) {
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** The date the clinician typed into a range filter, from the server's echo. */
+function rangeDayKey(iso) {
+    return iso ? String(iso).slice(0, 10) : null;
+}
+
+// Stored Assessment.status values (models/Assessment.js). Anything else is
+// shown as stored; a missing Assessment document is shown as not recorded.
+const ASSESSMENT_STATUS_LABELS = Object.freeze({
+    complete: 'Complete',
+    submitted: 'Submitted',
+    in_progress: 'In progress',
+});
+
+function statusHtml(status) {
+    if (!status) return '<span class="muted">Not recorded</span>';
+    return escapeHtml(ASSESSMENT_STATUS_LABELS[status] || status);
+}
+
+/** Short, readable form of an assessment id; the full id is in the tooltip. */
+function assessmentIdHtml(id) {
+    if (!id) return '<span class="muted">Not recorded</span>';
+    return `<code class="record-id" title="${escapeHtml(id)}">…${escapeHtml(String(id).slice(-8))}</code>`;
+}
+
+const ACTIVITY_RECORDS_PAGE = 25;
+
+/** The activity series for the current records and interval choice. */
+function activitySeries(activity) {
     const KCPI = window.KCPediaReportsInterpretations;
+    const records = Array.isArray(activity?.records) ? activity.records : [];
+    const dayKeys = records.map((r) => localDayKey(r.assessedAt)).filter(Boolean);
+    const sorted = dayKeys.slice().sort();
 
-    if (byMonth.length === 0) {
+    // The period is the applied date range; an open end runs to the first
+    // assessment or to today.
+    const startKey = rangeDayKey(activity?.range?.from) || sorted[0] || null;
+    const endKey = rangeDayKey(activity?.range?.to) || (sorted.length || startKey ? localDayKey(new Date()) : null);
+
+    const autoInterval = KCPI.chooseActivityInterval(startKey, endKey);
+    const interval = activityInterval === 'auto' ? autoInterval : activityInterval;
+    return { interval, autoInterval, series: KCPI.buildActivitySeries(dayKeys, interval, startKey, endKey) };
+}
+
+function setActivityInterval(value) {
+    activityInterval = ['day', 'week', 'month'].includes(value) ? value : 'auto';
+    renderActivity(activityData);
+}
+
+function showAllActivityRecords() {
+    activityShowAll = true;
+    renderActivity(activityData);
+}
+
+function renderActivity(activity) {
+    const section = document.getElementById('activitySection');
+    const KCPI = window.KCPediaReportsInterpretations;
+    const records = Array.isArray(activity?.records) ? activity.records : [];
+
+    if (records.length === 0) {
         section.innerHTML = `
             <div class="report-card">
-                <h2>Assessment activity</h2>
+                <h2>Assessment Activity Over Time</h2>
                 <div class="report-empty">
                     <h3>No assessments in this range</h3>
-                    <p>Nothing was recorded for your patients in the selected dates.</p>
+                    <p>No assessment was recorded for your patients under the current filters, so there is no
+                        activity to chart and no record to list. Widen the date range or reset the filters.</p>
                 </div>
             </div>`;
         if (activityChart) { activityChart.destroy(); activityChart = null; }
         return;
     }
 
+    const { interval, autoInterval, series } = activitySeries(activity);
+    const words = KCPI.INTERVAL_WORDS[interval];
+    const total = records.length;
+    const patientsAssessed = count(activity?.totals?.patientsAssessed);
+    const max = Math.max(...series.map((r) => r.count));
+    const busiest = series.filter((r) => r.count === max);
+    const active = series.filter((r) => r.count > 0).length;
+    const intervalOption = (value, label) =>
+        `<option value="${value}" ${activityInterval === value ? 'selected' : ''}>${label}</option>`;
+
+    const shown = activityShowAll ? records : records.slice(0, ACTIVITY_RECORDS_PAGE);
+    const rows = shown.map((r) => `
+        <tr>
+            <td>${escapeHtml(fmtShortDate(r.assessedAt))}</td>
+            <th scope="row">${escapeHtml(r.name)}</th>
+            <td>${assessmentIdHtml(r.assessmentId)}</td>
+            <td>${statusHtml(r.status)}</td>
+            <td class="num">${r.overallScore == null ? '—' : escapeHtml(scoreText(r.overallScore))}</td>
+            <td>${bandChip(r.overallBand)}</td>
+        </tr>`).join('');
+
     section.innerHTML = `
         <div class="report-card">
-            <h2>Assessment activity</h2>
-            <p class="section-lead">
-                How many assessments your patients completed each month. This counts activity only —
-                it says nothing about the results.
-            </p>
-            <p class="chart-title">Assessments completed per month (count)</p>
+            <h2>Assessment activity summary</h2>
+            <p class="section-lead">Totals for the assessments that match the current filters.</p>
+
+            <div class="report-tiles activity-tiles">
+                <div class="report-tile">
+                    <p class="tile-label">Assessments recorded</p>
+                    <p class="tile-value">${total}</p>
+                    <p class="tile-sub">Distinct assessment records in the selected period.</p>
+                </div>
+                <div class="report-tile">
+                    <p class="tile-label">Patients assessed</p>
+                    <p class="tile-value">${patientsAssessed}</p>
+                    <p class="tile-sub">Different patients with at least one of those assessments.</p>
+                </div>
+                <div class="report-tile">
+                    <p class="tile-label">Busiest ${escapeHtml(words.unit)}</p>
+                    <p class="tile-value">${max}</p>
+                    <p class="tile-sub">${busiest.length === 1
+                        ? escapeHtml(busiest[0].rangeLabel)
+                        : `Reached in ${busiest.length} different ${escapeHtml(words.units)}.`}</p>
+                </div>
+                <div class="report-tile">
+                    <p class="tile-label">${escapeHtml(words.units)} with activity</p>
+                    <p class="tile-value">${active}</p>
+                    <p class="tile-sub">of ${series.length} ${escapeHtml(series.length === 1 ? words.unit : words.units)} in the period had an assessment.</p>
+                </div>
+            </div>
+
+            <div class="activity-controls">
+                <label for="activityInterval">Show assessments per</label>
+                <select id="activityInterval" onchange="setActivityInterval(this.value)">
+                    ${intervalOption('auto', `Automatic (${escapeHtml(KCPI.INTERVAL_WORDS[autoInterval].unit)})`)}
+                    ${intervalOption('day', 'Day')}
+                    ${intervalOption('week', 'Week')}
+                    ${intervalOption('month', 'Month')}
+                </select>
+            </div>
+
+            <p class="chart-title">Assessment Activity Over Time</p>
+            <p class="chart-subtitle">Number of assessments recorded during each time interval. Each point is one ${escapeHtml(words.unit)}${
+                interval === 'week' ? ' (Monday to Sunday)' : ''}.</p>
             <div class="chart-box chart-box-wide"><canvas id="activityChart" role="img"
-                aria-label="Bar chart: number of assessments completed each month."></canvas></div>
+                aria-label="Line chart: number of assessments recorded per ${escapeHtml(words.unit)}. The same assessments are listed in the Assessment Activity Records table."></canvas></div>
             <ul class="kc-chart-legend activity-legend" aria-label="Assessment activity legend">
                 <li>
-                    <span class="kc-swatch" style="background:${escapeHtml(window.KCScoring.colorForBand(window.KCScoring.BAND.ON_TRACK))};" aria-hidden="true"></span>
-                    <span><span class="kc-chart-legend-label">Assessments completed</span>
-                        <span class="kc-chart-legend-desc">Each bar is the number of assessments your patients completed in that month (horizontal axis). The bar colour carries no classification meaning.</span></span>
+                    <span class="kc-swatch" style="background:var(--primary);" aria-hidden="true"></span>
+                    <span><span class="kc-chart-legend-label">Number of assessments</span>
+                        <span class="kc-chart-legend-desc">Each point is how many assessments were recorded for your patients in that ${escapeHtml(words.unit)}; a point at 0 means none were. The line shows activity, not results.</span></span>
                 </li>
             </ul>
             <div class="chart-interp">
                 <p class="chart-interp-label">Interpretation</p>
-                <p class="chart-interp-text">${escapeHtml(KCPI.formatActivityInterpretation(byMonth))}</p>
+                <p class="chart-interp-text">${escapeHtml(KCPI.formatActivityTrendInterpretation(series, interval))}</p>
             </div>
+        </div>
+
+        <div class="report-card">
+            <h2>Assessment Activity Records</h2>
+            <p class="section-lead">A chronological list of assessments conducted for your patients, newest first.
+                One row is one assessment record.</p>
+            <div class="table-scroll">
+                <table class="report-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Assessment date</th>
+                            <th scope="col">Patient name</th>
+                            <th scope="col">Assessment ID</th>
+                            <th scope="col">Assessment status</th>
+                            <th scope="col" class="num">Overall score</th>
+                            <th scope="col">Overall classification</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+            ${records.length > shown.length ? `
+            <div class="table-more">
+                <span>Showing the ${shown.length} most recent of ${records.length} assessments.</span>
+                <button type="button" class="btn btn-secondary" onclick="showAllActivityRecords()">Show all ${records.length}</button>
+            </div>` : ''}
+            <p class="table-note">
+                Assessment ID shows the last 8 characters of the stored record id; hover it for the full id.
+                Assessment status is the status stored on the assessment record. Overall score and classification
+                are that assessment's stored result, classified with the Score guide above.
+            </p>
         </div>`;
 
     if (typeof Chart === 'undefined') return;
     const canvas = document.getElementById('activityChart');
     if (!canvas) return;
     if (activityChart) activityChart.destroy();
+    const unitTitle = words.unit.charAt(0).toUpperCase() + words.unit.slice(1);
     activityChart = new Chart(canvas, {
-        type: 'bar',
+        type: 'line',
         data: {
-            labels: byMonth.map((r) => KCPI.formatMonthLabel(r.month)),
+            labels: series.map((r) => r.label),
             datasets: [{
-                label: 'Assessments completed',
-                data: byMonth.map((r) => r.count),
-                backgroundColor: window.KCScoring.colorForBand(window.KCScoring.BAND.ON_TRACK),
+                label: 'Number of assessments',
+                data: series.map((r) => r.count),
+                borderColor: '#6B8E6F',
+                backgroundColor: 'rgba(107, 142, 111, 0.15)',
+                pointBackgroundColor: '#6B8E6F',
+                pointRadius: series.length > 60 ? 0 : 3,
+                pointHoverRadius: 5,
+                borderWidth: 2,
+                tension: 0,
+                fill: true,
             }],
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
             scales: {
-                x: { title: { display: true, text: 'Month' } },
-                y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Number of assessments' } },
+                x: {
+                    title: { display: true, text: words.axis },
+                    ticks: { autoSkip: true, maxRotation: 45 },
+                },
+                y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Number of Assessments' } },
             },
             plugins: {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        label: (ctx) => ` ${ctx.parsed.y} ${ctx.parsed.y === 1 ? 'assessment' : 'assessments'} completed`,
+                        title: (items) => `${unitTitle}: ${series[items[0].dataIndex].rangeLabel}`,
+                        label: (ctx) => ` ${ctx.parsed.y} ${ctx.parsed.y === 1 ? 'assessment' : 'assessments'} recorded`,
+                    },
+                },
+            },
+        },
+    });
+}
+
+// ── Section B: Patient Development Progress ─────────────────────────────────
+//
+// One patient's assessments in the selected period, oldest first, from the
+// same activity records. Only patients this pediatrician can see are listed,
+// because the records come from the server's appointment-scoped cohort.
+
+// Line styles for the score chart: palette colours only, and a distinct point
+// shape and dash per series so the lines stay apart without relying on colour.
+const DEV_SERIES = Object.freeze([
+    { key: 'communication', color: '#6B8E6F', pointStyle: 'circle',   dash: [] },
+    { key: 'social',        color: '#E8A5A5', pointStyle: 'triangle', dash: [] },
+    { key: 'cognitive',     color: '#6B7967', pointStyle: 'rectRot',  dash: [2, 3] },
+    { key: 'motor',         color: '#F4D89F', pointStyle: 'rect',     dash: [] },
+]);
+const DEV_OVERALL_COLOR = '#3D4738';
+
+function setDevProgressPatient(childId) {
+    devProgressChildId = childId || null;
+    renderDevProgress(activityData, patientsData);
+}
+
+/** Patients with at least one assessment in range, each with their history oldest first. */
+function devProgressPatients(activity, roster) {
+    const records = Array.isArray(activity?.records) ? activity.records : [];
+    const byChild = new Map();
+    for (const r of records) {
+        if (!byChild.has(r.childId)) byChild.set(r.childId, { childId: r.childId, name: r.name, history: [] });
+        byChild.get(r.childId).history.push(r);
+    }
+    const dob = new Map((roster?.patients || []).map((p) => [p.childId, p.dateOfBirth]));
+    const list = Array.from(byChild.values());
+    for (const p of list) p.history.reverse();
+    list.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Two children can share a name; the date of birth tells them apart.
+    const nameCounts = list.reduce((m, p) => m.set(p.name, (m.get(p.name) || 0) + 1), new Map());
+    for (const p of list) {
+        const born = dob.get(p.childId);
+        p.label = nameCounts.get(p.name) > 1 && born ? `${p.name} (born ${fmtShortDate(born)})` : p.name;
+    }
+    return list;
+}
+
+function devScoreCell(score, band) {
+    return `<td><span class="domain-score">${escapeHtml(domainScoreText(score))}</span>${bandChip(band)}</td>`;
+}
+
+function renderDevProgress(activity, roster) {
+    const section = document.getElementById('devProgressSection');
+    const KCPI = window.KCPediaReportsInterpretations;
+    const patients = devProgressPatients(activity, roster);
+
+    if (!patients.length) {
+        section.innerHTML = `
+            <div class="report-card">
+                <h2>Assessment history</h2>
+                <div class="report-empty">
+                    <h3>No assessment history to show</h3>
+                    <p>None of your patients has an assessment under the current filters.</p>
+                </div>
+            </div>`;
+        if (devProgressChart) { devProgressChart.destroy(); devProgressChart = null; }
+        return;
+    }
+
+    // Keep the current choice while it is still listed; otherwise follow the
+    // page's patient filter, then the first patient with a history to compare.
+    const globalPatient = document.getElementById('filterPatient')?.value;
+    const has = (id) => patients.some((p) => p.childId === id);
+    if (!has(devProgressChildId)) {
+        devProgressChildId = has(globalPatient) ? globalPatient
+            : (patients.find((p) => p.history.length >= 2) || patients[0]).childId;
+    }
+    const patient = patients.find((p) => p.childId === devProgressChildId);
+    const history = patient.history;
+
+    const dates = history.map((r) => fmtShortDate(r.assessedAt));
+    const sameDay = new Set(dates).size !== dates.length;
+    // Two assessments on one day get their time too, so the chart's points stay distinguishable.
+    const pointLabels = history.map((r, i) => (sameDay
+        ? `${dates[i]}, ${new Date(r.assessedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+        : dates[i]));
+
+    const roundOrNull = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Math.round(Number(v)));
+    const interpretation = KCPI.formatDevelopmentProgressInterpretation(patient.name, history.map((r, i) => ({
+        date: dates[i],
+        scores: DOMAINS.reduce((acc, d) => { acc[d.key] = roundOrNull(r.domains?.[d.key]?.score); return acc; }, {}),
+        overallScore: roundOrNull(r.overallScore),
+    })));
+
+    const rows = history.map((r, i) => `
+        <tr>
+            <th scope="row">${escapeHtml(pointLabels[i])}</th>
+            ${DOMAINS.map((d) => devScoreCell(r.domains?.[d.key]?.score, r.domains?.[d.key]?.band)).join('')}
+            <td class="num">${r.overallScore == null ? '—' : escapeHtml(scoreText(r.overallScore))}</td>
+            <td>${bandChip(r.overallBand)}</td>
+        </tr>`).join('');
+
+    const canChart = history.length >= 2;
+
+    section.innerHTML = `
+        <div class="report-card">
+            <h2>Assessment history</h2>
+            <div class="activity-controls">
+                <label for="devProgressPatient">Patient</label>
+                <select id="devProgressPatient" onchange="setDevProgressPatient(this.value)">
+                    ${patients.map((p) => `<option value="${escapeHtml(p.childId)}" ${p.childId === patient.childId ? 'selected' : ''}>${
+                        escapeHtml(p.label)} — ${p.history.length} ${plural(p.history.length, 'assessment')}</option>`).join('')}
+                </select>
+            </div>
+            <p class="section-lead">
+                Every assessment ${escapeHtml(patient.name)} has in the selected period, oldest first. Domain scores
+                are the stored scores out of ${DOMAIN_SCORE_MAX}; the overall score is the average of the four.
+                Only your own patients are listed.
+            </p>
+
+            <div class="chart-interp" style="margin-bottom:1.2rem;">
+                <p class="chart-interp-label">Interpretation</p>
+                <p class="chart-interp-text">${escapeHtml(interpretation)}</p>
+            </div>
+
+            ${canChart ? `
+            <p class="chart-title">Developmental Assessment Progress</p>
+            <p class="chart-subtitle">${escapeHtml(patient.name)}'s recorded scores at each assessment. All four domains and the overall score use the same 0&ndash;${DOMAIN_SCORE_MAX} scale. A gap in a line means no score is stored for that assessment.</p>
+            <div class="chart-box chart-box-wide dev-progress-chart"><canvas id="devProgressChart" role="img"
+                aria-label="Line chart of ${escapeHtml(patient.name)}'s recorded Communication, Social Skills, Cognitive, Motor Skills and overall scores at each assessment. The same values are in the table below."></canvas></div>
+            ` : `
+            <div class="report-empty">
+                <h3>Not enough assessments for a trend</h3>
+                <p>${escapeHtml(patient.name)} has one recorded assessment in this period. Its result is shown below;
+                    a progress chart needs at least two assessments.</p>
+            </div>`}
+
+            <div class="table-scroll">
+                <table class="report-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Assessment date</th>
+                            ${DOMAINS.map((d) => `<th scope="col">${escapeHtml(d.label)}<br><span class="th-sub">score out of ${DOMAIN_SCORE_MAX}</span></th>`).join('')}
+                            <th scope="col" class="num">Overall score</th>
+                            <th scope="col">Overall classification</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+            <p class="table-note">
+                Each row is one stored assessment record. Scores and classifications come from KinderCura's existing
+                scoring rules and are not recomputed here. N/A means no score is stored for that domain. Assessment
+                results support monitoring and do not replace professional clinical evaluation.
+            </p>
+        </div>`;
+
+    if (devProgressChart) { devProgressChart.destroy(); devProgressChart = null; }
+    if (!canChart || typeof Chart === 'undefined') return;
+    const canvas = document.getElementById('devProgressChart');
+    if (!canvas) return;
+
+    const scoreOrNull = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+    devProgressChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: pointLabels,
+            datasets: [
+                ...DEV_SERIES.map((s) => ({
+                    label: DOMAINS.find((d) => d.key === s.key).label,
+                    data: history.map((r) => scoreOrNull(r.domains?.[s.key]?.score)),
+                    borderColor: s.color,
+                    backgroundColor: s.color,
+                    pointStyle: s.pointStyle,
+                    borderDash: s.dash,
+                    pointRadius: 4,
+                    borderWidth: 2,
+                    spanGaps: false,
+                    tension: 0,
+                })),
+                {
+                    label: 'Overall score',
+                    data: history.map((r) => scoreOrNull(r.overallScore)),
+                    borderColor: DEV_OVERALL_COLOR,
+                    backgroundColor: DEV_OVERALL_COLOR,
+                    pointStyle: 'star',
+                    borderDash: [8, 4],
+                    pointRadius: 5,
+                    borderWidth: 3,
+                    spanGaps: false,
+                    tension: 0,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                x: { title: { display: true, text: 'Assessment Date' } },
+                y: {
+                    min: 0,
+                    max: DOMAIN_SCORE_MAX,
+                    ticks: { stepSize: 20 },
+                    title: { display: true, text: 'Assessment Score' },
+                },
+            },
+            plugins: {
+                legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, boxHeight: 8 } },
+                tooltip: {
+                    callbacks: {
+                        title: (items) => `Assessment: ${pointLabels[items[0].dataIndex]}`,
+                        label: (ctx) => (ctx.parsed.y == null
+                            ? ` ${ctx.dataset.label}: no score stored`
+                            : ctx.dataset.label === 'Overall score'
+                                ? ` Overall score: ${Math.round(ctx.parsed.y)}%`
+                                : ` ${ctx.dataset.label}: ${Math.round(ctx.parsed.y)} / ${DOMAIN_SCORE_MAX}`),
                     },
                 },
             },
@@ -982,15 +1382,20 @@ async function loadReports() {
         '<div class="report-card"><div class="report-loading">Loading progression…</div></div>';
     document.getElementById('activitySection').innerHTML =
         '<div class="report-card"><div class="report-loading">Loading assessment activity…</div></div>';
+    document.getElementById('devProgressSection').innerHTML =
+        '<div class="report-card"><div class="report-loading">Loading patient development progress…</div></div>';
     meta.textContent = 'Loading…';
+    // A new filter is a new list of records; start it collapsed again.
+    activityShowAll = false;
 
-    // One query string for all three, so the sections cannot disagree about
+    // One query string for all four, so the sections cannot disagree about
     // which patients they are describing.
     try {
-        [overviewData, progressionData, patientsData] = await Promise.all([
+        [overviewData, progressionData, patientsData, activityData] = await Promise.all([
             apiFetch(`/pedia-reports/overview${query}`),
             apiFetch(`/pedia-reports/progression${query}`),
             apiFetch(`/pedia-reports/patients${query}`),
+            apiFetch(`/pedia-reports/activity${query}`),
         ]);
     } catch (err) {
         meta.textContent = 'Could not load reports';
@@ -1000,6 +1405,7 @@ async function loadReports() {
         document.getElementById('patientsSection').innerHTML = '';
         document.getElementById('progressionSection').innerHTML = '';
         document.getElementById('activitySection').innerHTML = '';
+        document.getElementById('devProgressSection').innerHTML = '';
         return;
     }
 
@@ -1017,8 +1423,9 @@ async function loadReports() {
     renderCohortTiles(overviewData);
     renderClassification(overviewData);
     renderPatients(patientsData);
+    renderActivity(activityData);
+    renderDevProgress(activityData, patientsData);
     renderProgression(progressionData);
-    renderActivity(overviewData);
 }
 
 // ── Filter actions ──────────────────────────────────────────────────────────

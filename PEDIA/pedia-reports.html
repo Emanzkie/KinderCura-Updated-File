@@ -111,15 +111,41 @@
             <div class="report-card"><div class="report-loading">Loading patient list…</div></div>
         </div>
 
-        <!-- 4. Progression -->
-        <div id="progressionSection">
-            <div class="report-card"><div class="report-loading">Loading progression…</div></div>
-        </div>
+        <!-- 4. Section A — Assessment Activity Report. Counts WHEN assessments
+             happened and for whom; it never describes their results. -->
+        <section class="report-part" aria-labelledby="activityPartTitle">
+            <div class="report-part-header">
+                <p class="report-part-kicker">Section A</p>
+                <h2 id="activityPartTitle">Assessment Activity Report</h2>
+                <p class="section-lead">
+                    When assessments were conducted, which patients were assessed, and how assessment
+                    activity changes over time. This section counts assessments only &mdash; it says nothing
+                    about their results or about any child's development.
+                </p>
+            </div>
+            <div id="activitySection">
+                <div class="report-card"><div class="report-loading">Loading assessment activity…</div></div>
+            </div>
+        </section>
 
-        <!-- 5. Assessment activity over time -->
-        <div id="activitySection">
-            <div class="report-card"><div class="report-loading">Loading assessment activity…</div></div>
-        </div>
+        <!-- 5. Section B — Patient Development Progress. How each patient's
+             recorded results change across their own assessments. -->
+        <section class="report-part" aria-labelledby="progressPartTitle">
+            <div class="report-part-header">
+                <p class="report-part-kicker">Section B</p>
+                <h2 id="progressPartTitle">Patient Development Progress</h2>
+                <p class="section-lead">
+                    Review a patient's assessment history to understand how recorded developmental scores
+                    change over time.
+                </p>
+            </div>
+            <div id="devProgressSection">
+                <div class="report-card"><div class="report-loading">Loading patient development progress…</div></div>
+            </div>
+            <div id="progressionSection">
+                <div class="report-card"><div class="report-loading">Loading progression…</div></div>
+            </div>
+        </section>
     </div>
 
     <!-- Notifications Modal -->

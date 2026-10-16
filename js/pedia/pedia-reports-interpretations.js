@@ -285,28 +285,206 @@
     return `${MONTH_NAMES[idx]} ${m[1]}`;
   }
 
+  // ── Assessment activity over time ─────────────────────────────────────────
+  //
+  // The activity chart counts assessments per day, week or month. Everything
+  // below works on calendar-day keys ('YYYY-MM-DD') that the caller derives in
+  // the viewer's time zone — the same time zone the page prints each
+  // assessment's date in — so a point on the chart and the rows in the records
+  // table always agree. Day arithmetic is done in UTC on those keys, which
+  // makes these functions independent of the machine they run on.
+
+  const SHORT_MONTHS = Object.freeze(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']);
+  const DAY_MS = 86400000;
+
+  // Auto interval: daily up to a month, weekly up to about six months,
+  // monthly beyond that — enough points to show a shape, few enough to read.
+  const DAILY_MAX_DAYS = 31;
+  const WEEKLY_MAX_DAYS = 183;
+
+  const INTERVAL_WORDS = Object.freeze({
+    day: { unit: 'day', units: 'days', axis: 'Assessment Date' },
+    week: { unit: 'week', units: 'weeks', axis: 'Assessment Week (weeks start Monday)' },
+    month: { unit: 'month', units: 'months', axis: 'Assessment Month' },
+  });
+
+  function isDayKey(key) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(key || ''));
+  }
+
+  function dayKeyToUtc(key) {
+    const [y, m, d] = key.split('-').map(Number);
+    return Date.UTC(y, m - 1, d);
+  }
+
+  function utcToDayKey(ms) {
+    const dt = new Date(ms);
+    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+  }
+
+  /** '2026-10-02' -> 'Oct 2, 2026'. */
+  function formatDayLabel(key) {
+    if (!isDayKey(key)) return String(key || '');
+    const [y, m, d] = key.split('-').map(Number);
+    return `${SHORT_MONTHS[m - 1]} ${d}, ${y}`;
+  }
+
+  /** The bucket a day falls in: itself, the Monday of its week, or 'YYYY-MM'. */
+  function bucketKeyFor(dayKey, interval) {
+    if (interval === 'month') return dayKey.slice(0, 7);
+    if (interval === 'week') {
+      const ms = dayKeyToUtc(dayKey);
+      const sinceMonday = (new Date(ms).getUTCDay() + 6) % 7;
+      return utcToDayKey(ms - sinceMonday * DAY_MS);
+    }
+    return dayKey;
+  }
+
+  /** 'day' | 'week' | 'month' for an inclusive span of day keys. */
+  function chooseActivityInterval(startKey, endKey) {
+    if (!isDayKey(startKey) || !isDayKey(endKey)) return 'month';
+    const days = Math.round((dayKeyToUtc(endKey) - dayKeyToUtc(startKey)) / DAY_MS) + 1;
+    if (days <= DAILY_MAX_DAYS) return 'day';
+    if (days <= WEEKLY_MAX_DAYS) return 'week';
+    return 'month';
+  }
+
+  /**
+   * Assessments per interval, oldest first, with every interval between the
+   * first and last one present — an interval with no assessment is a 0 point,
+   * not a missing one. The span is widened to cover every given day, so no
+   * assessment can fall outside the series: the counts always sum to
+   * dayKeys.length.
+   *
+   * Returns [{ key, label, rangeLabel, count }]. `label` is the axis label;
+   * `rangeLabel` spells the interval out for tooltips ("Sep 28 – Oct 4, 2026").
+   */
+  function buildActivitySeries(dayKeys, interval, startKey, endKey) {
+    const days = (Array.isArray(dayKeys) ? dayKeys : []).filter(isDayKey).sort();
+    const bounds = [startKey, endKey, days[0], days[days.length - 1]].filter(isDayKey).sort();
+    if (!bounds.length) return [];
+    const first = bucketKeyFor(bounds[0], interval);
+    const last = bucketKeyFor(bounds[bounds.length - 1], interval);
+
+    const counts = new Map();
+    for (const day of days) {
+      const key = bucketKeyFor(day, interval);
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+
+    const series = [];
+    let key = first;
+    while (key <= last) {
+      let label;
+      let rangeLabel;
+      let next;
+      if (interval === 'month') {
+        label = formatMonthLabel(key);
+        rangeLabel = label;
+        const [y, m] = key.split('-').map(Number);
+        next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+      } else if (interval === 'week') {
+        const sunday = utcToDayKey(dayKeyToUtc(key) + 6 * DAY_MS);
+        label = `Week of ${formatDayLabel(key)}`;
+        rangeLabel = `${formatDayLabel(key)} – ${formatDayLabel(sunday)}`;
+        next = utcToDayKey(dayKeyToUtc(key) + 7 * DAY_MS);
+      } else {
+        label = formatDayLabel(key);
+        rangeLabel = label;
+        next = utcToDayKey(dayKeyToUtc(key) + DAY_MS);
+      }
+      series.push({ key, label, rangeLabel, count: counts.get(key) || 0 });
+      key = next;
+    }
+    return series;
+  }
+
   /**
    * Assessment activity over time. Describes volume and when it happened —
    * a workload/coverage figure, carrying no clinical meaning at all.
    */
-  function formatActivityInterpretation(byMonth) {
-    const rows = Array.isArray(byMonth) ? byMonth.filter((r) => r && r.count > 0) : [];
-    if (!rows.length) {
-      return 'No assessments were recorded for your patients in this range, so there is no activity to chart.';
+  function formatActivityTrendInterpretation(series, interval) {
+    const rows = Array.isArray(series) ? series : [];
+    const total = rows.reduce((sum, r) => sum + (r.count || 0), 0);
+    if (!total) {
+      return 'No assessments were recorded for your patients during the selected period, so there is no activity to describe.';
     }
 
-    const total = rows.reduce((sum, r) => sum + r.count, 0);
-    const months = rows.length;
-    const busiest = rows.reduce((a, b) => (b.count > a.count ? b : a), rows[0]);
-    const span = months === 1
-      ? `in ${formatMonthLabel(rows[0].month)}`
-      : `across ${months} months, from ${formatMonthLabel(rows[0].month)} to ${formatMonthLabel(rows[rows.length - 1].month)}`;
+    const words = INTERVAL_WORDS[interval] || INTERVAL_WORDS.month;
+    const max = Math.max(...rows.map((r) => r.count || 0));
+    const busiest = rows.filter((r) => r.count === max);
+    const active = rows.filter((r) => r.count > 0).length;
+    const on = interval === 'day' ? 'on' : 'in';
+    const name = (r) => (interval === 'week' ? `the week of ${r.rangeLabel}` : r.rangeLabel);
 
-    let text = `${total} ${plural(total, 'assessment')} ${plural(total, 'was', 'were')} recorded ${span}. `;
-    if (months > 1) {
-      text += `The busiest month was ${formatMonthLabel(busiest.month)} with ${busiest.count}. `;
+    let text = `A total of ${total} ${plural(total, 'assessment')} ${plural(total, 'was', 'were')} recorded during the selected period`;
+    text += rows.length > 1
+      ? `, from ${rows[0].rangeLabel.split(' – ')[0]} to ${rows[rows.length - 1].rangeLabel.split(' – ').pop()}, shown per ${words.unit}. `
+      : ` (${rows[0].rangeLabel}). `;
+
+    if (rows.length > 1) {
+      if (busiest.length === 1) {
+        text += `The highest activity occurred ${on} ${name(busiest[0])}, with ${max} ${plural(max, 'assessment')}. `;
+      } else if (busiest.length <= 3) {
+        text += `The highest activity, ${max} ${plural(max, 'assessment')}, occurred ${on} ${formatList(busiest.map(name))}. `;
+      } else {
+        text += `The highest activity, ${max} ${plural(max, 'assessment')}, occurred in ${busiest.length} different ${words.units}. `;
+      }
+      text += `${active} of ${rows.length} ${words.units} had at least one assessment. `;
     }
-    text += 'This counts assessment activity only and says nothing about the results themselves.';
+    text += 'This counts assessment activity only: more assessments does not mean that any patient\'s development improved.';
+    return text;
+  }
+
+  /**
+   * Patient Development Progress — one patient's history in range.
+   *
+   * history: oldest first, [{ date: 'May 4, 2026', scores: { communication,
+   * social, cognitive, motor }, overallScore }], every score the stored 0–100
+   * value or null. The comparison is the one the progression table already
+   * uses: the latest stored score minus the first, in points on the same
+   * 0–100 scale. A missing score on either end is said to be missing, never
+   * compared.
+   */
+  function formatDevelopmentProgressInterpretation(name, history) {
+    const who = name || 'This patient';
+    const list = Array.isArray(history) ? history : [];
+    if (!list.length) {
+      return `${who} has no recorded assessment in the selected period.`;
+    }
+    if (list.length === 1) {
+      return `${who} has one recorded assessment in the selected period (${list[0].date}). There is insufficient historical data to determine a trend; at least two assessments are needed for a comparison.`;
+    }
+
+    const first = list[0];
+    const latest = list[list.length - 1];
+    let text = `Comparing ${who}'s first assessment in the selected period (${first.date}) with the latest (${latest.date}), out of ${list.length} recorded assessments. `;
+
+    const missing = [];
+    for (const key of DOMAIN_KEYS) {
+      const a = first.scores ? first.scores[key] : null;
+      const b = latest.scores ? latest.scores[key] : null;
+      const label = DOMAIN_LABELS[key];
+      if (a == null || b == null) missing.push(label);
+      else if (b > a) text += `The recorded ${label} score increased from ${a} to ${b} (+${b - a} pts). `;
+      else if (b < a) text += `The recorded ${label} score decreased from ${a} to ${b} (${b - a} pts). `;
+      else text += `The recorded ${label} score remained unchanged at ${a}. `;
+    }
+    if (missing.length) {
+      text += `${formatList(missing)} could not be compared because a score is missing from one of the two assessments. `;
+    }
+
+    const oa = first.overallScore;
+    const ob = latest.overallScore;
+    if (oa != null && ob != null) {
+      text += ob === oa
+        ? `The overall assessment score remained at ${oa}%. `
+        : `The overall assessment score ${ob > oa ? 'increased' : 'decreased'} from ${oa}% to ${ob}%. `;
+    }
+    if (list.length > 2) {
+      text += 'Assessments in between are shown in the chart and table and may not follow the same direction. ';
+    }
+    text += 'Score changes describe recorded assessment results only; they are not a diagnosis and do not show that a child has recovered. Assessment results support monitoring and do not replace professional clinical evaluation.';
     return text;
   }
 
@@ -324,7 +502,12 @@
     formatPatientProgressionInterpretation,
     formatPatientRosterInterpretation,
     formatMonthLabel,
-    formatActivityInterpretation,
+    INTERVAL_WORDS,
+    formatDayLabel,
+    chooseActivityInterval,
+    buildActivitySeries,
+    formatActivityTrendInterpretation,
+    formatDevelopmentProgressInterpretation,
   };
 
   if (typeof module !== 'undefined' && module.exports) {

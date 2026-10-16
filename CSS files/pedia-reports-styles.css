@@ -104,7 +104,8 @@
    value that decides how they read as a group — height, border, radius, type,
    colour — is declared once here so the four cannot drift apart later. */
 .report-filters input[type="date"],
-.report-filters select {
+.report-filters select,
+.activity-controls select {
     /* Same box metrics on both, which is what makes the row line up. */
     padding: 0.7rem 0.85rem;
     border: 2px solid var(--border);
@@ -126,7 +127,8 @@
    different metal on macOS. Removing it and drawing the chevron as a
    background image keeps this a real <select> — native dropdown, native
    keyboard handling, native mobile picker — with only its skin changed. */
-.report-filters select {
+.report-filters select,
+.activity-controls select {
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
@@ -148,7 +150,8 @@
 }
 
 .report-filters input[type="date"]:hover,
-.report-filters select:hover {
+.report-filters select:hover,
+.activity-controls select:hover {
     border-color: var(--primary-light);
 }
 
@@ -156,7 +159,8 @@
    app uses. Kept to a 3px ring rather than a glow, and the border darkens too
    so focus is not carried by colour alone. */
 .report-filters input[type="date"]:focus-visible,
-.report-filters select:focus-visible {
+.report-filters select:focus-visible,
+.activity-controls select:focus-visible {
     outline: none;
     border-color: var(--primary);
     box-shadow: var(--focus-ring);
@@ -732,4 +736,97 @@
     text-transform: none;
     letter-spacing: 0;
     color: var(--text-light);
+}
+
+/* ==================== SECTION A / SECTION B GROUPING ====================
+   The Assessment Activity Report (how many assessments, when, for whom) and
+   Patient Development Progress (how one child's recorded scores change) are
+   separate questions, so each gets its own labelled part of the page. */
+.report-part {
+    margin-top: 2.5rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid var(--border);
+}
+
+.report-part-header h2 {
+    font-size: 1.4rem;
+    margin: 0 0 0.4rem;
+    color: var(--text-dark);
+}
+
+.report-part-kicker {
+    margin: 0 0 0.2rem;
+    font-size: 0.74rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--primary);
+}
+
+.chart-subtitle {
+    margin: 0 0 0.7rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-light);
+    text-align: center;
+}
+
+/* Interval and patient pickers inside a card. Shares the filter bar's select
+   skin (rules above); only the layout and the width cap differ. */
+.activity-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.8rem;
+    margin: 0 0 1.2rem;
+}
+
+.activity-controls label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.activity-controls select {
+    max-width: 100%;
+}
+
+.activity-tiles .report-tile {
+    background: var(--surface-muted);
+    box-shadow: none;
+}
+
+/* Two classes, so it wins over the single-class .chart-box-wide heights in
+   pedia-responsive.css: five lines need more room than one. */
+.chart-box.dev-progress-chart {
+    height: 340px;
+}
+
+.record-id {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.8rem;
+    color: var(--text-light);
+}
+
+.table-more {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-top: 0.9rem;
+    font-size: 0.82rem;
+    color: var(--text-light);
+}
+
+@media (max-width: 700px) {
+    .report-part-header h2 {
+        font-size: 1.2rem;
+    }
+
+    .chart-box.dev-progress-chart {
+        height: 300px;
+    }
 }

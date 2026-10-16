@@ -213,26 +213,95 @@ function testMonthLabel() {
   assert.strictEqual(KC.formatMonthLabel('nonsense'), 'nonsense');
 }
 
-function testActivityInterpretation() {
-  const text = KC.formatActivityInterpretation([
-    { month: '2026-06', count: 1 },
-    { month: '2026-07', count: 5 },
-    { month: '2026-08', count: 19 },
-    { month: '2026-09', count: 6 },
-  ]);
-  assert.ok(/31 assessments were recorded across 4 months/.test(text), text);
-  assert.ok(/from June 2026 to September 2026/.test(text), text);
-  assert.ok(/busiest month was August 2026 with 19/.test(text), text);
-  // Activity says nothing clinical.
-  assert.ok(/says nothing about the results/.test(text), text);
+// ── Assessment activity over time ──────────────────────────────────────────
+
+function testActivityIntervalChoice() {
+  assert.strictEqual(KC.chooseActivityInterval('2026-10-01', '2026-10-31'), 'day');
+  assert.strictEqual(KC.chooseActivityInterval('2026-10-01', '2026-11-01'), 'week');
+  assert.strictEqual(KC.chooseActivityInterval('2026-04-01', '2026-09-30'), 'week');
+  assert.strictEqual(KC.chooseActivityInterval('2026-01-01', '2026-10-16'), 'month');
+  assert.strictEqual(KC.chooseActivityInterval(null, '2026-10-16'), 'month');
 }
 
-function testActivitySingleMonthAndEmpty() {
-  const one = KC.formatActivityInterpretation([{ month: '2026-08', count: 1 }]);
-  assert.ok(/1 assessment was recorded in August 2026/.test(one), one);
-  assert.ok(!/busiest/.test(one), one);
-  assert.ok(/no activity to chart/.test(KC.formatActivityInterpretation([])));
-  assert.ok(/no activity to chart/.test(KC.formatActivityInterpretation(null)));
+function testActivitySeriesDailyZeroFilled() {
+  const series = KC.buildActivitySeries(
+    ['2026-10-04', '2026-10-02', '2026-10-04', '2026-10-04', '2026-10-02'],
+    'day', '2026-10-02', '2026-10-05',
+  );
+  assert.deepStrictEqual(series.map((r) => [r.key, r.count]), [
+    ['2026-10-02', 2], ['2026-10-03', 0], ['2026-10-04', 3], ['2026-10-05', 0],
+  ]);
+  assert.strictEqual(series[0].label, 'Oct 2, 2026');
+}
+
+function testActivitySeriesWeeklyAndMonthly() {
+  // 2026-10-04 is a Sunday, 2026-10-05 a Monday: different weeks.
+  const weekly = KC.buildActivitySeries(['2026-09-28', '2026-10-04', '2026-10-05'], 'week', null, null);
+  assert.deepStrictEqual(weekly.map((r) => [r.key, r.count]), [['2026-09-28', 2], ['2026-10-05', 1]]);
+  assert.strictEqual(weekly[0].label, 'Week of Sep 28, 2026');
+  assert.strictEqual(weekly[0].rangeLabel, 'Sep 28, 2026 – Oct 4, 2026');
+
+  const monthly = KC.buildActivitySeries(['2026-11-30', '2027-01-02'], 'month', null, null);
+  assert.deepStrictEqual(monthly.map((r) => [r.label, r.count]), [
+    ['November 2026', 1], ['December 2026', 0], ['January 2027', 1],
+  ]);
+}
+
+function testActivitySeriesNeverDropsAnAssessment() {
+  // A day outside the requested bounds widens the series instead of vanishing.
+  const series = KC.buildActivitySeries(['2026-10-01', '2026-10-09'], 'day', '2026-10-02', '2026-10-08');
+  assert.strictEqual(series.reduce((s, r) => s + r.count, 0), 2);
+  assert.strictEqual(series[0].key, '2026-10-01');
+  assert.strictEqual(series[series.length - 1].key, '2026-10-09');
+  assert.deepStrictEqual(KC.buildActivitySeries([], 'day', null, null), []);
+}
+
+function testActivityTrendInterpretation() {
+  const series = KC.buildActivitySeries(['2026-10-02', '2026-10-02', '2026-10-04', '2026-10-04', '2026-10-04'], 'day', '2026-10-02', '2026-10-04');
+  const text = KC.formatActivityTrendInterpretation(series, 'day');
+  assert.ok(/A total of 5 assessments were recorded during the selected period/.test(text), text);
+  assert.ok(/from Oct 2, 2026 to Oct 4, 2026, shown per day/.test(text), text);
+  assert.ok(/highest activity occurred on Oct 4, 2026, with 3 assessments/.test(text), text);
+  assert.ok(/2 of 3 days had at least one assessment/.test(text), text);
+  assert.ok(/does not mean that any patient's development improved/.test(text), text);
+
+  const weekly = KC.buildActivitySeries(['2026-09-28', '2026-10-05'], 'week', null, null);
+  const tie = KC.formatActivityTrendInterpretation(weekly, 'week');
+  assert.ok(/1 assessment, occurred in the week of Sep 28, 2026 – Oct 4, 2026 and the week of Oct 5, 2026 – Oct 11, 2026/.test(tie), tie);
+
+  assert.ok(/no activity to describe/.test(KC.formatActivityTrendInterpretation([], 'day')));
+  assert.ok(/no activity to describe/.test(KC.formatActivityTrendInterpretation(null, 'day')));
+}
+
+// ── Patient Development Progress ───────────────────────────────────────────
+
+function testDevelopmentProgressComparison() {
+  const text = KC.formatDevelopmentProgressInterpretation('Kemri Soto', [
+    { date: 'May 4, 2026', scores: { communication: 50, social: 83, cognitive: 63, motor: null }, overallScore: 56 },
+    { date: 'Jun 1, 2026', scores: { communication: 40, social: 83, cognitive: 70, motor: 60 }, overallScore: 60 },
+    { date: 'Oct 14, 2026', scores: { communication: 70, social: 83, cognitive: 55, motor: 60 }, overallScore: 67 },
+  ]);
+  assert.ok(/first assessment in the selected period \(May 4, 2026\) with the latest \(Oct 14, 2026\), out of 3/.test(text), text);
+  assert.ok(/The recorded Communication score increased from 50 to 70 \(\+20 pts\)/.test(text), text);
+  assert.ok(/The recorded Social Skills score remained unchanged at 83/.test(text), text);
+  assert.ok(/The recorded Cognitive score decreased from 63 to 55 \(-8 pts\)/.test(text), text);
+  // A missing score is reported as missing, never compared as 0.
+  assert.ok(/Motor Skills could not be compared because a score is missing/.test(text), text);
+  assert.ok(/overall assessment score increased from 56% to 67%/.test(text), text);
+  assert.ok(/Assessments in between/.test(text), text);
+  assert.ok(/do not replace professional clinical evaluation/.test(text), text);
+  // Never claims a cure; the only mention of recovery is the disclaimer.
+  assert.ok(!/cured/i.test(text), text);
+  assert.ok(/do not show that a child has recovered/.test(text), text);
+}
+
+function testDevelopmentProgressNeedsTwo() {
+  const one = KC.formatDevelopmentProgressInterpretation('Chan', [
+    { date: 'May 4, 2026', scores: { communication: 50, social: 45, cognitive: 63, motor: 65 }, overallScore: 56 },
+  ]);
+  assert.ok(/insufficient historical data to determine a trend/.test(one), one);
+  assert.ok(!/increased|decreased/.test(one), one);
+  assert.ok(/no recorded assessment/.test(KC.formatDevelopmentProgressInterpretation('Chan', [])));
 }
 
 function run() {
@@ -257,9 +326,14 @@ function run() {
   testRosterInterpretationAllAssessed();
   testRosterInterpretationEmpty();
   testMonthLabel();
-  testActivityInterpretation();
-  testActivitySingleMonthAndEmpty();
-  console.log('Pediatrician Reports interpretation rules OK — band leaders/ties, needs-support totals, cohort progression, per-domain counts, movement wording, per-patient history, roster totals, and activity summaries all verified');
+  testActivityIntervalChoice();
+  testActivitySeriesDailyZeroFilled();
+  testActivitySeriesWeeklyAndMonthly();
+  testActivitySeriesNeverDropsAnAssessment();
+  testActivityTrendInterpretation();
+  testDevelopmentProgressComparison();
+  testDevelopmentProgressNeedsTwo();
+  console.log('Pediatrician Reports interpretation rules OK — band leaders/ties, needs-support totals, cohort progression, per-domain counts, movement wording, per-patient history, roster totals, activity series/intervals/summaries, and per-patient development progress all verified');
 }
 
 run();
