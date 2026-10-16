@@ -2104,10 +2104,19 @@ router.get('/analytics/operations', authMiddleware, adminOnly, async (req, res) 
         // One clinic profile per deployment (models/SystemSetting.js); there
         // is no separate clinic-registration record to count.
         profileSaved: Boolean(clinic),
+        // The stored name only. Receipts and payment pages read the clinic
+        // through getClinic(), which fills a missing field with the schema
+        // default, so null here means no name is stored (missing or empty).
         name: clinic && clinic.clinicName ? clinic.clinicName : null,
         active: clinic ? clinic.active !== false : null,
         onlinePaymentEnabled: clinic ? clinic.onlinePaymentEnabled !== false : null,
         payAtClinicEnabled: clinic ? clinic.payAtClinicEnabled !== false : null,
+        // Reported fields with no stored value: the figures above for these are
+        // the built-in defaults the payment flow falls back to, not saved choices.
+        unsavedFields: clinic
+          ? ['clinicName', 'active', 'onlinePaymentEnabled', 'payAtClinicEnabled']
+            .filter((k) => clinic[k] == null || clinic[k] === '')
+          : [],
         updatedAt: settingsDoc ? settingsDoc.updatedAt || null : null,
       },
       transactions: adminOps.summarizePayments(paymentRows),

@@ -203,12 +203,17 @@ requireAuth();
         function renderClinic(data) {
             const clinic = data.clinic;
             const yesNo = (v) => (v == null ? '—' : (v ? 'Enabled' : 'Disabled'));
+            // A field with no stored value shows the default the payment flow uses.
+            const unsaved = new Set(clinic.unsavedFields || []);
+            const mark = (key) => (unsaved.has(key) ? ' (built-in default, not saved)' : '');
             byId('clinicProfile').innerHTML = clinic.profileSaved
                 ? `<table class="simple-table ops-table"><tbody>
-                        <tr><td>Clinic name</td><td>${escapeHtml(clinic.name || 'Not set')}</td></tr>
-                        <tr><td>Profile status</td><td>${clinic.active ? 'Active' : 'Inactive'}</td></tr>
-                        <tr><td>Online payment (PayMongo)</td><td>${yesNo(clinic.onlinePaymentEnabled)}</td></tr>
-                        <tr><td>Pay at clinic</td><td>${yesNo(clinic.payAtClinicEnabled)}</td></tr>
+                        <tr><td>Clinic name</td><td>${clinic.name
+                            ? escapeHtml(clinic.name)
+                            : 'Not configured. Receipts and payment pages use the built-in default name.'}</td></tr>
+                        <tr><td>Profile status</td><td>${clinic.active ? 'Active' : 'Inactive'}${mark('active')}</td></tr>
+                        <tr><td>Online payment (PayMongo)</td><td>${yesNo(clinic.onlinePaymentEnabled)}${mark('onlinePaymentEnabled')}</td></tr>
+                        <tr><td>Pay at clinic</td><td>${yesNo(clinic.payAtClinicEnabled)}${mark('payAtClinicEnabled')}</td></tr>
                    </tbody></table>`
                 : '<p class="pr-kpi-note">No clinic profile has been saved yet, so receipts and payment pages use the built-in default clinic details.</p>';
             byId('prcTable').innerHTML = splitRowsHtml(

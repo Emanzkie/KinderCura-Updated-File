@@ -120,7 +120,8 @@ Payment.aggregate = async (pipeline) => {
 Child.countDocuments = async () => 1554;
 Appointment.aggregate = async () => [{ _id: 'pending', count: 233 }, { _id: 'approved', count: 292 }, { _id: 'cancelled', count: 10 }];
 let settingsWrites = 0;
-SystemSetting.findOne = () => ({ select: () => ({ lean: async () => null }) });
+let storedSettings = null;
+SystemSetting.findOne = () => ({ select: () => ({ lean: async () => storedSettings }) });
 SystemSetting.findOneAndUpdate = () => { settingsWrites += 1; throw new Error('must not write'); };
 
 const router = require('../../routes/admin');
@@ -157,6 +158,24 @@ async function testRoute() {
   assert.ok(aggregateCalls.payments[0][0].$match.createdAt);
   // No clinical field anywhere in the response.
   assert.ok(!/score|band|diagnos|outcome|assessment/i.test(JSON.stringify(b)), JSON.stringify(b));
+
+  // A settings document whose clinic subdocument has no name (the reported
+  // "Not set"): the name stays null — never the schema default — and the
+  // payment switches shown are flagged as defaults rather than saved choices.
+  storedSettings = { clinic: { paymongoMethods: ['gcash'] }, updatedAt: new Date('2026-09-01') };
+  let c = (await call({})).body.clinic;
+  assert.strictEqual(c.profileSaved, true);
+  assert.strictEqual(c.name, null);
+  assert.deepStrictEqual(c.unsavedFields, ['clinicName', 'active', 'onlinePaymentEnabled', 'payAtClinicEnabled']);
+  assert.strictEqual(c.onlinePaymentEnabled, true);
+  storedSettings = { clinic: { clinicName: 'Sta. Rosa Pediatrics', active: true, onlinePaymentEnabled: false, payAtClinicEnabled: true } };
+  c = (await call({})).body.clinic;
+  assert.strictEqual(c.name, 'Sta. Rosa Pediatrics');
+  assert.strictEqual(c.onlinePaymentEnabled, false);
+  assert.deepStrictEqual(c.unsavedFields, []);
+  storedSettings = null;
+  assert.deepStrictEqual((await call({})).body.clinic.unsavedFields, []);
+  assert.strictEqual(settingsWrites, 0);
 
   assert.strictEqual((await call({ from: 'bad' })).statusCode, 400);
   assert.strictEqual((await call({}, { userId: 'p1', role: 'pediatrician' })).statusCode, 403);
