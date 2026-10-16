@@ -297,6 +297,9 @@ app.use('/api/admin-reports', require('./routes/admin-reports'));
 // section on the existing ADMIN/admin-reports.html page. See
 // routes/admin-patient-reports.js header.
 app.use('/api/admin/patient-reports', require('./routes/admin-patient-reports'));
+// Registered clinics, pediatrician links and per-clinic transactions — see
+// routes/admin-clinics.js header.
+app.use('/api/admin/clinics', require('./routes/admin-clinics'));
 // V2 guardian & audit endpoints (non-breaking and additive)
 app.use('/api/v2/guardians', require('./routes/guardians'));
 app.use('/api/v2/audit-logs', require('./routes/audit-logs'));

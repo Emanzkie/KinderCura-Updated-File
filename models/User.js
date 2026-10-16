@@ -89,6 +89,10 @@ const userSchema = new mongoose.Schema(
     specialization: { type: String, trim: true, default: null },
     clinicName: { type: String, trim: true, default: null },
     clinicAddress: { type: String, trim: true, default: null },
+    // The registered clinic (models/Clinic.js) this pediatrician belongs to.
+    // Set only by an admin (routes/admin-clinics.js); clinicName/clinicAddress
+    // above stay the pediatrician's own free-text profile fields.
+    clinicId: { type: mongoose.Schema.Types.ObjectId, ref: 'Clinic', default: null, index: true },
     phoneNumber: { type: String, trim: true, default: null },
     consultationFee: { type: Number, default: null },
     bio: { type: String, trim: true, default: null },

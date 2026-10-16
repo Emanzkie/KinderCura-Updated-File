@@ -1525,6 +1525,7 @@ router.post('/create', authMiddleware, async (req, res) => {
         childId: child._id,
         parentId: parent._id,
         pediatricianId: pediatrician._id,
+        clinicId: pediatrician.clinicId || null,
         appointmentDate: apptDate,
         appointmentTime: normalizedRequestedTime,
         reason: reason || 'General checkup',

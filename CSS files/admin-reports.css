@@ -352,3 +352,93 @@
         grid-template-columns: minmax(0, 1fr) !important;
     }
 }
+
+
+/* ── Admin Reports: Registered Clinics (js/admin/admin-clinics.js) ────
+   New class names only, so ADMIN/admin-analytics.html (which also loads
+   this file) is unaffected. */
+.clinic-panel {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+    margin-top: 1rem;
+}
+
+.clinic-panel > summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--primary-dark);
+}
+
+.clinic-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem 1rem;
+    margin: 0.9rem 0 0.6rem;
+}
+
+.filter-group.clinic-wide {
+    flex: 2 1 260px;
+}
+
+.clinic-form .filter-group input {
+    width: 100%;
+}
+
+.clinic-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+
+.clinic-details-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+}
+
+.clinic-table td.num,
+.clinic-table th.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.clinic-status-active {
+    border: 1px solid var(--primary);
+    color: var(--primary-dark);
+}
+
+.clinic-status-inactive {
+    border: 1px solid var(--border);
+    color: var(--text-light);
+}
+
+.clinic-table .btn {
+    padding: 0.35rem 0.8rem;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+    .clinic-form .filter-group,
+    .filter-group.clinic-wide {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+}
+
+@media print {
+    #clinicRegisterPanel,
+    #clinicDetails,
+    #clinicPrevBtn,
+    #clinicNextBtn,
+    .clinic-period .clinic-actions,
+    .clinic-table .btn {
+        display: none !important;
+    }
+}

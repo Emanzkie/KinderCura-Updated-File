@@ -231,6 +231,151 @@
         <!-- for this part; see routes/admin-reports.js. Age is age AT THE  -->
         <!-- ASSESSMENT, matching that endpoint's ageBasis. -->
         <!-- ============================================================== -->
+        <!-- Registered clinics: records an admin registers (routes/admin-clinics.js).
+             Not the shared receipt profile in Settings, and not pediatrician accounts. -->
+        <div class="report-section" id="clinicsSection">
+            <h3><img src="/icons/address.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Registered Clinics</h3>
+            <p class="muted pr-scope-line">Clinic records registered here by an admin, each with its own ID. The shared clinic name in Settings (used on receipts) is not a registered clinic, and pediatrician accounts are never counted as clinics.</p>
+
+            <div class="filter-row clinic-period">
+                <div class="filter-group">
+                    <label for="clinicFrom">From</label>
+                    <input type="date" id="clinicFrom">
+                </div>
+                <div class="filter-group">
+                    <label for="clinicTo">To</label>
+                    <input type="date" id="clinicTo">
+                </div>
+                <div class="clinic-actions">
+                    <button type="button" class="btn btn-primary" id="clinicPeriodApply">Apply period</button>
+                    <button type="button" class="btn btn-secondary" id="clinicPeriodClear">All dates</button>
+                </div>
+            </div>
+            <p class="muted pr-scope-line" id="clinicPeriodNote">Reporting period: all dates.</p>
+
+            <div class="report-grid" id="clinicSummaryCards">
+                <div class="report-card"><p class="report-label">Loading clinic summary...</p><p class="report-value">—</p></div>
+            </div>
+            <p class="muted pr-scope-line" id="clinicSummaryNote"></p>
+
+            <h4 style="margin:1rem 0 0.3rem;">Transactions by clinic</h4>
+            <div style="overflow-x:auto;">
+                <table class="simple-table clinic-table">
+                    <thead>
+                        <tr><th>Transactions</th><th>Count</th><th>Paid (collected)</th><th>Collected amount</th><th>Pending</th><th>Failed or expired</th><th>Refunded</th><th>Other</th></tr>
+                    </thead>
+                    <tbody id="clinicTxRows"><tr><td colspan="8" class="muted">Loading...</td></tr></tbody>
+                </table>
+            </div>
+            <p class="muted pr-scope-line" id="clinicTxNote" style="margin-top:0.6rem;"></p>
+
+            <details class="clinic-panel" id="clinicRegisterPanel">
+                <summary>Register a clinic</summary>
+                <form id="clinicRegisterForm" class="clinic-form" novalidate>
+                    <div class="filter-group"><label for="clinicNewName">Clinic name</label><input type="text" id="clinicNewName" maxlength="120" required autocomplete="organization"></div>
+                    <div class="filter-group clinic-wide"><label for="clinicNewAddress">Address</label><input type="text" id="clinicNewAddress" maxlength="300" required autocomplete="street-address"></div>
+                    <div class="filter-group"><label for="clinicNewPhone">Contact phone (optional)</label><input type="text" id="clinicNewPhone" maxlength="40" inputmode="tel" autocomplete="tel"></div>
+                    <div class="filter-group"><label for="clinicNewEmail">Contact email (optional)</label><input type="text" id="clinicNewEmail" maxlength="254" inputmode="email" autocomplete="email"></div>
+                    <div class="clinic-actions"><button type="submit" class="btn btn-primary" id="clinicRegisterBtn">Register clinic</button></div>
+                </form>
+                <p class="muted pr-scope-line">The same name at the same address cannot be registered twice. The same name at another address is registered as a separate clinic, such as a branch.</p>
+                <div id="clinicRegisterMsg" role="status" aria-live="polite"></div>
+            </details>
+
+            <div class="filter-row" style="margin-top:1rem;">
+                <div class="filter-group clinic-wide">
+                    <label for="clinicSearch">Search</label>
+                    <input type="text" id="clinicSearch" maxlength="100" placeholder="Name, address, phone or email">
+                </div>
+                <div class="filter-group">
+                    <label for="clinicStatusFilter">Status</label>
+                    <select id="clinicStatusFilter">
+                        <option value="">All statuses</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="clinicSort">Sort</label>
+                    <select id="clinicSort">
+                        <option value="name">Name (A–Z)</option>
+                        <option value="newest">Newest registered</option>
+                        <option value="oldest">Oldest registered</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="overflow-x:auto;">
+                <table class="simple-table clinic-table" id="clinicsTable">
+                    <thead>
+                        <tr><th>Clinic</th><th>Address</th><th>Contact</th><th>Registered</th><th>Status</th><th>Pediatricians</th><th>Transactions</th><th></th></tr>
+                    </thead>
+                    <tbody id="clinicRows"><tr><td colspan="8" class="muted">Loading registered clinics...</td></tr></tbody>
+                </table>
+            </div>
+            <p class="muted pr-scope-line" style="margin-top:0.6rem;"><strong>Pediatricians</strong>: accounts an admin has linked to the clinic. <strong>Transactions</strong>: payment records in the reporting period whose appointment was booked while its pediatrician was linked to this clinic.</p>
+            <div class="origin-pagination" style="margin-top:1rem;">
+                <span class="page-info" id="clinicPageInfo">—</span>
+                <div style="display:flex;gap:0.5rem;">
+                    <button type="button" class="btn btn-secondary" id="clinicPrevBtn">Previous</button>
+                    <button type="button" class="btn btn-secondary" id="clinicNextBtn">Next</button>
+                </div>
+            </div>
+
+            <div class="clinic-panel" id="clinicDetails" hidden>
+                <div class="clinic-details-head">
+                    <h4 id="clinicDetailsTitle" style="margin:0;">Clinic</h4>
+                    <button type="button" class="btn btn-secondary" id="clinicDetailsClose">Close</button>
+                </div>
+                <div id="clinicDetailsMsg" role="status" aria-live="polite"></div>
+
+                <form id="clinicEditForm" class="clinic-form" novalidate>
+                    <div class="filter-group"><label for="clinicEditName">Clinic name</label><input type="text" id="clinicEditName" maxlength="120" required></div>
+                    <div class="filter-group clinic-wide"><label for="clinicEditAddress">Address</label><input type="text" id="clinicEditAddress" maxlength="300" required></div>
+                    <div class="filter-group"><label for="clinicEditPhone">Contact phone</label><input type="text" id="clinicEditPhone" maxlength="40" inputmode="tel"></div>
+                    <div class="filter-group"><label for="clinicEditEmail">Contact email</label><input type="text" id="clinicEditEmail" maxlength="254" inputmode="email"></div>
+                    <div class="filter-group">
+                        <label for="clinicEditStatus">Status</label>
+                        <select id="clinicEditStatus">
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                    <div class="clinic-actions"><button type="submit" class="btn btn-primary" id="clinicEditBtn">Save clinic</button></div>
+                </form>
+                <p class="muted pr-scope-line"><strong>Active</strong>: registered and operating on KinderCura. <strong>Inactive</strong>: marked by an admin as no longer operating; no new pediatrician can be linked. Neither status changes bookings, payments or accounts. Registered <span id="clinicDetailsRegistered">—</span>.</p>
+
+                <h4 style="margin:1rem 0 0.3rem;">Linked pediatricians</h4>
+                <div style="overflow-x:auto;">
+                    <table class="simple-table clinic-table">
+                        <thead><tr><th>Pediatrician</th><th>Email</th><th>Account</th><th>PRC verification</th><th></th></tr></thead>
+                        <tbody id="clinicPedRows"><tr><td colspan="5" class="muted">—</td></tr></tbody>
+                    </table>
+                </div>
+                <div class="filter-row" style="margin-top:0.75rem;">
+                    <div class="filter-group clinic-wide">
+                        <label for="clinicPedSearch">Link a pediatrician</label>
+                        <input type="text" id="clinicPedSearch" maxlength="100" placeholder="Search by name or email">
+                    </div>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="simple-table clinic-table">
+                        <tbody id="clinicPedResults"></tbody>
+                    </table>
+                </div>
+                <p class="muted pr-scope-line" style="margin-top:0.6rem;">A pediatrician belongs to at most one registered clinic; linking moves them from any other clinic. Linking does not verify the pediatrician or change PRC status. Appointments booked after the change record the new clinic, and earlier appointments and their payments keep the clinic they were booked under.</p>
+
+                <h4 style="margin:1rem 0 0.3rem;">Transactions for this clinic</h4>
+                <div style="overflow-x:auto;">
+                    <table class="simple-table clinic-table">
+                        <thead><tr><th>Group</th><th>Stored statuses</th><th>Transactions</th><th>Amount recorded</th></tr></thead>
+                        <tbody id="clinicDetailTxRows"><tr><td colspan="4" class="muted">—</td></tr></tbody>
+                    </table>
+                </div>
+                <p class="muted pr-scope-line" id="clinicDetailTxNote" style="margin-top:0.6rem;"></p>
+            </div>
+        </div>
+
         <div class="report-section" id="lateDevelopmentSection">
             <h3><img src="/icons/analytics.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Demographic Profile of Late Development</h3>
             <p class="muted" id="lateDevelopmentScopeNote" style="margin-top:-0.5rem;margin-bottom:1rem;">Loading…</p>
@@ -367,5 +512,6 @@
     <!-- Must load before admin-reports.js — provides window.KCAdminReportsInterpretations. -->
     <script src="/js/admin/admin-reports-interpretations.js"></script>
     <script src="/js/admin/admin-reports.js"></script>
+    <script src="/js/admin/admin-clinics.js"></script>
 </body>
 </html>

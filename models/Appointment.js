@@ -13,6 +13,10 @@ const appointmentSchema = new mongoose.Schema(
     childId: { type: mongoose.Schema.Types.ObjectId, ref: 'Child', required: true, index: true },
     parentId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false, default: null, index: true },
     pediatricianId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+    // The pediatrician's registered clinic (User.clinicId) at booking time, so a
+    // later clinic change never re-attributes this visit or its payments. Null
+    // on appointments booked before the pediatrician was linked to a clinic.
+    clinicId: { type: mongoose.Schema.Types.ObjectId, ref: 'Clinic', default: null, index: true },
     appointmentDate: { type: Date, required: true },
     // Keep time as a simple HH:mm or browser time string so frontend formatting stays easy.
     appointmentTime: { type: String, required: true },
