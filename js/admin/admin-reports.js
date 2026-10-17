@@ -157,6 +157,7 @@ requireAuth();
                 if (apptNote) {
                     apptNote.textContent = `Share = appointments in that status ÷ all ${fmtCountR(totalAppointments)} appointment records (every status, all dates). Shares are rounded to one decimal.`;
                 }
+                renderAppointmentInterpretation(appointmentStats, totalAppointments);
 
                 document.getElementById('roleBreakdownTable').innerHTML = roleBreakdown.length
                     ? roleBreakdown.map(item => roleRow(item.role, item.count || 0, totalRoles)).join('')
@@ -192,6 +193,38 @@ requireAuth();
                 document.getElementById('roleBreakdownTable').innerHTML = '<tr><td colspan="3" class="muted">Unavailable: the report did not load.</td></tr>';
                 document.getElementById('recentActivityList').innerHTML = '<div class="report-item"><p class="muted">Unavailable: the report did not load.</p></div>';
             }
+        }
+
+        // States the largest status and how settled the bookings are, from the
+        // same rows and total as the table above. No trend: there is no
+        // earlier period to compare against.
+        function renderAppointmentInterpretation(stats, total) {
+            const box = document.getElementById('appointmentBreakdownInterp');
+            const text = document.getElementById('appointmentBreakdownInterpText');
+            if (!box || !text) return;
+            box.hidden = false;
+            if (!total) {
+                text.textContent = 'No appointment records yet, so there is insufficient data for an interpretation.';
+                return;
+            }
+            const countOf = (s) => stats.filter((x) => x.status === s).reduce((n, x) => n + (x.count || 0), 0);
+            const max = Math.max(...stats.map((x) => x.count || 0));
+            const leaders = stats.filter((x) => (x.count || 0) === max)
+                .map((x) => { const t = String(x.status || 'no status recorded'); return t.charAt(0).toUpperCase() + t.slice(1); });
+            const open = countOf('pending') + countOf('approved');
+            const closedUnseen = countOf('cancelled') + countOf('rejected');
+            text.textContent = [
+                `${leaders.length > 1 ? `The most common statuses (tied) are ${leaders.join(' and ')}` : `The most common status is ${leaders[0]}`}, with ${fmtCountR(max)} of ${fmtCountR(total)} appointment records (${percentOf(max, total)}).`,
+                `${fmtCountR(open)} (${percentOf(open, total)}) are still open (pending or approved), ${fmtCountR(countOf('completed'))} (${percentOf(countOf('completed'), total)}) are completed, and ${fmtCountR(closedUnseen)} (${percentOf(closedUnseen, total)}) ended without a visit (cancelled or rejected).`,
+                'These are all-time counts; they do not show a trend.',
+            ].join(' ');
+        }
+
+        // Report-module links that point inside a collapsed <details> open it,
+        // so the jump never lands on a closed summary.
+        function openLinkedDetails(hash) {
+            const target = hash && hash.length > 1 ? document.getElementById(decodeURIComponent(hash.slice(1))) : null;
+            if (target && target.tagName === 'DETAILS') target.open = true;
         }
 
         function refreshReport() {
@@ -317,12 +350,25 @@ requireAuth();
             }
         }
 
-        function statusPillClass(label) {
-            const l = String(label || '').toLowerCase();
-            if (l.includes('on') || l.includes('track')) return 'pill pill-green';
-            if (l.includes('delay') || l.includes('concern')) return 'pill pill-red';
-            if (label) return 'pill pill-orange';
-            return '';
+        // Score-band chip: the band's colour from constants/scoring.js as a
+        // dot beside the label, so the label (not the colour) carries meaning.
+        function bandChip(bandKey, label) {
+            // STATUS_COLORS directly: colorForBand() falls back to the delayed
+            // colour, which would mislabel a row with no band key.
+            const color = window.KCScoring ? window.KCScoring.STATUS_COLORS[bandKey] : null;
+            const dot = color ? `<span class="band-dot" style="background:${escapeHtml(color)};" aria-hidden="true"></span>` : '';
+            return `<span class="band-label">${dot}${escapeHtml(label)}</span>`;
+        }
+
+        // Legend for the Status column: every active band, high → low, with
+        // its score range. Built from window.KCScoring, the same module the
+        // server uses to assign the band, so legend and rows cannot drift.
+        function renderPatientBandLegend() {
+            const el = document.getElementById('patientBandLegend');
+            const KS = window.KCScoring;
+            if (!el || !KS) return;
+            el.innerHTML = `<span class="band-legend-title">Status legend (latest overall score):</span>`
+                + KS.ACTIVE_BANDS.map((b) => `${bandChip(b.key, KS.clinicalLabel(b.key))}<span class="band-range">${b.min}–${b.max}%</span>`).join('');
         }
 
         // ── Main pivot table ───────────────────────────────────────────────
@@ -371,7 +417,7 @@ requireAuth();
                             <td>${r.pediatricianName ? escapeHtml(r.pediatricianName) : '<span class="muted">—</span>'}</td>
                             <td>${escapeHtml(String(r.assessmentsCount))}</td>
                             <td>${r.latestScore != null ? escapeHtml(String(r.latestScore)) + '%' : '<span class="muted">—</span>'}</td>
-                            <td>${r.latestStatusLabel ? `<span class="${statusPillClass(r.latestStatusLabel)}">${escapeHtml(r.latestStatusLabel)}</span>` : '<span class="muted">No assessment in range</span>'}</td>
+                            <td>${r.latestStatusLabel ? bandChip(r.latestBand, r.latestStatusLabel) : '<span class="muted">No assessment in range</span>'}</td>
                             <td>${fmtDateShortPR(r.latestAssessmentDate)}</td>
                             <td>${r.hasReview ? '<span class="pr-review-yes">Reviewed</span>' : '<span class="pr-review-no">Not reviewed</span>'}</td>
                             <td><button class="btn btn-secondary" style="padding:0.35rem 0.7rem;font-size:0.78rem;" onclick="viewPatientReport('${r.childId}', '${escapeHtml(r.childName).replace(/'/g, "\\'")}')">View Report</button></td>
@@ -805,6 +851,11 @@ requireAuth();
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            renderPatientBandLegend();
+            openLinkedDetails(window.location.hash);
+            document.querySelectorAll('.report-modules a[href^="#"]').forEach((a) => {
+                a.addEventListener('click', () => openLinkedDetails(a.getAttribute('href')));
+            });
             loadReport();
             loadPatientReportsOverview();
             loadPatientReportsList();

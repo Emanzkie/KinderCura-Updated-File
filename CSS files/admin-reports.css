@@ -442,3 +442,216 @@
         display: none !important;
     }
 }
+
+/* ── Admin Reports Center: report modules and categories ─────────────
+   New class names only, so ADMIN/admin-analytics.html (which also loads
+   this file) is unaffected. */
+.report-modules {
+    margin: 1.5rem 0 2rem;
+}
+
+.report-category-title {
+    margin: 0 0 0.25rem;
+    font-size: var(--fs-section, 1.5rem);
+    color: var(--text-dark);
+}
+
+.report-category-desc {
+    margin: 0 0 1rem;
+    color: var(--text-light);
+    font-size: var(--fs-small, 0.85rem);
+    line-height: 1.5;
+}
+
+.report-module-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+}
+
+.report-module {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--primary);
+    border-radius: var(--radius-panel, 12px);
+    padding: 1rem 1.1rem;
+}
+
+.report-module h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0 0 0.6rem;
+    font-size: var(--fs-card-title, 1.1rem);
+}
+
+.report-module h3 img {
+    width: 1.1em;
+    height: 1.1em;
+    object-fit: contain;
+}
+
+.report-module h3 a {
+    color: var(--text-dark);
+    text-decoration: none;
+}
+
+.report-module ul {
+    margin: 0;
+    padding-left: 1.1rem;
+    font-size: var(--fs-small, 0.85rem);
+    line-height: 1.7;
+}
+
+.report-module a:hover,
+.report-module a:focus-visible {
+    color: var(--primary-dark);
+    text-decoration: underline;
+}
+
+.report-category {
+    margin-top: 2.25rem;
+    scroll-margin-top: 90px;
+}
+
+.report-category-head {
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 1.25rem;
+}
+
+/* Jump targets land below the fixed top bar. */
+.report-category .report-section,
+.report-category details,
+.clinic-subhead {
+    scroll-margin-top: 90px;
+}
+
+.clinic-subhead {
+    margin: 1.5rem 0 0.4rem;
+}
+
+/* Eight summary cards: two even rows of four, then two, then one. */
+#clinicSummaryCards {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1000px) {
+    #clinicSummaryCards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 560px) {
+    #clinicSummaryCards {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.clinic-contact-label {
+    color: var(--text-light);
+    font-size: var(--fs-tiny, 0.78rem);
+}
+
+.clinic-ped-count {
+    font-weight: 600;
+    color: var(--primary);
+}
+
+/* The visually hidden header label is absolutely positioned; the table is
+   its containing block so it stays inside the horizontal scroller. */
+.clinic-table {
+    position: relative;
+}
+
+.clinic-table .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+/* Score-band chip and legend: the band colour is a dot (fill only, per the
+   palette rule); the label next to it carries the meaning. */
+.band-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 600;
+    color: var(--text-dark);
+    white-space: nowrap;
+}
+
+.band-dot {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    border: 1px solid rgba(61, 71, 56, 0.25);
+    flex: none;
+}
+
+.band-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.6rem;
+    margin-top: 0.75rem;
+    font-size: var(--fs-small, 0.85rem);
+}
+
+.band-legend:empty {
+    display: none;
+}
+
+.band-legend-title {
+    color: var(--text-light);
+}
+
+.band-range {
+    color: var(--text-light);
+    margin-right: 0.6rem;
+}
+
+/* Appointment status definitions. */
+.status-defs {
+    display: grid;
+    gap: 0.35rem;
+    margin: 0.9rem 0 0;
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+.status-defs div {
+    display: grid;
+    grid-template-columns: 6.5rem 1fr;
+    gap: 0.6rem;
+}
+
+.status-defs dt {
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+.status-defs dd {
+    margin: 0;
+    color: var(--text-light);
+}
+
+@media (max-width: 600px) {
+    .status-defs div {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0;
+    }
+}
+
+@media print {
+    .report-modules,
+    #clinicFilterReset {
+        display: none !important;
+    }
+
+    .report-category {
+        margin-top: 1rem;
+    }
+}

@@ -20,7 +20,7 @@ const Appointment = require('../../models/Appointment');
 const adminOps = require('../../services/adminOperationsAnalytics');
 const { authMiddleware, adminOnly } = require('../../middleware/auth');
 const router = require('../../routes/admin-clinics');
-const { readClinicFields, rowsPerClinic } = router._internals;
+const { readClinicFields, rowsPerClinic, pediatricianNameFilter, COMPLETENESS } = router._internals;
 
 const root = path.join(__dirname, '..', '..');
 
@@ -114,8 +114,42 @@ function testPageScriptContract() {
   assert.ok(js.trim().startsWith('//') && js.includes('(function () {'), 'script is wrapped so it adds no globals');
 }
 
+function testListFilters() {
+  // Pediatrician-name search only ever looks at pediatrician accounts, and
+  // matches first, last or "first last" with the user's text taken literally.
+  const rx = new RegExp('Ana C\\.', 'i');
+  const f = pediatricianNameFilter(rx);
+  assert.strictEqual(f.role, 'pediatrician');
+  assert.deepStrictEqual(f.$or.slice(0, 2), [{ firstName: rx }, { lastName: rx }]);
+  const full = f.$or[2].$expr.$regexMatch;
+  assert.strictEqual(full.regex, rx.source);
+  assert.strictEqual(full.options, 'i');
+
+  // "Incomplete" = no phone or no email (null, missing or ''); "complete" is
+  // its exact complement on the same two fields.
+  assert.deepStrictEqual(Object.keys(COMPLETENESS).sort(), ['complete', 'incomplete']);
+  assert.deepStrictEqual(COMPLETENESS.incomplete.$or[0].contactPhone, { $in: [null, ''] });
+  assert.deepStrictEqual(COMPLETENESS.complete.contactPhone, { $nin: [null, ''] });
+  assert.deepStrictEqual(COMPLETENESS.incomplete.$or.map((c) => Object.keys(c)[0]), ['contactPhone', 'contactEmail']);
+  assert.deepStrictEqual(Object.keys(COMPLETENESS.complete), ['contactPhone', 'contactEmail']);
+}
+
+function testReportModules() {
+  // Every Report-modules link jumps to an element that exists on the page.
+  const html = fs.readFileSync(path.join(root, 'ADMIN', 'admin-reports.html'), 'utf8');
+  const nav = html.slice(html.indexOf('<nav class="report-modules"'), html.indexOf('</nav>', html.indexOf('<nav class="report-modules"')));
+  const targets = [...nav.matchAll(/href="#([A-Za-z0-9_-]+)"/g)].map((m) => m[1]);
+  assert.ok(targets.length >= 15, `found ${targets.length} module links`);
+  const missing = targets.filter((id) => !html.includes(`id="${id}"`));
+  assert.deepStrictEqual(missing, [], `module links without a target: ${missing.join(', ')}`);
+  // The status legend reads band colours from the shared scoring module.
+  assert.ok(html.indexOf('<script src="/constants/scoring.js"></script>') < html.indexOf('<script src="/js/admin/admin-reports.js"></script>'));
+}
+
 (async () => {
   await testIdentity();
+  testListFilters();
+  testReportModules();
   testValidation();
   testTransactionSplit();
   testRouterGuards();

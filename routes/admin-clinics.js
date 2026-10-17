@@ -93,6 +93,26 @@ const publicClinic = (c) => ({
 
 const pediatricianName = (u) => `${u.firstName || ''} ${u.lastName || ''}`.trim() || null;
 
+// A clinic record is "incomplete" when it lacks a contact phone or a contact
+// email. Name and address are required by the schema, so they never are.
+const MISSING = { $in: [null, ''] };
+const INCOMPLETE_FILTER = { $or: [{ contactPhone: MISSING }, { contactEmail: MISSING }] };
+const COMPLETE_FILTER = { contactPhone: { $nin: [null, ''] }, contactEmail: { $nin: [null, ''] } };
+const COMPLETENESS = { incomplete: INCOMPLETE_FILTER, complete: COMPLETE_FILTER };
+
+/** Pediatrician accounts whose first, last or full name matches rx. */
+function pediatricianNameFilter(rx) {
+  const fullName = { $concat: [{ $ifNull: ['$firstName', ''] }, ' ', { $ifNull: ['$lastName', ''] }] };
+  return {
+    role: 'pediatrician',
+    $or: [
+      { firstName: rx },
+      { lastName: rx },
+      { $expr: { $regexMatch: { input: fullName, regex: rx.source, options: 'i' } } },
+    ],
+  };
+}
+
 /**
  * Payment rows grouped by the clinic their appointment was booked under, in
  * the shape adminOps.summarizePayments expects plus clinicId. With clinicIds,
@@ -153,16 +173,31 @@ router.get('/summary', async (req, res) => {
     if (period.error) return res.status(400).json({ error: period.error });
     const hasPeriod = Boolean(period.from || period.to);
 
-    const [statusRows, newInPeriod, linkedClinicIds, paymentRows] = await Promise.all([
+    const [statusRows, newInPeriod, incomplete, linkedClinicIds, pediatricianTotal, paymentRows] = await Promise.all([
       Clinic.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
       hasPeriod ? Clinic.countDocuments(adminOps.periodMatch('createdAt', period)) : null,
+      Clinic.countDocuments(INCOMPLETE_FILTER),
       User.distinct('clinicId', { role: 'pediatrician', clinicId: { $ne: null } }),
+      User.countDocuments({ role: 'pediatrician' }),
       paymentRowsByClinic(period, null),
     ]);
     // Only links that point at an existing clinic record count.
-    const withPediatricians = linkedClinicIds.length
-      ? await Clinic.countDocuments({ _id: { $in: linkedClinicIds } })
-      : 0;
+    const existingLinkedIds = linkedClinicIds.length
+      ? await Clinic.distinct('_id', { _id: { $in: linkedClinicIds } })
+      : [];
+    const withPediatricians = existingLinkedIds.length;
+    // Unlinked pediatricians who typed a clinic name at sign-up: that text is
+    // a self-reported label, never a clinic record, so it is only reported.
+    const [linkedPediatricians, unlinkedWithClinicName] = await Promise.all([
+      existingLinkedIds.length
+        ? User.countDocuments({ role: 'pediatrician', clinicId: { $in: existingLinkedIds } })
+        : 0,
+      User.countDocuments({
+        role: 'pediatrician',
+        clinicId: { $nin: existingLinkedIds },
+        clinicName: /\S/,
+      }),
+    ]);
     const count = (s) => (statusRows.find((r) => r._id === s) || { count: 0 }).count;
     const byClinic = rowsPerClinic(paymentRows);
     const linkedRows = [...byClinic.entries()].filter(([k]) => k !== 'none').flatMap(([, v]) => v);
@@ -176,6 +211,13 @@ router.get('/summary', async (req, res) => {
         inactive: count('inactive'),
         newInPeriod,
         withPediatricians,
+        incomplete,
+      },
+      pediatricians: {
+        total: pediatricianTotal,
+        linked: linkedPediatricians,
+        unlinked: pediatricianTotal - linkedPediatricians,
+        unlinkedWithClinicName,
       },
       transactions: {
         withClinic: adminOps.summarizePayments(linkedRows),
@@ -189,7 +231,9 @@ router.get('/summary', async (req, res) => {
   }
 });
 
-// GET /?search&status&sort&page&limit&from&to — registered clinics, one page.
+// GET /?search&status&completeness&sort&page&limit&from&to — registered
+// clinics, one page. search matches the clinic's name, address, phone or
+// email, or the name of a pediatrician linked to it.
 router.get('/', async (req, res) => {
   try {
     const period = adminOps.parsePeriod(req.query);
@@ -197,33 +241,41 @@ router.get('/', async (req, res) => {
     const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, SEARCH_MAX) : '';
     const status = req.query.status ? String(req.query.status) : '';
     if (status && !Clinic.CLINIC_STATUSES.includes(status)) return res.status(400).json({ error: 'Unknown status filter.' });
+    const completeness = req.query.completeness ? String(req.query.completeness) : '';
+    if (completeness && !COMPLETENESS[completeness]) return res.status(400).json({ error: 'Unknown completeness filter.' });
     const sorts = { name: { name: 1, _id: 1 }, newest: { createdAt: -1, _id: -1 }, oldest: { createdAt: 1, _id: 1 } };
     const sortKey = sorts[req.query.sort] ? req.query.sort : 'name';
     const limit = Math.min(PAGE_SIZE_MAX, Math.max(1, parseInt(req.query.limit, 10) || PAGE_SIZE_DEFAULT));
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
 
-    const filter = {};
-    if (status) filter.status = status;
+    const clauses = [];
+    if (status) clauses.push({ status });
+    if (completeness) clauses.push(COMPLETENESS[completeness]);
     if (search) {
       const rx = new RegExp(escapeRegex(search), 'i');
-      filter.$or = [{ name: rx }, { address: rx }, { contactEmail: rx }, { contactPhone: rx }];
+      const byPediatrician = await User.distinct('clinicId', { ...pediatricianNameFilter(rx), clinicId: { $ne: null } });
+      clauses.push({ $or: [{ name: rx }, { address: rx }, { contactEmail: rx }, { contactPhone: rx }, { _id: { $in: byPediatrician } }] });
     }
+    const filter = clauses.length ? { $and: clauses } : {};
 
-    const [total, clinics] = await Promise.all([
-      Clinic.countDocuments(filter),
+    const [matchingIds, clinics] = await Promise.all([
+      Clinic.distinct('_id', filter),
       Clinic.find(filter).sort(sorts[sortKey]).skip((page - 1) * limit).limit(limit).lean(),
     ]);
+    const total = matchingIds.length;
     const ids = clinics.map((c) => c._id);
-    const [pediatricianRows, paymentRows] = ids.length
-      ? await Promise.all([
-        User.aggregate([
+    const [linkedInMatching, pediatricianRows, paymentRows] = await Promise.all([
+      total ? User.countDocuments({ role: 'pediatrician', clinicId: { $in: matchingIds } }) : 0,
+      ids.length
+        ? User.aggregate([
           { $match: { role: 'pediatrician', clinicId: { $in: ids } } },
-          { $group: { _id: '$clinicId', count: { $sum: 1 } } },
-        ]),
-        paymentRowsByClinic(period, ids),
-      ])
-      : [[], []];
-    const pediatricians = new Map(pediatricianRows.map((r) => [String(r._id), r.count]));
+          { $sort: { lastName: 1, firstName: 1, _id: 1 } },
+          { $group: { _id: '$clinicId', people: { $push: { id: '$_id', firstName: '$firstName', lastName: '$lastName' } } } },
+        ])
+        : [],
+      ids.length ? paymentRowsByClinic(period, ids) : [],
+    ]);
+    const pediatricians = new Map(pediatricianRows.map((r) => [String(r._id), r.people]));
     const byClinic = rowsPerClinic(paymentRows);
 
     res.json({
@@ -232,12 +284,19 @@ router.get('/', async (req, res) => {
       page,
       limit,
       total,
+      // Pediatrician accounts linked to any clinic matching the filters (not
+      // just this page). Each pediatrician has at most one clinic.
+      linkedPediatricians: linkedInMatching,
       totalPages: Math.max(1, Math.ceil(total / limit)),
-      clinics: clinics.map((c) => ({
-        ...publicClinic(c),
-        pediatricianCount: pediatricians.get(String(c._id)) || 0,
-        transactionCount: adminOps.summarizePayments(byClinic.get(String(c._id)) || []).totalCount,
-      })),
+      clinics: clinics.map((c) => {
+        const people = pediatricians.get(String(c._id)) || [];
+        return {
+          ...publicClinic(c),
+          pediatricianCount: people.length,
+          pediatricians: people.map((u) => ({ id: String(u.id), name: pediatricianName(u) })),
+          transactionCount: adminOps.summarizePayments(byClinic.get(String(c._id)) || []).totalCount,
+        };
+      }),
     });
   } catch (err) {
     console.error('GET /admin/clinics error:', err.message);
@@ -407,4 +466,4 @@ router.patch('/:id', async (req, res) => {
 
 module.exports = router;
 // Exposed for tests only.
-module.exports._internals = { readClinicFields, paymentRowsByClinic, rowsPerClinic };
+module.exports._internals = { readClinicFields, paymentRowsByClinic, rowsPerClinic, pediatricianNameFilter, COMPLETENESS };

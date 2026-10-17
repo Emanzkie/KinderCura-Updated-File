@@ -7,7 +7,9 @@
 
     const byId = (id) => document.getElementById(id);
     const UNAVAILABLE = 'Unavailable';
-    const state = { page: 1, limit: 20, search: '', status: '', sort: 'name', from: '', to: '', selectedId: null, totalPages: 1 };
+    const NOT_PROVIDED = 'Not provided';
+    const NAMES_SHOWN = 3;
+    const state = { page: 1, limit: 20, search: '', status: '', completeness: '', sort: 'name', from: '', to: '', selectedId: null, totalPages: 1 };
 
     function esc(value) {
         return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
@@ -68,30 +70,63 @@
             + `<td class="num">${groupCell(summary, 'refunded', 'count')}</td><td class="num">${groupCell(summary, 'other', 'count')}</td></tr>`;
     }
 
+    // part ÷ whole as a one-decimal percentage, or null when whole is 0.
+    function pct(part, whole) {
+        return whole > 0 ? `${(Math.round((part / whole) * 1000) / 10).toFixed(1)}%` : null;
+    }
+    const plural = (n, one, many) => `${count(n)} ${n === 1 ? one : many}`;
+
+    // Plain-language reading of the summary, built only from the same
+    // response the cards show. All-time counts, so no trend is claimed.
+    function summaryInterpretation(c, p) {
+        if (c.registered === 0) {
+            return `No clinics have been registered yet, so there is insufficient data to interpret. ${plural(p.total, 'pediatrician account exists', 'pediatrician accounts exist')} without a clinic record to link to.`;
+        }
+        const parts = [
+            `${plural(c.registered, 'distinct clinic is', 'distinct clinics are')} registered: ${count(c.active)} active and ${count(c.inactive)} inactive.`,
+            `${count(c.withPediatricians)} of them (${pct(c.withPediatricians, c.registered)} of registered clinics) have at least one linked pediatrician, and ${count(c.registered - c.withPediatricians)} have none.`,
+        ];
+        if (p.total > 0) {
+            parts.push(`${count(p.linked)} of ${plural(p.total, 'pediatrician account', 'pediatrician accounts')} (${pct(p.linked, p.total)} of all pediatricians) are linked to a clinic; ${count(p.unlinked)} are not.`);
+            if (p.linked > c.withPediatricians) {
+                parts.push('Because several pediatricians can share one clinic, the number of linked pediatricians is larger than the number of clinics they work at.');
+            }
+        } else {
+            parts.push('There are no pediatrician accounts yet.');
+        }
+        parts.push(c.incomplete
+            ? `${plural(c.incomplete, 'clinic record is', 'clinic records are')} missing a contact phone or email; filter the directory by "Phone or email missing" to see ${c.incomplete === 1 ? 'it' : 'them'}.`
+            : 'Every clinic record has both a contact phone and email.');
+        return parts.join(' ');
+    }
+
     async function loadSummary() {
         byId('clinicPeriodNote').textContent = `Reporting period: ${periodText()}. It applies to New registrations and to transactions; the other clinic counts are all-time.`;
         try {
             const data = await apiFetch(`/admin/clinics/summary${query()}`);
             const c = data.clinics;
+            const p = data.pediatricians;
             const hasPeriod = Boolean(state.from || state.to);
-            const share = c.registered > 0
-                ? `${(Math.round((c.active / c.registered) * 1000) / 10).toFixed(1)}%`
-                : '—';
             byId('clinicSummaryCards').innerHTML = [
-                card('Registered clinics', count(c.registered), 'Distinct clinic records, all dates.'),
-                card('Active', count(c.active), 'Status "active", all dates.'),
-                card('Inactive', count(c.inactive), 'Status "inactive", all dates.'),
-                card('Active share', share, c.registered > 0
-                    ? `(${count(c.active)} active ÷ ${count(c.registered)} registered) × 100, one decimal.`
-                    : 'No registered clinics, so there is no share to compute.'),
+                card('Registered clinics', count(c.registered), 'Distinct clinic records, each counted once by its ID, all dates. Not a count of pediatrician accounts.'),
+                card('Active', count(c.active), c.registered > 0
+                    ? `Status "active": ${pct(c.active, c.registered)} of registered clinics.`
+                    : 'Status "active". No registered clinics yet.'),
+                card('Inactive', count(c.inactive), 'Status "inactive": marked by an admin as no longer operating.'),
+                card('With pediatricians', count(c.withPediatricians), 'Clinics with at least one linked pediatrician account.'),
+                card('Linked pediatricians', count(p.linked), p.total > 0
+                    ? `Pediatrician accounts linked to a registered clinic: ${pct(p.linked, p.total)} of all ${count(p.total)} pediatrician accounts.`
+                    : 'No pediatrician accounts exist yet.'),
+                card('Pediatricians without a clinic', count(p.unlinked), p.unlinkedWithClinicName
+                    ? `Not linked to any registered clinic. ${count(p.unlinkedWithClinicName)} of them typed a clinic name at sign-up; that text is not a clinic record.`
+                    : 'Pediatrician accounts not linked to any registered clinic.'),
+                card('Missing contact details', count(c.incomplete), 'Clinic records with no contact phone or no contact email. Name and address are always required.'),
                 card('New registrations', hasPeriod ? count(c.newInPeriod) : '—', hasPeriod
                     ? 'Clinics registered in the reporting period.'
                     : 'Choose a reporting period to count new registrations.'),
-                card('With pediatricians', count(c.withPediatricians), 'Clinics with at least one linked pediatrician account.'),
             ].join('');
-            byId('clinicSummaryNote').textContent = c.registered === 0
-                ? 'No clinics have been registered yet.'
-                : '';
+            byId('clinicSummaryInterpText').textContent = summaryInterpretation(c, p);
+            byId('clinicSummaryInterp').hidden = false;
 
             const t = data.transactions;
             byId('clinicTxRows').innerHTML = txRow('With a registered clinic', t.withClinic)
@@ -104,7 +139,7 @@
             ].filter(Boolean).join(' ');
         } catch (err) {
             byId('clinicSummaryCards').innerHTML = card('Clinic summary', UNAVAILABLE, esc(err.message || 'The request failed.'));
-            byId('clinicSummaryNote').textContent = '';
+            byId('clinicSummaryInterp').hidden = true;
             byId('clinicTxRows').innerHTML = `<tr><td colspan="8" class="muted">${UNAVAILABLE}: ${esc(err.message || 'the request failed.')}</td></tr>`;
             byId('clinicTxNote').textContent = '';
         }
@@ -115,35 +150,65 @@
         return `<span class="pr-status-badge clinic-status-${status === 'active' ? 'active' : 'inactive'}">${esc(capitalize(status))}</span>`;
     }
 
+    function contactCell(c) {
+        const line = (label, value) => `<span class="clinic-contact-label">${label}:</span> ${value ? esc(value) : `<span class="muted">${NOT_PROVIDED}</span>`}`;
+        return `${line('Phone', c.contactPhone)}<br>${line('Email', c.contactEmail)}`;
+    }
+
+    function pediatriciansCell(c) {
+        const people = c.pediatricians || [];
+        if (!people.length) return '<span class="muted">None linked</span>';
+        const names = people.slice(0, NAMES_SHOWN).map((p) => esc(p.name || 'Unnamed account')).join('<br>');
+        const more = people.length > NAMES_SHOWN ? `<br><span class="muted">+${count(people.length - NAMES_SHOWN)} more (open View)</span>` : '';
+        return `<span class="clinic-ped-count">${plural(people.length, 'pediatrician', 'pediatricians')}</span><br>${names}${more}`;
+    }
+
+    function listScopeText() {
+        const parts = [];
+        if (state.search) parts.push(`matching "${state.search}"`);
+        if (state.status) parts.push(`status ${capitalize(state.status)}`);
+        if (state.completeness === 'incomplete') parts.push('phone or email missing');
+        if (state.completeness === 'complete') parts.push('phone and email recorded');
+        const sorts = { name: 'name (A–Z)', newest: 'newest registered first', oldest: 'oldest registered first' };
+        return `Showing: ${parts.length ? `registered clinics ${parts.join(' · ')}` : 'all registered clinics'} · sorted by ${sorts[state.sort]} · transactions for ${periodText()}.`;
+    }
+
+    let listSeq = 0;
     async function loadList() {
+        const seq = ++listSeq;
         const rows = byId('clinicRows');
         rows.innerHTML = '<tr><td colspan="8" class="muted">Loading registered clinics...</td></tr>';
+        byId('clinicListScope').textContent = listScopeText();
         try {
-            const data = await apiFetch(`/admin/clinics${query({ search: state.search, status: state.status, sort: state.sort, page: state.page, limit: state.limit })}`);
+            const data = await apiFetch(`/admin/clinics${query({ search: state.search, status: state.status, completeness: state.completeness, sort: state.sort, page: state.page, limit: state.limit })}`);
+            if (seq !== listSeq) return; // a newer request owns the table
             state.totalPages = data.totalPages;
             if (!data.clinics.length) {
-                const filtered = state.search || state.status;
-                rows.innerHTML = `<tr><td colspan="8" class="muted">${filtered ? 'No registered clinics match these filters.' : 'No clinics have been registered yet.'}</td></tr>`;
+                const filtered = state.search || state.status || state.completeness;
+                rows.innerHTML = `<tr><td colspan="8" class="muted">${filtered ? 'No registered clinics match these filters. Clear the search or choose Reset to see every clinic.' : 'No clinics have been registered yet. Use "Register a clinic" above to add the first one.'}</td></tr>`;
             } else {
                 rows.innerHTML = data.clinics.map((c) => `<tr>
                     <td>${esc(c.name)}</td>
                     <td>${esc(c.address)}</td>
-                    <td>${[c.contactPhone, c.contactEmail].filter(Boolean).map(esc).join('<br>') || '—'}</td>
-                    <td>${esc(dateText(c.registeredAt))}</td>
+                    <td>${contactCell(c)}</td>
+                    <td>${pediatriciansCell(c)}</td>
                     <td>${statusBadge(c.status)}</td>
-                    <td class="num">${count(c.pediatricianCount)}</td>
+                    <td>${esc(dateText(c.registeredAt))}</td>
                     <td class="num">${count(c.transactionCount)}</td>
-                    <td><button type="button" class="btn btn-secondary" data-clinic-view="${esc(c.id)}">View</button></td>
+                    <td><button type="button" class="btn btn-secondary" data-clinic-view="${esc(c.id)}" aria-label="View ${esc(c.name)}">View</button></td>
                 </tr>`).join('');
             }
             const first = data.total ? (data.page - 1) * data.limit + 1 : 0;
             const last = Math.min(data.total, data.page * data.limit);
+            // Rows are clinics; the pediatrician figure is the separate,
+            // distinct count of accounts linked to any matching clinic.
             byId('clinicPageInfo').textContent = data.total
-                ? `Showing ${count(first)}–${count(last)} of ${count(data.total)} · page ${count(data.page)} of ${count(data.totalPages)}`
-                : '0 clinics';
+                ? `Showing ${count(first)}–${count(last)} of ${plural(data.total, 'matching clinic', 'matching clinics')} · ${plural(data.linkedPediatricians, 'linked pediatrician', 'linked pediatricians')} across them · page ${count(data.page)} of ${count(data.totalPages)}`
+                : '0 matching clinics';
             byId('clinicPrevBtn').disabled = data.page <= 1;
             byId('clinicNextBtn').disabled = data.page >= data.totalPages;
         } catch (err) {
+            if (seq !== listSeq) return;
             rows.innerHTML = `<tr><td colspan="8" class="muted">${UNAVAILABLE}: ${esc(err.message || 'the request failed.')}</td></tr>`;
             byId('clinicPageInfo').textContent = '—';
             byId('clinicPrevBtn').disabled = true;
@@ -335,6 +400,16 @@
             searchTimer = setTimeout(() => { state.search = byId('clinicSearch').value.trim(); state.page = 1; loadList(); }, 300);
         });
         byId('clinicStatusFilter').addEventListener('change', (e) => { state.status = e.target.value; state.page = 1; loadList(); });
+        byId('clinicCompletenessFilter').addEventListener('change', (e) => { state.completeness = e.target.value; state.page = 1; loadList(); });
+        byId('clinicFilterReset').addEventListener('click', () => {
+            clearTimeout(searchTimer);
+            byId('clinicSearch').value = '';
+            byId('clinicStatusFilter').value = '';
+            byId('clinicCompletenessFilter').value = '';
+            byId('clinicSort').value = 'name';
+            Object.assign(state, { search: '', status: '', completeness: '', sort: 'name', page: 1 });
+            loadList();
+        });
         byId('clinicSort').addEventListener('change', (e) => { state.sort = e.target.value; state.page = 1; loadList(); });
         byId('clinicPrevBtn').addEventListener('click', () => { if (state.page > 1) { state.page -= 1; loadList(); } });
         byId('clinicNextBtn').addEventListener('click', () => { if (state.page < state.totalPages) { state.page += 1; loadList(); } });

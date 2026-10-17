@@ -379,6 +379,7 @@ router.get('/patients', authMiddleware, adminOnly, async (req, res) => {
         latestAssessmentDate: c.latestCompletedAt || null,
         latestScore: hasScore ? Math.round(overallScore) : null,
         latestStatusLabel: band ? scoring.clinicalLabel(band) : null,
+        latestBand: band,
         hasReview: Boolean(c.latestReviewedAt),
         latestRecommendations: c.latestRecommendations || null,
         latestNextAssessmentDate: c.latestNextAssessmentDate || null,
