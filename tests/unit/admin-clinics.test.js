@@ -20,7 +20,7 @@ const Appointment = require('../../models/Appointment');
 const adminOps = require('../../services/adminOperationsAnalytics');
 const { authMiddleware, adminOnly } = require('../../middleware/auth');
 const router = require('../../routes/admin-clinics');
-const { readClinicFields, rowsPerClinic, pediatricianNameFilter, COMPLETENESS } = router._internals;
+const { readClinicFields, rowsPerClinic, missingAppointmentCount, pediatricianNameFilter, COMPLETENESS } = router._internals;
 
 const root = path.join(__dirname, '..', '..');
 
@@ -60,14 +60,16 @@ function testTransactionSplit() {
     { _id: { clinicId: a, status: 'Paid', currency: 'PHP' }, count: 2, amount: 1000 },
     { _id: { clinicId: a, status: 'Pending', currency: 'PHP' }, count: 1, amount: 500 },
     { _id: { clinicId: b, status: 'Expired', currency: 'PHP' }, count: 1, amount: 700 },
-    { _id: { clinicId: null, status: 'Paid', currency: 'PHP' }, count: 3, amount: 900 },
+    { _id: { clinicId: null, status: 'Paid', currency: 'PHP', noAppointment: false }, count: 3, amount: 900 },
+    { _id: { clinicId: null, status: 'Failed', currency: 'PHP', noAppointment: true }, count: 2, amount: 0 },
   ];
+  assert.strictEqual(missingAppointmentCount(rows), 2, 'only no-clinic payments whose appointment is missing');
   const split = rowsPerClinic(rows);
   const sumA = adminOps.summarizePayments(split.get(a));
   const none = adminOps.summarizePayments(split.get('none'));
   assert.strictEqual(sumA.totalCount, 3);
   assert.strictEqual(sumA.groups.find((g) => g.key === 'collected').amount, 1000, 'collected = Paid only');
-  assert.strictEqual(none.totalCount, 3, 'unlinked payments kept apart');
+  assert.strictEqual(none.totalCount, 5, 'unlinked payments kept apart');
   const total = [...split.values()].reduce((n, r) => n + adminOps.summarizePayments(r).totalCount, 0);
   assert.strictEqual(total, rows.reduce((n, r) => n + r.count, 0), 'parts add up to the whole');
 }

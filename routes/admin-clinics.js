@@ -135,7 +135,9 @@ function paymentRowsByClinic(period, clinicIds) {
   if (clinicIds) stages.push({ $match: { clinicId: { $in: clinicIds } } });
   stages.push({
     $group: {
-      _id: { clinicId: '$clinicId', status: '$status', currency: '$currency' },
+      // noAppointment: the payment's appointment record no longer exists, the
+      // other reason (besides booking before a clinic link) a payment has no clinic.
+      _id: { clinicId: '$clinicId', status: '$status', currency: '$currency', noAppointment: { $eq: [{ $size: '$appt' }, 0] } },
       count: { $sum: 1 },
       amount: { $sum: { $ifNull: ['$amount', 0] } },
     },
@@ -152,6 +154,11 @@ function rowsPerClinic(rows) {
     byClinic.get(key).push({ _id: { status: r._id.status, currency: r._id.currency }, count: r.count, amount: r.amount });
   }
   return byClinic;
+}
+
+/** How many paymentRowsByClinic payments have no clinic because their appointment record is missing. */
+function missingAppointmentCount(rows) {
+  return rows.reduce((n, r) => n + (!r._id.clinicId && r._id.noAppointment ? r.count : 0), 0);
 }
 
 const periodOut = (period) => ({
@@ -222,6 +229,7 @@ router.get('/summary', async (req, res) => {
       transactions: {
         withClinic: adminOps.summarizePayments(linkedRows),
         withoutClinic: adminOps.summarizePayments(byClinic.get('none') || []),
+        withoutClinicMissingAppointment: missingAppointmentCount(paymentRows),
         all: adminOps.summarizePayments(paymentRows.map((r) => ({ _id: { status: r._id.status, currency: r._id.currency }, count: r.count, amount: r.amount }))),
       },
     });
@@ -466,4 +474,4 @@ router.patch('/:id', async (req, res) => {
 
 module.exports = router;
 // Exposed for tests only.
-module.exports._internals = { readClinicFields, paymentRowsByClinic, rowsPerClinic, pediatricianNameFilter, COMPLETENESS };
+module.exports._internals = { readClinicFields, paymentRowsByClinic, rowsPerClinic, missingAppointmentCount, pediatricianNameFilter, COMPLETENESS };

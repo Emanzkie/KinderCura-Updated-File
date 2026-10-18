@@ -76,6 +76,16 @@
     }
     const plural = (n, one, many) => `${count(n)} ${n === 1 ? one : many}`;
 
+    // A payment has no clinic for one of two reasons: its appointment was booked
+    // before the pediatrician was linked (clinics are recorded at booking), or
+    // its appointment record no longer exists.
+    function noClinicNote(t) {
+        const none = t.withoutClinic.totalCount;
+        if (!none) return '';
+        const missing = t.withoutClinicMissingAppointment || 0;
+        return `${plural(none, 'payment has', 'payments have')} no clinic association: ${count(none - missing)} ${none - missing === 1 ? 'was' : 'were'} booked before ${none - missing === 1 ? 'its' : 'their'} pediatrician was linked to a registered clinic, and ${plural(missing, 'has', 'have')} no appointment record. Those payments are kept as recorded and are not assigned to any clinic.`;
+    }
+
     // Plain-language reading of the summary, built only from the same
     // response the cards show. All-time counts, so no trend is claimed.
     function summaryInterpretation(c, p) {
@@ -113,9 +123,9 @@
                     ? `Status "active": ${pct(c.active, c.registered)} of registered clinics.`
                     : 'Status "active". No registered clinics yet.'),
                 card('Inactive', count(c.inactive), 'Status "inactive": marked by an admin as no longer operating.'),
-                card('With pediatricians', count(c.withPediatricians), 'Clinics with at least one linked pediatrician account.'),
+                card('With pediatricians', count(c.withPediatricians), 'Registered clinics with at least one linked pediatrician account, each clinic counted once.'),
                 card('Linked pediatricians', count(p.linked), p.total > 0
-                    ? `Pediatrician accounts linked to a registered clinic: ${pct(p.linked, p.total)} of all ${count(p.total)} pediatrician accounts.`
+                    ? `Unique pediatrician accounts linked to a registered clinic (each account belongs to at most one): ${pct(p.linked, p.total)} of all ${count(p.total)} pediatrician accounts.`
                     : 'No pediatrician accounts exist yet.'),
                 card('Pediatricians without a clinic', count(p.unlinked), p.unlinkedWithClinicName
                     ? `Not linked to any registered clinic. ${count(p.unlinkedWithClinicName)} of them typed a clinic name at sign-up; that text is not a clinic record.`
@@ -134,7 +144,7 @@
                 + txRow('All transactions', t.all);
             byId('clinicTxNote').textContent = [
                 `Payment records created in the reporting period (${periodText()}), grouped as on the Payments page: collected counts "Paid" only, and pending, failed or expired payments are never collected. Counts and amounts are separate measures.`,
-                '"No clinic association" means the appointment was booked before its pediatrician was linked to a registered clinic (or the appointment record is missing). Those payments are kept as recorded and are not assigned to any clinic.',
+                noClinicNote(t),
                 currencyNote(t.all),
             ].filter(Boolean).join(' ');
         } catch (err) {
