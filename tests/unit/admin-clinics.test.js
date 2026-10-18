@@ -137,13 +137,13 @@ function testListFilters() {
 }
 
 function testReportModules() {
-  // Every Report-modules link jumps to an element that exists on the page.
+  // The report-modules nav was removed; the category sections it pointed at
+  // remain, so existing #cat-* links still land.
   const html = fs.readFileSync(path.join(root, 'ADMIN', 'admin-reports.html'), 'utf8');
-  const nav = html.slice(html.indexOf('<nav class="report-modules"'), html.indexOf('</nav>', html.indexOf('<nav class="report-modules"')));
-  const targets = [...nav.matchAll(/href="#([A-Za-z0-9_-]+)"/g)].map((m) => m[1]);
-  assert.ok(targets.length >= 15, `found ${targets.length} module links`);
-  const missing = targets.filter((id) => !html.includes(`id="${id}"`));
-  assert.deepStrictEqual(missing, [], `module links without a target: ${missing.join(', ')}`);
+  assert.ok(!html.includes('class="report-modules"'), 'report-modules nav should be gone');
+  const categories = ['cat-clinics', 'cat-patients', 'cat-assessments', 'cat-appointments', 'cat-system'];
+  const missing = categories.filter((id) => !html.includes(`id="${id}"`));
+  assert.deepStrictEqual(missing, [], `report categories missing: ${missing.join(', ')}`);
   // The status legend reads band colours from the shared scoring module.
   assert.ok(html.indexOf('<script src="/constants/scoring.js"></script>') < html.indexOf('<script src="/js/admin/admin-reports.js"></script>'));
 }

@@ -99,6 +99,28 @@
     font-weight: 600;
 }
 
+/* Numeric columns line up on the right with even-width digits. */
+.simple-table td.num,
+.simple-table th.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* Closing Total row of a count table. */
+.simple-table tr.total-row td {
+    border-top: 2px solid var(--border);
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+@media (max-width: 600px) {
+    .simple-table th,
+    .simple-table td {
+        padding: 0.6rem 0.5rem;
+    }
+}
+
 .report-list {
     display: flex;
     flex-direction: column;
@@ -144,6 +166,25 @@
 .mini-bar-row-label .mini-bar-count {
     font-weight: 600;
     color: var(--text-dark);
+}
+
+.mini-bar-tag {
+    margin-left: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--primary);
+}
+
+.units-legend {
+    display: block;
+    margin-top: 0.5rem;
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+#systemTotalsCheck.totals-mismatch {
+    color: var(--status-attention-fg, #3D4738);
+    font-weight: 600;
 }
 
 /* Dynamic, data-driven interpretation shown directly under a visualization —
@@ -353,6 +394,21 @@
     }
 }
 
+/* The four-up card rows on this page, also inline styles. */
+@media (max-width: 900px) {
+    #patientFilteredSummary,
+    #averageScoreBlocks {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+}
+
+@media (max-width: 560px) {
+    #patientFilteredSummary,
+    #averageScoreBlocks {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+}
+
 
 /* ── Admin Reports: Registered Clinics (js/admin/admin-clinics.js) ────
    New class names only, so ADMIN/admin-analytics.html (which also loads
@@ -443,13 +499,9 @@
     }
 }
 
-/* ── Admin Reports Center: report modules and categories ─────────────
+/* ── Admin Reports Center: report categories ─────────────
    New class names only, so ADMIN/admin-analytics.html (which also loads
    this file) is unaffected. */
-.report-modules {
-    margin: 1.5rem 0 2rem;
-}
-
 .report-category-title {
     margin: 0 0 0.25rem;
     font-size: var(--fs-section, 1.5rem);
@@ -461,52 +513,6 @@
     color: var(--text-light);
     font-size: var(--fs-small, 0.85rem);
     line-height: 1.5;
-}
-
-.report-module-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 1rem;
-}
-
-.report-module {
-    background: var(--bg-primary);
-    border: 1px solid var(--border);
-    border-top: 3px solid var(--primary);
-    border-radius: var(--radius-panel, 12px);
-    padding: 1rem 1.1rem;
-}
-
-.report-module h3 {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    margin: 0 0 0.6rem;
-    font-size: var(--fs-card-title, 1.1rem);
-}
-
-.report-module h3 img {
-    width: 1.1em;
-    height: 1.1em;
-    object-fit: contain;
-}
-
-.report-module h3 a {
-    color: var(--text-dark);
-    text-decoration: none;
-}
-
-.report-module ul {
-    margin: 0;
-    padding-left: 1.1rem;
-    font-size: var(--fs-small, 0.85rem);
-    line-height: 1.7;
-}
-
-.report-module a:hover,
-.report-module a:focus-visible {
-    color: var(--primary-dark);
-    text-decoration: underline;
 }
 
 .report-category {
@@ -646,7 +652,6 @@
 }
 
 @media print {
-    .report-modules,
     #clinicFilterReset {
         display: none !important;
     }

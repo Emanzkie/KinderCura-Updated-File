@@ -39,7 +39,13 @@ requireAuth();
         // Reusable row template for count tables.
         function row(label, value, total) {
             const text = String(label || 'No status recorded');
-            return `<tr><td>${escapeHtml(text.charAt(0).toUpperCase() + text.slice(1))}</td><td>${fmtCountR(value)}</td><td>${percentOf(value, total)}</td></tr>`;
+            return `<tr><td>${escapeHtml(text.charAt(0).toUpperCase() + text.slice(1))}</td><td class="num">${fmtCountR(value)}</td><td class="num">${percentOf(value, total)}</td></tr>`;
+        }
+
+        // Closing row for a count table: the same total the shares divide by,
+        // so the column visibly sums (percentOf gives N/A when it is zero).
+        function totalRow(total) {
+            return `<tr class="total-row"><td>Total</td><td class="num">${fmtCountR(total)}</td><td class="num">${percentOf(total, total)}</td></tr>`;
         }
 
         // Human-readable labels for the ACTUAL role values found in the
@@ -62,7 +68,7 @@ requireAuth();
 
         function roleRow(role, value, total) {
             const label = ROLE_LABELS[role] || role;
-            return `<tr><td>${escapeHtml(label)}</td><td>${fmtCountR(value)}</td><td>${percentOf(value, total)}</td></tr>`;
+            return `<tr><td>${escapeHtml(label)}</td><td class="num">${fmtCountR(value)}</td><td class="num">${percentOf(value, total)}</td></tr>`;
         }
 
         // Builds one summary card at the top of the report page. `note` is an
@@ -104,6 +110,7 @@ requireAuth();
                 };
 
                 document.getElementById('reportGeneratedAt').textContent = `Generated: ${new Date(reportCache.generatedAt).toLocaleString()}`;
+                document.getElementById('reportRefreshNotice').hidden = true;
 
                 // Top summary cards — Total Children leads, as the primary
                 // patient-focused metric (req 2). Every card's note states the
@@ -151,8 +158,8 @@ requireAuth();
                     summaryCard(label, noScores || value == null ? 'N/A' : `${Math.round(value)}%`, 'mean domain score')).join('');
 
                 document.getElementById('appointmentBreakdownTable').innerHTML = appointmentStats.length
-                    ? appointmentStats.map(item => row(item.status, item.count || 0, totalAppointments)).join('')
-                    : '<tr><td colspan="3" class="muted">No appointment data available.</td></tr>';
+                    ? appointmentStats.map(item => row(item.status, item.count || 0, totalAppointments)).join('') + totalRow(totalAppointments)
+                    :'<tr><td colspan="3" class="muted">No appointment data available.</td></tr>';
                 const apptNote = document.getElementById('appointmentBreakdownNote');
                 if (apptNote) {
                     apptNote.textContent = `Share = appointments in that status ÷ all ${fmtCountR(totalAppointments)} appointment records (every status, all dates). Shares are rounded to one decimal.`;
@@ -160,8 +167,8 @@ requireAuth();
                 renderAppointmentInterpretation(appointmentStats, totalAppointments);
 
                 document.getElementById('roleBreakdownTable').innerHTML = roleBreakdown.length
-                    ? roleBreakdown.map(item => roleRow(item.role, item.count || 0, totalRoles)).join('')
-                    : '<tr><td colspan="3" class="muted">No role data available.</td></tr>';
+                    ? roleBreakdown.map(item => roleRow(item.role, item.count || 0, totalRoles)).join('') + totalRow(totalRoles)
+                    :'<tr><td colspan="3" class="muted">No role data available.</td></tr>';
 
                 // req 3: the breakdown must visibly reconcile to Total Users,
                 // not leave the reader to add it up (or miss a row) themselves.
@@ -183,8 +190,18 @@ requireAuth();
                             <p class="muted" style="font-size:0.82rem;">${escapeHtml(item.timestamp)}</p>
                         </div>`).join('')
                     : '<div class="report-item"><p class="muted">No recent activity yet.</p></div>';
+                renderTotalsCheck();
             } catch (err) {
                 console.error('admin reports load error:', err);
+                // A failed refresh keeps the last figures that loaded, all from
+                // one consistent result, and says so — rather than replacing
+                // good tables with "Unavailable" while their totals linger.
+                if (reportCache) {
+                    const notice = document.getElementById('reportRefreshNotice');
+                    notice.textContent = `Refresh failed at ${new Date().toLocaleTimeString()}: ${err.message}. Showing the figures generated ${new Date(reportCache.generatedAt).toLocaleString()}.`;
+                    notice.hidden = false;
+                    return;
+                }
                 document.getElementById('summaryCards').innerHTML = `<div class="report-card"><p class="report-label">Could not load report</p><p class="report-value" style="font-size:1rem;">${escapeHtml(err.message)}</p></div>`;
                 // Leave nothing on "Loading…" that looks like it might still arrive.
                 document.getElementById('snapshotTable').innerHTML = '<tr><td colspan="2" class="muted">Unavailable: the report did not load.</td></tr>';
@@ -192,6 +209,9 @@ requireAuth();
                 document.getElementById('appointmentBreakdownTable').innerHTML = '<tr><td colspan="3" class="muted">Unavailable: the report did not load.</td></tr>';
                 document.getElementById('roleBreakdownTable').innerHTML = '<tr><td colspan="3" class="muted">Unavailable: the report did not load.</td></tr>';
                 document.getElementById('recentActivityList').innerHTML = '<div class="report-item"><p class="muted">Unavailable: the report did not load.</p></div>';
+                document.getElementById('roleBreakdownReconciliation').textContent = '—';
+                document.getElementById('appointmentBreakdownNote').textContent = '—';
+                document.getElementById('appointmentBreakdownInterp').hidden = true;
             }
         }
 
@@ -220,11 +240,26 @@ requireAuth();
             ].join(' ');
         }
 
-        // Report-module links that point inside a collapsed <details> open it,
-        // so the jump never lands on a closed summary.
-        function openLinkedDetails(hash) {
-            const target = hash && hash.length > 1 ? document.getElementById(decodeURIComponent(hash.slice(1))) : null;
-            if (target && target.tagName === 'DETAILS') target.open = true;
+        // The top summary and the System-wide totals count children,
+        // completed assessments and appointments through different endpoints.
+        // When both have loaded, say whether they agree; a difference is shown
+        // with both values, and neither source is assumed to be the right one.
+        let systemTotalsCache = null;
+        function renderTotalsCheck() {
+            const el = document.getElementById('systemTotalsCheck');
+            if (!el || !reportCache || !systemTotalsCache) return;
+            const d = reportCache.dashboard || {};
+            const t = systemTotalsCache;
+            const pairs = [
+                ['Children', d.childCount, t.totalPatients],
+                ['Completed assessments', d.completedAssessments, t.totalCompletedAssessments],
+                ['Appointments', reportCache.totalAppointments, t.totalAppointments],
+            ];
+            const diffs = pairs.filter(([, a, b]) => Number(a ?? 0) !== Number(b ?? 0));
+            el.classList.toggle('totals-mismatch', diffs.length > 0);
+            el.textContent = diffs.length
+                ? `Mismatch with the summary at the top of the page — ${diffs.map(([label, a, b]) => `${label}: top summary ${fmtCountR(a ?? 0)}, system-wide totals ${fmtCountR(b ?? 0)}`).join('; ')}. The two figures come from different queries; neither is assumed correct, so check both.`
+                : 'Children, completed assessments and appointments match the summary at the top of the page (counted by a separate query).';
         }
 
         function refreshReport() {
@@ -305,6 +340,8 @@ requireAuth();
                 // Always system-wide and all-time (routes/admin-patient-reports.js
                 // GET /overview) — the filters below never change these.
                 const t = data.systemTotals || {};
+                systemTotalsCache = t;
+                renderTotalsCheck();
                 document.getElementById('systemTotalsCards').innerHTML = [
                     summaryCard('Total Patients', fmtCountR(t.totalPatients ?? 0), 'Every child record, assessed or not.'),
                     summaryCard('Total Parents', fmtCountR(t.totalParents ?? 0), 'Parent-role accounts only; other guardian roles are not included.'),
@@ -327,9 +364,9 @@ requireAuth();
                 pedRowsEl.innerHTML = pedList.length
                     ? pedList.map((p) => `<tr>
                         <td>${escapeHtml(p.name)}</td>
-                        <td>${escapeHtml(String(p.patients))}</td>
-                        <td>${escapeHtml(String(p.assessments))}</td>
-                        <td>${escapeHtml(String(p.reviewed))}</td>
+                        <td class="num">${fmtCountR(p.patients)}</td>
+                        <td class="num">${fmtCountR(p.assessments)}</td>
+                        <td class="num">${fmtCountR(p.reviewed)}</td>
                         <td>${fmtDateShortPR(p.latestActivity)}</td>
                     </tr>`).join('') + (data.pediatricianSummaryCapped ? '<tr><td colspan="5" class="muted">Showing the most active pediatricians only. Use the Pediatrician filter above to look up a specific one.</td></tr>' : '')
                     : '<tr><td colspan="5" class="muted">No pediatrician has any patients yet.</td></tr>';
@@ -339,8 +376,8 @@ requireAuth();
                 parentRowsEl.innerHTML = parentList.length
                     ? parentList.map((p) => `<tr>
                         <td>${escapeHtml(p.name)}</td>
-                        <td>${escapeHtml(String(p.children))}</td>
-                        <td>${escapeHtml(String(p.assessments))}</td>
+                        <td class="num">${fmtCountR(p.children)}</td>
+                        <td class="num">${fmtCountR(p.assessments)}</td>
                         <td>${fmtDateShortPR(p.latestActivity)}</td>
                     </tr>`).join('') + (data.parentSummaryCapped ? '<tr><td colspan="4" class="muted">Showing the most active parents only. Use the Parent filter above to look up a specific one.</td></tr>' : '')
                     : '<tr><td colspan="4" class="muted">No parent has any children on file yet.</td></tr>';
@@ -415,8 +452,8 @@ requireAuth();
                             <td>${escapeHtml(r.childName)}</td>
                             <td>${escapeHtml(r.parentName)}</td>
                             <td>${r.pediatricianName ? escapeHtml(r.pediatricianName) : '<span class="muted">—</span>'}</td>
-                            <td>${escapeHtml(String(r.assessmentsCount))}</td>
-                            <td>${r.latestScore != null ? escapeHtml(String(r.latestScore)) + '%' : '<span class="muted">—</span>'}</td>
+                            <td class="num">${fmtCountR(r.assessmentsCount)}</td>
+                            <td class="num">${r.latestScore != null ? escapeHtml(String(r.latestScore)) + '%' : '<span class="muted">—</span>'}</td>
                             <td>${r.latestStatusLabel ? bandChip(r.latestBand, r.latestStatusLabel) : '<span class="muted">No assessment in range</span>'}</td>
                             <td>${fmtDateShortPR(r.latestAssessmentDate)}</td>
                             <td>${r.hasReview ? '<span class="pr-review-yes">Reviewed</span>' : '<span class="pr-review-no">Not reviewed</span>'}</td>
@@ -655,9 +692,9 @@ requireAuth();
                 const rows = Object.keys(DEMO_COLLECTION_LABELS).filter((k) => c[k]).map((k) => `
                     <tr>
                         <td>${DEMO_COLLECTION_LABELS[k]}</td>
-                        <td>${c[k].total}</td>
-                        <td>${c[k].synthetic}</td>
-                        <td>${c[k].real}</td>
+                        <td class="num">${fmtCountR(c[k].total)}</td>
+                        <td class="num">${fmtCountR(c[k].synthetic)}</td>
+                        <td class="num">${fmtCountR(c[k].real)}</td>
                     </tr>`).join('');
                 tbody.innerHTML = rows || '<tr><td colspan="4" class="muted">No demo data recorded.</td></tr>';
             } catch (err) {
@@ -694,17 +731,20 @@ requireAuth();
             return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
         }
 
-        /** One .mini-bars set, each row scaled relative to the GROUP's own max (not a global 100). */
-        function renderMiniBars(orderedKeys, counts, labels) {
+        /** One .mini-bars set, each row scaled relative to the GROUP's own max (not a global 100).
+            `total` (the chart's own sum) adds each row's share; `leaders` tags the most frequent row(s). */
+        function renderMiniBars(orderedKeys, counts, labels, total, leaders) {
             const max = Math.max(1, ...orderedKeys.map((k) => counts[k] || 0));
             return `<div class="mini-bars">${orderedKeys.map((k) => {
                 const n = counts[k] || 0;
                 const pct = Math.round((n / max) * 100);
+                const share = total ? ` · ${percentOf(n, total)}` : '';
+                const tag = n > 0 && (leaders || []).includes(k) ? ' <span class="mini-bar-tag">most frequent</span>' : '';
                 return `
                     <div>
                         <div class="mini-bar-row-label">
-                            <span>${escapeHtml(labels[k] || k)}</span>
-                            <span class="mini-bar-count">${n} ${n === 1 ? 'case' : 'cases'}</span>
+                            <span>${escapeHtml(labels[k] || k)}${tag}</span>
+                            <span class="mini-bar-count">${fmtCountR(n)} ${n === 1 ? 'case' : 'cases'}${share}</span>
                         </div>
                         <div class="mini-bar-track" role="img" aria-label="${escapeHtml(labels[k] || k)}: ${n} ${n === 1 ? 'case' : 'cases'}" title="${escapeHtml(labels[k] || k)}: ${n} ${n === 1 ? 'assessment' : 'assessments'}"><div class="mini-bar-fill" style="width:${pct}%;"></div></div>
                     </div>`;
@@ -721,7 +761,7 @@ requireAuth();
             const delayedBand = (vocab.bands || []).find((b) => b.key === 'delayed');
             const delayedLabel = delayedBand ? delayedBand.label : 'Delayed';
 
-            scopeNote.textContent = `Based on completed, scored assessments from ${fmtReportDate(data.filters?.from)} to ${fmtReportDate(data.filters?.to)} (this section's own default range; it does not follow the Centralized Patient Reports filters above). "Late development" here means an overall score in the "${delayedLabel}" band only, per KinderCura's existing scoring rules — not a new category. Counts are assessments, so a child assessed more than once can be counted more than once.`;
+            scopeNote.textContent = `Based on completed, scored assessments from ${fmtReportDate(data.filters?.from)} to ${fmtReportDate(data.filters?.to)} (this section's own default range; it does not follow the Centralized Patient Reports filters above). "Late development" here means an overall score in the "${delayedLabel}" band only, per KinderCura's existing scoring rules — not a new category. "${delayedLabel}" is a developmental screening category assigned from the score band; it is not a medical diagnosis. Counts are assessments, so a child assessed more than once can be counted more than once.`;
 
             const genderKeys = [...(vocab.genders || []), unknownKey];
             const genderLabels = { ...GENDER_DISPLAY_LABELS, [unknownKey]: GENDER_UNKNOWN_LABEL };
@@ -746,17 +786,17 @@ requireAuth();
 
             const genderInterp = KI.formatGenderInterpretation(genderCounts, genderKeys, genderLabels);
             const ageInterp = KI.formatAgeRangeInterpretation(ageCounts, ageKeys, ageLabels);
-            const genderLeaderText = genderMode.leaders.map((k) => genderLabels[k] || k).join(' / ');
-            const ageLeaderText = ageMode.leaders.map((k) => ageLabels[k] || k).join(' / ');
+            const totalsAgree = genderMode.total === ageMode.total;
 
             body.innerHTML = `
-                <p style="margin:0 0 0.4rem;"><strong>${genderMode.total}</strong> assessment${genderMode.total === 1 ? '' : 's'} classified as "${escapeHtml(delayedLabel)}" in this range.</p>
-                <p class="muted mini-bars-legend">How to read the bars: each bar is a count of "${escapeHtml(delayedLabel)}" assessments, and its length is relative to the largest group in the same chart (that group fills the bar), not a percentage. These are counts, not rates — they are not adjusted for how many children of each gender or age were assessed, so a larger bar does not mean a group is more likely to be delayed.</p>
+                <p style="margin:0 0 0.4rem;"><strong>${fmtCountR(genderMode.total)}</strong> assessment${genderMode.total === 1 ? '' : 's'} classified as "${escapeHtml(delayedLabel)}", ${escapeHtml(fmtReportDate(data.filters?.from))} – ${escapeHtml(fmtReportDate(data.filters?.to))}.</p>
+                ${totalsAgree ? '' : `<p class="pr-notice is-error">The gender chart totals ${fmtCountR(genderMode.total)} and the age chart totals ${fmtCountR(ageMode.total)}, although both count the same "${escapeHtml(delayedLabel)}" assessments. Check the screenings data before relying on either chart.</p>`}
+                <p class="muted mini-bars-legend">How to read the bars: each bar is a count of "${escapeHtml(delayedLabel)}" assessments, and its length is relative to the largest group in the same chart (that group fills the bar). The percentage beside each count is that group's share of the chart's total. These are counts, not rates — they are not adjusted for how many children of each gender or age were assessed, so a larger bar does not mean a group is more likely to be delayed.</p>
 
                 <div class="late-dev-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start;">
                     <div>
                         <h4 style="margin:0 0 0.6rem;">Gender Distribution</h4>
-                        ${renderMiniBars(genderKeys, genderCounts, genderLabels)}
+                        ${renderMiniBars(genderKeys, genderCounts, genderLabels, genderMode.total, genderMode.leaders)}
                         <div class="report-interp">
                             <p class="report-interp-label">Interpretation</p>
                             <p class="report-interp-text">${escapeHtml(genderInterp)}</p>
@@ -764,17 +804,12 @@ requireAuth();
                     </div>
                     <div>
                         <h4 style="margin:0 0 0.6rem;">Age Range Distribution <span class="muted" style="font-weight:400;font-size:0.78rem;">(age at assessment)</span></h4>
-                        ${renderMiniBars(ageKeys, ageCounts, ageLabels)}
+                        ${renderMiniBars(ageKeys, ageCounts, ageLabels, ageMode.total, ageMode.leaders)}
                         <div class="report-interp">
                             <p class="report-interp-label">Interpretation</p>
                             <p class="report-interp-text">${escapeHtml(ageInterp)}</p>
                         </div>
                     </div>
-                </div>
-
-                <div class="report-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:1.25rem;">
-                    ${summaryCard('Most Frequent Gender', escapeHtml(genderLeaderText), `${genderMode.maxCount} ${genderMode.maxCount === 1 ? 'case' : 'cases'}${genderMode.leaders.length > 1 ? ' — tied' : ''}`)}
-                    ${summaryCard('Most Frequent Age Range', escapeHtml(ageLeaderText), `${ageMode.maxCount} ${ageMode.maxCount === 1 ? 'case' : 'cases'}${ageMode.leaders.length > 1 ? ' — tied' : ''}`)}
                 </div>`;
         }
 
@@ -783,7 +818,7 @@ requireAuth();
             const body = document.getElementById('diagnosisModeBody');
             if (!scopeNote || !body) return;
 
-            scopeNote.textContent = `Based on completed assessments with a recorded pediatrician diagnosis, from ${fmtReportDate(data.filters?.from)} to ${fmtReportDate(data.filters?.to)} (same default range as the section above; not affected by the Centralized Patient Reports filters). Counts are assessments, not children.`;
+            scopeNote.textContent = `Based on completed assessments with a recorded pediatrician diagnosis, from ${fmtReportDate(data.filters?.from)} to ${fmtReportDate(data.filters?.to)} (same default range as the section above; not affected by the Centralized Patient Reports filters). Diagnoses are free text recorded by pediatricians and are separate from the screening bands above. Counts are assessments, not children.`;
 
             const df = data.diagnosisFrequency || { totalConsidered: 0, rows: [], topCount: 0, topDiagnoses: [], tie: false };
             const KI = window.KCAdminReportsInterpretations;
@@ -806,9 +841,8 @@ requireAuth();
                         ${topRows.map((r) => summaryCard(escapeHtml(r.diagnosis), r.count, `${r.count === 1 ? 'recorded assessment' : 'recorded assessments'}`)).join('')}
                     </div>`
                 : `
-                    <div class="report-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:1rem;">
-                        ${summaryCard('Most Common Diagnosis', escapeHtml(topRows[0].diagnosis))}
-                        ${summaryCard('Recorded Cases', topRows[0].count, `${topRows[0].count === 1 ? 'recorded assessment' : 'recorded assessments'}`)}
+                    <div class="report-grid" style="grid-template-columns:minmax(0,1fr);margin-bottom:1rem;">
+                        ${summaryCard('Most Common Diagnosis', escapeHtml(topRows[0].diagnosis), `${fmtCountR(topRows[0].count)} ${topRows[0].count === 1 ? 'recorded assessment' : 'recorded assessments'} (${percentOf(topRows[0].count, df.totalConsidered)} of ${fmtCountR(df.totalConsidered)} with a recorded diagnosis)`)}
                     </div>`;
 
             const otherTable = otherRows.length
@@ -816,8 +850,8 @@ requireAuth();
                     <h4 style="margin:1rem 0 0.6rem;">Other Recorded Diagnoses</h4>
                     <div style="overflow-x:auto;">
                         <table class="simple-table">
-                            <thead><tr><th>Diagnosis</th><th>Recorded Cases</th></tr></thead>
-                            <tbody>${otherRows.map((r) => `<tr><td>${escapeHtml(r.diagnosis)}</td><td>${r.count}</td></tr>`).join('')}</tbody>
+                            <thead><tr><th>Diagnosis</th><th class="num">Recorded Cases</th><th class="num">Share</th></tr></thead>
+                            <tbody>${otherRows.map((r) => `<tr><td>${escapeHtml(r.diagnosis)}</td><td class="num">${fmtCountR(r.count)}</td><td class="num">${percentOf(r.count, df.totalConsidered)}</td></tr>`).join('')}</tbody>
                         </table>
                     </div>
                     ${otherCapped ? `<p class="muted" style="margin-top:0.5rem;font-size:0.8rem;">Showing the ${OTHER_DIAGNOSES_DISPLAY_LIMIT} most frequent of ${otherRowsAll.length} other recorded diagnoses.</p>` : ''}`
@@ -852,18 +886,15 @@ requireAuth();
 
         document.addEventListener('DOMContentLoaded', () => {
             renderPatientBandLegend();
-            openLinkedDetails(window.location.hash);
-            document.querySelectorAll('.report-modules a[href^="#"]').forEach((a) => {
-                a.addEventListener('click', () => openLinkedDetails(a.getAttribute('href')));
-            });
             loadReport();
             loadPatientReportsOverview();
             loadPatientReportsList();
             loadDemoDataVolume();
             loadLateDevelopmentAndDiagnosis();
             if (typeof loadNotificationCount === 'function') loadNotificationCount();
-            setInterval(() => {
+            // KC.poll: no runs in a hidden tab and never two refreshes at once.
+            KC.poll(async () => {
                 if (typeof loadNotificationCount === 'function') loadNotificationCount();
-                refreshReport();
+                await loadReport();
             }, 30000);
         });
