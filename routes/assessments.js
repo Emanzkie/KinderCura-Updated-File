@@ -6,7 +6,7 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const { authMiddleware } = require('../middleware/auth');
-const { hasPermission } = require('../middleware/guardianAccess');
+const { hasPermission, canViewChild } = require('../middleware/guardianAccess');
 const Assessment = require('../models/Assessment');
 const AssessmentAnswer = require('../models/AssessmentAnswer');
 const AssessmentResult = require('../models/AssessmentResult');
@@ -622,6 +622,15 @@ async function notifyPediatricianCustomAnswer({ pediatricianId, child, questionT
   }
 }
 
+// Who may start, draft or submit a screening for this child: the owning
+// parent, a pediatrician with an appointment for the child, or a guardian
+// whose link grants submitAssessments. Shared by initialize/save-draft/submit.
+async function canSubmitForChild(user, child) {
+  if (String(child.parentId) === String(user.userId)) return true;
+  if (user.role === 'pediatrician' && await Appointment.exists({ childId: child._id, pediatricianId: user.userId })) return true;
+  return hasPermission(user.userId, child._id, 'submitAssessments');
+}
+
 // POST /api/assessments/initialize
 router.post('/initialize', authMiddleware, async (req, res) => {
   try {
@@ -631,9 +640,7 @@ router.post('/initialize', authMiddleware, async (req, res) => {
     const child = await Child.findById(childId).lean();
     if (!child) return res.status(404).json({ error: 'Child not found.' });
 
-    const isOwner = String(child.parentId) === String(req.user.userId);
-    const isPediaLinked = req.user.role === 'pediatrician' && await Appointment.exists({ childId: child._id, pediatricianId: req.user.userId });
-    if (!isOwner && !isPediaLinked && !await hasPermission(req.user.userId, child._id, 'submitAssessments')) {
+    if (!await canSubmitForChild(req.user, child)) {
       return res.status(403).json({ error: 'Access denied.' });
     }
 
@@ -690,18 +697,27 @@ router.post('/save-draft', authMiddleware, async (req, res) => {
     const { assessmentId, progress, answers } = req.body;
     if (!assessmentId) return res.status(400).json({ error: 'assessmentId is required.' });
 
+    // A draft may only be written by someone allowed to screen THIS
+    // assessment's child, and never onto a completed screening — its answers
+    // are the evidence behind an already-stored result.
+    const draftAssessment = await Assessment.findById(assessmentId).select('childId status').lean();
+    if (!draftAssessment) return res.status(404).json({ error: 'Assessment not found.' });
+    const draftChild = await Child.findById(draftAssessment.childId).lean();
+    if (!draftChild) return res.status(404).json({ error: 'Child not found.' });
+    if (!await canSubmitForChild(req.user, draftChild)) {
+      return res.status(403).json({ error: 'Access denied.' });
+    }
+    if (draftAssessment.status === 'complete') {
+      return res.status(409).json({ error: 'This assessment is already complete.' });
+    }
+
     await Assessment.findByIdAndUpdate(assessmentId, { currentProgress: progress || 0 });
 
     const answersArray = normalizeAnswers(answers);
     const bankIds = await getCoreBankIds();
     const datasetIndex = await datasetEligibility.loadDatasetQuestionIndex();
     // The child's age is only needed to check a Dataset Question answer.
-    let ageMonths = NaN;
-    if (answersArray.some((a) => datasetIndex.has(String(a.questionId)))) {
-      const draftAssessment = await Assessment.findById(assessmentId).select('childId').lean();
-      const draftChild = draftAssessment ? await Child.findById(draftAssessment.childId).select('dateOfBirth').lean() : null;
-      ageMonths = draftChild ? datasetEligibility.ageInMonths(draftChild.dateOfBirth) : NaN;
-    }
+    const ageMonths = datasetEligibility.ageInMonths(draftChild.dateOfBirth);
     for (const a of answersArray) {
       if (!a.questionId || !a.answer) continue;
       const fields = screeningAnswerFields(a, bankIds, datasetIndex, ageMonths);
@@ -737,13 +753,17 @@ router.post('/submit', authMiddleware, async (req, res) => {
     const child = await Child.findById(childId).lean();
     if (!child) return res.status(404).json({ error: 'Child not found.' });
 
-    const isOwner = String(child.parentId) === String(req.user.userId);
-    const isPediaLinked = req.user.role === 'pediatrician' && await Appointment.exists({ childId: child._id, pediatricianId: req.user.userId });
-    if (!isOwner && !isPediaLinked && !await hasPermission(req.user.userId, child._id, 'submitAssessments')) {
+    if (!await canSubmitForChild(req.user, child)) {
       return res.status(403).json({ error: 'Access denied.' });
     }
 
     let assessment = assessmentId ? await Assessment.findById(assessmentId) : null;
+    // Access was checked against childId, so the assessment must be that
+    // child's — otherwise this submit would overwrite another child's
+    // answers and result.
+    if (assessment && String(assessment.childId) !== String(child._id)) {
+      return res.status(400).json({ error: 'This assessment belongs to a different child.' });
+    }
     if (!assessment) {
       assessment = await Assessment.create({
         childId,
@@ -1065,20 +1085,23 @@ router.get('/pedia-patients', authMiddleware, async (req, res) => {
         overallScore: latestResult?.overallScore ?? null,
         lastAssessmentDate: latestResult?.generatedAt ?? null,
         assessmentId: latestAssessment ? String(latestAssessment._id) : null,
-        diagnosis: latestAssessment?.diagnosis || null,
-        recommendations: latestAssessment?.recommendations || null,
-        nextAssessmentDate: latestAssessment?.nextAssessmentDate || null,
-        nextAssessmentReason: latestAssessment?.nextAssessmentReason || null,
+        // Diagnosis fields come from the latest COMPLETED assessment — the one
+        // POST /diagnose/:childId writes to — so an unfinished reassessment
+        // never hides a saved diagnosis from the card or its edit form.
+        diagnosis: latestCompletedAssessment?.diagnosis || null,
+        recommendations: latestCompletedAssessment?.recommendations || null,
+        nextAssessmentDate: latestCompletedAssessment?.nextAssessmentDate || null,
+        nextAssessmentReason: latestCompletedAssessment?.nextAssessmentReason || null,
 
         // Additive: the structured outcome label, so reopening the diagnosis
         // modal can show what was already recorded instead of a blank
         // dropdown. Kept separate from `diagnosis` above — see
         // models/Assessment.js on why the free text can never stand in for it.
-        clinicalOutcome: latestAssessment?.clinicalOutcome || null,
-        clinicalOutcomeDomains: Array.isArray(latestAssessment?.clinicalOutcomeDomains)
-          ? latestAssessment.clinicalOutcomeDomains
+        clinicalOutcome: latestCompletedAssessment?.clinicalOutcome || null,
+        clinicalOutcomeDomains: Array.isArray(latestCompletedAssessment?.clinicalOutcomeDomains)
+          ? latestCompletedAssessment.clinicalOutcomeDomains
           : [],
-        clinicalOutcomeAt: latestAssessment?.clinicalOutcomeAt || null,
+        clinicalOutcomeAt: latestCompletedAssessment?.clinicalOutcomeAt || null,
 
         // Step 10: reviewed ML training-target label — separate from
         // clinicalOutcome above. Additive so reopening the diagnosis modal
@@ -1271,8 +1294,20 @@ router.post('/diagnose/:childId', authMiddleware, async (req, res) => {
     const child = await Child.findById(req.params.childId).lean();
     if (!child) return res.status(404).json({ error: 'Child not found.' });
 
-    const latest = await Assessment.findOne({ childId: req.params.childId }).sort({ startedAt: -1 });
-    if (!latest) return res.status(404).json({ error: 'No assessment found for this child.' });
+    // Same link rule as progress notes, review-answers and check-ups: only a
+    // pediatrician with an appointment for this child may diagnose them.
+    const linked = await Appointment.exists({ childId: child._id, pediatricianId: req.user.userId });
+    if (!linked) {
+      return res.status(403).json({ error: 'You can only diagnose your own patients.' });
+    }
+
+    // The diagnosis reviews the child's latest COMPLETED screening — the same
+    // one the Review Assessment modal (/review-answers) and the parent Results
+    // and Reports pages show. The newest started screening may be an
+    // unfinished reassessment, where a diagnosis would never reach the parent.
+    const latest = await Assessment.findOne({ childId: req.params.childId, status: 'complete' })
+      .sort({ completedAt: -1, startedAt: -1 });
+    if (!latest) return res.status(404).json({ error: 'No completed assessment found for this child.' });
 
     // Save the diagnosis on the assessment so the Results page can display it later.
     latest.diagnosis = diagnosisText;
@@ -1482,6 +1517,12 @@ router.get('/:assessmentId/results', authMiddleware, async (req, res) => {
     if (!result) return res.status(404).json({ error: 'Results not found.' });
 
     const assessment = await Assessment.findById(req.params.assessmentId).lean();
+    // Scores and the pediatrician's diagnosis are the child's records — only
+    // someone who may view this child's assessments gets them.
+    const child = await Child.findById(assessment ? assessment.childId : result.childId).lean();
+    if (!child || !await canViewChild(req.user, child, 'viewAssessments')) {
+      return res.status(403).json({ error: 'Access denied.' });
+    }
 
     // Evidence behind each stored percentage. Read-only: it counts the answers
     // that were already saved for THIS assessment and never re-scores them.

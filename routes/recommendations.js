@@ -7,7 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const { authMiddleware } = require('../middleware/auth');
-const { hasPermission } = require('../middleware/guardianAccess');
+const { canViewChild } = require('../middleware/guardianAccess');
 const AssessmentResult = require('../models/AssessmentResult');
 const Recommendation = require('../models/Recommendation');
 const Assessment = require('../models/Assessment');
@@ -279,20 +279,15 @@ router.get('/:assessmentId', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Assessment not found.' });
     }
 
-    // Parents may only read their own child's recommendation set
-    // or have shared access via GuardianLink.
-    if (req.user.role === 'parent') {
-      const child = await Child.findById(assessment.childId).lean();
-      if (!child) {
-        return res.status(404).json({ error: 'Child not found.' });
-      }
-      const isOwner = String(child.parentId) === String(req.user.userId);
-      const hasSharedAccess = child && child._id
-        ? await hasPermission(req.user.userId, child._id, 'viewRecommendations')
-        : false;
-      if (!isOwner && !hasSharedAccess) {
-        return res.status(403).json({ error: 'Access denied.' });
-      }
+    // Every role is checked: the owning parent, a pediatrician with an
+    // appointment for this child, an admin, or a guardian whose link grants
+    // viewRecommendations. Previously only role 'parent' was checked.
+    const child = await Child.findById(assessment.childId).lean();
+    if (!child) {
+      return res.status(404).json({ error: 'Child not found.' });
+    }
+    if (!await canViewChild(req.user, child, 'viewRecommendations')) {
+      return res.status(403).json({ error: 'Access denied.' });
     }
 
     const resultDoc = await AssessmentResult.findOne({ assessmentId });

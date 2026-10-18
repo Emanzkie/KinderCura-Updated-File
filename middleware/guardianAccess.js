@@ -1,6 +1,7 @@
 // middleware/guardianAccess.js
 const Child = require('../models/Child');
 const GuardianLink = require('../models/GuardianLink');
+const Appointment = require('../models/Appointment');
 
 async function resolveChildIdFromReq(req) {
   return req.params.childId || req.body.childId || req.query.childId || null;
@@ -31,6 +32,19 @@ async function hasPermission(userId, childId, permissionKey) {
   return Boolean(perms[permissionKey]);
 }
 
+// Read access to one child's records: the owning parent, a pediatrician with
+// an appointment for this child, an admin, or a guardian link granting
+// permissionKey. Owner is checked first so owners never trigger a link lookup.
+async function canViewChild(user, child, permissionKey) {
+  if (!user || !child) return false;
+  if (String(child.parentId) === String(user.userId)) return true;
+  if (user.role === 'admin') return true;
+  if (user.role === 'pediatrician') {
+    if (await Appointment.exists({ childId: child._id, pediatricianId: user.userId })) return true;
+  }
+  return hasPermission(user.userId, child._id, permissionKey);
+}
+
 // Express middleware factory
 function checkPermission(permissionKey) {
   return async function (req, res, next) {
@@ -43,4 +57,4 @@ function checkPermission(permissionKey) {
   };
 }
 
-module.exports = { hasPermission, checkPermission };
+module.exports = { hasPermission, canViewChild, checkPermission };

@@ -7,7 +7,7 @@ const nodemailer = require('nodemailer');
 const mongoose = require('mongoose');
 require('dotenv').config();
 
-const { authMiddleware, secretaryOrPediatrician } = require('../middleware/auth');
+const { authMiddleware, adminOnly, secretaryOrPediatrician } = require('../middleware/auth');
 const { hasPermission } = require('../middleware/guardianAccess');
 const Appointment = require('../models/Appointment');
 const Notification = require('../models/Notification');
@@ -2073,8 +2073,13 @@ router.put('/:appointmentId', authMiddleware, async (req, res) => {
       return res.status(403).json({ error: 'Access denied.' });
     }
 
+    // Status changes go only through the routes that enforce their rules:
+    // PUT /:id/status (linked clinic staff, payment check, notifications) and
+    // POST /:id/cancel (parents/guardians). This legacy route edits notes only.
     const { status, notes } = req.body;
-    if (status) appt.status = status;
+    if (status !== undefined) {
+      return res.status(400).json({ error: "Use PUT /api/appointments/:id/status (clinic staff) or POST /api/appointments/:id/cancel to change an appointment's status." });
+    }
     if (notes !== undefined) appt.notes = notes;
     await appt.save();
 
@@ -2084,7 +2089,10 @@ router.put('/:appointmentId', authMiddleware, async (req, res) => {
   }
 });
 
-router.delete('/:appointmentId', authMiddleware, async (req, res) => {
+// Hard delete is an admin-only cleanup action: no page calls it, and parents,
+// guardians and clinic staff end a booking through POST /:appointmentId/cancel,
+// which keeps the record and its payment history.
+router.delete('/:appointmentId', authMiddleware, adminOnly, async (req, res) => {
   try {
     const appt = await Appointment.findOne({ id: Number(req.params.appointmentId) });
     if (!appt) return res.status(404).json({ error: 'Appointment not found.' });

@@ -8,6 +8,10 @@ const childAge = require('../js/shared/child-age');
 
 const router = express.Router();
 
+// Names are matched literally in the duplicate check, so characters such as
+// "(" or "." in a valid name never act as regex syntax.
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 // Compare only the calendar date so duplicate child checks stay simple
 function sameDay(a, b) {
     return new Date(a).toISOString().split('T')[0] === new Date(b).toISOString().split('T')[0];
@@ -105,8 +109,8 @@ router.post('/register', authMiddleware, async (req, res) => {
 
         const existing = await Child.findOne({
             parentId: req.user.userId,
-            firstName: new RegExp(`^${cleanFirst}$`, 'i'),
-            lastName: new RegExp(`^${cleanLast}$`, 'i'),
+            firstName: new RegExp(`^${escapeRegex(cleanFirst)}$`, 'i'),
+            lastName: new RegExp(`^${escapeRegex(cleanLast)}$`, 'i'),
         });
 
         if (existing && sameDay(existing.dateOfBirth, dob)) {
