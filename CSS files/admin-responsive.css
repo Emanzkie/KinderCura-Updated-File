@@ -31,17 +31,12 @@
 
 /* ===========================================================================
    0. Desktop top bar (> 1024px)
-   Ten links (two injected by assets/js/admin-nav.js) at the shared 2rem gaps
-   need about 1395px, so the bar pushed the whole page sideways on 1280px and
-   1366px laptops. The other roles have six or seven links and fit, so this
-   stays here rather than in mobile-nav.css.
-
-   Three steps. Each switches over while the wider one still has 50px or more
-   to spare beside the logo and the icon cluster, so a font wider than Segoe
-   UI does not tip the bar over:
-     > 1380px   1.5rem gaps
-     <= 1380px  0.875rem links, 1rem gaps
-     <= 1200px  0.8125rem links, 0.625rem gaps, 1rem side padding
+   The bar now holds six links plus the "More" chevron (section 0b), so the
+   gaps match the Parent bar: 2rem, and 1rem on narrow laptops. The smaller
+   link sizes below predate that and are kept as they were.
+     > 1380px   2rem gaps
+     <= 1380px  0.875rem links, 2rem gaps
+     <= 1200px  0.8125rem links, 1rem gaps, 1rem side padding
 
    The floor is 1024.02px, not 1025px: an exact 1025px floor leaves fractional
    widths (zoomed pages) between the two bands with no rule at all, and 1024px
@@ -52,16 +47,11 @@
 
     .top-nav.has-mobile-nav .nav-container,
     .top-nav.has-mobile-nav .main-nav {
-        gap: 1.5rem;
+        gap: 2rem;
     }
 }
 
 @media (min-width: 1024.02px) and (max-width: 1380px) {
-
-    .top-nav.has-mobile-nav .nav-container,
-    .top-nav.has-mobile-nav .main-nav {
-        gap: 1rem;
-    }
 
     .top-nav.has-mobile-nav .nav-link {
         font-size: 0.875rem;
@@ -75,13 +65,171 @@
     }
 
     .top-nav.has-mobile-nav .nav-container,
-    .top-nav.has-mobile-nav .main-nav,
+    .top-nav.has-mobile-nav .main-nav {
+        gap: 1rem;
+    }
+
     .top-nav.has-mobile-nav .nav-right {
         gap: 0.625rem;
     }
 
     .top-nav.has-mobile-nav .nav-link {
         font-size: 0.8125rem;
+    }
+}
+
+
+/* ===========================================================================
+   0b. "More" dropdown (built by assets/js/admin-nav.js)
+   The bar shows six primary modules; Insights, Payments and Question Origin
+   sit in a dropdown behind a chevron after Reports, and Settings lives in the
+   profile menu.
+
+   The direct-child guard stops the old bar painting for a frame before the
+   script runs: once moved into .nav-more-menu (or removed, for Settings) the
+   links are no longer direct children of .main-nav. It is a delayed reveal,
+   not display: none, so if admin-nav.js never runs the links come back in
+   the bar after 1.5s instead of becoming unreachable. Only font-size and
+   visibility are animatable here, which is enough to collapse them.
+   ========================================================================== */
+
+.top-nav .main-nav > a[href*="admin-settings"],
+.top-nav .main-nav > a[href$="/admin/payments"],
+.top-nav .main-nav > a[href*="admin-insights"],
+.top-nav .main-nav > a[href*="data-sources"] {
+    animation: kc-admin-nav-pending 0s 1.5s backwards;
+}
+
+@keyframes kc-admin-nav-pending {
+    from {
+        visibility: hidden;
+        font-size: 0;
+        padding: 0;
+        border-width: 0;
+    }
+}
+
+/* Settings page: Settings lives in the profile menu, so the current location
+   shows there — a ring on the profile button and the Settings row marked like
+   an active link. */
+.top-nav .profile-btn.has-active .profile-icon {
+    box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--primary);
+}
+
+.top-nav .profile-menu .menu-item.active {
+    color: var(--primary-dark);
+    background: var(--surface-tint);
+    font-weight: var(--fw-strong);
+}
+
+@media (min-width: 1024.02px) {
+
+    .top-nav .nav-more {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .top-nav .nav-more-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.25rem;
+        height: 2.25rem;
+        padding: 0;
+        border: 0;
+        border-radius: 10px;
+        background: var(--surface-muted);
+        color: var(--text-light);
+        cursor: pointer;
+        transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    .top-nav .nav-more-toggle::before {
+        content: "";
+        width: 16px;
+        height: 16px;
+        background-color: currentColor;
+        -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / 16px 16px no-repeat;
+        mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / 16px 16px no-repeat;
+        transition: transform 0.2s ease;
+    }
+
+    .top-nav .nav-more-toggle:hover,
+    .top-nav .nav-more.open .nav-more-toggle {
+        color: var(--primary-dark);
+        background: var(--border);
+    }
+
+    .top-nav .nav-more.open .nav-more-toggle::before {
+        transform: rotate(180deg);
+    }
+
+    .top-nav .nav-more-toggle:focus-visible {
+        outline: 2px solid var(--primary);
+        outline-offset: 2px;
+    }
+
+    /* Current page is inside the dropdown: the chevron takes the same
+       green + pink underline the active link carries. */
+    .top-nav .nav-more.has-active .nav-more-toggle {
+        color: var(--primary-dark);
+        box-shadow: inset 0 -3px 0 var(--accent-red);
+    }
+
+    .top-nav .nav-more-menu {
+        display: none;
+        position: absolute;
+        top: calc(100% + 0.6rem);
+        left: 0;
+        z-index: 1001;
+        min-width: 13rem;
+        max-width: calc(100vw - 2rem);
+        padding: 0.4rem;
+        background: var(--bg-primary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-card);
+        box-shadow: 0 12px 28px rgba(61, 71, 56, 0.14);
+    }
+
+    .top-nav .nav-more.open .nav-more-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+    }
+
+    .top-nav .nav-more-menu .nav-link {
+        display: block;
+        padding: 0.6rem 0.9rem;
+        border-bottom: 0;
+        border-radius: var(--radius-panel);
+        color: var(--text-dark);
+    }
+
+    .top-nav .nav-more-menu .nav-link:hover {
+        color: var(--primary-dark);
+        background: var(--surface-muted);
+    }
+
+    .top-nav .nav-more-menu .nav-link.active,
+    .top-nav .nav-more-menu .nav-link[aria-current="page"] {
+        color: var(--primary-dark);
+        background: var(--surface-tint);
+        font-weight: var(--fw-strong);
+    }
+}
+
+/* In the drawer the group dissolves: its three links render as ordinary
+   rows after Reports, with the drawer's own icons and chevrons. */
+@media (max-width: 1024px) {
+
+    .top-nav .nav-more,
+    .top-nav .nav-more-menu {
+        display: contents;
+    }
+
+    .top-nav .nav-more-toggle {
+        display: none;
     }
 }
 
