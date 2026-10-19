@@ -13,6 +13,17 @@ const recommendationSchema = new mongoose.Schema(
     activities: [{ type: String }],
     consultationNeeded: { type: Boolean, default: false },
     generatedAt: { type: Date, default: Date.now },
+    // Home activities the parent/guardian has marked done. `activity` is the
+    // exact string from `activities` above; at most one entry per activity
+    // (enforced by the conditional update in PATCH /:recommendationId/activities).
+    completedActivities: [
+      {
+        _id: false,
+        activity: { type: String, required: true },
+        completedAt: { type: Date, default: Date.now },
+        completedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      },
+    ],
   },
   { timestamps: false, collection: 'recommendations' }
 );

@@ -1,6 +1,6 @@
 # KinderCura Project Map
 
-This is a quick reference for finding code without rescanning the repository. The architecture rules are in `CLAUDE.md`, and the verified code excerpts for the four research objectives are in `OBJECTIVE_SOURCE_CODE_REPORT.md`. Line numbers are as of commit 42c838b.
+This is a quick reference for finding code without rescanning the repository. The architecture rules are in `CLAUDE.md`, and the verified code excerpts for the four research objectives are in `OBJECTIVE_SOURCE_CODE_REPORT.md`. Line numbers match the code after activity completion was added (Oct 19, 2026).
 
 ## Stack
 - **Backend:** Node.js and Express 4 (`server.js`). On Vercel, the entry point is `api/index.js`.
@@ -44,12 +44,15 @@ This is a quick reference for finding code without rescanning the repository. Th
 - `services/assessmentProgress.js`: `compareAssessmentProgress` :344, `buildScoreChanges` :373, `buildAssessmentProgressSummary` :407 (used by `GET /api/assessments/:id/compare` at `routes/assessments.js:1849`).
 - `js/parent/reports.js` (page `PARENT/reports.html`): `renderTrend` :225, `drawTrendChart` :292, `renderLatestDomains` :359.
 - `js/parent/dashboard.js` (page `PARENT/dashboard.html`): `loadDashboard` :88 loads the assessment history and recommendations; `renderSkills` :176.
-- **Gap:** completion of individual home activities is not tracked anywhere. `Recommendation.activities` is a plain string array.
+- Home-activity completion: `Recommendation.completedActivities` (`models/Recommendation.js:19`), and `buildActivityProgress` (`routes/recommendations.js:140`).
+  - `PATCH /api/recommendations/:recommendationId/activities` (:419) lets the parent or a permitted guardian mark an activity done or undo it.
+  - Checkboxes are in `js/parent/recommendations.js` (`toggleActivity` :331). The dashboard bar is `renderActivityProgress` (`js/parent/dashboard.js:224`).
+  - Tested by `tests/unit/activity-completion.test.js`.
 
 ## Objective 3: Automated recommendations
 - `routes/recommendations.js`:
-  - `RECOMMENDATION_LEVEL_BY_BAND` :61, `buildRecommendationSet` :68, `buildOverallCarePlan` :136, `buildSuggestedPediatricians` :224.
-  - `GET /:assessmentId` :271 generates the recommendations and saves them once (:304–313).
+  - `RECOMMENDATION_LEVEL_BY_BAND` :62, `buildRecommendationSet` :69, `buildOverallCarePlan` :162, `buildSuggestedPediatricians` :250.
+  - `GET /:assessmentId` :297 generates the recommendations and saves them once (:330–339). It also returns `completedActivities` and `activityProgress`.
 - `services/assessmentProgress.js`: `buildPredictionForStorage` :254 uses the ML prediction when available and falls back to rule-based staging otherwise.
 - `constants/developmental-staging.js`: `getCareStageFromScore` :182, `getCarePlanForCareStage` :126.
 - `models/Recommendation.js` (skill, priority, suggestion, activities, consultationNeeded).

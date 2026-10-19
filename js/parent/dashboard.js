@@ -149,7 +149,7 @@ async function loadDashboard() {
                 console.log('[PARENT_DASHBOARD] Valid assessment rendered', { childId, assessmentId: latest.id, loadId });
                 try {
                     const recs = await apiFetch(`/recommendations/${latest.id}`);
-                    renderRecs(recs.recommendations || []);
+                    renderRecs(recs.recommendations || [], recs.activityProgress);
                 } catch {}
             } else {
                 _lastRenderedChildId = String(childId);
@@ -218,10 +218,25 @@ function renderAssessment(a) {
         <button class="btn btn-primary btn-full" onclick="window.location.href='/parent/results.html?childId=${childId}&assessmentId=${a.id}'">View Detailed Results</button>`;
 }
 
-function renderRecs(recs) {
+// Home-activity completion for the latest assessment's recommendations, as
+// counted by the server (routes/recommendations.js buildActivityProgress).
+// Refreshed with the rest of the dashboard on load and on every KC.poll tick.
+function renderActivityProgress(progress) {
+    if (!progress || !progress.total) return '';
+    return `
+        <div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid var(--border);">
+            <p style="font-weight:600;margin-bottom:0.3rem;">Home activities completed</p>
+            <p style="color:var(--text-light);font-size:0.9rem;margin-bottom:0.5rem;">${progress.completed} of ${progress.total} (${progress.percentage}%)</p>
+            <div role="progressbar" aria-label="Home activities completed" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress.percentage}" style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
+                <div style="height:100%;width:${progress.percentage}%;background:var(--primary);"></div>
+            </div>
+        </div>`;
+}
+
+function renderRecs(recs, activityProgress) {
     if (!recs || !recs.length) return;
     const icons = { communication:'<img src="/icons/communication.png" alt="" aria-hidden="true" class="icon-inline">', social:'<img src="/icons/social.png" alt="" aria-hidden="true" class="icon-inline">', cognitive:'<img src="/icons/cognitive.png" alt="" aria-hidden="true" class="icon-inline">', motor:'<img src="/icons/motor.png" alt="" aria-hidden="true" class="icon-inline">' };
-    document.getElementById('recList').innerHTML = recs.slice(0,3).map((r, i, arr) => `
+    document.getElementById('recList').innerHTML = renderActivityProgress(activityProgress) + recs.slice(0,3).map((r, i, arr) => `
         <div style="margin-bottom:${i<arr.length-1?'1.5rem':'0'};padding-bottom:${i<arr.length-1?'1.5rem':'0'};border-bottom:${i<arr.length-1?'1px solid var(--border)':'none'}">
             <p style="font-weight:600;margin-bottom:0.3rem;">${icons[r.skill]||'<img src="/icons/recommendations.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">'} ${r.skill.charAt(0).toUpperCase()+r.skill.slice(1)}</p>
             <p style="color:var(--text-light);font-size:0.9rem;">${r.suggestion}</p>

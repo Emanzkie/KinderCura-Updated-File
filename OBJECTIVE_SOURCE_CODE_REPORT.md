@@ -1,11 +1,11 @@
 # KinderCura Objective Source Code Report
 
-This report lists the KinderCura source code behind each of the four research objectives. Line numbers are as of commit 42c838b. Every excerpt is copied verbatim from the cited lines; `// …` marks lines left out. `PROJECT_MAP.md` lists more related files.
+This report lists the KinderCura source code behind each of the four research objectives. Line numbers match the code after activity completion tracking was added (Oct 19, 2026). Every excerpt is copied verbatim from the cited lines; `// …` marks lines left out. `PROJECT_MAP.md` lists more related files.
 
 | Objective | Status |
 |---|---|
 | 1. Developmental Assessment Tool | Implemented and verified |
-| 2. Progress-Tracking Dashboard | Assessment results and progress tracking are implemented. Completion of individual activities is **not implemented** |
+| 2. Progress-Tracking Dashboard | Implemented and verified (assessment results, developmental progress and home-activity completion) |
 | 3. Automated Recommendations | Implemented and verified (rule-based per domain, with an ML-based overall care stage that falls back to rules) |
 | 4. Pediatric Appointment Booking | Implemented and verified |
 
@@ -169,7 +169,7 @@ The dashboard shows the most recent assessment and its recommendations. The Repo
                 renderAssessment(latest);
 // …
                     const recs = await apiFetch(`/recommendations/${latest.id}`);
-                    renderRecs(recs.recommendations || []);
+                    renderRecs(recs.recommendations || [], recs.activityProgress);
 ```
 ```js
     trendChart = new Chart(canvas, {
@@ -181,14 +181,78 @@ The dashboard shows the most recent assessment and its recommendations. The Repo
                 data: scored.map((a) => a.overallScore),
 ```
 
-**Not implemented: activity completion.** `models/Recommendation.js` stores recommended activities as `activities: [{ type: String }]`, with no field for completion or progress. No route or page records whether a parent finished an activity. When the dashboard shows "completed" counts, they refer to completed assessments and appointments only.
+### 2.4 Home-activity completion
+**Files:**
+- `models/Recommendation.js`: the `completedActivities` field (lines 19–26).
+- `routes/recommendations.js`:
+  - `completedActivityNames` (line 130) and `buildActivityProgress` (lines 140–148).
+  - `PATCH /api/recommendations/:recommendationId/activities` (line 419; the access check is at lines 434–439 and the writes at lines 445–454).
+  - `GET /:assessmentId` now also returns `completedActivities` for each recommendation (line 349) and an overall `activityProgress` (line 384).
+- `js/parent/recommendations.js`: `renderActivityProgress` (line 320) and `toggleActivity` (lines 331–352). Each activity is a checkbox (line 436).
+- `js/parent/dashboard.js`: `renderActivityProgress` (line 224), shown by `renderRecs` (line 236).
+
+**How it works:**
+- On the Recommendations page, a parent ticks an activity to mark it done, or unticks it to undo.
+- Each completion is stored on the recommendation it belongs to, which links it to one child and one exact activity. It records when it was done and by whom.
+- Only the child's parent, or a guardian whose link allows viewing recommendations, can change it. Pediatricians, admins and other families get 403.
+- A conditional update means repeated or simultaneous clicks never create duplicate records.
+- Completed, total and percentage figures are always counted from the stored records. The dashboard shows them and refreshes through its existing 30-second `KC.poll`.
+
+```js
+    completedActivities: [
+      {
+        _id: false,
+        activity: { type: String, required: true },
+        completedAt: { type: Date, default: Date.now },
+        completedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      },
+    ],
+```
+```js
+function buildActivityProgress(recDocs) {
+  let total = 0;
+  let completed = 0;
+  for (const r of recDocs) {
+    total += new Set(Array.isArray(r.activities) ? r.activities : []).size;
+    completed += completedActivityNames(r).length;
+  }
+  return { completed, total, percentage: total ? Math.round((completed / total) * 100) : 0 };
+}
+```
+```js
+    const child = await Child.findById(rec.childId).lean();
+    if (!child) return res.status(404).json({ error: 'Child not found.' });
+    const isOwner = String(child.parentId) === String(req.user.userId);
+    if (!isOwner && !await hasPermission(req.user.userId, child._id, 'viewRecommendations')) {
+      return res.status(403).json({ error: 'Access denied.' });
+    }
+// …
+    if (completed) {
+// …
+      await Recommendation.updateOne(
+        { _id: rec._id, 'completedActivities.activity': { $ne: activity } },
+        { $push: { completedActivities: { activity, completedAt: new Date(), completedBy: req.user.userId } } }
+      );
+    } else {
+      await Recommendation.updateOne({ _id: rec._id }, { $pull: { completedActivities: { activity } } });
+    }
+```
+
+**How it was verified:**
+- **Unit test:** `tests/unit/activity-completion.test.js` (part of `npm test`) covers marking and undoing, no duplicates, counts taken from the records, separate records for each child, and authorization.
+- **Real database:** against a throwaway local MongoDB, five simultaneous "mark done" requests stored a single record, and the API counts matched the stored documents.
+- **Browser:** ticking and unticking on the Recommendations page updated the summary, the state survived a reload, and the dashboard showed the same numbers.
+
+**Limitations:**
+- Completion is tracked for the latest assessment's recommendation plan. After a reassessment, the new plan starts at 0%, while earlier plans keep their records.
+- The Reports page does not show activity-completion history over time.
 
 ---
 
 ## Objective 3: Automated Recommendations
 
 ### 3.1 Recommendations for each domain
-**File:** `routes/recommendations.js`. The relevant code is `RECOMMENDATION_LEVEL_BY_BAND` (lines 61–66) and `buildRecommendationSet` (lines 68–122).
+**File:** `routes/recommendations.js`. The relevant code is `RECOMMENDATION_LEVEL_BY_BAND` (lines 62–67) and `buildRecommendationSet` (lines 69–123).
 
 Each domain's score band sets the recommendation's priority and picks the wording from a fixed suggestion map. The map holds home activities for each domain at three levels; at the lowest level the activities include consulting a specialist. A domain is marked as needing a professional consultation when its score is risk-flagged. When the stored prediction came from the ML model, the model's verdict can also set that flag.
 
@@ -230,7 +294,7 @@ function buildRecommendationSet(resultDoc, predictionInfo) {
 ```
 
 ### 3.2 Generating and saving recommendations
-**File:** `routes/recommendations.js`. The handler for `GET /api/recommendations/:assessmentId` starts at line 271; recommendations are generated and saved at lines 304–313.
+**File:** `routes/recommendations.js`. The handler for `GET /api/recommendations/:assessmentId` starts at line 297; recommendations are generated and saved at lines 330–339.
 
 The first time anyone views an assessment's results, the recommendations are generated and saved. Every later view reads the saved copy.
 
@@ -248,7 +312,7 @@ The first time anyone views an assessment's results, the recommendations are gen
 ```
 
 ### 3.3 Overall care stage (ML with rule-based fallback)
-**File:** `services/assessmentProgress.js`. `buildPredictionForStorage` (lines 254–268 are excerpted) is called during assessment submission. Its result is used by `buildOverallCarePlan` in `routes/recommendations.js:136`.
+**File:** `services/assessmentProgress.js`. `buildPredictionForStorage` (lines 254–268 are excerpted) is called during assessment submission. Its result is used by `buildOverallCarePlan` in `routes/recommendations.js:162`.
 
 When an assessment is submitted, the system saves an overall risk category and care stage (consultation level and monitoring level). The trained ML model produces them when it is available. Otherwise they come from rules applied to the overall score (`constants/developmental-staging.js:182`, `getCareStageFromScore`). The `source` field records which method was used.
 
@@ -274,7 +338,7 @@ async function buildPredictionForStorage(scores, childId, answers = null) {
 - The activities and suggestions for each domain are fixed text chosen by score band. They are not personalised beyond that.
 - An ML prediction is used only when an active trained model is reachable when the assessment is submitted.
 - The bands come from Objective 1, so the same cutoff caveat applies.
-- The recommendations route also suggests pediatricians (`buildSuggestedPediatricians`, line 224).
+- The recommendations route also suggests pediatricians (`buildSuggestedPediatricians`, line 250).
 
 ---
 

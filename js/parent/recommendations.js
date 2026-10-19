@@ -315,6 +315,42 @@
             </div>`;
         }
 
+        // "Activities completed: X of Y (Z%)" — the numbers come from the server
+        // (routes/recommendations.js buildActivityProgress), never counted here.
+        function renderActivityProgress(progress) {
+            const p = progress || { completed: 0, total: 0, percentage: 0 };
+            return `
+                <h3 style="margin-bottom:0.5rem;">Home Activity Progress</h3>
+                <p style="color:var(--text-light);margin-bottom:0.75rem;">Activities completed: <strong>${p.completed} of ${p.total}</strong> (${p.percentage}%)</p>
+                <div role="progressbar" aria-label="Activities completed" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p.percentage}" style="height:10px;background:var(--border);border-radius:5px;overflow:hidden;">
+                    <div style="height:100%;width:${p.percentage}%;background:var(--primary);"></div>
+                </div>
+                <p id="activityProgressError" class="kc-alert kc-alert--error" role="alert" style="margin-top:0.75rem;display:none;"></p>`;
+        }
+
+        async function toggleActivity(input) {
+            const completed = input.checked;
+            input.disabled = true;
+            try {
+                const data = await apiFetch(`/recommendations/${encodeURIComponent(input.dataset.recId)}/activities`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ activity: input.dataset.activity, completed }),
+                });
+                input.checked = (data.completedActivities || []).includes(input.dataset.activity);
+                const box = document.getElementById('activityProgress');
+                if (box) box.innerHTML = renderActivityProgress(data.activityProgress);
+            } catch (e) {
+                input.checked = !completed;
+                const err = document.getElementById('activityProgressError');
+                if (err) {
+                    err.textContent = `Could not save that change: ${e.message}`;
+                    err.style.display = 'block';
+                }
+            } finally {
+                input.disabled = false;
+            }
+        }
+
         async function loadRecommendations() {
             const assessmentId = await resolveContext();
             if (!assessmentId || !activeChild) {
@@ -376,6 +412,7 @@
 
                 html += renderSuggestedClinics(suggested, assessmentId, booked, data.suggestionSummary || 'KinderCura matched these clinics based on the latest assessment.');
 
+                if (recs.length) html += `<div id="activityProgress" aria-live="polite" style="background:#FAFAF6;border-radius:15px;padding:1.5rem 2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);margin-bottom:1.5rem;">${renderActivityProgress(data.activityProgress)}</div>`;
                 if (recs.length) html += renderPriorityLegend();
 
                 recs.forEach((r) => {
@@ -383,6 +420,7 @@
                     const label = PRIORITY_LABELS[r.priority] || '';
                     const icon = ICONS[r.skill] || '<img src="/icons/recommendations.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">';
                     const activities = Array.isArray(r.activities) ? r.activities : [];
+                    const completedSet = new Set(Array.isArray(r.completedActivities) ? r.completedActivities : []);
                     html += `
                     <div style="background:#FAFAF6;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);border-left:4px solid ${color};margin-bottom:1.5rem;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;gap:1rem;flex-wrap:wrap;">
@@ -393,8 +431,9 @@
                         <p style="color:var(--text-light);margin-bottom:1rem;line-height:1.6;">${escapeHtml(r.suggestion)}</p>
                         ${activities.length ? `
                         <h4 style="font-weight:600;margin-bottom:0.5rem;">Recommended Activities:</h4>
-                        <ul style="color:var(--text-light);padding-left:1.5rem;line-height:1.8;">
-                            ${activities.map((a) => `<li>${escapeHtml(a)}</li>`).join('')}
+                        <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:0.5rem;">Tick an activity once your child has done it.</p>
+                        <ul style="color:var(--text-light);list-style:none;padding-left:0;line-height:1.8;">
+                            ${activities.map((a) => `<li><label style="display:flex;align-items:flex-start;gap:0.6rem;cursor:pointer;"><input type="checkbox" data-rec-id="${escapeHtml(r.id)}" data-activity="${escapeHtml(a)}" ${completedSet.has(a) ? 'checked' : ''} onchange="toggleActivity(this)" style="margin-top:0.45rem;width:1.1rem;height:1.1rem;flex-shrink:0;accent-color:var(--primary);"><span>${escapeHtml(a)}</span></label></li>`).join('')}
                         </ul>` : ''}
                     </div>`;
                 });

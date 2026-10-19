@@ -5,9 +5,10 @@
 // - now also suggests active pediatricians based on the child's latest assessment result
 // - tells the frontend if the child already has a consultation booked
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const { authMiddleware } = require('../middleware/auth');
-const { canViewChild } = require('../middleware/guardianAccess');
+const { canViewChild, hasPermission } = require('../middleware/guardianAccess');
 const AssessmentResult = require('../models/AssessmentResult');
 const Recommendation = require('../models/Recommendation');
 const Assessment = require('../models/Assessment');
@@ -119,6 +120,31 @@ function buildRecommendationSet(resultDoc, predictionInfo) {
       consultationNeeded: mlConsultation != null ? (domainConsultation || mlConsultation) : domainConsultation,
     };
   });
+}
+
+// ── Activity completion ────────────────────────────────────────────────────
+// Completion entries are stored on the Recommendation itself
+// (models/Recommendation.js completedActivities). Only entries naming one of
+// the recommendation's own activities count, so a stray entry can never push
+// the percentage past 100.
+function completedActivityNames(rec) {
+  const valid = new Set(Array.isArray(rec.activities) ? rec.activities : []);
+  const done = new Set();
+  for (const c of rec.completedActivities || []) {
+    if (c && valid.has(c.activity)) done.add(c.activity);
+  }
+  return [...done];
+}
+
+// Progress over one assessment's whole recommendation set (all four domains).
+function buildActivityProgress(recDocs) {
+  let total = 0;
+  let completed = 0;
+  for (const r of recDocs) {
+    total += new Set(Array.isArray(r.activities) ? r.activities : []).size;
+    completed += completedActivityNames(r).length;
+  }
+  return { completed, total, percentage: total ? Math.round((completed / total) * 100) : 0 };
 }
 
 // ── Overall care stage + care plan ─────────────────────────────────────────
@@ -320,6 +346,7 @@ router.get('/:assessmentId', authMiddleware, async (req, res) => {
       priority: r.priority,
       suggestion: r.suggestion,
       activities: Array.isArray(r.activities) ? r.activities : [],
+      completedActivities: completedActivityNames(r),
       consultationNeeded: Boolean(r.consultationNeeded),
       generatedAt: r.generatedAt,
     }));
@@ -354,6 +381,7 @@ router.get('/:assessmentId', authMiddleware, async (req, res) => {
       bookedConsultation: bookedCount > 0,
       suggestedPediatricians: suggested.pediatricians.slice(0, 5),
       recommendations,
+      activityProgress: buildActivityProgress(recDocs),
       // A. Developmental band (score classification) — separate from B/C below.
       developmentalBand,
       // C. Overall care stage/care-plan for the frontend to eventually
@@ -384,9 +412,66 @@ router.get('/:assessmentId', authMiddleware, async (req, res) => {
   }
 });
 
+// Mark one recommended home activity done (completed: true) or undo it
+// (completed: false). Only the child's parent, or a guardian whose link grants
+// viewRecommendations, may change it — pediatricians and admins can read the
+// plan through GET but do not carry out home activities.
+router.patch('/:recommendationId/activities', authMiddleware, async (req, res) => {
+  try {
+    const { recommendationId } = req.params;
+    if (!mongoose.isValidObjectId(recommendationId)) {
+      return res.status(400).json({ error: 'Invalid recommendation id.' });
+    }
+    const activity = typeof req.body?.activity === 'string' ? req.body.activity : '';
+    const completed = req.body?.completed;
+    if (!activity || typeof completed !== 'boolean') {
+      return res.status(400).json({ error: 'activity and completed (true or false) are required.' });
+    }
+
+    const rec = await Recommendation.findById(recommendationId).lean();
+    if (!rec) return res.status(404).json({ error: 'Recommendation not found.' });
+
+    const child = await Child.findById(rec.childId).lean();
+    if (!child) return res.status(404).json({ error: 'Child not found.' });
+    const isOwner = String(child.parentId) === String(req.user.userId);
+    if (!isOwner && !await hasPermission(req.user.userId, child._id, 'viewRecommendations')) {
+      return res.status(403).json({ error: 'Access denied.' });
+    }
+
+    if (!Array.isArray(rec.activities) || !rec.activities.includes(activity)) {
+      return res.status(400).json({ error: 'That activity is not part of this recommendation.' });
+    }
+
+    if (completed) {
+      // The $ne filter makes the push a no-op when the activity is already
+      // recorded, so repeated or concurrent requests never create duplicates.
+      await Recommendation.updateOne(
+        { _id: rec._id, 'completedActivities.activity': { $ne: activity } },
+        { $push: { completedActivities: { activity, completedAt: new Date(), completedBy: req.user.userId } } }
+      );
+    } else {
+      await Recommendation.updateOne({ _id: rec._id }, { $pull: { completedActivities: { activity } } });
+    }
+
+    const recDocs = await Recommendation.find({ assessmentResultId: rec.assessmentResultId }).sort({ generatedAt: 1 }).lean();
+    const updated = recDocs.find((r) => String(r._id) === String(rec._id));
+    res.json({
+      success: true,
+      recommendationId: String(rec._id),
+      activity,
+      completed,
+      completedActivities: updated ? completedActivityNames(updated) : [],
+      activityProgress: buildActivityProgress(recDocs),
+    });
+  } catch (err) {
+    console.error('activity completion update error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 
 // Exposed for tests only (see tests/unit/recommendations-staging.test.js).
 // Attaching to the router function is inert for Express — app.use() only
 // ever calls it as a request handler, so this does not affect routing.
-router.__testables = { buildOverallCarePlan, getPredictionForResult };
+router.__testables = { buildOverallCarePlan, getPredictionForResult, buildActivityProgress };
