@@ -693,9 +693,9 @@ requireAuth();
                 const rows = Object.keys(DEMO_COLLECTION_LABELS).filter((k) => c[k]).map((k) => `
                     <tr>
                         <td>${DEMO_COLLECTION_LABELS[k]}</td>
-                        <td class="num">${fmtCountR(c[k].total)}</td>
                         <td class="num">${fmtCountR(c[k].synthetic)}</td>
                         <td class="num">${fmtCountR(c[k].real)}</td>
+                        <td class="num">${fmtCountR(c[k].total)}</td>
                     </tr>`).join('');
                 tbody.innerHTML = rows || '<tr><td colspan="4" class="muted">No demo data recorded.</td></tr>';
             } catch (err) {
