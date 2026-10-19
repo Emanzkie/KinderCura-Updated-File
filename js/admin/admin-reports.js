@@ -886,15 +886,32 @@ requireAuth();
         }
 
         // "How these averages are calculated": every stored result the cards
-        // average, and the sum ÷ count behind each card. Fetched on open, so
-        // it is checked against whatever the cards currently show.
+        // average, and the sum ÷ count behind each card. Fetched the first
+        // time the panel opens and kept for the page view; only a failed load
+        // is fetched again (Retry, or reopening the panel).
+        const AVERAGE_SCORE_DETAIL_TIMEOUT_MS = 20000;
+        let averageScoreDetailLoad = null;
+
+        function openAverageScoreDetail() {
+            if (!averageScoreDetailLoad) averageScoreDetailLoad = loadAverageScoreDetail();
+        }
+
+        function retryAverageScoreDetail() {
+            document.getElementById('averageScoreDetailMethod').textContent = 'Loading…';
+            document.getElementById('averageScoreCalcRows').innerHTML = '<tr><td colspan="6" class="muted">Loading...</td></tr>';
+            document.getElementById('averageScoreRecordRows').innerHTML = '<tr><td colspan="7" class="muted">Loading...</td></tr>';
+            openAverageScoreDetail();
+        }
+
         async function loadAverageScoreDetail() {
             const method = document.getElementById('averageScoreDetailMethod');
             const calcRows = document.getElementById('averageScoreCalcRows');
             const recordRows = document.getElementById('averageScoreRecordRows');
             const recordsNote = document.getElementById('averageScoreRecordsNote');
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), AVERAGE_SCORE_DETAIL_TIMEOUT_MS);
             try {
-                const detail = await apiFetch('/admin/analytics/average-scores-detail');
+                const detail = await apiFetch('/admin/analytics/average-scores-detail', { signal: controller.signal });
                 const cards = (reportCache && reportCache.analytics && reportCache.analytics.averageScores) || {};
                 const domains = [
                     ['communication', 'Communication', cards.avgCommunication],
@@ -917,7 +934,7 @@ requireAuth();
                     const cardText = noScores ? 'N/A' : card == null ? '—' : `${Math.round(card)}%`;
                     const matches = !noScores && card != null && d.rounded === Math.round(card);
                     const check = noScores ? ' (the card shows N/A while no completed screenings are counted)'
-                        : card == null ? '' : matches ? ' ✓' : ' (differs — data changed since the cards loaded; press Refresh)';
+                        : card == null ? '' : matches ? ' ✓' : ' (differs — data changed since the cards loaded; reload the page)';
                     const excluded = d.excluded ? ` <span class="muted">(${fmtCountR(d.excluded)} without a score excluded)</span>` : '';
                     return `<tr><td>${label}</td><td class="num">${fmtCountR(d.included)}${excluded}</td><td class="num">${fmtCountR(d.sum)}</td><td class="num">${d.mean == null ? '—' : `${fmtCountR(d.sum)} ÷ ${fmtCountR(d.included)} = ${d.mean.toFixed(2)}%`}</td><td class="num">${d.rounded == null ? 'N/A' : `${d.rounded}%`}</td><td class="num">${cardText}${check}</td></tr>`;
                 }).join('');
@@ -929,17 +946,23 @@ requireAuth();
                 ).join('');
             } catch (err) {
                 console.error('average score detail load error:', err);
-                method.textContent = `Could not load the calculation detail: ${err.message}`;
+                averageScoreDetailLoad = null;
+                const reason = controller.signal.aborted
+                    ? `the request took longer than ${AVERAGE_SCORE_DETAIL_TIMEOUT_MS / 1000} seconds`
+                    : err.message;
+                method.innerHTML = `Could not load the calculation detail: ${escapeHtml(reason)}. <button type="button" class="btn btn-secondary" onclick="retryAverageScoreDetail()">Retry</button>`;
                 calcRows.innerHTML = '<tr><td colspan="6" class="muted">Unavailable.</td></tr>';
                 recordRows.innerHTML = '<tr><td colspan="7" class="muted">Unavailable.</td></tr>';
                 recordsNote.textContent = '';
+            } finally {
+                clearTimeout(timer);
             }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
             const averageScoreDetail = document.getElementById('averageScoreDetail');
             averageScoreDetail.addEventListener('toggle', () => {
-                if (averageScoreDetail.open) loadAverageScoreDetail();
+                if (averageScoreDetail.open) openAverageScoreDetail();
             });
             renderPatientBandLegend();
             loadReport();

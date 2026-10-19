@@ -41,6 +41,14 @@ const PAGES = {
     '/js/admin/analytics-interpretations.js': 'js/admin/analytics-interpretations.js',
     '/js/admin/admin-analytics.js': 'js/admin/admin-analytics.js',
   },
+  // Same defect again: the new "How these averages are calculated" panel ran
+  // with the old cached admin-reports.js and stayed on "Loading...".
+  'ADMIN/admin-reports.html': {
+    '/css/admin-reports.css': 'CSS files/admin-reports.css',
+    '/js/admin/admin-reports-interpretations.js': 'js/admin/admin-reports-interpretations.js',
+    '/js/admin/admin-reports.js': 'js/admin/admin-reports.js',
+    '/js/admin/admin-clinics.js': 'js/admin/admin-clinics.js',
+  },
 };
 
 function contentVersion(file) {
@@ -59,4 +67,4 @@ for (const [page, assets] of Object.entries(PAGES)) {
   }
 }
 
-console.log('Page asset versions OK — Pediatrician Reports and Admin Analytics reference the current content of their own script and stylesheet files');
+console.log('Page asset versions OK — Pediatrician Reports, Admin Analytics and Admin Reports reference the current content of their own script and stylesheet files');
