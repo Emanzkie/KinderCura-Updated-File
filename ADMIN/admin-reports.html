@@ -417,6 +417,31 @@
                 <div id="averageScoreBlocks" class="report-grid" style="grid-template-columns:repeat(4,minmax(0,1fr));">
                     <div class="report-card"><p class="report-label">Loading...</p><p class="report-value">—</p></div>
                 </div>
+
+                <!-- The stored results behind the four cards and the arithmetic, -->
+                <!-- from GET /api/admin/analytics/average-scores-detail (same   -->
+                <!-- filter as the cards). Loaded when opened.                   -->
+                <details id="averageScoreDetail" style="margin-top:1.25rem;">
+                    <summary style="cursor:pointer;font-weight:600;padding:0.5rem 0;">How these averages are calculated</summary>
+                    <p class="muted pr-scope-line" id="averageScoreDetailMethod">Loading…</p>
+                    <div style="overflow-x:auto;margin-bottom:1rem;">
+                        <table class="simple-table">
+                            <thead>
+                                <tr><th>Domain</th><th class="num">Results included</th><th class="num">Sum of stored %</th><th class="num">Mean (sum ÷ results)</th><th class="num">Rounded</th><th class="num">Card shows</th></tr>
+                            </thead>
+                            <tbody id="averageScoreCalcRows"><tr><td colspan="6" class="muted">Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+                    <p class="muted pr-scope-line" id="averageScoreRecordsNote"></p>
+                    <div style="overflow:auto;max-height:28rem;">
+                        <table class="simple-table">
+                            <thead>
+                                <tr><th class="num">#</th><th>Assessment date</th><th>Child</th><th class="num">Communication</th><th class="num">Social Skills</th><th class="num">Cognitive</th><th class="num">Motor Skills</th></tr>
+                            </thead>
+                            <tbody id="averageScoreRecordRows"><tr><td colspan="7" class="muted">Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+                </details>
             </div>
 
             <!-- ============================================================== -->

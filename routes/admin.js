@@ -1285,6 +1285,62 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
   }
 });
 
+// The records behind /analytics averageScores, and the arithmetic that turns
+// them into the four cards. Same filter as that $group, and the same rule as
+// $avg: only numeric values count, so each domain has its own count. Children
+// get a "Child N" pseudonym (numbered by first result) — no ids or names leave
+// this function, the same approach as summarizeReviewers.
+const AVERAGE_SCORE_DOMAINS = [
+  ['communication', 'communicationScore'],
+  ['social', 'socialScore'],
+  ['cognitive', 'cognitiveScore'],
+  ['motor', 'motorScore'],
+];
+
+function buildAverageScoreDetail(resultsNewestFirst) {
+  const childRefById = new Map();
+  for (let i = resultsNewestFirst.length - 1; i >= 0; i -= 1) {
+    const id = String(resultsNewestFirst[i].childId);
+    if (!childRefById.has(id)) childRefById.set(id, `Child ${childRefById.size + 1}`);
+  }
+
+  const domains = {};
+  for (const [key, field] of AVERAGE_SCORE_DOMAINS) {
+    const values = resultsNewestFirst.map((r) => r[field]).filter((v) => typeof v === 'number' && Number.isFinite(v));
+    const sum = values.reduce((s, v) => s + v, 0);
+    domains[key] = {
+      included: values.length,
+      excluded: resultsNewestFirst.length - values.length,
+      sum,
+      mean: values.length ? round2(sum / values.length) : null,
+      rounded: values.length ? Math.round(sum / values.length) : null,
+    };
+  }
+
+  const records = resultsNewestFirst.map((r) => {
+    const scores = {};
+    for (const [key, field] of AVERAGE_SCORE_DOMAINS) {
+      scores[key] = typeof r[field] === 'number' && Number.isFinite(r[field]) ? r[field] : null;
+    }
+    return { generatedAt: r.generatedAt, childRef: childRefById.get(String(r.childId)), scores };
+  });
+
+  return { totalResults: records.length, distinctChildren: childRefById.size, domains, records };
+}
+
+// GET /api/admin/analytics/average-scores-detail
+router.get('/analytics/average-scores-detail', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const results = await AssessmentResult.find({ generatedAt: { $exists: true } })
+      .select('childId generatedAt communicationScore socialScore cognitiveScore motorScore')
+      .sort({ generatedAt: -1 })
+      .lean();
+    res.json({ success: true, ...buildAverageScoreDetail(results) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/admin/export-data
 router.get('/export-data', authMiddleware, adminOnly, async (req, res) => {
   try {
@@ -3116,4 +3172,5 @@ router.__testables = {
   computeDatasetProvenance,
   COMPLETED_ASSESSMENT_FILTER,
   setDatasetQuestionActivation,
+  buildAverageScoreDetail,
 };

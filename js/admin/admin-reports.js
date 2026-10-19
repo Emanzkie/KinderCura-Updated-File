@@ -154,6 +154,7 @@ requireAuth();
                 // no completed assessments that 0 is not a real score.
                 const noScores = (analytics.scoreDistribution && analytics.scoreDistribution.total === 0)
                     || (analytics.summaryTotals && analytics.summaryTotals.completedScreenings === 0);
+                reportCache.noScores = noScores;
                 document.getElementById('averageScoreBlocks').innerHTML = scoreCards.map(([label, value]) =>
                     summaryCard(label, noScores || value == null ? 'N/A' : `${Math.round(value)}%`, 'mean domain score')).join('');
 
@@ -884,7 +885,62 @@ requireAuth();
             }
         }
 
+        // "How these averages are calculated": every stored result the cards
+        // average, and the sum ÷ count behind each card. Fetched on open, so
+        // it is checked against whatever the cards currently show.
+        async function loadAverageScoreDetail() {
+            const method = document.getElementById('averageScoreDetailMethod');
+            const calcRows = document.getElementById('averageScoreCalcRows');
+            const recordRows = document.getElementById('averageScoreRecordRows');
+            const recordsNote = document.getElementById('averageScoreRecordsNote');
+            try {
+                const detail = await apiFetch('/admin/analytics/average-scores-detail');
+                const cards = (reportCache && reportCache.analytics && reportCache.analytics.averageScores) || {};
+                const domains = [
+                    ['communication', 'Communication', cards.avgCommunication],
+                    ['social', 'Social Skills', cards.avgSocial],
+                    ['cognitive', 'Cognitive', cards.avgCognitive],
+                    ['motor', 'Motor Skills', cards.avgMotor]
+                ];
+                method.textContent = `Each card is the mean of the stored domain percentages: sum of every result's stored % for that domain ÷ number of results with a score for that domain, rounded to a whole number. Every result weighs equally — it is not total points earned ÷ total points possible. Each stored % was computed when the assessment was submitted as points earned ÷ points possible × 100, rounded; points themselves are not stored per result, so they are not shown here. Includes all ${fmtCountR(detail.totalResults)} stored assessment results (all dates, ${fmtCountR(detail.distinctChildren)} children); this section has no filters.`;
+
+                if (!detail.totalResults) {
+                    calcRows.innerHTML = '<tr><td colspan="6" class="muted">No stored assessment results.</td></tr>';
+                    recordRows.innerHTML = '<tr><td colspan="7" class="muted">No stored assessment results.</td></tr>';
+                    recordsNote.textContent = '';
+                    return;
+                }
+
+                calcRows.innerHTML = domains.map(([key, label, card]) => {
+                    const d = detail.domains[key];
+                    const noScores = Boolean(reportCache && reportCache.noScores);
+                    const cardText = noScores ? 'N/A' : card == null ? '—' : `${Math.round(card)}%`;
+                    const matches = !noScores && card != null && d.rounded === Math.round(card);
+                    const check = noScores ? ' (the card shows N/A while no completed screenings are counted)'
+                        : card == null ? '' : matches ? ' ✓' : ' (differs — data changed since the cards loaded; press Refresh)';
+                    const excluded = d.excluded ? ` <span class="muted">(${fmtCountR(d.excluded)} without a score excluded)</span>` : '';
+                    return `<tr><td>${label}</td><td class="num">${fmtCountR(d.included)}${excluded}</td><td class="num">${fmtCountR(d.sum)}</td><td class="num">${d.mean == null ? '—' : `${fmtCountR(d.sum)} ÷ ${fmtCountR(d.included)} = ${d.mean.toFixed(2)}%`}</td><td class="num">${d.rounded == null ? 'N/A' : `${d.rounded}%`}</td><td class="num">${cardText}${check}</td></tr>`;
+                }).join('');
+
+                recordsNote.textContent = `The ${fmtCountR(detail.totalResults)} results included, newest first. "Child N" is a reference numbered by each child's first result in this list — not a record ID — so the same child keeps the same number across rows. "—" means no score was stored for that domain, so that result is left out of that domain's average.`;
+                const pct = (v) => (v == null ? '—' : `${v}%`);
+                recordRows.innerHTML = detail.records.map((r, i) =>
+                    `<tr><td class="num">${i + 1}</td><td>${escapeHtml(formatDateTime(r.generatedAt))}</td><td>${escapeHtml(r.childRef)}</td><td class="num">${pct(r.scores.communication)}</td><td class="num">${pct(r.scores.social)}</td><td class="num">${pct(r.scores.cognitive)}</td><td class="num">${pct(r.scores.motor)}</td></tr>`
+                ).join('');
+            } catch (err) {
+                console.error('average score detail load error:', err);
+                method.textContent = `Could not load the calculation detail: ${err.message}`;
+                calcRows.innerHTML = '<tr><td colspan="6" class="muted">Unavailable.</td></tr>';
+                recordRows.innerHTML = '<tr><td colspan="7" class="muted">Unavailable.</td></tr>';
+                recordsNote.textContent = '';
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
+            const averageScoreDetail = document.getElementById('averageScoreDetail');
+            averageScoreDetail.addEventListener('toggle', () => {
+                if (averageScoreDetail.open) loadAverageScoreDetail();
+            });
             renderPatientBandLegend();
             loadReport();
             loadPatientReportsOverview();
