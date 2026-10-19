@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 KinderCura is a pediatric developmental-screening system: parents screen their children, pediatricians review results and run appointments, secretaries handle scheduling and cashiering, and admins manage users, clinics, payments, reports and the ML model. Node.js + Express + Mongoose (MongoDB Atlas) backend, plain HTML/JS frontend (no build step), Python scikit-learn ML pipeline. Deployed on Vercel. `README.md` and `READ THESE GUIDES JUSKOLORD/HOW_TO_RUN.txt` are outdated (the latter still describes SQL Server). Ignore them, and ignore `database/*.sql`.
 
+Read `PROJECT_MAP.md` before exploring the code. It lists the stack, the folders, and the key files for each of the four research objectives. Don't rescan the whole project unless you're asked to. `OBJECTIVE_SOURCE_CODE_REPORT.md` contains verified code excerpts for the manuscript.
+
 ## Commands
 
 ```bash
