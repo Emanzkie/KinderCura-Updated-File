@@ -191,6 +191,22 @@
 .seg-submitted  { background: var(--accent); }
 .seg-inProgress { background: var(--accent-red); }
 
+/* ---- Headline counts: Total Users first, Total Children beside it ------- */
+.summary-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+.summary-card {
+    min-width: 0;
+}
+
+.summary-card--primary {
+    border-left: 4px solid var(--primary);
+}
+
 @media (max-width: 768px) {
     .dash-status {
         margin: -0.25rem 0 1rem;
@@ -198,5 +214,11 @@
 
     .stat-value {
         font-size: 1.55rem;
+    }
+
+    .summary-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+        margin-bottom: 1rem;
     }
 }

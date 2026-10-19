@@ -48,15 +48,20 @@
             <button type="button" class="dash-retry" id="dashRetry" hidden>Retry</button>
         </div>
 
+        <!-- Headline counts. Total Children is separate: child profiles are not user accounts. -->
+        <div class="summary-grid">
+            <div class="overview-card summary-card summary-card--primary"><p class="stat-label">Total Users</p><p class="stat-value stat-value--hero" id="totalUsers">—</p><p class="stat-note">Every registered account: all roles, active, pending and suspended. Broken down by role in User Distribution below.</p></div>
+            <div class="overview-card summary-card"><p class="stat-label">Total Children</p><p class="stat-value" id="childCount">—</p><p class="stat-note">Child profiles added by parents and guardians. Not user accounts, so not part of Total Users</p></div>
+        </div>
+
         <div class="overview-grid">
             <div class="overview-card">
                 <h3><img src="/icons/analytics.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> System Overview</h3>
                 <!-- The inline grid style is what admin-responsive.css's 360px rule targets; keep it. -->
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-                    <div class="stat-tile stat-tile--center"><p class="stat-label">Total Users</p><p class="stat-value" id="totalUsers">—</p><p class="stat-note">Every account: all roles, active, pending and suspended</p></div>
                     <div class="stat-tile stat-tile--center"><p class="stat-label">In-Progress Assessments</p><p class="stat-value" id="activeAssessments">—</p><p class="stat-note">Sessions started but not yet submitted</p></div>
                     <div class="stat-tile stat-tile--center"><p class="stat-label">Completed Assessments</p><p class="stat-value" id="completedAssessments">—</p><p class="stat-note">Sessions marked complete. Counts sessions, not children</p></div>
-                    <div class="stat-tile stat-tile--center"><p class="stat-label">System Uptime</p><p class="stat-value stat-value--muted" id="uptime">Not measured</p><p class="stat-note">No uptime monitor is connected, so there is no measured uptime to report</p></div>
+                    <div class="stat-tile stat-tile--center" style="grid-column:1/-1;"><p class="stat-label">System Uptime</p><p class="stat-value stat-value--muted" id="uptime">Not measured</p><p class="stat-note">No uptime monitor is connected, so there is no measured uptime to report</p></div>
                 </div>
 
                 <section class="status-breakdown" aria-labelledby="assessmentBreakdownTitle">
@@ -68,13 +73,13 @@
             </div>
             <div class="overview-card">
                 <h3><img src="/icons/parent.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> User Distribution</h3>
+                <p class="breakdown-caption" style="margin:-1rem 0 1rem;">Registered user accounts by role.</p>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
                     <div class="stat-tile"><p class="stat-label">Parents</p><p class="stat-value" id="parentCount">—</p><p class="stat-share" id="parentShare">&nbsp;</p></div>
                     <div class="stat-tile"><p class="stat-label">Other Guardian Roles</p><p class="stat-value" id="otherGuardianCount">—</p><p class="stat-share" id="otherGuardianShare">&nbsp;</p><p class="stat-note">Legal guardian, foster parent and court-appointed accounts</p></div>
                     <div class="stat-tile"><p class="stat-label">Pediatricians</p><p class="stat-value" id="pediatricianCount">—</p><p class="stat-share" id="pediatricianShare">&nbsp;</p></div>
                     <div class="stat-tile"><p class="stat-label">Secretaries</p><p class="stat-value" id="secretaryCount">—</p><p class="stat-share" id="secretaryShare">&nbsp;</p></div>
                     <div class="stat-tile"><p class="stat-label">Admins</p><p class="stat-value" id="adminCount">—</p><p class="stat-share" id="adminShare">&nbsp;</p></div>
-                    <div class="stat-tile"><p class="stat-label">Total Children</p><p class="stat-value" id="childCount">—</p><p class="stat-note">Child profiles added by parents and guardians. Not user accounts, so not part of Total Users</p></div>
                 </div>
                 <p class="card-footnote">Share = accounts in that role ÷ Total Users (all roles and statuses). The five roles add up to Total Users.</p>
             </div>
