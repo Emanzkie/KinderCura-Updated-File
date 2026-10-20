@@ -187,3 +187,84 @@ function switchTab(tab) {
                 if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; }
             }
         }
+
+        // ── Account / Notification / Privacy preferences ───────────────
+
+        // Checkbox id -> preference key in /auth/me and /auth/update-profile.
+        const NOTIFICATION_PREF_INPUTS = {
+            prefAssessmentReminders: 'assessmentReminders',
+            prefEmailAppointments: 'emailAppointments',
+            prefDevelopmentalUpdates: 'developmentalUpdates',
+            prefMarketingEmails: 'marketingEmails',
+        };
+        const PRIVACY_PREF_INPUTS = {
+            prefShareWithProfessionals: 'shareWithProfessionals',
+            prefResearchParticipation: 'researchParticipation',
+        };
+
+        function fillPrefInputs(map, values) {
+            Object.entries(map).forEach(([id, key]) => {
+                const input = document.getElementById(id);
+                if (input && values && typeof values[key] === 'boolean') input.checked = values[key];
+            });
+        }
+
+        function readPrefInputs(map) {
+            const out = {};
+            Object.entries(map).forEach(([id, key]) => {
+                const input = document.getElementById(id);
+                if (input) out[key] = input.checked;
+            });
+            return out;
+        }
+
+        function setPrefMsg(id, text, isError) {
+            const msg = document.getElementById(id);
+            if (!msg) return;
+            msg.textContent = text;
+            msg.style.color = isError ? 'var(--text-dark)' : 'var(--text-light)';
+            msg.style.fontWeight = isError ? '600' : '';
+        }
+
+        async function loadAccountSettings() {
+            if (typeof requireAuth === 'function' && !requireAuth()) return;
+            try {
+                const data = await apiFetch('/auth/me');
+                const user = data.user || {};
+                const email = document.getElementById('settingsEmail');
+                if (email) email.value = user.email || '';
+                fillPrefInputs(NOTIFICATION_PREF_INPUTS, user.notificationSettings);
+                fillPrefInputs(PRIVACY_PREF_INPUTS, user.privacySettings);
+            } catch (err) {
+                setPrefMsg('notificationPrefsMsg', 'Could not load your saved preferences.', true);
+                setPrefMsg('privacyPrefsMsg', 'Could not load your saved preferences.', true);
+            }
+        }
+
+        async function savePrefs(field, map, btnId, msgId) {
+            const btn = document.getElementById(btnId);
+            if (btn) btn.disabled = true;
+            setPrefMsg(msgId, 'Saving…');
+            try {
+                const data = await apiFetch('/auth/update-profile', {
+                    method: 'PUT',
+                    body: JSON.stringify({ [field]: readPrefInputs(map) }),
+                });
+                fillPrefInputs(map, data.user && data.user[field]);
+                setPrefMsg(msgId, 'Saved.');
+            } catch (err) {
+                setPrefMsg(msgId, err.message || 'Could not save. Please try again.', true);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        function saveNotificationPrefs() {
+            return savePrefs('notificationSettings', NOTIFICATION_PREF_INPUTS, 'saveNotificationPrefsBtn', 'notificationPrefsMsg');
+        }
+
+        function savePrivacyPrefs() {
+            return savePrefs('privacySettings', PRIVACY_PREF_INPUTS, 'savePrivacyPrefsBtn', 'privacyPrefsMsg');
+        }
+
+        loadAccountSettings();

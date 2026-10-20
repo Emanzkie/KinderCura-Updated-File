@@ -120,8 +120,85 @@
                 setClinicNameState(showClinicName(data)
                     ? 'This is the saved clinic name.'
                     : 'Clinic name not configured. Receipts and payment pages use the built-in default name until one is saved.');
+                showSupportContact(data);
+                setSupportContactState('This is the saved support contact.');
             } catch (err) {
                 setClinicNameState(err.message || 'Could not load the clinic name.', true);
+                setSupportContactState(err.message || 'Could not load the support contact.', true);
+            }
+        }
+
+        // Matches the limits checked in controllers/paymentController.js.
+        const SUPPORT_PHONE_MAX_LENGTH = 40;
+
+        function setSupportContactState(message, isError = false) {
+            const el = document.getElementById('supportContactState');
+            if (!el) return;
+            el.textContent = message;
+            el.style.color = isError ? '#3d4738' : 'var(--text-light)';
+        }
+
+        function showSupportContact(data) {
+            const clinic = (data && data.clinic) || {};
+            document.getElementById('supportEmailInput').value = clinic.email || '';
+            document.getElementById('supportPhoneInput').value = clinic.phoneNumber || '';
+        }
+
+        // Sends only email + phoneNumber, so the clinic name and payment settings stay as they are.
+        async function saveSupportContact(event) {
+            event.preventDefault();
+            const emailInput = document.getElementById('supportEmailInput');
+            const phoneInput = document.getElementById('supportPhoneInput');
+            const button = document.getElementById('supportContactSaveBtn');
+            const email = emailInput.value.trim();
+            const phoneNumber = phoneInput.value.trim();
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                setSupportContactState('Enter a valid support email address.', true);
+                emailInput.focus();
+                return;
+            }
+            if (!phoneNumber || phoneNumber.length > SUPPORT_PHONE_MAX_LENGTH) {
+                setSupportContactState(`Enter a support phone number (${SUPPORT_PHONE_MAX_LENGTH} characters or fewer).`, true);
+                phoneInput.focus();
+                return;
+            }
+            button.disabled = true;
+            setSupportContactState('Saving...');
+            try {
+                const data = await apiFetch('/payments/clinic-config', {
+                    method: 'PUT',
+                    body: JSON.stringify({ email, phoneNumber }),
+                });
+                showSupportContact(data);
+                setSupportContactState('Saved. The Help & Support page now shows this contact.');
+            } catch (err) {
+                setSupportContactState(err.message || 'Could not save the support contact.', true);
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        // Uses the server's existing no-send probe; it reports only ok / an error code.
+        async function testEmail() {
+            const button = document.getElementById('testEmailBtn');
+            const state = document.getElementById('testEmailState');
+            button.disabled = true;
+            state.style.color = 'var(--text-light)';
+            state.textContent = 'Checking the email connection...';
+            try {
+                const res = await fetch(`${API}/auth/email-status`);
+                const data = await res.json().catch(() => ({}));
+                if (data.ok) {
+                    state.textContent = `Email connection OK (${data.code || 'ok'}). No email was sent.`;
+                } else {
+                    state.style.color = '#3d4738';
+                    state.textContent = `Email is not working: ${data.code || `HTTP ${res.status}`}. Check the server's email environment variables.`;
+                }
+            } catch (err) {
+                state.style.color = '#3d4738';
+                state.textContent = 'Could not reach the server to test email.';
+            } finally {
+                button.disabled = false;
             }
         }
 
@@ -158,6 +235,7 @@
         }
 
         document.getElementById('clinicNameForm').addEventListener('submit', saveClinicName);
+        document.getElementById('supportContactForm').addEventListener('submit', saveSupportContact);
 
         loadAppointmentSlotSetting();
         loadClinicName();

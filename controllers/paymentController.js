@@ -1364,6 +1364,8 @@ async function getPaymentReceipt(req, res) {
 // Exists so the clinic's real phone number is a single database value rather
 // than a string duplicated across templates and pages.
 const CLINIC_NAME_MAX_LENGTH = 120;
+const CLINIC_EMAIL_MAX_LENGTH = 254;
+const CLINIC_PHONE_MAX_LENGTH = 40;
 
 // getClinic() fills a missing field with its schema default, so the merged
 // clinic alone cannot say whether a name was ever saved. clinicNameConfigured
@@ -1408,6 +1410,21 @@ async function updateClinicConfig(req, res) {
         return res.status(400).json({ error: `Clinic name must be ${CLINIC_NAME_MAX_LENGTH} characters or fewer.` });
       }
       set['clinic.clinicName'] = name;
+    }
+    // The contact is shown on receipts and the Help & Support page.
+    if (set['clinic.email'] !== undefined) {
+      const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > CLINIC_EMAIL_MAX_LENGTH) {
+        return res.status(400).json({ error: 'Enter a valid clinic email address.' });
+      }
+      set['clinic.email'] = email;
+    }
+    if (set['clinic.phoneNumber'] !== undefined) {
+      const phone = typeof req.body.phoneNumber === 'string' ? req.body.phoneNumber.trim() : '';
+      if (!phone || phone.length > CLINIC_PHONE_MAX_LENGTH) {
+        return res.status(400).json({ error: `Clinic phone must be 1-${CLINIC_PHONE_MAX_LENGTH} characters.` });
+      }
+      set['clinic.phoneNumber'] = phone;
     }
 
     await SystemSetting.findOneAndUpdate(

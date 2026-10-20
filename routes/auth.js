@@ -7,6 +7,7 @@ const multer = require('multer');
 const nodemailer = require('nodemailer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 require('dotenv').config();
 
@@ -459,11 +460,16 @@ function publicUser(user) {
       sms: Boolean(user.notificationSettings?.sms ?? false),
       assessmentCompleted: Boolean(user.notificationSettings?.assessmentCompleted ?? true),
       dailySummary: Boolean(user.notificationSettings?.dailySummary ?? false),
+      assessmentReminders: Boolean(user.notificationSettings?.assessmentReminders ?? true),
+      developmentalUpdates: Boolean(user.notificationSettings?.developmentalUpdates ?? true),
+      marketingEmails: Boolean(user.notificationSettings?.marketingEmails ?? false),
     },
     privacySettings: {
       showProfile: Boolean(user.privacySettings?.showProfile ?? true),
       showAvailability: Boolean(user.privacySettings?.showAvailability ?? true),
       shareRecommendations: Boolean(user.privacySettings?.shareRecommendations ?? true),
+      shareWithProfessionals: Boolean(user.privacySettings?.shareWithProfessionals ?? true),
+      researchParticipation: Boolean(user.privacySettings?.researchParticipation ?? false),
     },
   };
 }
@@ -670,7 +676,7 @@ router.post('/send-otp', async (req, res) => {
     console.log('[OTP] OTP generated', ms());
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    await OtpCode.deleteMany({ email, used: false });
+    await OtpCode.deleteMany({ email, used: false, purpose: { $ne: 'password_reset' } });
     await OtpCode.create({ email, code: otp, expiresAt, used: false });
     console.log('[OTP] OTP saved', ms());
 
@@ -738,7 +744,7 @@ router.post('/verify-otp', async (req, res) => {
       return res.status(400).json({ error: 'OTP must be 4 digits.' });
     }
 
-    const otpRow = await OtpCode.findOne({ email, code, used: false }).sort({ createdAt: -1 });
+    const otpRow = await OtpCode.findOne({ email, code, used: false, purpose: { $ne: 'password_reset' } }).sort({ createdAt: -1 });
     if (!otpRow) {
       console.log('[OTP] verify rejected — no matching unused code', `email=${email}`);
       return res.status(400).json({ error: 'Invalid OTP.' });
@@ -904,7 +910,7 @@ router.post('/register', handleProfileUpload, async (req, res) => {
       return fail(409, 'Email or username already in use.');
     }
 
-    const verifiedOtp = await OtpCode.findOne({ email: cleanEmail, used: true }).sort({ createdAt: -1 }).lean();
+    const verifiedOtp = await OtpCode.findOne({ email: cleanEmail, used: true, purpose: { $ne: 'password_reset' } }).sort({ createdAt: -1 }).lean();
     if (!verifiedOtp) {
       return fail(400, 'Please verify your email first.');
     }
@@ -1234,10 +1240,163 @@ router.put('/update-profile', authMiddleware, async (req, res) => {
     if (cleanConsultationFee !== undefined) user.consultationFee = cleanConsultationFee;
     if (bio !== undefined) user.bio = bio ? String(bio).trim() : null;
 
+    // Parent Settings preferences. Only these keys are accepted, and each is
+    // merged into the stored object so the pediatrician keys are kept.
+    // Stored only: notification sending and data access do not read them yet.
+    mergeBooleanPrefs(user, 'notificationSettings', req.body.notificationSettings, PARENT_NOTIFICATION_PREF_KEYS);
+    mergeBooleanPrefs(user, 'privacySettings', req.body.privacySettings, PARENT_PRIVACY_PREF_KEYS);
+
     await user.save();
     res.json({ success: true, user: publicUser(user) });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+const PARENT_NOTIFICATION_PREF_KEYS = ['assessmentReminders', 'emailAppointments', 'developmentalUpdates', 'marketingEmails'];
+const PARENT_PRIVACY_PREF_KEYS = ['shareWithProfessionals', 'researchParticipation'];
+
+function mergeBooleanPrefs(user, field, input, allowedKeys) {
+  if (!input || typeof input !== 'object') return;
+  for (const key of allowedKeys) {
+    if (input[key] !== undefined) user.set(`${field}.${key}`, Boolean(input[key]));
+  }
+}
+
+// ── Forgot password ─────────────────────────────────────────────────────────
+// A 6-digit code is emailed and stored only as a sha256 hash. Codes last 15
+// minutes, are single-use, and are voided after 5 wrong guesses. Both routes
+// answer the same way whether or not the account exists. Known limitation:
+// JWTs issued before a reset stay valid until they expire (48h), because
+// tokens are stateless and there is no revocation list.
+const RESET_PURPOSE = 'password_reset';
+const RESET_CODE_TTL_MS = 15 * 60 * 1000;
+const RESET_RESEND_COOLDOWN_MS = 60 * 1000;
+const RESET_MAX_ATTEMPTS = 5;
+const RESET_GENERIC_MESSAGE = 'If an account exists for that email, a reset code has been sent. It expires in 15 minutes.';
+
+function hashResetCode(code) {
+  return crypto.createHash('sha256').update(String(code)).digest('hex');
+}
+
+// POST /api/auth/forgot-password
+router.post('/forgot-password', async (req, res) => {
+  const startedAt = Date.now();
+  const email = String(req.body.email || '').trim().toLowerCase();
+  try {
+    if (!email || !isValidEmail(email)) {
+      return res.status(400).json({ error: 'Please enter a valid email address.' });
+    }
+    if (!emailConfigured()) {
+      console.error('[RESET] EMAIL_NOT_CONFIGURED');
+      return res.status(503).json({
+        error: 'Email service is not configured. Please contact support.',
+        code: 'EMAIL_NOT_CONFIGURED',
+      });
+    }
+
+    const user = await User.findOne({ email }).select('_id status').lean();
+    if (!user || user.status === 'suspended') {
+      return res.json({ success: true, message: RESET_GENERIC_MESSAGE });
+    }
+
+    const recent = await OtpCode.findOne({
+      email, purpose: RESET_PURPOSE, createdAt: { $gt: new Date(Date.now() - RESET_RESEND_COOLDOWN_MS) },
+    }).select('_id').lean();
+    if (recent) {
+      return res.json({ success: true, message: RESET_GENERIC_MESSAGE });
+    }
+
+    const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    await OtpCode.deleteMany({ email, purpose: RESET_PURPOSE, used: false });
+    await OtpCode.create({
+      email,
+      code: hashResetCode(code),
+      purpose: RESET_PURPOSE,
+      attempts: 0,
+      expiresAt: new Date(Date.now() + RESET_CODE_TTL_MS),
+      used: false,
+    });
+
+    try {
+      await deliverOtpEmail({
+        to: email,
+        subject: 'KinderCura — Password Reset Code',
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;">
+            <div style="background:#6B8E6F;padding:20px;text-align:center;border-radius:10px 10px 0 0;">
+              <h1 style="color:white;margin:0;">KinderCura</h1>
+            </div>
+            <div style="background:#f9f9f9;padding:30px;border-radius:0 0 10px 10px;">
+              <h2 style="color:#333;">Password Reset</h2>
+              <p style="color:#666;">Use the 6-digit code below to reset your password. It expires in <strong>15 minutes</strong>.</p>
+              <div style="background:white;border:2px dashed #6B8E6F;border-radius:8px;padding:20px;text-align:center;margin:20px 0;">
+                <span style="font-size:2.5rem;font-weight:bold;letter-spacing:10px;color:#6B8E6F;">${code}</span>
+              </div>
+              <p style="color:#999;font-size:0.85rem;">If you did not request this, you can ignore this email. Your password has not changed.</p>
+            </div>
+          </div>`,
+      }, mailBudgetFrom(startedAt));
+    } catch (mailErr) {
+      // Logged only: a different response here would reveal that the account exists.
+      const failure = classifyMailError(mailErr);
+      console.error(`[RESET] ${failure.label}`, `transport=${activeTransport()}`, { smtp: failure.smtp });
+    }
+
+    res.json({ success: true, message: RESET_GENERIC_MESSAGE });
+  } catch (err) {
+    console.error('[RESET] forgot-password error:', err?.message || err);
+    res.status(500).json({ error: 'Could not start the password reset. Please try again.' });
+  }
+});
+
+// POST /api/auth/reset-password
+router.post('/reset-password', async (req, res) => {
+  const INVALID = 'Invalid or expired code. Request a new one if needed.';
+  try {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const code = String(req.body.code || '').trim();
+    const password = req.body.password;
+
+    if (!email || !/^\d{6}$/.test(code)) {
+      return res.status(400).json({ error: 'Enter your email and the 6-digit code.' });
+    }
+    if (!password || String(password).length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    }
+
+    const row = await OtpCode.findOne({ email, purpose: RESET_PURPOSE, used: false }).sort({ createdAt: -1 });
+    if (!row || new Date() > new Date(row.expiresAt)) {
+      return res.status(400).json({ error: INVALID });
+    }
+
+    const given = Buffer.from(hashResetCode(code), 'hex');
+    const stored = Buffer.from(String(row.code || ''), 'hex');
+    const matches = stored.length === given.length && crypto.timingSafeEqual(stored, given);
+    if (!matches) {
+      row.attempts = (row.attempts || 0) + 1;
+      if (row.attempts >= RESET_MAX_ATTEMPTS) row.used = true;
+      await row.save();
+      return res.status(400).json({ error: INVALID });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user || user.status === 'suspended') {
+      row.used = true;
+      await row.save();
+      return res.status(400).json({ error: INVALID });
+    }
+
+    user.passwordHash = await bcrypt.hash(String(password), 10);
+    await user.save();
+    row.used = true;
+    await row.save();
+    await OtpCode.deleteMany({ email, purpose: RESET_PURPOSE, used: false });
+
+    res.json({ success: true, message: 'Your password has been reset. You can now sign in.' });
+  } catch (err) {
+    console.error('[RESET] reset-password error:', err?.message || err);
+    res.status(500).json({ error: 'Could not reset the password. Please try again.' });
   }
 });
 

@@ -4,7 +4,10 @@ const API = window.location.origin + '/api';
 
         // Important: keep the login page visible first.
         // Before, this page auto-redirected when a session existed, which made the landing-page Login button jump straight to a dashboard.
-        const existingToken = localStorage.getItem('kc_token');
+        // Same check as api.js: a "don't remember me" session ends with the browser.
+        const browserSessionEnded = localStorage.getItem('kc_remember') === '0'
+            && !/(?:^|;\s*)kc_session=1(?:;|$)/.test(document.cookie);
+        const existingToken = browserSessionEnded ? null : localStorage.getItem('kc_token');
         const existingUser = (() => {
             try {
                 return JSON.parse(localStorage.getItem('kc_user'));
@@ -49,6 +52,17 @@ const API = window.location.origin + '/api';
                 localStorage.setItem('kc_token', data.token);
                 localStorage.setItem('kc_user', JSON.stringify(data.user));
                 if (data.childId) localStorage.setItem('kc_childId', data.childId);
+
+                // Remember me: checked keeps the session (up to the 48h token
+                // lifetime); unchecked ties it to a browser-session cookie.
+                if (document.getElementById('rememberMe').checked) {
+                    localStorage.setItem('kc_remember', '1');
+                    document.cookie = 'kc_session=; path=/; max-age=0; SameSite=Lax';
+                } else {
+                    localStorage.setItem('kc_remember', '0');
+                    document.cookie = 'kc_session=1; path=/; SameSite=Lax'
+                        + (window.location.protocol === 'https:' ? '; Secure' : '');
+                }
 
                 // Redirect based on role after successful sign-in
                 // Support ?next= parameter for flow continuations (e.g. guardians or accept-invitation)

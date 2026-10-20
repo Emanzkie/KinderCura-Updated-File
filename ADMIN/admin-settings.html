@@ -47,9 +47,9 @@
                         <img src="/icons/profile_icon.png" class="menu-icon">Admin Settings</a>
                     <a href="/admin/admin-settings.html" class="menu-item">
                         <img src="/icons/settings.png" class="menu-icon">Settings</a>
-                    <a href="help.html" class="menu-item">
+                    <a href="/help.html" class="menu-item">
                         <img src="/icons/help.png" class="menu-icon">Help & Support</a>
-                    <a href="#" class="menu-item">
+                    <a href="/admin/admin-logs.html" class="menu-item">
                         <img src="/icons/logs.png" class="menu-icon">Logs</a>
                     <hr style="margin: 0.5rem 0;">
                     <a href="#" class="menu-item logout">
@@ -99,35 +99,40 @@
 
                         <div style="margin-bottom: 1.5rem;">
                             <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Platform Name</label>
-                            <input type="text" value="KinderCura" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem;">
-                        </div>
-
-                        <div style="margin-bottom: 1.5rem;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Support Email</label>
-                            <input type="email" value="support@kindercura.ph" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem;">
-                        </div>
-
-                        <div style="margin-bottom: 1.5rem;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Support Phone</label>
-                            <input type="tel" value="+63 2 8000-KINDERCURA" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem;">
+                            <input type="text" value="KinderCura" disabled style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem;">
                         </div>
 
                         <div style="margin-bottom: 1.5rem;">
                             <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Time Zone</label>
-                            <select style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem;">
+                            <select disabled style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem;">
                                 <option selected>UTC+8 (Philippine Standard Time)</option>
-                                <option>UTC-5 (Eastern)</option>
-                                <option>UTC+9 (Japan Standard Time)</option>
-                                <option>UTC+7 (Bangkok Standard Time)</option>
                             </select>
                         </div>
 
                         <div style="margin-bottom: 1.5rem;">
-                            <label style="display: flex; align-items: center; gap: 0.8rem; cursor: pointer; font-weight: 600;">
-                                <input type="checkbox" checked>
+                            <label style="display: flex; align-items: center; gap: 0.8rem; font-weight: 600;">
+                                <input type="checkbox" checked disabled>
                                 <span>Enable Platform Notifications</span>
                             </label>
+                            <p style="color: var(--text-light); font-size: 0.82rem; margin: 0.5rem 0 0;">Platform name, time zone and notifications are fixed in this version and cannot be changed here.</p>
                         </div>
+
+                        <!-- Support contact = the shared clinic contact (system_settings.clinic.email /
+                             phoneNumber). It is shown on the Help & Support page. -->
+                        <form id="supportContactForm" novalidate style="margin-bottom: 1.5rem; padding: 1.25rem; border-radius: 12px; background: var(--bg-primary); border-left: 4px solid var(--primary);">
+                            <h3 style="color: var(--primary); margin-bottom: 0.5rem; font-size: 1rem;">Support Contact</h3>
+                            <p style="color: var(--text-light); font-size: 0.88rem; margin-bottom: 1rem;">
+                                Shown to signed-in users on the Help &amp; Support page. This is the same clinic contact used on receipts.
+                            </p>
+                            <label for="supportEmailInput" style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Support Email</label>
+                            <input type="email" id="supportEmailInput" maxlength="254" autocomplete="email" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem; margin-bottom: 0.75rem;">
+                            <label for="supportPhoneInput" style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Support Phone</label>
+                            <input type="tel" id="supportPhoneInput" maxlength="40" autocomplete="tel" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem; margin-bottom: 0.75rem;">
+                            <p id="supportContactState" role="status" aria-live="polite" style="color: var(--text-light); font-size: 0.82rem; margin: 0 0 1rem;">
+                                Loading support contact...
+                            </p>
+                            <button type="submit" id="supportContactSaveBtn" class="btn btn-primary" style="padding: 0.8rem 1.5rem;">Save Support Contact</button>
+                        </form>
 
                         <div style="margin-bottom: 1.5rem; padding: 1.25rem; border-radius: 12px; background: var(--bg-primary); border-left: 4px solid var(--primary);">
                             <h3 style="color: var(--primary); margin-bottom: 0.5rem; font-size: 1rem;">Appointment Slot Rules</h3>
@@ -159,8 +164,6 @@
                             </p>
                             <button type="submit" id="clinicNameSaveBtn" class="btn btn-primary" style="padding: 0.8rem 1.5rem;">Save Clinic Name</button>
                         </form>
-
-                        <button class="btn btn-primary" onclick="alert('Settings saved!')" style="padding: 0.8rem 1.5rem;">Save Changes</button>
                     </div>
                 </div>
 
@@ -169,47 +172,32 @@
                     <div style="background: var(--bg-primary); border-radius: 15px; padding: 2rem; box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08); margin-bottom: 2rem;">
                         <h2 style="color: var(--primary); margin-bottom: 1.5rem;">Email Configuration</h2>
 
-                        <div style="margin-bottom: 1.5rem;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">SMTP Server</label>
-                            <input type="text" value="smtp.mail.com" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem;">
-                        </div>
+                        <!-- Mail credentials never live in the database or the browser:
+                             they are server environment variables. -->
+                        <p style="color: var(--text-light); font-size: 0.9rem; margin-bottom: 1.5rem;">
+                            Email delivery (verification and password-reset codes, receipts) is configured on the server through
+                            environment variables: <code>EMAIL_API_KEY</code> for the HTTPS email API, or <code>EMAIL_USER</code> and
+                            <code>EMAIL_PASS</code> for Gmail SMTP. It cannot be changed from this page.
+                        </p>
 
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
-                            <div>
-                                <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">SMTP Port</label>
-                                <input type="number" value="587" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem;">
-                            </div>
-                            <div>
-                                <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Encryption</label>
-                                <select style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem;">
-                                    <option>TLS</option>
-                                    <option>SSL</option>
-                                    <option>None</option>
-                                </select>
-                            </div>
+                        <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+                            <button type="button" id="testEmailBtn" class="btn btn-secondary" onclick="testEmail()" style="padding: 0.8rem 1.5rem;">Test Email Connection</button>
                         </div>
-
-                        <div style="margin-bottom: 1.5rem;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Email Address</label>
-                            <input type="email" value="noreply@kindercura.ph" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem;">
-                        </div>
-
-                        <div style="margin-bottom: 1.5rem;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Password</label>
-                            <input type="password" value="••••••••••••" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem;">
-                        </div>
-
-                        <div style="display: flex; gap: 1rem;">
-                            <button class="btn btn-primary" onclick="alert('Email configuration saved!')" style="padding: 0.8rem 1.5rem;">Save Changes</button>
-                            <button class="btn btn-secondary" onclick="alert('Testing email configuration...')" style="padding: 0.8rem 1.5rem;">Test Email</button>
-                        </div>
+                        <p id="testEmailState" role="status" aria-live="polite" style="color: var(--text-light); font-size: 0.85rem; margin: 1rem 0 0;">
+                            Checks that the server can sign in to its email service. No email is sent.
+                        </p>
                     </div>
                 </div>
 
                 <!-- Assessment Settings -->
                 <div id="assessment-tab" class="settings-content" style="display: none;">
                     <div style="background: var(--bg-primary); border-radius: 15px; padding: 2rem; box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08); margin-bottom: 2rem;">
-                        <h2 style="color: var(--primary); margin-bottom: 1.5rem;">Assessment Settings</h2>
+                        <h2 style="color: var(--primary); margin-bottom: 0.75rem;">Assessment Settings</h2>
+                        <p style="color: var(--text-light); font-size: 0.88rem; margin-bottom: 1.5rem;">
+                            Read-only. Screening questions and scoring are fixed by the assessment engine
+                            (see Dataset Questions and the ML model pages) and cannot be changed here.
+                        </p>
+                        <fieldset disabled style="border: 0; padding: 0; margin: 0;">
 
                         <div style="margin-bottom: 1.5rem;">
                             <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Questions per Session</label>
@@ -247,14 +235,19 @@
                             </label>
                         </div>
 
-                        <button class="btn btn-primary" onclick="alert('Assessment settings saved!')" style="padding: 0.8rem 1.5rem;">Save Changes</button>
+                        </fieldset>
                     </div>
                 </div>
 
                 <!-- Security & Privacy -->
                 <div id="security-tab" class="settings-content" style="display: none;">
                     <div style="background: var(--bg-primary); border-radius: 15px; padding: 2rem; box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08); margin-bottom: 2rem;">
-                        <h2 style="color: var(--primary); margin-bottom: 1.5rem;">Security & Privacy</h2>
+                        <h2 style="color: var(--primary); margin-bottom: 0.75rem;">Security & Privacy</h2>
+                        <p style="color: var(--text-light); font-size: 0.88rem; margin-bottom: 1.5rem;">
+                            Read-only. Password rules (minimum 8 characters) and sign-in sessions (48 hours) are enforced
+                            by the server and cannot be changed here.
+                        </p>
+                        <fieldset disabled style="border: 0; padding: 0; margin: 0;">
 
                         <div style="margin-bottom: 2rem;">
                             <h3 style="color: var(--text-dark); margin-bottom: 1rem; font-size: 1rem;">Password Policy</h3>
@@ -266,13 +259,13 @@
                             </div>
                             <div style="margin-bottom: 1rem;">
                                 <label style="display: flex; align-items: center; gap: 0.8rem; cursor: pointer; font-weight: 600;">
-                                    <input type="checkbox" checked>
+                                    <input type="checkbox">
                                     <span>Require Uppercase and Lowercase</span>
                                 </label>
                             </div>
                             <div>
                                 <label style="display: flex; align-items: center; gap: 0.8rem; cursor: pointer; font-weight: 600;">
-                                    <input type="checkbox" checked>
+                                    <input type="checkbox">
                                     <span>Require Numbers and Special Characters</span>
                                 </label>
                             </div>
@@ -282,13 +275,13 @@
                             <h3 style="color: var(--text-dark); margin-bottom: 1rem; font-size: 1rem;">Login Security</h3>
                             <div style="margin-bottom: 1rem;">
                                 <label style="display: flex; align-items: center; gap: 0.8rem; cursor: pointer; font-weight: 600;">
-                                    <input type="checkbox" checked>
+                                    <input type="checkbox">
                                     <span>Enable Two-Factor Authentication (2FA)</span>
                                 </label>
                             </div>
                             <div style="margin-bottom: 1rem;">
                                 <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Session Timeout (minutes)</label>
-                                <input type="number" value="30" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem;">
+                                <input type="number" value="2880" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem;">
                             </div>
                         </div>
 
@@ -328,14 +321,19 @@
                             </div>
                         </div>
 
-                        <button class="btn btn-primary" onclick="alert('Security settings saved!')" style="padding: 0.8rem 1.5rem;">Save Changes</button>
+                        </fieldset>
                     </div>
                 </div>
 
                 <!-- Backup & Maintenance -->
                 <div id="backup-tab" class="settings-content" style="display: none;">
                     <div style="background: var(--bg-primary); border-radius: 15px; padding: 2rem; box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08); margin-bottom: 2rem;">
-                        <h2 style="color: var(--primary); margin-bottom: 1.5rem;">Backup & Maintenance</h2>
+                        <h2 style="color: var(--primary); margin-bottom: 0.75rem;">Backup & Maintenance</h2>
+                        <p style="color: var(--text-light); font-size: 0.88rem; margin-bottom: 1.5rem;">
+                            Read-only. Database backups and maintenance are handled by the database host (MongoDB Atlas),
+                            not from this page.
+                        </p>
+                        <fieldset disabled style="border: 0; padding: 0; margin: 0;">
 
                         <div style="margin-bottom: 2rem;">
                             <h3 style="color: var(--text-dark); margin-bottom: 1rem; font-size: 1rem;">Backup Settings</h3>
@@ -360,6 +358,7 @@
                                 <button class="btn btn-secondary" onclick="alert('Running maintenance...')" style="padding: 0.8rem 1.5rem;">Run Maintenance</button>
                             </div>
                         </div>
+                        </fieldset>
 
                         <div style="background: var(--bg-primary); padding: 1.5rem; border-radius: 10px; border-left: 4px solid var(--primary);">
                             <h3 style="color: var(--text-dark); margin-bottom: 0.5rem; font-size: 1rem;">🇵🇭 System Status (Philippines Region)</h3>

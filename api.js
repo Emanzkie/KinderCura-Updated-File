@@ -36,10 +36,20 @@ window.KC = {
         [
             'kc_token', 'kc_user', 'kc_childId', 'kc_assessmentId',
             'kc_viewChildId', 'kc_viewChildName', 'kc_prefPediaId',
-            'kc_preAssessmentRequired',
+            'kc_preAssessmentRequired', 'kc_remember',
         ].forEach((k) => localStorage.removeItem(k));
+        document.cookie = 'kc_session=; path=/; max-age=0; SameSite=Lax';
     }
 };
+
+// "Remember me" left unchecked at login (kc_remember = '0') means the session
+// should end when the browser closes. login.js then also sets kc_session, a
+// cookie with no expiry, which the browser drops on close. Seeing kc_remember
+// '0' without that cookie means the browser was closed since login, so the
+// stored session is cleared before any page uses it.
+if (localStorage.getItem('kc_remember') === '0' && !/(?:^|;\s*)kc_session=1(?:;|$)/.test(document.cookie)) {
+    window.KC.clear();
+}
 
 // Repeats fn every intervalMs, but only while the tab is visible, and never
 // starts a run while the previous one is still waiting on the server. A plain

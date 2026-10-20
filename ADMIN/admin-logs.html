@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logs - KinderCura Admin</title>
+    <link rel="stylesheet" href="/css/dashboard-new-styles.css">
+    <link rel="stylesheet" href="/notifications-card-ui.css">
+    <link rel="stylesheet" href="/css/mobile-nav.css">
+    <link rel="stylesheet" href="/css/nav-drawer.css">
+    <link rel="stylesheet" href="/css/admin-responsive.css">
+    <style>
+        .logs-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .logs-table th, .logs-table td { text-align: left; padding: 0.7rem 0.6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+        .logs-table th { color: var(--text-dark); font-weight: 600; }
+        .logs-table td { color: var(--text-dark); }
+        .logs-table code { font-size: 0.8rem; overflow-wrap: anywhere; }
+        .logs-table pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.78rem; margin: 0.4rem 0 0; color: var(--text-light); }
+        .logs-muted { color: var(--text-light); font-size: 0.82rem; }
+        .logs-scroll { overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <!-- Top Navigation Bar -->
+    <header class="top-nav has-mobile-nav nav-drawer">
+        <div class="nav-container">
+            <a href="/admin/admin-dashboard.html" class="logo">
+                <img src="/icons/logo.png" alt="KinderCura Logo" class="logo-img">
+                <span class="logo-text"><span class="logo-kinder">Kinder</span><span class="logo-cura">Cura</span></span>
+            </a>
+            <nav class="main-nav">
+                <a href="/admin/admin-dashboard.html" class="nav-link">Dashboard</a>
+                <a href="/admin/admin-users.html" class="nav-link">Users</a>
+                <a href="/admin/admin-prc-verification.html" class="nav-link">PRC Verification</a>
+                <a href="/admin/admin-analytics.html" class="nav-link">Analytics</a>
+                <a href="/admin/admin-training.html" class="nav-link">Training</a>
+                <a href="/admin/admin-reports.html" class="nav-link">Reports</a>
+                <a href="/admin/admin-settings.html" class="nav-link">Settings</a>
+                <a href="/admin/payments" class="nav-link">Payments</a>
+            </nav>
+
+            <div class="nav-right">
+                <button class="icon-btn notification-btn" onclick="openNotifications()">
+                    <img src="/icons/notif_bell.png" class="notification-icon">
+                    <span class="notification-badge">0</span>
+                </button>
+                <button class="icon-btn profile-btn" onclick="toggleProfileMenu()">
+                    <img src="/icons/profile.png" class="profile-icon" style="width:36px;height:36px;border-radius:50%;object-fit:cover;display:block;">
+                </button>
+                <button type="button" class="nav-toggle" aria-label="Open menu" aria-expanded="false"><span class="nav-toggle-bars" aria-hidden="true"></span></button>
+
+                <div class="profile-menu" id="profileMenu" style="display: none;">
+                    <div class="menu-header">
+                        <p>Welcome, Admin</p>
+                    </div>
+                    <a href="/admin/admin-settings.html" class="menu-item">
+                        <img src="/icons/settings.png" class="menu-icon">Settings</a>
+                    <a href="/help.html" class="menu-item">
+                        <img src="/icons/help.png" class="menu-icon">Help & Support</a>
+                    <a href="/admin/admin-logs.html" class="menu-item">
+                        <img src="/icons/logs.png" class="menu-icon">Logs</a>
+                    <hr style="margin: 0.5rem 0;">
+                    <a href="#" class="menu-item logout">
+                        <img src="/icons/logout.png" class="menu-icon">Logout</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="dashboard-container">
+        <div style="background: var(--bg-primary); padding: 2rem; border-radius: 15px; margin-bottom: 2rem; box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);">
+            <h1 style="margin-bottom: 0.5rem;">Audit Logs</h1>
+            <p style="color: var(--text-light);">Recorded account actions, newest first: guardian invitations, links, permission changes, revocations and family accounts.</p>
+        </div>
+
+        <div style="background: var(--bg-primary); border-radius: 15px; padding: 1.5rem; box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);">
+            <p id="logsState" role="status" aria-live="polite" class="logs-muted" style="margin-bottom: 1rem;">Loading logs...</p>
+            <div class="logs-scroll">
+                <table class="logs-table" id="logsTable" hidden>
+                    <thead>
+                        <tr><th scope="col">Time</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Target</th></tr>
+                    </thead>
+                    <tbody id="logsBody"></tbody>
+                </table>
+            </div>
+            <button type="button" id="logsMoreBtn" class="btn btn-secondary" style="margin-top: 1rem; padding: 0.7rem 1.4rem;" hidden>Load more</button>
+        </div>
+    </div>
+
+    <!-- Notifications Modal -->
+<div class="notification-modal notifications-modal" id="notificationsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle" aria-hidden="true">
+    <div class="notification-modal-content notifications-content" role="document">
+        <div class="notification-modal-header notifications-header">
+            <h3 id="notificationsTitle">Notifications</h3>
+            <button type="button" class="notif-close close-btn" onclick="closeNotifications()" aria-label="Close notifications">&times;</button>
+        </div>
+        <div class="notification-action-bar clear-all-row">
+            <button type="button" class="mark-all-read-btn" id="markAllNotificationsReadBtn" onclick="markAllNotificationsRead()" disabled>Mark all read</button>
+            <button type="button" class="clear-all-btn" id="clearNotificationsBtn" onclick="clearAllNotifications()" disabled>Clear all</button>
+        </div>
+        <div class="notification-list notifications-list" id="notificationsList" role="list">
+            <p class="notifications-empty">Loading...</p>
+        </div>
+    </div>
+</div>
+    <script src="/api.js"></script>
+    <script src="/notifications-card-ui.js"></script>
+    <script src="/assets/js/admin-nav.js"></script>
+    <script src="/js/shared/mobile-nav.js"></script>
+    <script src="/js/admin/admin-logs.js"></script>
+</body>
+</html>
