@@ -463,7 +463,7 @@ requireAuth();
             } catch (e) {
                 content.innerHTML = `
                     <div class="assessment-error">
-                        <p style="color:red;font-weight:700;margin:0 0 0.9rem 0;">Submission failed: ${e.message}</p>
+                        <p style="color:red;font-weight:700;margin:0 0 0.9rem 0;">Submission failed: ${esc(e.message)}</p>
                         <button type="button" class="assessment-action-btn primary" onclick="completeAssessment()" style="max-width:220px;">Retry</button>
                     </div>
                 `;
@@ -572,7 +572,7 @@ requireAuth();
                 console.error('Assessment init error:', e);
                 content.innerHTML = `
                     <div class="assessment-error">
-                        <p style="color:red;font-weight:700;margin:0 0 0.9rem 0;">Failed to load the assessment: ${e.message}</p>
+                        <p style="color:red;font-weight:700;margin:0 0 0.9rem 0;">Failed to load the assessment: ${esc(e.message)}</p>
                         <button type="button" class="assessment-action-btn primary" onclick="initAssessment()" style="max-width:220px;">Retry</button>
                     </div>
                 `;
