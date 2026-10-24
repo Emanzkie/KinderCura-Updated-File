@@ -1640,7 +1640,11 @@ async function updateAppointmentStatusById({ appointmentId, status, notes = null
 
   if (notes != null && String(notes).trim()) appt.notes = String(notes).trim();
   appt.status = status;
-  if (['cancelled', 'rejected'].includes(status)) appt.paymentStatus = 'Cancelled';
+  // A cancelled or rejected booking that already took money keeps its payment
+  // status (Paid / Down Payment / Partially Paid) so the payment stays on record
+  // for a refund; only unpaid bookings become 'Cancelled'.
+  const moneyReceived = appt.paymentStatus === 'Paid' || Number(appt.amountPaid || 0) > 0;
+  if (['cancelled', 'rejected'].includes(status) && !moneyReceived) appt.paymentStatus = 'Cancelled';
   await appt.save();
 
   sse.broadcast('analytics:update', { type: 'appointment', action: 'update', status });
@@ -1794,6 +1798,12 @@ router.post('/:appointmentId/cancel', authMiddleware, async (req, res) => {
     const isOwner = String(appt.parentId) === String(req.user.userId) || String(appt.pediatricianId) === String(req.user.userId) || await hasPermission(req.user.userId, appt.childId, 'manageAppointments');
     if (!isOwner && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Access denied.' });
+    }
+
+    // Same rule as reschedule: only a live booking can be cancelled, never a
+    // completed, rejected or already-cancelled one.
+    if (!['pending', 'approved'].includes(appt.status)) {
+      return res.status(400).json({ error: `A ${appt.status} appointment cannot be cancelled.` });
     }
 
     await updateAppointmentStatusById({ appointmentId: appt.id, status: 'cancelled' });
