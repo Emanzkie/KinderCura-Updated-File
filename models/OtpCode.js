@@ -14,6 +14,9 @@ const otpCodeSchema = new mongoose.Schema(
         purpose: { type: String, enum: ['signup', 'password_reset'], default: 'signup' },
         // Wrong guesses against a password-reset code; the row is voided at 5.
         attempts: { type: Number, default: 0 },
+        // When a signup code was accepted by /verify-otp. /register only trusts
+        // a recent verification; rows from before this field are never trusted.
+        verifiedAt: { type: Date, default: null },
     },
     // Only keep createdAt because OTP rows do not need updatedAt
     { timestamps: { createdAt: true, updatedAt: false } }

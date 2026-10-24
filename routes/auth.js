@@ -352,6 +352,9 @@ const SELF_REGISTER_ROLES = ['parent', 'pediatrician'];
 // Wrong guesses allowed against one signup email code before it is voided.
 const SIGNUP_OTP_MAX_ATTEMPTS = 5;
 
+// How long a verified signup code may be used by /register.
+const SIGNUP_VERIFICATION_WINDOW_MS = 30 * 60 * 1000;
+
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || ''));
 }
@@ -781,6 +784,7 @@ router.post('/verify-otp', async (req, res) => {
     }
 
     otpRow.used = true;
+    otpRow.verifiedAt = new Date();
     await otpRow.save();
     console.log('[OTP] verify accepted', `email=${email}`);
 
@@ -936,9 +940,16 @@ router.post('/register', handleProfileUpload, async (req, res) => {
       return fail(409, 'Email or username already in use.');
     }
 
-    const verifiedOtp = await OtpCode.findOne({ email: cleanEmail, used: true, purpose: { $ne: 'password_reset' } }).sort({ createdAt: -1 }).lean();
+    // Only a recent verification counts: any old verified code used to be
+    // accepted forever, and it was never used up.
+    const verifiedOtp = await OtpCode.findOne({
+      email: cleanEmail,
+      used: true,
+      purpose: { $ne: 'password_reset' },
+      verifiedAt: { $gte: new Date(Date.now() - SIGNUP_VERIFICATION_WINDOW_MS) },
+    }).sort({ createdAt: -1 }).lean();
     if (!verifiedOtp) {
-      return fail(400, 'Please verify your email first.');
+      return fail(400, 'Please verify your email first. A verification lasts 30 minutes; if it has expired, request a new code.');
     }
 
     const passwordHash = await bcrypt.hash(cleanPassword, 10);
@@ -1038,6 +1049,15 @@ router.post('/register', handleProfileUpload, async (req, res) => {
       prcVerificationStatus: cleanRole === 'pediatrician' ? 'pending' : null,
       prcSubmittedAt: cleanRole === 'pediatrician' ? new Date() : null,
     });
+
+    // The verification is used up by this account. A failure here must not
+    // fail a registration that already succeeded; the email now belongs to an
+    // account, so a leftover code cannot register anyone else anyway.
+    try {
+      await OtpCode.deleteMany({ email: cleanEmail, purpose: { $ne: 'password_reset' } });
+    } catch (err) {
+      console.warn('[OTP] could not clear used signup codes after registration:', err?.message || err);
+    }
 
     // If a parent profile photo was uploaded, move it to a final filename and update the user record
     try {
