@@ -349,6 +349,9 @@ const SIGNUP_RELATIONSHIPS = ['mother', 'father', 'guardian', 'grandparent', 'ot
 // Roles POST /register may create (see the check inside that route).
 const SELF_REGISTER_ROLES = ['parent', 'pediatrician'];
 
+// Wrong guesses allowed against one signup email code before it is voided.
+const SIGNUP_OTP_MAX_ATTEMPTS = 5;
+
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || ''));
 }
@@ -747,14 +750,34 @@ router.post('/verify-otp', async (req, res) => {
       return res.status(400).json({ error: 'OTP must be 4 digits.' });
     }
 
-    const otpRow = await OtpCode.findOne({ email, code, used: false, purpose: { $ne: 'password_reset' } }).sort({ createdAt: -1 });
+    // Look up the newest unused signup code for this email WITHOUT the code,
+    // so every wrong guess can be counted against it. Looking up by email+code
+    // meant a wrong guess matched nothing and could be repeated without limit,
+    // letting the 10,000 four-digit codes be tried within the 10-minute life.
+    const otpRow = await OtpCode.findOne({ email, used: false, purpose: { $ne: 'password_reset' } }).sort({ createdAt: -1 });
     if (!otpRow) {
-      console.log('[OTP] verify rejected — no matching unused code', `email=${email}`);
+      console.log('[OTP] verify rejected — no unused code', `email=${email}`);
       return res.status(400).json({ error: 'Invalid OTP.' });
     }
     if (new Date() > new Date(otpRow.expiresAt)) {
       console.log('[OTP] verify rejected — code expired', `email=${email}`);
       return res.status(400).json({ error: 'OTP expired.' });
+    }
+    if (String(otpRow.code) !== code) {
+      otpRow.attempts = (otpRow.attempts || 0) + 1;
+      if (otpRow.attempts >= SIGNUP_OTP_MAX_ATTEMPTS) {
+        // Deleted, not marked used: /register accepts a used signup code as
+        // proof the email was verified.
+        await OtpCode.deleteOne({ _id: otpRow._id });
+        console.log('[OTP] verify rejected — too many wrong codes, code voided', `email=${email}`);
+        return res.status(429).json({
+          error: 'Too many incorrect codes. Please request a new verification code.',
+          code: 'OTP_LOCKED',
+        });
+      }
+      await otpRow.save();
+      console.log('[OTP] verify rejected — wrong code', `email=${email}`, `attempts=${otpRow.attempts}`);
+      return res.status(400).json({ error: 'Invalid OTP.' });
     }
 
     otpRow.used = true;
