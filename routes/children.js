@@ -17,15 +17,19 @@ function sameDay(a, b) {
     return new Date(a).toISOString().split('T')[0] === new Date(b).toISOString().split('T')[0];
 }
 
+// Account roles on the parent side; any of them can own a child (Child.parentId).
+const PARENT_SIDE_ROLES = ['parent', 'legal_guardian', 'foster_parent', 'court_appointed'];
+
 // Return all children the caller can access:
-//  - Parents  → their own children (parentId match) + children from active GuardianLink
+//  - Parent-side roles → their own children (parentId match) + children from active GuardianLink
 //  - Admins   → all children
 //  - Guardians → children from active guardian links
 async function getAccessibleChildren(userId, userRole) {
   let childIds = new Set();
 
-  // Own children (parentId match) for parent-role users
-  if (userRole === 'parent') {
+  // Own children (parentId match). Checking for 'parent' alone hid a
+  // legal_guardian's own registered child from them.
+  if (PARENT_SIDE_ROLES.includes(userRole)) {
     const own = await Child.find({ parentId: userId }).sort({ createdAt: -1 }).select('+profileIcon').lean();
     own.forEach(c => childIds.add(String(c._id)));
   }
