@@ -346,6 +346,9 @@ function generateOTP() {
 const SIGNUP_CHILD_GENDERS = ['male', 'female', 'other'];
 const SIGNUP_RELATIONSHIPS = ['mother', 'father', 'guardian', 'grandparent', 'other'];
 
+// Roles POST /register may create (see the check inside that route).
+const SELF_REGISTER_ROLES = ['parent', 'pediatrician'];
+
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || ''));
 }
@@ -854,9 +857,12 @@ router.post('/register', handleProfileUpload, async (req, res) => {
       hasLicenseExpiry: Boolean(licenseExpiry),
     });
 
-    // Important: secretary accounts can only be created by the admin — not self-registered.
-    if (!['parent', 'legal_guardian', 'pediatrician', 'admin'].includes(cleanRole)) {
-      return fail(400, 'Invalid user role. Secretary accounts must be created by the admin.');
+    // Public sign-up creates only the two roles signup.html offers. Admin and
+    // secretary accounts are never self-registered: accepting 'admin' here let
+    // anyone with a verified email create an active admin. Family members and
+    // guardians get 'parent' accounts through the guardian flows instead.
+    if (!SELF_REGISTER_ROLES.includes(cleanRole)) {
+      return fail(400, 'Invalid user role. Only parent and pediatrician accounts can sign up.');
     }
     if (!isValidEmail(cleanEmail)) {
       return fail(400, 'Please enter a valid email address.');
