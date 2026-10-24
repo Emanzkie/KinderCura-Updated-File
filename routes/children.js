@@ -1,6 +1,7 @@
 // Child routes converted to MongoDB
 // These routes are used by dashboard.html and profile.html to load/add child records
 const express = require('express');
+const mongoose = require('mongoose');
 const Child = require('../models/Child');
 const GuardianLink = require('../models/GuardianLink');
 const { authMiddleware } = require('../middleware/auth');
@@ -135,6 +136,77 @@ router.post('/register', authMiddleware, async (req, res) => {
             success: true,
             childId: String(child._id),
             message: 'Child registered successfully.',
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+const CHILD_NAME_MAX_LENGTH = 80;
+const CHILD_GENDERS = ['male', 'female', 'other'];
+
+// Edit a child's name and gender. Owner only (Child.parentId); linked
+// guardians cannot rename a child. Date of birth is deliberately not
+// editable: it decides screening eligibility and every stored result's age.
+// PUT /api/children/:childId
+router.put('/:childId', authMiddleware, async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(String(req.params.childId))) {
+            return res.status(404).json({ error: 'Child not found.' });
+        }
+        const child = await Child.findById(req.params.childId);
+        if (!child) return res.status(404).json({ error: 'Child not found.' });
+        if (String(child.parentId) !== String(req.user.userId)) {
+            return res.status(403).json({ error: 'Only the parent who registered this child can edit their details.' });
+        }
+
+        const { firstName, middleName, lastName, gender } = req.body;
+        const clean = (v) => String(v ?? '').trim();
+        const next = {
+            firstName: firstName !== undefined ? clean(firstName) : child.firstName,
+            middleName: middleName !== undefined ? (clean(middleName) || null) : child.middleName,
+            lastName: lastName !== undefined ? clean(lastName) : child.lastName,
+            gender: gender !== undefined ? (clean(gender).toLowerCase() || null) : child.gender,
+        };
+
+        if (!next.firstName || !next.lastName) {
+            return res.status(400).json({ error: 'First name and last name are required.' });
+        }
+        if ([next.firstName, next.middleName, next.lastName].some((n) => n && n.length > CHILD_NAME_MAX_LENGTH)) {
+            return res.status(400).json({ error: `Names must be ${CHILD_NAME_MAX_LENGTH} characters or fewer.` });
+        }
+        if (next.gender !== null && !CHILD_GENDERS.includes(next.gender)) {
+            return res.status(400).json({ error: 'Gender must be male, female or other.' });
+        }
+
+        // Same duplicate rule as registration: one parent cannot hold two
+        // children with the same name and date of birth.
+        const twin = await Child.findOne({
+            _id: { $ne: child._id },
+            parentId: child.parentId,
+            firstName: new RegExp(`^${escapeRegex(next.firstName)}$`, 'i'),
+            lastName: new RegExp(`^${escapeRegex(next.lastName)}$`, 'i'),
+        });
+        if (twin && sameDay(twin.dateOfBirth, child.dateOfBirth)) {
+            return res.status(409).json({ error: 'Another child with this name and date of birth is already registered.' });
+        }
+
+        Object.assign(child, next);
+        await child.save();
+
+        res.json({
+            success: true,
+            child: {
+                id: String(child._id),
+                firstName: child.firstName,
+                middleName: child.middleName || '',
+                lastName: child.lastName,
+                dateOfBirth: child.dateOfBirth,
+                gender: child.gender || '',
+                relationship: child.relationship || '',
+                profileIcon: child.profileIcon || 'child1',
+                parentId: String(child.parentId),
+            },
         });
     } catch (err) {
         res.status(500).json({ error: err.message });

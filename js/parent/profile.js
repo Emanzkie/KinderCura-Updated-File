@@ -144,7 +144,10 @@ async function loadProfile() {
                 localStorage.setItem('kc_childId', children[0].id);
             }
             let html = '';
+            const me = String((KC.user() || {}).id || '');
             children.forEach((c) => {
+                // Only the registering parent may edit; linked children are read-only here.
+                const canEdit = me && String(c.parentId) === me;
                 const dob = new Date(c.dateOfBirth);
                 const childPic = c.profileIcon && c.profileIcon.startsWith('/uploads/') ? c.profileIcon : '/icons/profile.png';
                 html += `
@@ -166,6 +169,26 @@ async function loadProfile() {
                             ${field('Relationship', c.relationship || '—')}
                         </div>
                         <button class="btn btn-primary btn-full-small" onclick="localStorage.setItem('kc_childId','${c.id}');window.location.href='/parent/screening.html'">Start Assessment</button>
+                        ${canEdit ? `<button type="button" class="btn btn-secondary btn-full-small" style="margin-top:.5rem;" onclick="toggleEditChild('${c.id}')">Edit Details</button>
+                        <div id="editChildForm_${c.id}" class="add-child-form">
+                            <h3 class="form-title">Edit Child Details</h3>
+                            <div id="editChildErr_${c.id}" class="err-msg" role="alert"></div>
+                            <p class="hint-text">Date of birth cannot be changed here because it decides which screening questions apply.</p>
+                            <div class="form-group"><label for="editChildFirst_${c.id}">First Name</label><input type="text" id="editChildFirst_${c.id}" maxlength="80" value="${escapeHtml(c.firstName)}"></div>
+                            <div class="form-group"><label for="editChildMiddle_${c.id}">Middle Name (Optional)</label><input type="text" id="editChildMiddle_${c.id}" maxlength="80" value="${escapeHtml(c.middleName)}"></div>
+                            <div class="form-group"><label for="editChildLast_${c.id}">Last Name</label><input type="text" id="editChildLast_${c.id}" maxlength="80" value="${escapeHtml(c.lastName)}"></div>
+                            <div class="form-group">
+                                <label for="editChildGender_${c.id}">Gender</label>
+                                <select id="editChildGender_${c.id}">
+                                    ${[['', 'Not specified'], ['male', 'Male'], ['female', 'Female'], ['other', 'Other']]
+                                        .map(([v, label]) => `<option value="${v}"${(c.gender || '') === v ? ' selected' : ''}>${label}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <button type="button" id="saveChildBtn_${c.id}" class="btn btn-primary btn-half" onclick="saveChild('${c.id}')">Save</button>
+                                <button type="button" class="btn btn-secondary btn-half" onclick="toggleEditChild('${c.id}')">Cancel</button>
+                            </div>
+                        </div>` : ''}
                     </div>
                 </div>`;
             });
@@ -187,6 +210,39 @@ function toggleChangePassword() {
     const form = document.getElementById('changePasswordForm');
     form.style.display = form.style.display === 'none' ? 'block' : 'none';
 }
+function toggleEditChild(childId) {
+    const form = document.getElementById(`editChildForm_${childId}`);
+    if (form) form.style.display = form.style.display === 'block' ? 'none' : 'block';
+}
+
+// Save a child's edited name and gender to PUT /api/children/:childId
+async function saveChild(childId) {
+    const err = document.getElementById(`editChildErr_${childId}`);
+    const btn = document.getElementById(`saveChildBtn_${childId}`);
+    err.style.display = 'none';
+    const firstName = document.getElementById(`editChildFirst_${childId}`).value.trim();
+    const middleName = document.getElementById(`editChildMiddle_${childId}`).value.trim();
+    const lastName = document.getElementById(`editChildLast_${childId}`).value.trim();
+    const gender = document.getElementById(`editChildGender_${childId}`).value;
+    if (!firstName || !lastName) {
+        err.textContent = 'First name and last name are required.';
+        err.style.display = 'block';
+        return;
+    }
+    btn.disabled = true;
+    try {
+        await apiFetch(`/children/${encodeURIComponent(childId)}`, {
+            method: 'PUT',
+            body: JSON.stringify({ firstName, middleName, lastName, gender }),
+        });
+        await loadProfile();
+    } catch (e) {
+        err.textContent = e.message;
+        err.style.display = 'block';
+        btn.disabled = false;
+    }
+}
+
 function showAddChildForm() {
     document.getElementById('addChildForm').style.display = 'block';
 }
