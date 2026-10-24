@@ -26,16 +26,24 @@ const layer = router.stack.find((l) => l.route && l.route.path === '/register' &
 assert(layer, 'POST /register exists');
 const register = layer.route.stack[layer.route.stack.length - 1].handle;
 
+// Everything the route logs, so a test can prove secrets never reach the logs.
+const logged = [];
+const SECRET_PASSWORD = 'S3cret-Pass-Do-Not-Log';
+const CHILD_NAME = 'Zyxwchildname';
+const CHILD_DOB = '2021-03-04';
+
 async function call(role) {
   const res = { statusCode: 200, body: null };
   res.status = (c) => { res.statusCode = c; return res; };
   res.json = (b) => { res.body = b; return res; };
   const body = {
     role, firstName: 'Test', lastName: 'User', username: `u_${role}`,
-    email: `${role}@example.invalid`, password: 'long-enough-pw',
+    email: `${role}@example.invalid`, password: SECRET_PASSWORD,
+    childFirstName: CHILD_NAME, childLastName: CHILD_NAME, dateOfBirth: CHILD_DOB,
   };
   const saved = { log: console.log, warn: console.warn, error: console.error };
-  console.log = console.warn = console.error = () => {};
+  const capture = (...args) => logged.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '));
+  console.log = console.warn = console.error = capture;
   try { await register({ body, files: undefined, file: undefined }, res); } finally { Object.assign(console, saved); }
   return res;
 }
@@ -60,6 +68,15 @@ const ok = (m) => console.log('  ok -', m);
     assert.doesNotMatch(res.body.error, /Invalid user role/, `${role} must pass the role check`);
   }
   ok('parent and pediatrician still pass the role check');
+
+  // Bug #2 regression: sign-up used to log req.body, which put the plaintext
+  // password and the child's name and birth date in the server logs.
+  assert.ok(logged.length > 0, 'the route did log something, so the check below is meaningful');
+  const allLogs = logged.join('\n');
+  assert.ok(!allLogs.includes(SECRET_PASSWORD), 'the password must never be logged');
+  assert.ok(!allLogs.includes(CHILD_NAME), "the child's name must never be logged");
+  assert.ok(!allLogs.includes(CHILD_DOB), "the child's date of birth must never be logged");
+  ok('register logs never contain the password or child details');
 
   console.log('\nRegister role tests OK');
 })().catch((e) => { console.error('FAILED:', e.stack || e.message); process.exit(1); });
