@@ -1182,6 +1182,17 @@ router.post('/login', async (req, res) => {
 
     console.log(`[LOGIN] User FOUND: _id=${user._id} role=${user.role} status=${user.status}`);
 
+    // Password first: the pending/suspended messages below confirm that the
+    // account exists and reveal its status, so they are only shown to someone
+    // who already knows the password.
+    const match = await bcrypt.compare(cleanPassword, user.passwordHash);
+    console.log(`[LOGIN] bcrypt.compare result: ${match}`);
+
+    if (!match) {
+      console.log(`[LOGIN] PASSWORD MISMATCH for user ${user._id}`);
+      return res.status(401).json({ error: 'Invalid email/username or password.' });
+    }
+
     if (user.status === 'pending') {
       console.log(`[LOGIN] Account PENDING: _id=${user._id}`);
       return res.status(403).json({ error: user.role === 'pediatrician' ? 'Your pediatrician account is still pending admin approval.' : 'Your account is not yet active. Please contact the clinic administrator.' });
@@ -1189,14 +1200,6 @@ router.post('/login', async (req, res) => {
     if (user.status === 'suspended') {
       console.log(`[LOGIN] Account SUSPENDED: _id=${user._id}`);
       return res.status(403).json({ error: 'Your account has been suspended.' });
-    }
-
-    const match = await bcrypt.compare(cleanPassword, user.passwordHash);
-    console.log(`[LOGIN] bcrypt.compare result: ${match}`);
-
-    if (!match) {
-      console.log(`[LOGIN] PASSWORD MISMATCH for user ${user._id}`);
-      return res.status(401).json({ error: 'Invalid email/username or password.' });
     }
 
     let childId = null;
