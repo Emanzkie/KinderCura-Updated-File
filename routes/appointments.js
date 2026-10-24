@@ -14,6 +14,7 @@ const Notification = require('../models/Notification');
 const Payment = require('../models/Payment');
 const User = require('../models/User');
 const Child = require('../models/Child');
+const GuardianLink = require('../models/GuardianLink');
 const Assessment = require('../models/Assessment');
 const AssessmentResult = require('../models/AssessmentResult');
 const SystemSetting = require('../models/SystemSetting');
@@ -2060,15 +2061,27 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
 });
 
 // GET /api/appointments/:userId
-// Parent appointment history list.
+// Parent appointment history list: bookings this user made, plus every booking
+// for a child they own (Child.parentId) or reach through an active guardian
+// link that allows managing appointments — the same permission the cancel,
+// reschedule and payment routes check. Matching on parentId alone hid a
+// guardian's bookings from the parent, and the parent's from the guardian.
 router.get('/:userId', authMiddleware, async (req, res) => {
   try {
-    const sameUser = String(req.user.userId) === String(req.params.userId);
+    const userId = req.params.userId;
+    const sameUser = String(req.user.userId) === String(userId);
     if (!sameUser && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Access denied.' });
     }
 
-    const docs = await Appointment.find({ parentId: req.params.userId }).sort({ appointmentDate: -1, createdAt: -1 }).lean();
+    const [ownChildren, links] = await Promise.all([
+      Child.find({ parentId: userId }).select('_id').lean(),
+      GuardianLink.find({ guardianId: userId, status: 'active', 'permissions.manageAppointments': true }).select('childId').lean(),
+    ]);
+    const childIds = [...ownChildren.map((c) => c._id), ...links.map((l) => l.childId)];
+
+    const docs = await Appointment.find({ $or: [{ parentId: userId }, { childId: { $in: childIds } }] })
+      .sort({ appointmentDate: -1, createdAt: -1 }).lean();
     const appointments = [];
     for (const doc of docs) appointments.push(await hydrateAppointment(doc));
 
