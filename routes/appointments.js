@@ -23,6 +23,10 @@ const sse = require('../sse');
 
 const router = express.Router();
 
+// Roles whose bookings may record an upfront payment from the request body
+// (POST /create). Everyone else gets the deferred pay-later plan.
+const STAFF_PAYMENT_ROLES = ['secretary', 'admin'];
+
 function clinicStaffOrAdmin(req, res, next) {
   if (!['pediatrician', 'secretary', 'admin'].includes(req.user?.role)) {
     return res.status(403).json({ error: 'Pediatricians, secretaries, and admins only.' });
@@ -1501,10 +1505,13 @@ router.post('/create', authMiddleware, async (req, res) => {
 
     const totalAmount = Number(pediatrician.consultationFee ?? 0);
 
-    // Parents always use the deferred payment flow: book now, pay on a separate page.
-    // Secretaries and admins booking on behalf of patients use the legacy upfront-payment path.
+    // Only clinic staff (secretary, admin) may use the upfront-payment path,
+    // because it trusts req.body.payment. Every other role, including the
+    // parent-side roles legal_guardian, foster_parent and court_appointed,
+    // books now and pays on the separate payment page. Checking for 'parent'
+    // alone let those roles send a fake cash payment and get a paid booking.
     let paymentPlan;
-    if (req.user.role === 'parent') {
+    if (!STAFF_PAYMENT_ROLES.includes(req.user.role)) {
       paymentPlan = paymentService.buildDeferredPaymentPlan({ totalAmount });
     } else {
       paymentPlan = paymentService.buildInitialPaymentPlan({
@@ -1599,7 +1606,7 @@ router.post('/create', authMiddleware, async (req, res) => {
       success: true,
       appointmentId: appt.id,
       status: appt.status,
-      redirectTo: req.user.role === 'parent' ? `/PARENT/payment.html?appointmentId=${appt.id}` : null,
+      redirectTo: !STAFF_PAYMENT_ROLES.includes(req.user.role) ? `/PARENT/payment.html?appointmentId=${appt.id}` : null,
       payment: paymentService.serializePayment(initialPayment),
       paymentSummary: {
         paymentType: appt.paymentType || null,
