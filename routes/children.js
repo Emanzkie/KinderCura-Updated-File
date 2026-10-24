@@ -96,6 +96,14 @@ router.get('/', authMiddleware, async (req, res) => {
 // POST /api/children/register
 router.post('/register', authMiddleware, async (req, res) => {
     try {
+        // A child belongs to the account that registers it (Child.parentId),
+        // so only parent-side accounts may register one. Pediatricians,
+        // secretaries and admins could otherwise create children under their
+        // own accounts.
+        if (!PARENT_SIDE_ROLES.includes(req.user.role)) {
+            return res.status(403).json({ error: 'Only parent accounts can register a child.' });
+        }
+
         const { firstName, middleName, lastName, dateOfBirth, gender, relationship } = req.body;
 
         if (!firstName || !lastName || !dateOfBirth) {
