@@ -51,6 +51,25 @@ if (localStorage.getItem('kc_remember') === '0' && !/(?:^|;\s*)kc_session=1(?:;|
     window.KC.clear();
 }
 
+// Parent pages (/parent/...) are for parent-side accounts. A signed-in
+// pediatrician, secretary or admin who lands on one is sent to their own
+// dashboard. Only three parent pages used to check this themselves, and none
+// of them handled secretaries. The invitation page is left alone: an invited
+// person may open it while signed in to another account. The server still
+// enforces access on every API call; this only keeps staff off the wrong UI.
+(function redirectStaffAwayFromParentPages() {
+    const path = String((window.location && window.location.pathname) || '').toLowerCase();
+    if (!path.startsWith('/parent/') || path.startsWith('/parent/accept-invitation')) return;
+    const user = window.KC.user();
+    if (!user || !window.KC.token()) return;
+    const staffHome = {
+        admin: '/admin/admin-dashboard.html',
+        pediatrician: '/pedia/pediatrician-dashboard.html',
+        secretary: '/secretary/secretary-dashboard.html',
+    }[user.role];
+    if (staffHome) window.location.replace(staffHome);
+})();
+
 // Repeats fn every intervalMs, but only while the tab is visible, and never
 // starts a run while the previous one is still waiting on the server. A plain
 // setInterval kept the dashboard firing its API calls every few seconds in

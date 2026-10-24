@@ -1,9 +1,7 @@
 ﻿// === Extracted from PARENT\dashboard.html (script block 1) ===
 // Require login before this page can load
         requireAuth();
-const _user = KC.user();
-if (_user?.role === 'pediatrician') window.location.href = '/pedia/pediatrician-dashboard.html';
-else if (_user?.role === 'admin') window.location.href = '/admin/admin-dashboard.html';
+// Staff accounts are redirected away from parent pages by /api.js.
 
 function calcAge(dob) {
     const d = new Date(dob), now = new Date();

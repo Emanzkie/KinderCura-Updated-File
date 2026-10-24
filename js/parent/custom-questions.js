@@ -2,11 +2,7 @@
 // Protect page and allow parents only
 
 requireAuth();
-const user = KC.user();
-if (user && user.role !== 'parent') {
-  if (user.role === 'pediatrician') window.location.href = '/pedia/pediatrician-dashboard.html';
-  else if (user.role === 'admin') window.location.href = '/admin/admin-dashboard.html';
-}
+// Staff accounts are redirected away from parent pages by /api.js.
 
 // Track selected child so assigned questions can be filtered
 function safeRequestedChildId() {
