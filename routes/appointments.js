@@ -68,6 +68,17 @@ function wrapEmail(content) {
 // that do not care can keep ignoring it; the reschedule route uses it to
 // report emailSent. Never throws: a mail failure must not roll back work that
 // is already committed to the database.
+//
+// Every value put into an email body below goes through emailText(): names,
+// reasons and notes are typed by parents and staff, and raw HTML in them
+// would otherwise be rendered (links, images, fake content) in the recipient's
+// mail client.
+function emailText(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+  ));
+}
+
 async function sendEmail(to, subject, html) {
   if (!emailConfigured() || !to) {
     console.log(`\n[EMAIL SKIPPED] To: ${to || 'n/a'} | Subject: ${subject}\n`);
@@ -1590,15 +1601,15 @@ router.post('/create', authMiddleware, async (req, res) => {
       pediatrician.email,
       `New Appointment Request — ${childName}`,
       `<h2>New Appointment Request</h2>
-       <p>Hello Dr. ${pediatrician.firstName} ${pediatrician.lastName},</p>
+       <p>Hello Dr. ${emailText(pediatrician.firstName)} ${emailText(pediatrician.lastName)},</p>
        <div style="background:white;border-left:4px solid #6B8E6F;padding:16px;border-radius:6px;margin:16px 0;">
-         <p><strong>Patient:</strong> ${childName}</p>
-         <p><strong>Parent:</strong> ${parentName}</p>
-         <p><strong>Date:</strong> ${dateStr}</p>
-         <p><strong>Time:</strong> ${timeStr}</p>
-         <p><strong>Reason:</strong> ${reason || 'General checkup'}</p>
-         <p><strong>Payment:</strong> ${appt.paymentStatus} - paid ${appt.amountPaid || 0} of ${appt.totalAmount || 0}</p>
-         ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
+         <p><strong>Patient:</strong> ${emailText(childName)}</p>
+         <p><strong>Parent:</strong> ${emailText(parentName)}</p>
+         <p><strong>Date:</strong> ${emailText(dateStr)}</p>
+         <p><strong>Time:</strong> ${emailText(timeStr)}</p>
+         <p><strong>Reason:</strong> ${emailText(reason || 'General checkup')}</p>
+         <p><strong>Payment:</strong> ${emailText(appt.paymentStatus)} - paid ${emailText(appt.amountPaid || 0)} of ${emailText(appt.totalAmount || 0)}</p>
+         ${notes ? `<p><strong>Notes:</strong> ${emailText(notes)}</p>` : ''}
        </div>
        <p>Log in to KinderCura to approve or decline this request.</p>`
     ).catch((err) => console.error('Appointment email error (non-blocking):', err.message));
@@ -1669,15 +1680,15 @@ async function updateAppointmentStatusById({ appointmentId, status, notes = null
     hydrated.parentEmail,
     `Appointment ${label} — KinderCura`,
     `<h2>Appointment Status Update</h2>
-     <p>Hello ${hydrated.parentFirstName || 'Parent'},</p>
+     <p>Hello ${emailText(hydrated.parentFirstName || 'Parent')},</p>
      <div style="background:white;border-left:4px solid #6B8E6F;padding:16px;border-radius:6px;margin:16px 0;">
-       <p><strong>Patient:</strong> ${hydrated.childName}</p>
-       <p><strong>Pediatrician:</strong> ${pedName}</p>
-       <p><strong>Date:</strong> ${dateStr}</p>
-       <p><strong>Time:</strong> ${timeStr}</p>
-       <p><strong>Status:</strong> ${label}</p>
-       ${hydrated.reason ? `<p><strong>Reason:</strong> ${hydrated.reason}</p>` : ''}
-       ${hydrated.notes ? `<p><strong>Note:</strong> ${hydrated.notes}</p>` : ''}
+       <p><strong>Patient:</strong> ${emailText(hydrated.childName)}</p>
+       <p><strong>Pediatrician:</strong> ${emailText(pedName)}</p>
+       <p><strong>Date:</strong> ${emailText(dateStr)}</p>
+       <p><strong>Time:</strong> ${emailText(timeStr)}</p>
+       <p><strong>Status:</strong> ${emailText(label)}</p>
+       ${hydrated.reason ? `<p><strong>Reason:</strong> ${emailText(hydrated.reason)}</p>` : ''}
+       ${hydrated.notes ? `<p><strong>Note:</strong> ${emailText(hydrated.notes)}</p>` : ''}
      </div>
      <p>Please check KinderCura for the latest update.</p>`
   );
@@ -1973,15 +1984,15 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
         hydrated.parentEmail,
         'Appointment Rescheduled — KinderCura',
         `<h2>Appointment Rescheduled</h2>
-         <p>Hello ${hydrated.parentFirstName || 'Parent'},</p>
+         <p>Hello ${emailText(hydrated.parentFirstName || 'Parent')},</p>
          <p>Your appointment has been rescheduled. Your existing payment is unchanged.</p>
          <div style="background:white;border-left:4px solid #6B8E6F;padding:16px;border-radius:6px;margin:16px 0;">
-           <p><strong>Patient:</strong> ${hydrated.childName}</p>
-           <p><strong>Previous:</strong> ${prevDateStr} at ${prevTimeStr}</p>
-           <p><strong>New Date:</strong> ${newDateStr}</p>
-           <p><strong>New Time:</strong> ${newTimeStr}</p>
-           ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
-           ${note ? `<p><strong>Note:</strong> ${note}</p>` : ''}
+           <p><strong>Patient:</strong> ${emailText(hydrated.childName)}</p>
+           <p><strong>Previous:</strong> ${emailText(prevDateStr)} at ${emailText(prevTimeStr)}</p>
+           <p><strong>New Date:</strong> ${emailText(newDateStr)}</p>
+           <p><strong>New Time:</strong> ${emailText(newTimeStr)}</p>
+           ${reason ? `<p><strong>Reason:</strong> ${emailText(reason)}</p>` : ''}
+           ${note ? `<p><strong>Note:</strong> ${emailText(note)}</p>` : ''}
          </div>`
       );
 
@@ -2012,14 +2023,14 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
       hydrated.parentEmail,
       'KinderCura — Your Appointment Has Been Rescheduled',
       `<h2>Appointment Rescheduled</h2>
-       <p>Dear ${hydrated.parentName || hydrated.parentFirstName || 'Parent'},</p>
-       <p>Your appointment for <strong>${hydrated.childName}</strong> has been rescheduled by ${docName}.</p>
+       <p>Dear ${emailText(hydrated.parentName || hydrated.parentFirstName || 'Parent')},</p>
+       <p>Your appointment for <strong>${emailText(hydrated.childName)}</strong> has been rescheduled by ${emailText(docName)}.</p>
        <div style="background:white;border-left:4px solid #6B8E6F;padding:16px;border-radius:6px;margin:16px 0;">
-         <p><strong>Original Appointment</strong><br>Date: ${prevDateStr}<br>Time: ${prevTimeStr}</p>
-         <p><strong>New Appointment</strong><br>Date: ${newDateStr}<br>Time: ${newTimeStr}</p>
-         <p><strong>Pediatrician:</strong> ${docName}</p>
-         ${reasonText ? `<p><strong>Reason:</strong> ${reasonText}</p>` : ''}
-         ${note ? `<p><strong>Note:</strong> ${note}</p>` : ''}
+         <p><strong>Original Appointment</strong><br>Date: ${emailText(prevDateStr)}<br>Time: ${emailText(prevTimeStr)}</p>
+         <p><strong>New Appointment</strong><br>Date: ${emailText(newDateStr)}<br>Time: ${emailText(newTimeStr)}</p>
+         <p><strong>Pediatrician:</strong> ${emailText(docName)}</p>
+         ${reasonText ? `<p><strong>Reason:</strong> ${emailText(reasonText)}</p>` : ''}
+         ${note ? `<p><strong>Note:</strong> ${emailText(note)}</p>` : ''}
        </div>
        <p>Please check your KinderCura account for the updated appointment details.</p>`
     );
