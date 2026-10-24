@@ -15,6 +15,7 @@ const Assessment = require('../../models/Assessment');
 const AssessmentResult = require('../../models/AssessmentResult');
 const AssessmentAnswer = require('../../models/AssessmentAnswer');
 const Child = require('../../models/Child');
+const User = require('../../models/User');
 const CoreBankQuestion = require('../../models/CoreBankQuestion');
 const TrainedModel = require('../../models/TrainedModel');
 const TrainingDataset = require('../../models/TrainingDataset');
@@ -49,7 +50,13 @@ function withMockedModels({ assessments, results, answers, children, questions, 
   };
   AssessmentResult.find = () => ({ lean: async () => results });
   AssessmentAnswer.find = () => ({ lean: async () => answers });
-  Child.find = () => ({ select: () => ({ lean: async () => children }) });
+  // Every fixture child belongs to a parent who gave the ML consent, so this
+  // suite keeps testing export shape/quality. Consent filtering is covered by
+  // tests/unit/parent-preferences-effect.test.js.
+  const consentingParent = 'consenting-parent';
+  const userFind = User.find;
+  Child.find = () => ({ select: () => ({ lean: async () => children.map((c) => ({ parentId: consentingParent, ...c })) }) });
+  User.find = () => ({ select: () => ({ lean: async () => [{ _id: consentingParent }] }) });
   CoreBankQuestion.find = () => chainable(questions);
 
   return {
@@ -59,6 +66,7 @@ function withMockedModels({ assessments, results, answers, children, questions, 
       AssessmentResult.find = originals.resultFind;
       AssessmentAnswer.find = originals.answerFind;
       Child.find = originals.childFind;
+      User.find = userFind;
       CoreBankQuestion.find = originals.questionFind;
     },
   };

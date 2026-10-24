@@ -31,10 +31,6 @@ const notificationSettingsSchema = new mongoose.Schema(
     sms: { type: Boolean, default: false },
     assessmentCompleted: { type: Boolean, default: true },
     dailySummary: { type: Boolean, default: false },
-    // Parent Settings preferences (stored only; nothing sends by them yet).
-    assessmentReminders: { type: Boolean, default: true },
-    developmentalUpdates: { type: Boolean, default: true },
-    marketingEmails: { type: Boolean, default: false },
   },
   { _id: false }
 );
@@ -44,9 +40,6 @@ const privacySettingsSchema = new mongoose.Schema(
     showProfile: { type: Boolean, default: true },
     showAvailability: { type: Boolean, default: true },
     shareRecommendations: { type: Boolean, default: true },
-    // Parent Settings preferences (stored only; data access does not read them yet).
-    shareWithProfessionals: { type: Boolean, default: true },
-    researchParticipation: { type: Boolean, default: false },
   },
   { _id: false }
 );

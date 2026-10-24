@@ -469,16 +469,14 @@ function publicUser(user) {
       sms: Boolean(user.notificationSettings?.sms ?? false),
       assessmentCompleted: Boolean(user.notificationSettings?.assessmentCompleted ?? true),
       dailySummary: Boolean(user.notificationSettings?.dailySummary ?? false),
-      assessmentReminders: Boolean(user.notificationSettings?.assessmentReminders ?? true),
-      developmentalUpdates: Boolean(user.notificationSettings?.developmentalUpdates ?? true),
-      marketingEmails: Boolean(user.notificationSettings?.marketingEmails ?? false),
     },
     privacySettings: {
       showProfile: Boolean(user.privacySettings?.showProfile ?? true),
       showAvailability: Boolean(user.privacySettings?.showAvailability ?? true),
       shareRecommendations: Boolean(user.privacySettings?.shareRecommendations ?? true),
-      shareWithProfessionals: Boolean(user.privacySettings?.shareWithProfessionals ?? true),
-      researchParticipation: Boolean(user.privacySettings?.researchParticipation ?? false),
+      // Not a separate setting: the optional machine-learning consent given at
+      // sign-up (User.consents.mlConsentGiven). Settings shows and edits it.
+      researchParticipation: user.consents?.mlConsentGiven === true,
     },
   };
 }
@@ -1291,9 +1289,17 @@ router.put('/update-profile', authMiddleware, async (req, res) => {
 
     // Parent Settings preferences. Only these keys are accepted, and each is
     // merged into the stored object so the pediatrician keys are kept.
-    // Stored only: notification sending and data access do not read them yet.
+    // emailAppointments decides whether appointment emails reach the parent
+    // (routes/appointments.js parentAppointmentEmailTo).
     mergeBooleanPrefs(user, 'notificationSettings', req.body.notificationSettings, PARENT_NOTIFICATION_PREF_KEYS);
-    mergeBooleanPrefs(user, 'privacySettings', req.body.privacySettings, PARENT_PRIVACY_PREF_KEYS);
+
+    // "Allow anonymous research participation" IS the sign-up ML consent; the
+    // admin training export includes a child's screenings only when it is true.
+    const research = req.body.privacySettings && req.body.privacySettings.researchParticipation;
+    if (research !== undefined) {
+      user.set('consents.mlConsentGiven', Boolean(research));
+      user.set('consents.mlConsentRecordedAt', new Date());
+    }
 
     await user.save();
     res.json({ success: true, user: publicUser(user) });
@@ -1302,8 +1308,7 @@ router.put('/update-profile', authMiddleware, async (req, res) => {
   }
 });
 
-const PARENT_NOTIFICATION_PREF_KEYS = ['assessmentReminders', 'emailAppointments', 'developmentalUpdates', 'marketingEmails'];
-const PARENT_PRIVACY_PREF_KEYS = ['shareWithProfessionals', 'researchParticipation'];
+const PARENT_NOTIFICATION_PREF_KEYS = ['emailAppointments'];
 
 function mergeBooleanPrefs(user, field, input, allowedKeys) {
   if (!input || typeof input !== 'object') return;

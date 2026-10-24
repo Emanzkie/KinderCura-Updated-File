@@ -79,6 +79,20 @@ function emailText(value) {
   ));
 }
 
+// The parent's address for an appointment email, or null when they turned off
+// "Appointment Notifications" in Settings (User.notificationSettings
+// .emailAppointments). In-app notifications are always sent; only the email
+// follows the setting. If the setting cannot be read, the email still goes.
+async function parentAppointmentEmailTo(parentId, email) {
+  if (!email) return null;
+  try {
+    const parent = await User.findById(parentId).select('notificationSettings').lean();
+    return parent?.notificationSettings?.emailAppointments === false ? null : email;
+  } catch {
+    return email;
+  }
+}
+
 async function sendEmail(to, subject, html) {
   if (!emailConfigured() || !to) {
     console.log(`\n[EMAIL SKIPPED] To: ${to || 'n/a'} | Subject: ${subject}\n`);
@@ -1676,8 +1690,9 @@ async function updateAppointmentStatusById({ appointmentId, status, notes = null
     'appointment'
   );
 
+  const statusEmailTo = await parentAppointmentEmailTo(hydrated.parentId, hydrated.parentEmail);
   await sendEmail(
-    hydrated.parentEmail,
+    statusEmailTo,
     `Appointment ${label} — KinderCura`,
     `<h2>Appointment Status Update</h2>
      <p>Hello ${emailText(hydrated.parentFirstName || 'Parent')},</p>
@@ -1980,8 +1995,9 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
         );
       }
 
+      const rescheduleEmailTo = await parentAppointmentEmailTo(hydrated.parentId, hydrated.parentEmail);
       await sendEmail(
-        hydrated.parentEmail,
+        rescheduleEmailTo,
         'Appointment Rescheduled — KinderCura',
         `<h2>Appointment Rescheduled</h2>
          <p>Hello ${emailText(hydrated.parentFirstName || 'Parent')},</p>
@@ -2019,8 +2035,10 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
     // Sent only after the save above succeeded. sendEmail never throws, so a
     // mailer outage cannot undo a reschedule that is already committed; it
     // returns false instead and the response reports emailSent.
+    const parentEmailTo = await parentAppointmentEmailTo(hydrated.parentId, hydrated.parentEmail);
+    const emailSkipped = hydrated.parentEmail && !parentEmailTo ? 'parent_opted_out' : null;
     const emailSent = await sendEmail(
-      hydrated.parentEmail,
+      parentEmailTo,
       'KinderCura — Your Appointment Has Been Rescheduled',
       `<h2>Appointment Rescheduled</h2>
        <p>Dear ${emailText(hydrated.parentName || hydrated.parentFirstName || 'Parent')},</p>
@@ -2057,6 +2075,9 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
     res.json({
       success: true,
       emailSent,
+      // Set when no email was attempted because the parent turned appointment
+      // emails off, so the page does not report it as a mail failure.
+      emailSkipped,
       status: appt.status,
       isRescheduled: true,
       appointmentDate: appt.appointmentDate,

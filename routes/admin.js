@@ -256,7 +256,7 @@ function buildReviewedAssessmentFilter() {
 async function buildReviewedAssessmentExportRows() {
   const candidates = await Assessment.find(buildReviewedAssessmentFilter()).lean();
 
-  const skipped = { noResult: 0 };
+  const skipped = { noResult: 0, noConsent: 0 };
   if (!candidates.length) return { rows: [], total: 0, skipped, byLabel: { Low: 0, Medium: 0, High: 0 }, questionIds: [] };
 
   const assessmentIds = candidates.map((a) => a._id);
@@ -265,12 +265,28 @@ async function buildReviewedAssessmentExportRows() {
   const [results, answers, children, questionDocs] = await Promise.all([
     AssessmentResult.find({ assessmentId: { $in: assessmentIds } }).lean(),
     AssessmentAnswer.find({ assessmentId: { $in: assessmentIds }, origin: DATA_ORIGIN.CORE_BANK }).lean(),
-    Child.find({ _id: { $in: childIds } }).select('dateOfBirth').lean(),
+    Child.find({ _id: { $in: childIds } }).select('dateOfBirth parentId').lean(),
     CoreBankQuestion.find({}).select('questionId').sort({ questionId: 1 }).lean(),
   ]);
 
   const resultByAssessment = new Map(results.map((r) => [String(r.assessmentId), r]));
   const childById = new Map(children.map((c) => [String(c._id), c]));
+
+  // A real child's screenings become training data only when the parent who
+  // registered the child gave the optional machine-learning consent
+  // (User.consents.mlConsentGiven, asked at sign-up and editable in Settings as
+  // "Allow anonymous research participation"). Synthetic demo records are not
+  // anyone's data and are always included.
+  const parentIds = [...new Set(children.map((c) => c.parentId).filter(Boolean).map(String))];
+  const consentingParents = new Set(parentIds.length
+    ? (await User.find({ _id: { $in: parentIds }, 'consents.mlConsentGiven': true }).select('_id').lean())
+      .map((u) => String(u._id))
+    : []);
+  const mayUse = (assessment) => {
+    if (assessment.isSynthetic === true) return true;
+    const child = childById.get(String(assessment.childId));
+    return Boolean(child && consentingParents.has(String(child.parentId)));
+  };
   const questionIds = questionDocs.map((q) => q.questionId);
 
   const answersByAssessment = new Map();
@@ -290,6 +306,7 @@ async function buildReviewedAssessmentExportRows() {
   for (const assessment of candidates) {
     const result = resultByAssessment.get(String(assessment._id));
     if (!result) { skipped.noResult += 1; continue; }
+    if (!mayUse(assessment)) { skipped.noConsent += 1; continue; }
 
     refCounter += 1;
     const child = childById.get(String(assessment.childId));
@@ -606,7 +623,7 @@ router.get('/training/reviewed-assessments/quality', authMiddleware, adminOnly, 
 router.get('/training/reviewed-assessments/summary', authMiddleware, adminOnly, async (req, res) => {
   try {
     const { total, skipped, byLabel } = await buildReviewedAssessmentExportRows();
-    res.json({ success: true, total, byLabel, skippedIncompleteResult: skipped.noResult });
+    res.json({ success: true, total, byLabel, skippedIncompleteResult: skipped.noResult, skippedNoConsent: skipped.noConsent });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

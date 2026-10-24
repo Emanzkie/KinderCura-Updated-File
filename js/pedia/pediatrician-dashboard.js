@@ -349,7 +349,8 @@ if (!getToken() || !_u) {
                 });
                 closeReschedule();
                 // The appointment is saved either way; only the e-mail may have failed.
-                if(res && res.emailSent === false){
+                // emailSkipped: the parent turned appointment emails off, so none was attempted.
+                if(res && res.emailSent === false && !res.emailSkipped){
                     alert('Appointment rescheduled. The parent was notified in KinderCura, but the confirmation e-mail could not be sent.');
                 }
                 loadDashboard();

@@ -135,42 +135,16 @@
                     <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border);">
                         <label style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
                             <span>
-                                <p style="font-weight: 600; margin-bottom: 0.2rem;">Assessment Reminders</p>
-                                <p style="color: var(--text-light); font-size: 0.9rem;">Get reminded about upcoming assessments</p>
-                            </span>
-                            <input type="checkbox" id="prefAssessmentReminders" checked style="width: 20px; height: 20px;">
-                        </label>
-                    </div>
-
-                    <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border);">
-                        <label style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
-                            <span>
-                                <p style="font-weight: 600; margin-bottom: 0.2rem;">Appointment Notifications</p>
-                                <p style="color: var(--text-light); font-size: 0.9rem;">Receive appointment confirmations and reminders</p>
+                                <p style="font-weight: 600; margin-bottom: 0.2rem;">Appointment Emails</p>
+                                <p style="color: var(--text-light); font-size: 0.9rem;">Email me when an appointment is confirmed, changed, rescheduled or cancelled.</p>
                             </span>
                             <input type="checkbox" id="prefEmailAppointments" checked style="width: 20px; height: 20px;">
                         </label>
                     </div>
 
-                    <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border);">
-                        <label style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
-                            <span>
-                                <p style="font-weight: 600; margin-bottom: 0.2rem;">Developmental Updates</p>
-                                <p style="color: var(--text-light); font-size: 0.9rem;">Updates on your child's development</p>
-                            </span>
-                            <input type="checkbox" id="prefDevelopmentalUpdates" checked style="width: 20px; height: 20px;">
-                        </label>
-                    </div>
-
-                    <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border);">
-                        <label style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
-                            <span>
-                                <p style="font-weight: 600; margin-bottom: 0.2rem;">Marketing Emails</p>
-                                <p style="color: var(--text-light); font-size: 0.9rem;">Occasional updates about new features</p>
-                            </span>
-                            <input type="checkbox" id="prefMarketingEmails" style="width: 20px; height: 20px;">
-                        </label>
-                    </div>
+                    <p style="color: var(--text-light); font-size: 0.85rem; margin-bottom: 1.5rem;">
+                        Notifications inside KinderCura (the bell) are always on, so you never miss a confirmation, check-up result or specialist referral. Payment receipts are still emailed either way.
+                    </p>
 
                     <button type="button" id="saveNotificationPrefsBtn" class="btn btn-primary" onclick="saveNotificationPrefs()" style="padding: 0.7rem 1.5rem;">Save Preferences</button>
                     <p id="notificationPrefsMsg" role="status" aria-live="polite" style="color: var(--text-light); font-size: 0.9rem; margin-top: 0.75rem;"></p>
@@ -181,18 +155,12 @@
                     <h2 style="color: var(--primary); margin-bottom: 1.5rem;">Privacy Settings</h2>
 
                     <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border);">
-                        <p style="font-weight: 600; margin-bottom: 0.5rem;">Who can see your child's profile?</p>
-                        <select disabled aria-label="Who can see your child's profile" style="width: 100%; padding: 0.8rem; border: 2px solid var(--border); border-radius: 8px;">
-                            <option>Not available yet</option>
-                        </select>
-                        <p style="color: var(--text-light); font-size: 0.85rem; margin-top: 0.5rem;">Not available yet. Family members' access is managed in the Family tab.</p>
-                    </div>
-
-                    <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border);">
-                        <label style="display: flex; align-items: center; gap: 0.8rem; cursor: pointer;">
-                            <input type="checkbox" id="prefShareWithProfessionals" checked style="width: 18px; height: 18px;">
-                            <span>Share data with medical professionals for insights</span>
-                        </label>
+                        <p style="font-weight: 600; margin-bottom: 0.5rem;">Who can see your child's records?</p>
+                        <p style="color: var(--text-light); font-size: 0.9rem; margin: 0;">
+                            You, the family members you link in the Family tab (with the permissions you choose), and each pediatrician
+                            you book an appointment with for your child, along with that pediatrician's clinic secretary for scheduling.
+                            KinderCura administrators can also see records to run the service.
+                        </p>
                     </div>
 
                     <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border);">
@@ -200,6 +168,11 @@
                             <input type="checkbox" id="prefResearchParticipation" style="width: 18px; height: 18px;">
                             <span>Allow anonymous research participation</span>
                         </label>
+                        <p style="color: var(--text-light); font-size: 0.85rem; margin: 0.5rem 0 0;">
+                            Lets your children's pediatrician-reviewed screenings be used, without names or contact details, to train KinderCura's
+                            screening model. This is the same optional consent you were asked about at sign-up. Turning it off stops future use;
+                            it does not change data that was already used.
+                        </p>
                     </div>
 
                     <button type="button" id="savePrivacyPrefsBtn" class="btn btn-primary" onclick="savePrivacyPrefs()" style="padding: 0.7rem 1.5rem;">Save Settings</button>

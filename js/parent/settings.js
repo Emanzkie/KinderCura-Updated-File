@@ -191,14 +191,13 @@ function switchTab(tab) {
         // ── Account / Notification / Privacy preferences ───────────────
 
         // Checkbox id -> preference key in /auth/me and /auth/update-profile.
+        // emailAppointments turns appointment emails on/off (routes/appointments.js).
+        // researchParticipation is the sign-up machine-learning consent; the
+        // admin training export only uses screenings when it is on.
         const NOTIFICATION_PREF_INPUTS = {
-            prefAssessmentReminders: 'assessmentReminders',
             prefEmailAppointments: 'emailAppointments',
-            prefDevelopmentalUpdates: 'developmentalUpdates',
-            prefMarketingEmails: 'marketingEmails',
         };
         const PRIVACY_PREF_INPUTS = {
-            prefShareWithProfessionals: 'shareWithProfessionals',
             prefResearchParticipation: 'researchParticipation',
         };
 
