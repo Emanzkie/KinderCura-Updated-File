@@ -143,6 +143,9 @@ function scoreAnswer(answer) {
 // The three answers scoreAnswer() scores; anything else is not an answer.
 const VALID_SCREENING_ANSWERS = new Set(['yes', 'sometimes', 'no']);
 
+// How long an unfinished screening can be resumed by /initialize.
+const DRAFT_RESUME_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
 // ---------------------------------------------------------------------------
 // SINGLE answer-level interpretation.
 //
@@ -669,13 +672,34 @@ router.post('/initialize', authMiddleware, async (req, res) => {
     const ageInfo = getAgeInfo(child.dateOfBirth);
     if (!ageInfo) return res.status(400).json({ error: 'Child must be between ages 3-8 for assessment.' });
 
-    const assessment = await Assessment.create({
+    // Resume this user's latest unfinished screening for this child instead of
+    // starting a new one on every visit — that left an orphan in_progress
+    // record per page load and lost the answers saved by /save-draft. Only a
+    // recent draft is resumed: answers about a young child's skills go stale.
+    let assessment = await Assessment.findOne({
       childId: child._id,
       createdBy: req.user.userId,
       status: 'in_progress',
-      currentProgress: 0,
-      startedAt: new Date(),
-    });
+      startedAt: { $gte: new Date(Date.now() - DRAFT_RESUME_WINDOW_MS) },
+    }).sort({ startedAt: -1 });
+    let draftAnswers = [];
+    if (assessment) {
+      const saved = await AssessmentAnswer.find({
+        assessmentId: assessment._id,
+        origin: { $in: [DATA_ORIGIN.CORE_BANK, DATA_ORIGIN.DATASET_QUESTION] },
+      }).select('questionId answer').lean();
+      draftAnswers = saved
+        .filter((a) => VALID_SCREENING_ANSWERS.has(String(a.answer ?? '').trim().toLowerCase()))
+        .map((a) => ({ questionId: String(a.questionId), answer: String(a.answer).trim().toLowerCase() }));
+    } else {
+      assessment = await Assessment.create({
+        childId: child._id,
+        createdBy: req.user.userId,
+        status: 'in_progress',
+        currentProgress: 0,
+        startedAt: new Date(),
+      });
+    }
 
     // Any Custom Questions a pediatrician has assigned and the parent hasn't
     // answered yet ride along in THIS new assessment — this is what makes a
@@ -699,6 +723,10 @@ router.post('/initialize', authMiddleware, async (req, res) => {
     res.json({
       success: true,
       assessmentId: String(assessment._id),
+      // Answers already saved for a resumed draft (core-bank and Dataset
+      // Questions; Custom Question answers are only saved at submit).
+      resumed: draftAnswers.length > 0,
+      draftAnswers,
       ageGroup: ageInfo.group,
       ageLabel: ageInfo.label,
       childAge: ageInfo.age,

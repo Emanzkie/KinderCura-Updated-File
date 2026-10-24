@@ -388,8 +388,11 @@ requireAuth();
             // claimed and saved atomically at final submit (routes/assessments.js
             // POST /submit), so an abandoned screening never partially claims a
             // pediatrician's assignment. See getCustomAnswerPayload.
+            // Saves the answer just given (every question, not every fifth), so
+            // reopening the page resumes exactly where the parent left off.
+            const q = FULL_SET?.[currentQuestion];
+            if (!q || q.kind !== 'core' || !answers[q.id]) return;
             const answeredCount = QUESTION_SET.filter(cq => answers[cq.id]).length;
-            if (!answeredCount || answeredCount % 5 !== 0) return;
 
             try {
                 await apiFetch('/assessments/save-draft', {
@@ -397,7 +400,7 @@ requireAuth();
                     body: JSON.stringify({
                         assessmentId,
                         progress: Math.round((answeredCount / QUESTION_SET.length) * 100),
-                        answers: getAnswerPayload()
+                        answers: getAnswerPayload().filter(a => a.questionId === q.id)
                     })
                 });
             } catch (_) {
@@ -467,6 +470,23 @@ requireAuth();
             }
         }
 
+        // Puts a resumed draft's saved answers back into `answers` (only for
+        // questions in this screening) and moves to the first unanswered
+        // question. Returns how many answers were restored.
+        function restoreDraftAnswers(draftAnswers) {
+            const inSet = new Set(FULL_SET.map(q => q.id));
+            let restored = 0;
+            (Array.isArray(draftAnswers) ? draftAnswers : []).forEach(a => {
+                if (a && inSet.has(a.questionId) && ['yes', 'sometimes', 'no'].includes(a.answer)) {
+                    answers[a.questionId] = a.answer;
+                    restored += 1;
+                }
+            });
+            const firstOpen = FULL_SET.findIndex(q => !answers[q.id]);
+            currentQuestion = firstOpen === -1 ? Math.max(FULL_SET.length - 1, 0) : firstOpen;
+            return restored;
+        }
+
         async function initAssessment() {
             const content = document.getElementById('assessmentContent');
             content.innerHTML = `
@@ -523,6 +543,10 @@ requireAuth();
                 QUESTION_SET = buildQuestionSet(selectedChild, initData.datasetQuestions);
                 buildFullSet();
 
+                // Resumed draft: restore the saved answers for questions still in
+                // this set, then continue at the first unanswered question.
+                const resumedCount = restoreDraftAnswers(initData.draftAnswers);
+
                 const exactAge = formatExactAge(selectedChild.dateOfBirth);
                 const ageRange = getAgeRangeLabel(ageMonths);
                 // Show the COMPLETE reassessment question count (FULL_SET) up front,
@@ -536,7 +560,8 @@ requireAuth();
                 if (datasetCount) breakdownParts.push(`${datasetCount} dataset`);
                 if (CUSTOM_QUESTION_SET.length) breakdownParts.push(`${CUSTOM_QUESTION_SET.length} pediatrician`);
                 const breakdown = breakdownParts.length > 1 ? ` (${breakdownParts.join(' + ')})` : '';
-                document.getElementById('assessmentMeta').textContent = `Interview-based checklist loaded for age ${exactAge} • ${totalQuestions} questions${breakdown}`;
+                document.getElementById('assessmentMeta').textContent = `Interview-based checklist loaded for age ${exactAge} • ${totalQuestions} questions${breakdown}`
+                    + (resumedCount ? ` • Resumed your unfinished screening (${resumedCount} already answered)` : '');
                 document.getElementById('ageRangeLabel').textContent = ageRange;
                 document.getElementById('ageRangeDetails').innerHTML = `Current child age: ${exactAge}<br>Question set for this child: ${totalQuestions}${breakdown}`;
 

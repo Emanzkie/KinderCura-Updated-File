@@ -124,6 +124,15 @@ Assessment.findById = (id) => {
   o.then = (res, rej) => Promise.resolve(a).then(res, rej);
   return o;
 };
+// /initialize looks for an unfinished screening to resume before creating one.
+Assessment.findOne = (filter) => {
+  const hits = db.assessments.filter((a) => String(a.childId) === String(filter.childId)
+    && String(a.createdBy) === String(filter.createdBy) && a.status === filter.status
+    && (!filter.startedAt || new Date(a.startedAt) >= filter.startedAt.$gte))
+    .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
+  const o = { sort: () => o, then: (res, rej) => Promise.resolve(hits[0] || null).then(res, rej) };
+  return o;
+};
 Assessment.findByIdAndUpdate = async (id, update) => { const a = db.assessments.find((x) => String(x._id) === String(id)); if (a) Object.assign(a, update); return a; };
 AssessmentAnswer.findOneAndUpdate = async (filter, update) => {
   let row = db.answers.find((r) => String(r.assessmentId) === String(filter.assessmentId) && r.questionId === filter.questionId);
