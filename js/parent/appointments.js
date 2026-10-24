@@ -886,6 +886,40 @@ async function confirmReschedule() {
     }
 }
 
+// ── Parent-initiated cancel ─────────────────────────────────────────────────
+// Uses POST /appointments/:id/cancel, which accepts only pending or approved
+// bookings and keeps any payment already recorded (a refund is the clinic's).
+const cancellingAppointments = new Set();
+
+async function cancelAppointment(appointmentId) {
+    const appt = activeAppointments.find((a) => String(a.id) === String(appointmentId));
+    if (!appt || cancellingAppointments.has(appt.id)) return;
+    if (!['pending', 'approved'].includes(appt.status)) {
+        alert('Only an active appointment can be cancelled.');
+        return;
+    }
+
+    const who = appt.pediatricianName ? `Dr. ${appt.pediatricianName}` : 'the pediatrician';
+    const paid = String(appt.paymentStatus || '').toLowerCase() === 'paid' || Number(appt.amountPaid || 0) > 0;
+    const message = `Cancel the appointment with ${who} on ${fmtDate(appt.appointmentDate)} at ${fmtTime(appt.appointmentTime)}? This cannot be undone.`
+        + (paid ? '\n\nYour payment stays on record. Please contact the clinic about a refund.' : '');
+    if (!window.confirm(message)) return;
+
+    cancellingAppointments.add(appt.id);
+    const btn = document.getElementById(`cancelApptBtn_${appt.id}`);
+    if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
+    try {
+        await apiFetch(`/appointments/${appt.id}/cancel`, { method: 'POST' });
+        await loadAppointments();
+        if (typeof loadNotificationCount === 'function') { try { await loadNotificationCount(); } catch {} }
+    } catch (e) {
+        alert(e.message || 'Could not cancel the appointment. Please try again.');
+        if (btn) { btn.disabled = false; btn.textContent = 'Cancel Appointment'; }
+    } finally {
+        cancellingAppointments.delete(appt.id);
+    }
+}
+
 function renderActive(list) {
     const el = document.getElementById('activeList');
     if (!list.length) {
@@ -912,6 +946,7 @@ function renderActive(list) {
             ${renderPaymentSummary(a)}
             <div style="margin-top:.7rem;display:flex;gap:.5rem;flex-wrap:wrap;">
                 ${['pending', 'approved'].includes(a.status) ? `<button type="button" onclick="openReschedule(${a.id})" style="background:var(--surface-muted,#f0efe8);color:var(--text-dark);border:1px solid var(--border,#a8c49d);padding:.45rem 1.1rem;border-radius:20px;font-size:.8rem;cursor:pointer;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reschedule</button>` : ''}
+                ${['pending', 'approved'].includes(a.status) ? `<button type="button" id="cancelApptBtn_${a.id}" onclick="cancelAppointment(${a.id})" style="background:transparent;color:var(--text-dark);border:1px solid var(--border,#a8c49d);padding:.45rem 1.1rem;border-radius:20px;font-size:.8rem;cursor:pointer;">Cancel Appointment</button>` : ''}
                 ${['approved', 'completed'].includes(a.status) ? `<button type="button" onclick="window.location.href='/parent/chat.html?appointmentId=${a.id}'" style="background:var(--primary);color:#FAFAF6;border:none;padding:.45rem 1.1rem;border-radius:20px;font-size:.8rem;cursor:pointer;"><img src="/icons/chat.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Chat with Dr. ${escapeHtml(a.pediatricianName || 'Pediatrician')}</button>` : ''}
             </div>
         </div>`).join('');
