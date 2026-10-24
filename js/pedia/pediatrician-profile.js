@@ -135,12 +135,15 @@ const API = window.location.origin + '/api';
             const err = document.getElementById('pwErr');
             const suc = document.getElementById('pwSuc');
             err.style.display = 'none'; suc.style.display = 'none';
+            const current = document.getElementById('currentPw').value;
             const pw  = document.getElementById('newPw').value;
             const cpw = document.getElementById('confirmPw').value;
+            if (!current) { err.textContent = 'Enter your current password.'; err.style.display='block'; return; }
             if (pw.length < 8) { err.textContent = 'Password must be at least 8 characters.'; err.style.display='block'; return; }
             if (pw !== cpw)    { err.textContent = 'Passwords do not match.'; err.style.display='block'; return; }
             try {
-                await apiFetch('/auth/change-password', { method:'PUT', body:JSON.stringify({ password: pw }) });
+                await apiFetch('/auth/change-password', { method:'PUT', body:JSON.stringify({ currentPassword: current, password: pw }) });
+                document.getElementById('currentPw').value = '';
                 suc.innerHTML = '<img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Password updated!'; suc.style.display = 'block';
                 document.getElementById('newPw').value = '';
                 document.getElementById('confirmPw').value = '';

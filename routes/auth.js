@@ -1449,13 +1449,22 @@ router.post('/reset-password', async (req, res) => {
 // PUT /api/auth/change-password
 router.put('/change-password', authMiddleware, async (req, res) => {
   try {
-    const { password } = req.body;
+    const { password, currentPassword } = req.body;
+    // The current password is required so a stolen or left-open session cannot
+    // lock the owner out by setting a new password.
+    if (!currentPassword) {
+      return res.status(400).json({ error: 'Enter your current password.' });
+    }
     if (!password || String(password).length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters.' });
     }
 
     const user = await User.findById(req.user.userId);
     if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    if (!await bcrypt.compare(String(currentPassword), user.passwordHash)) {
+      return res.status(400).json({ error: 'Current password is incorrect.' });
+    }
 
     user.passwordHash = await bcrypt.hash(String(password), 10);
     await user.save();
