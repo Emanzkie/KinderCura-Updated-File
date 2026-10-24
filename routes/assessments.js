@@ -29,13 +29,29 @@ const sse = require('../sse');
 // The core bank is 34 static rows that only change on deploy, so it is cached
 // in memory instead of being re-read for every answer of every submission.
 const CORE_BANK_TTL_MS = 5 * 60 * 1000;
-let coreBankCache = { ids: null, loadedAt: 0 };
+let coreBankCache = { ids: null, minAgeById: null, loadedAt: 0 };
 
 async function getCoreBankIds() {
+  await loadCoreBank();
+  return coreBankCache.ids;
+}
+
+// Core-bank questions a child of this age must have answered before submit.
+// The required set is taken as of 24 hours ago: the browser computes age in
+// the parent's own timezone (js/parent/screening.js getAgeInMonths), so on the
+// day a new question unlocks the page may not have asked it yet. That
+// question is accepted but not required; every earlier one is required.
+async function requiredCoreQuestionIds(dateOfBirth, now = new Date()) {
+  await loadCoreBank();
+  const ageMonths = datasetEligibility.ageInMonths(dateOfBirth, new Date(now.getTime() - 24 * 60 * 60 * 1000));
+  return [...coreBankCache.minAgeById]
+    .filter(([, minAge]) => Number.isFinite(minAge) && ageMonths >= minAge)
+    .map(([id]) => id);
+}
+
+async function loadCoreBank() {
   const now = Date.now();
-  if (coreBankCache.ids && now - coreBankCache.loadedAt < CORE_BANK_TTL_MS) {
-    return coreBankCache.ids;
-  }
+  if (coreBankCache.ids && now - coreBankCache.loadedAt < CORE_BANK_TTL_MS) return;
   // Scoped to core_bank on purpose. core_bank_questions also holds
   // dataset_question rows, which are a different origin and are resolved
   // separately (screeningAnswerFields). Including them here would let a dataset
@@ -44,9 +60,12 @@ async function getCoreBankIds() {
   // Written as "not dataset_question" rather than "== core_bank" so a legacy
   // row with no origin still resolves, matching the schema default.
   const rows = await CoreBankQuestion.find({ origin: { $ne: DATA_ORIGIN.DATASET_QUESTION } })
-    .select('questionId').lean();
-  coreBankCache = { ids: new Set(rows.map((r) => r.questionId)), loadedAt: now };
-  return coreBankCache.ids;
+    .select('questionId minAgeMonths').lean();
+  coreBankCache = {
+    ids: new Set(rows.map((r) => r.questionId)),
+    minAgeById: new Map(rows.map((r) => [r.questionId, Number(r.minAgeMonths)])),
+    loadedAt: now,
+  };
 }
 
 // Important: origin is decided HERE, on the server. It is never read from
@@ -120,6 +139,9 @@ function scoreAnswer(answer) {
   if (normalized === 'sometimes') return 1;
   return 0;
 }
+
+// The three answers scoreAnswer() scores; anything else is not an answer.
+const VALID_SCREENING_ANSWERS = new Set(['yes', 'sometimes', 'no']);
 
 // ---------------------------------------------------------------------------
 // SINGLE answer-level interpretation.
@@ -764,6 +786,34 @@ router.post('/submit', authMiddleware, async (req, res) => {
     if (assessment && String(assessment.childId) !== String(child._id)) {
       return res.status(400).json({ error: 'This assessment belongs to a different child.' });
     }
+
+    // Every age-appropriate core question needs a Yes / Sometimes / No answer,
+    // either in this request or already saved as a draft for this assessment.
+    // Without this check a partial or empty submission was scored: a domain
+    // with no answers came out as 0% and was risk-flagged. Checked before
+    // anything is created or written, so a rejected submit leaves no trace.
+    const answeredCore = new Set(
+      answersArray
+        .filter((a) => a && a.questionId && VALID_SCREENING_ANSWERS.has(String(a.answer ?? '').trim().toLowerCase()))
+        .map((a) => String(a.questionId))
+    );
+    if (assessment) {
+      const drafted = await AssessmentAnswer.find({ assessmentId: assessment._id, origin: DATA_ORIGIN.CORE_BANK })
+        .select('questionId answer').lean();
+      drafted
+        .filter((a) => VALID_SCREENING_ANSWERS.has(String(a.answer ?? '').trim().toLowerCase()))
+        .forEach((a) => answeredCore.add(String(a.questionId)));
+    }
+    const missingQuestionIds = (await requiredCoreQuestionIds(child.dateOfBirth))
+      .filter((id) => !answeredCore.has(id));
+    if (missingQuestionIds.length) {
+      return res.status(400).json({
+        error: `Please answer every screening question before submitting (${missingQuestionIds.length} unanswered).`,
+        code: 'INCOMPLETE_ASSESSMENT',
+        missingQuestionIds,
+      });
+    }
+
     if (!assessment) {
       assessment = await Assessment.create({
         childId,
