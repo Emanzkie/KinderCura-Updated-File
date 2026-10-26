@@ -16,6 +16,7 @@
         let allAppointments = [];
         let currentFilter   = 'all';
         let canManagePayments = false;
+        let canReschedule = true; // the pediatrician can switch this off in Staff Access
 
         // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -47,6 +48,7 @@
                 const data = await apiFetch('/secretary/me');
                 const sec  = data.secretary;
                 canManagePayments = Boolean(sec.permissions && sec.permissions.managePayments);
+                canReschedule = !(sec.permissions && sec.permissions.rescheduleRequests === false);
                 document.getElementById('profileMenuName').textContent =
                     `${sec.firstName} ${sec.lastName}`;
 
@@ -107,6 +109,9 @@
             el.innerHTML = filtered.map(a => {
                 // Build action buttons based on the appointment's current status
                 let actions = '';
+                const rescheduleBtn = canReschedule
+                    ? `<button class="btn-reschedule" onclick="openReschedule(${a.id})"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reschedule</button>`
+                    : '';
                 if (a.status === 'pending') {
                     const walkInBtn = (a.pendingPaymentMode === 'walk_in' && canManagePayments)
                         ? `<button class="btn-approve" onclick="confirmWalkIn(${a.id})" style="background:var(--status-positive-fg);">&#8369; Confirm Cash Payment</button>`
@@ -114,11 +119,11 @@
                     actions = `
                         ${walkInBtn}
                         <button class="btn-approve"    onclick="updateStatus(${a.id},'approved')">&#10003; Approve</button>
-                        <button class="btn-reschedule" onclick="openReschedule(${a.id})"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reschedule</button>
+                        ${rescheduleBtn}
                         <button class="btn-reject"     onclick="updateStatus(${a.id},'rejected')"><img src="/icons/reject_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reject</button>`;
                 } else if (a.status === 'approved') {
                     actions = `
-                        <button class="btn-reschedule" onclick="openReschedule(${a.id})"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reschedule</button>
+                        ${rescheduleBtn}
                         <button class="btn-reject"     onclick="updateStatus(${a.id},'cancelled')">Cancel</button>`;
                 }
 

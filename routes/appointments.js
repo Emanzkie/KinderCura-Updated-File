@@ -20,6 +20,7 @@ const AssessmentResult = require('../models/AssessmentResult');
 const SystemSetting = require('../models/SystemSetting');
 const scoring = require('../constants/scoring');
 const paymentService = require('../services/paymentService');
+const { getSecretaryPermissions } = require('../services/secretaryPermissions');
 const sse = require('../sse');
 
 const router = express.Router();
@@ -1451,6 +1452,9 @@ router.get('/pedia', authMiddleware, secretaryOrPediatrician, async (req, res) =
     if (!pedId) {
       return res.status(403).json({ error: 'Assistant/Secretary account is not linked to a pediatrician yet.' });
     }
+    if (req.user.role === 'secretary' && !(await getSecretaryPermissions(req.user.userId)).viewAppointments) {
+      return res.status(403).json({ error: 'You do not have permission to view appointments.' });
+    }
 
     const docs = await Appointment.find({ pediatricianId: pedId }).sort({ appointmentDate: -1, createdAt: -1 }).lean();
     const appointments = [];
@@ -1474,6 +1478,9 @@ router.get('/pedia-notifications', authMiddleware, secretaryOrPediatrician, asyn
 
     if (!pedId) {
       return res.status(403).json({ error: 'Assistant/Secretary account is not linked to a pediatrician yet.' });
+    }
+    if (req.user.role === 'secretary' && !(await getSecretaryPermissions(req.user.userId)).viewAppointments) {
+      return res.status(403).json({ error: 'You do not have permission to view appointments.' });
     }
     const docs = await Appointment.find({ pediatricianId: pedId }).sort({ createdAt: -1 }).lean();
     const notifications = [];
@@ -1900,6 +1907,9 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
 
     let appt;
     let pedId;
+    // Rescheduling a pending request also confirms it (see below), which is an
+    // approval, so it needs the approval permission as well as the right to reschedule.
+    let mayApprove = true;
 
     if (isClinic) {
       // Secretary acts on behalf of their linked pediatrician
@@ -1908,14 +1918,14 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
         return res.status(403).json({ error: 'Assistant/Secretary account is not linked to a pediatrician yet.' });
       }
 
-      // Important: check that the secretary has permission to manage bookings or approve schedules.
-      // The pediatrician controls these permissions from their Settings > Staff Access tab.
+      // Important: a secretary needs the reschedule permission. The pediatrician
+      // controls these permissions from their Settings > Staff Access tab.
       if (role === 'secretary') {
-        const secUser = await User.findById(req.user.userId).select('secretaryPermissions').lean();
-        const perms = secUser?.secretaryPermissions || {};
-        if (!perms.manageBookings && !perms.approveSchedules) {
-          return res.status(403).json({ error: 'You do not have permission to update appointment status.' });
+        const perms = await getSecretaryPermissions(req.user.userId);
+        if (!perms.rescheduleRequests) {
+          return res.status(403).json({ error: 'You do not have permission to reschedule appointments.' });
         }
+        mayApprove = Boolean(perms.manageBookings || perms.approveSchedules);
       }
 
       appt = await Appointment.findOne({ id: Number(req.params.appointmentId), pediatricianId: pedId });
@@ -1983,7 +1993,7 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
     // request would be approved here without the minimum payment. A parent
     // reschedule keeps the current status: a pending request stays pending
     // (still needs clinic approval), an approved appointment stays approved.
-    if (isClinic && appt.status === 'pending' && paymentService.canConfirmAppointment(appt).ok) {
+    if (isClinic && mayApprove && appt.status === 'pending' && paymentService.canConfirmAppointment(appt).ok) {
       appt.status = 'approved';
     }
     if (note && String(note).trim()) appt.notes = String(note).trim();

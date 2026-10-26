@@ -28,6 +28,7 @@ const mongoose = require('mongoose');
 const router   = express.Router();
 
 const { authMiddleware, adminOnly } = require('../middleware/auth');
+const { SECRETARY_DEFAULT_PERMISSIONS } = require('../services/secretaryPermissions');
 const User = require('../models/User');
 const Appointment = require('../models/Appointment');
 const Child = require('../models/Child');
@@ -74,13 +75,7 @@ function publicSecretaryProfile(secretary, linkedPediatricianDoc = null) {
 // defaultPermissions — what a newly created secretary can do by default.
 // The pediatrician can turn individual permissions on/off from Settings.
 function defaultPermissions() {
-  return {
-    viewAppointments:    true,   // can see the appointment list
-    manageBookings:      true,   // can approve / reject booking requests
-    rescheduleRequests:  true,   // can propose new dates/times
-    approveSchedules:    true,   // can mark approved appointments as confirmed
-    managePayments:      false,  // can confirm cash/POS payments — must be explicitly enabled
-  };
+  return { ...SECRETARY_DEFAULT_PERMISSIONS };
 }
 
 function fullName(firstName, lastName, fallback = '') {
