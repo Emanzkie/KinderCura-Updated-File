@@ -1169,7 +1169,10 @@ router.get('/pedia-patients', authMiddleware, async (req, res) => {
 
       const paymentConfirmed = appt.paymentStatus === 'Paid' || Boolean(appt.paymentOverride?.isOverridden);
       const dxOwn = diagnosisHiddenFrom(req.user, latestCompletedAssessment) ? null : latestCompletedAssessment;
-      const mlOwn = mlLabelHiddenFrom(req.user, latestAssessment) ? null : latestAssessment;
+      // The ML label belongs to the same assessment as the diagnosis: the latest
+      // COMPLETED one, the only kind /:assessmentId/ml-label accepts. The newest
+      // started one may be an unfinished reassessment with no label of its own.
+      const mlOwn = mlLabelHiddenFrom(req.user, latestCompletedAssessment) ? null : latestCompletedAssessment;
 
       patients.push({
         childId: child ? String(child._id) : null,

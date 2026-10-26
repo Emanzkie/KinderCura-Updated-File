@@ -403,7 +403,7 @@ const API = window.location.origin + '/api';
                         title="Review the latest completed assessment: scores, answers and your review remarks">
                         <img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Review Assessment
                     </button>
-                    <button class="btn btn-secondary" onclick="openDiagnosis('${p.childId}','${childNameEsc}','${diagEsc}','${recEsc}','${nextDateEsc}','${nextReasonEsc}','${overallScore}','${p.assessmentId||''}')"
+                    <button class="btn btn-secondary" onclick="openDiagnosis('${p.childId}','${childNameEsc}','${diagEsc}','${recEsc}','${nextDateEsc}','${nextReasonEsc}','${overallScore}','${p.resultAssessmentId||''}')"
                         style="flex:1;min-width:130px;padding:0.7rem;">
                         ${hasDiag ? '<img src="/icons/edit_pedia.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">️ Edit Diagnosis' : '<img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Provide Diagnosis'}
                     </button>
@@ -479,6 +479,8 @@ const API = window.location.origin + '/api';
         window.open(`/parent/results.html?assessmentId=${assessmentId}&childId=${childId}`, '_blank');
     }
 
+    // assessmentId is the child's latest COMPLETED assessment (resultAssessmentId):
+    // the one the diagnosis, outcome label and ML label all belong to.
     function openDiagnosis(childId, childName, existingDiag, existingRec, existingNextDate, existingNextReason, overallScore, assessmentId) {
         window.currentChildId = childId;
         window.currentDiagnosisScore = overallScore;
