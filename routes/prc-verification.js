@@ -124,6 +124,8 @@ function findTimestampMatchedProfileDocument(user) {
   }
 }
 
+const PRIVATE_UPLOAD_PATH = /^\/uploads\/(prc|prc-documents)\//i;
+
 function buildDocumentResponseFields(user) {
   const storedPath = normalizeDocumentPath(
     user.prcIdDocumentPath ||
@@ -135,7 +137,9 @@ function buildDocumentResponseFields(user) {
     prcIdDocumentPath: storedPath,
     idDocumentPath: normalizeDocumentPath(user.idDocumentPath || null),
     prcDocumentUrl: `/api/prc/document/${String(user._id)}`,
-    prcDocumentStaticUrl: storedPath && storedPath.startsWith('/uploads/') ? storedPath : null,
+    // The PRC folders are not served by URL (server.js refuses them); admins
+    // read the document through prcDocumentUrl.
+    prcDocumentStaticUrl: storedPath && storedPath.startsWith('/uploads/') && !PRIVATE_UPLOAD_PATH.test(storedPath) ? storedPath : null,
     hasPrcDocument: Boolean(storedPath),
   };
 }
@@ -262,7 +266,15 @@ function submitPrcDocument(req, res) {
   }));
 }
 
-router.post('/upload', authMiddleware, submitPrcDocument);
+// Only a pediatrician's request reaches multer: the role check used to run
+// after the file was already stored, and a refusal left it there.
+const pediatricianOnly = (req, res, next) => (
+  req.user && req.user.role === 'pediatrician'
+    ? next()
+    : res.status(403).json({ error: 'Only pediatricians can submit PRC documents.' })
+);
+
+router.post('/upload', authMiddleware, pediatricianOnly, submitPrcDocument);
 router.post('/resubmit', prcResubmitAuth, submitPrcDocument);
 
 // ──────────────────────────────────────────────────────────────────

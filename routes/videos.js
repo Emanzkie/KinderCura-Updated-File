@@ -297,7 +297,12 @@ router.get('/appointment/:appointmentId', authMiddleware, async (req, res) => {
 
 /* -------------------- POST /api/videos/chat -------------------- */
 /* Upload chat video first, then chat route sends the message using returned path */
+const CHAT_ROLES = ['parent', 'legal_guardian', 'foster_parent', 'court_appointed', 'pediatrician'];
 router.post('/chat', authMiddleware, (req, res) => {
+    // Checked before multer: a refused request used to store up to 150 MB first.
+    if (!CHAT_ROLES.includes(req.user.role)) {
+        return res.status(403).json({ error: 'Only parents, guardians and pediatricians can send chat videos.' });
+    }
     uploadChat.single('video')(req, res, (multerErr) => finalizeChat(req, res, async (storeErr) => {
         const err = multerErr || storeErr;
         if (err) {

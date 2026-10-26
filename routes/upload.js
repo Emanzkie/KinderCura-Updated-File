@@ -99,8 +99,31 @@ router.post('/profile', authMiddleware, (req, res) => {
     }));
 });
 
+// Checks that run BEFORE multer stores anything. They used to run after it, so
+// a refused request had already written its file, and in two routes the file
+// was never removed again.
+function pediatricianOnly(message, asJson = { error: message }) {
+    return (req, res, next) => (
+        req.user && req.user.role === 'pediatrician' ? next() : res.status(403).json(asJson)
+    );
+}
+
+async function requireChildUploadAccess(req, res, next) {
+    try {
+        const child = await Child.findById(req.params.childId).select('_id').lean();
+        if (!child) return res.status(404).json({ error: 'Child not found.' });
+        if (!await hasPermission(req.user.userId, child._id, 'uploadDocuments')) {
+            return res.status(403).json({ error: 'Access denied.' });
+        }
+        next();
+    } catch (e) {
+        if (e && e.name === 'CastError') return res.status(404).json({ error: 'Child not found.' });
+        res.status(500).json({ error: e.message });
+    }
+}
+
 // Upload one child's profile picture
-router.post('/child/:childId', authMiddleware, (req, res) => {
+router.post('/child/:childId', authMiddleware, requireChildUploadAccess, (req, res) => {
     req.uploadType = `child_${req.params.childId}`;
     upload.single('photo')(req, res, (err) => finalizeProfile(req, res, async (finalizeErr) => {
         const uploadErr = err || finalizeErr;
@@ -140,18 +163,22 @@ router.post('/child/:childId', authMiddleware, (req, res) => {
 // req.uploadType is set before multer runs so the file is written under its
 // final name straight away. It used to be saved as `user_<ts>` and renamed
 // afterwards, which cannot work on a read-only production filesystem.
+// An identity document: it goes to the private PRC folder (prcUpload), never
+// the public profile photos folder it used to be written to, and only a
+// pediatrician's request reaches multer.
 router.post(
     '/pediatric-id',
     authMiddleware,
-    (req, _res, next) => { req.uploadType = `pediatric_id_${req.user.userId}`; next(); },
-    upload.single('photo'),
-    finalizeProfile,
+    pediatricianOnly('Only pediatricians can upload ID documents.'),
+    prcUpload.single('photo'),
+    finalizePrc,
     async (req, res) => {
         if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
 
         try {
             const user = await User.findById(req.user.userId);
             if (!user || user.role !== 'pediatrician') {
+                fileStorage.deleteStored(PRC_DIR, req.file.filename, PRC_ACCESS);
                 return res.status(403).json({ error: 'Only pediatricians can upload ID documents.' });
             }
 
@@ -161,7 +188,7 @@ router.post(
             }
 
             // Normalize path to forward slashes for web compatibility
-            const normalizedPath = `/${PROFILE_DIR}/${req.file.filename}`.replace(/\\/g, '/');
+            const normalizedPath = `/${PRC_DIR}/${req.file.filename}`.replace(/\\/g, '/');
 
             user.idDocumentPath = normalizedPath;
             user.prcIdDocumentPath = normalizedPath;
@@ -178,7 +205,9 @@ router.post(
 // Upload pediatrician's PRC ID image for license verification
 // prcUpload writes straight into uploads/prc under the final traceable name,
 // so there is no post-upload rename to perform.
-router.post('/prc-id', authMiddleware, prcUpload.single('prcId'), finalizePrc, async (req, res) => {
+router.post('/prc-id', authMiddleware,
+    pediatricianOnly('Only pediatricians can upload PRC documents.', { success: false, message: 'Only pediatricians can upload PRC documents.' }),
+    prcUpload.single('prcId'), finalizePrc, async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ success: false, message: 'No file uploaded' });

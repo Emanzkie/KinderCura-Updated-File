@@ -136,6 +136,17 @@ app.use('/public', cachedStatic(path.join(__dirname, 'public')));
 // Static folders so the browser can load styles, icons, and uploaded files
 app.use('/css', cachedStatic(path.join(__dirname, 'CSS files')));
 app.use('/icons', cachedStatic(path.join(__dirname, 'ICONS')));
+// PRC ID cards are identity documents. They are read by admins only, through
+// /api/prc/document/:userId, never by URL: both the static folder below and the
+// object-store fallback would otherwise hand them to anyone who knows the file
+// name. The path is decoded and normalised first, like the root static guard,
+// so encoded or "../" forms cannot slip past.
+const PRIVATE_UPLOAD_DIRS = /^\/uploads\/(prc|prc-documents)(\/|$)/i;
+app.use('/uploads', (req, res, next) => {
+    const target = rootStaticTarget('/uploads' + req.path);
+    if (target && PRIVATE_UPLOAD_DIRS.test(target)) return res.status(404).send('Not found');
+    next();
+});
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/uploads', fileStorage.staticFallback('uploads'));
 app.use('/public/uploads', fileStorage.staticFallback('public/uploads'));
