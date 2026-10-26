@@ -91,10 +91,15 @@ async function resolveChatAccess(appointmentId, userId, userRole) {
     appt.pediatricianId ? User.findById(appt.pediatricianId).lean() : null,
   ]);
 
+  const guardianRoles = ['parent', 'legal_guardian', 'foster_parent', 'court_appointed'];
+  // Chat is between the family and the appointment's pediatrician. Any other
+  // role (an admin, a secretary) used to fall through every check below, so an
+  // admin could read the conversation and post into it as the pediatrician.
+  if (!guardianRoles.includes(userRole) && userRole !== 'pediatrician') return { denied: 'access' };
+
   if (!['approved', 'completed'].includes(appt.status)) {
     return { denied: 'chat_locked', status: appt.status };
   }
-  const guardianRoles = ['parent', 'legal_guardian', 'foster_parent', 'court_appointed'];
   if (guardianRoles.includes(userRole)) {
     // If the caller is not the primary parent, check for an active linked guardian link
     const isPrimaryParent = userRole === 'parent' && String(appt.parentId) === String(userId);

@@ -38,20 +38,13 @@ async function loadThreads(){
             return;
         }
 
-        const grouped = {};
-        rawThreads.forEach(t => {
-            const key = (t.childId && t.parentId) ? `${t.childId}_${t.parentId}` : t.appointmentId;
-            if (!grouped[key]) {
-                grouped[key] = { ...t, unread: t.unread || 0 };
-            } else {
-                grouped[key].unread += (t.unread || 0);
-                if (new Date(t.appointmentDate) > new Date(grouped[key].appointmentDate)) {
-                    grouped[key].appointmentDate = t.appointmentDate;
-                    grouped[key].appointmentId = t.appointmentId;
-                }
-            }
-        });
-        const threads = Object.values(grouped).sort((a,b) => new Date(b.appointmentDate) - new Date(a.appointmentDate));
+        // One thread per appointment, newest first. Threads for the same child
+        // used to be merged into one row that opened only the newest
+        // appointment: the older conversations were unreachable, and the row's
+        // unread badge counted messages that opening it never marked as read.
+        const threads = rawThreads
+            .map(t => ({ ...t, unread: t.unread || 0 }))
+            .sort((a,b) => new Date(b.appointmentDate) - new Date(a.appointmentDate));
 
         const M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         tl.innerHTML = threads.map(t=>{
@@ -66,7 +59,7 @@ async function loadThreads(){
                         <p class="thread-name">${escapeHtml(t.childName || 'Child')} – ${escapeHtml(t.parentName||'Parent')}</p>
                         ${t.unread>0?`<span class="thread-badge">${t.unread}</span>`:''}
                     </div>
-                    <p class="thread-sub"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Latest: ${M[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}</p>
+                    <p class="thread-sub"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Appointment: ${M[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}</p>
                 </div>
             </div>`;
         }).join('');

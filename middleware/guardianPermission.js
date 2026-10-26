@@ -3,6 +3,15 @@ const Appointment = require('../models/Appointment');
 const Child = require('../models/Child');
 
 async function resolveChildIdFromReq(req) {
+  // A route that names an appointment in its path (/:appointmentId) is about
+  // THAT appointment's child. A childId added to the query or body must not
+  // replace it: it let a guardian pass the permission check against another
+  // child they hold the permission for, then read or post in this chat.
+  if (req.params.appointmentId) {
+    const named = await Appointment.findOne({ id: Number(req.params.appointmentId) }).lean();
+    if (named) return named.childId;
+  }
+
   // Explicit parameter
   const candidate = req.params.childId || req.body.childId || req.query.childId || null;
   if (candidate) return candidate;
