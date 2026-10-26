@@ -254,15 +254,25 @@
 
             const seen = new Map();
 
+            // Appointments arrive newest first. The id sent with an assignment
+            // must be one the server accepts as a live link (pending, approved
+            // or completed), so a cancelled or rejected newest booking must not
+            // be picked over an older live one, which made the assignment fail
+            // with a false 403.
+            const LIVE_STATUSES = ['pending', 'approved', 'completed'];
             appointments.forEach(a => {
                 const key = String(a.childId);
-                if (!seen.has(key)) {
+                const live = LIVE_STATUSES.includes(a.status);
+                const current = seen.get(key);
+                if (!current) {
                     seen.set(key, {
                         childId: String(a.childId),
                         childName: `${a.childFirstName || ''} ${a.childLastName || ''}`.trim() || 'Child',
                         parentName: `${a.parentFirstName || ''} ${a.parentLastName || ''}`.trim() || 'Parent',
-                        appointmentId: a.id || null
+                        appointmentId: live ? (a.id || null) : null
                     });
+                } else if (current.appointmentId == null && live) {
+                    current.appointmentId = a.id || null;
                 }
             });
 

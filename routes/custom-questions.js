@@ -175,6 +175,43 @@ async function ensurePediaChildRelationship(pediatricianObjectId, childObjectId,
   return Appointment.findOne(filter).lean();
 }
 
+// appointmentId arrives in the request body and is used inside query filters,
+// so anything but a positive whole number (an object such as { $ne: null }
+// included) is refused instead of being handed to MongoDB.
+function parseAppointmentId(raw) {
+  if (raw == null || raw === '') return { value: null };
+  const n = Number(raw);
+  if (typeof raw === 'object' || !Number.isInteger(n) || n <= 0) {
+    return { error: 'appointmentId must be a positive whole number.' };
+  }
+  return { value: n };
+}
+
+// Once a question has reached a parent its wording is frozen, so the answers
+// stay answers to the question that was asked. A question in a set is locked
+// when the set is assigned or answered (it used to be only 'assigned', so the
+// questions of an answered set could be edited); a standalone question is
+// locked as soon as it has any assignment. Only the active flag may change.
+async function isQuestionEditLocked(doc) {
+  if (doc.questionSetId) {
+    const set = await QuestionSet.findById(doc.questionSetId).lean();
+    return Boolean(set) && set.status !== 'draft';
+  }
+  return Boolean(await PediaCustomQuestionAssignment.exists({ questionId: doc._id }));
+}
+
+// Deleting removes the question's assignments, which would take a parent's
+// answers with it, so a question a parent has answered is never deletable,
+// and neither is one in an assigned or answered set. An unanswered standalone
+// question can still be deleted along with its assignments.
+async function isQuestionDeleteLocked(doc) {
+  if (doc.questionSetId) {
+    const set = await QuestionSet.findById(doc.questionSetId).lean();
+    if (set && set.status !== 'draft') return true;
+  }
+  return Boolean(await PediaCustomQuestionAssignment.exists({ questionId: doc._id, answeredAt: { $ne: null } }));
+}
+
 // GET /api/questions
 // Load all custom questions created by the logged-in pediatrician, grouped by QuestionSet
 router.get('/', authMiddleware, async (req, res) => {
@@ -412,15 +449,12 @@ router.put('/:id', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Question not found.' });
     }
 
-    // If question is part of an assigned set, prevent editing (except isActive flag)
-    if (doc.questionSetId) {
-      const set = await QuestionSet.findById(doc.questionSetId).lean();
-      if (set && set.status === 'assigned') {
-        const { isActive } = req.body;
-        // Only allow changing isActive for assigned questions
-        if (Object.keys(req.body).length > 1 || isActive === undefined) {
-          return res.status(403).json({ error: 'Cannot edit questions in assigned sets. Create a new version if changes are needed.' });
-        }
+    // Once a parent has the question (assigned or answered set, or any
+    // assignment of a standalone question), only the active flag may change.
+    if (await isQuestionEditLocked(doc)) {
+      const { isActive } = req.body;
+      if (Object.keys(req.body).length > 1 || isActive === undefined) {
+        return res.status(403).json({ error: 'Cannot edit a question that has been assigned. Create a new version if changes are needed.' });
       }
     }
 
@@ -485,16 +519,20 @@ router.delete('/:id', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Question not found.' });
     }
 
-    // If question is part of an assigned set, prevent deletion
-    if (doc.questionSetId) {
-      const set = await QuestionSet.findById(doc.questionSetId).lean();
-      if (set && set.status === 'assigned') {
-        return res.status(403).json({ error: 'Cannot delete questions from assigned sets. Create a new version if changes are needed.' });
-      }
+    // Not from an assigned or answered set, and never a question a parent has
+    // answered: deleting would remove their answers with the assignments.
+    if (await isQuestionDeleteLocked(doc)) {
+      return res.status(403).json({ error: 'Cannot delete a question from an assigned set or one a parent has already answered. Create a new version if changes are needed.' });
     }
 
     await PediaCustomQuestionAssignment.deleteMany({ questionId: doc._id });
     await doc.deleteOne();
+
+    // Keep the set's stored count in step with the questions it still has.
+    if (doc.questionSetId) {
+      const remaining = await PediaCustomQuestion.countDocuments({ questionSetId: doc.questionSetId });
+      await QuestionSet.updateOne({ _id: doc.questionSetId }, { $set: { questionCount: remaining } });
+    }
 
     res.json({ success: true });
   } catch (e) {
@@ -514,10 +552,19 @@ router.post('/:id/assign', authMiddleware, async (req, res) => {
     if (!childId) {
       return res.status(400).json({ error: 'childId is required.' });
     }
+    const parsedAppointment = parseAppointmentId(appointmentId);
+    if (parsedAppointment.error) {
+      return res.status(400).json({ error: parsedAppointment.error });
+    }
+    const apptId = parsedAppointment.value;
 
     const question = await PediaCustomQuestion.findOne({ id: Number(req.params.id), pediatricianId: req.user.userId });
     if (!question) {
       return res.status(404).json({ error: 'Question not found.' });
+    }
+    // Same rule as assigning a whole set, which only picks active questions.
+    if (!question.isActive) {
+      return res.status(400).json({ error: 'This question is inactive. Activate it before assigning it.' });
     }
 
     const child = await Child.findById(childId).lean();
@@ -525,7 +572,7 @@ router.post('/:id/assign', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Child not found.' });
     }
 
-    const relationship = await ensurePediaChildRelationship(req.user.userId, child._id, appointmentId || null);
+    const relationship = await ensurePediaChildRelationship(req.user.userId, child._id, apptId);
     if (!relationship) {
       return res.status(403).json({ error: 'You can only assign questions to your own patients.' });
     }
@@ -533,7 +580,7 @@ router.post('/:id/assign', authMiddleware, async (req, res) => {
     const existing = await PediaCustomQuestionAssignment.findOne({
       questionId: question._id,
       childId: child._id,
-      appointmentId: appointmentId || null,
+      appointmentId: apptId,
     }).lean();
 
     if (existing) {
@@ -543,10 +590,16 @@ router.post('/:id/assign', authMiddleware, async (req, res) => {
     const assignment = await PediaCustomQuestionAssignment.create({
       questionId: question._id,
       questionSetId: question.questionSetId || null,
-      appointmentId: appointmentId || null,
+      appointmentId: apptId,
       childId: child._id,
       parentId: child.parentId,
     });
+
+    // As when a whole set is assigned, the set is now frozen: its questions
+    // must not change after a parent has one of them.
+    if (question.questionSetId) {
+      await QuestionSet.updateOne({ _id: question.questionSetId, status: 'draft' }, { $set: { status: 'assigned' } });
+    }
 
     const ped = await User.findById(req.user.userId).select('firstName lastName').lean();
 
@@ -578,6 +631,11 @@ router.post('/set/:setId/assign', authMiddleware, async (req, res) => {
     if (!childId) {
       return res.status(400).json({ error: 'childId is required.' });
     }
+    const parsedAppointment = parseAppointmentId(appointmentId);
+    if (parsedAppointment.error) {
+      return res.status(400).json({ error: parsedAppointment.error });
+    }
+    const apptId = parsedAppointment.value;
 
     const questionSet = await QuestionSet.findOne({ _id: req.params.setId, pediatricianId: req.user.userId });
     if (!questionSet) {
@@ -594,7 +652,7 @@ router.post('/set/:setId/assign', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Child not found.' });
     }
 
-    const relationship = await ensurePediaChildRelationship(req.user.userId, child._id, appointmentId || null);
+    const relationship = await ensurePediaChildRelationship(req.user.userId, child._id, apptId);
     if (!relationship) {
       return res.status(403).json({ error: 'You can only assign questions to your own patients.' });
     }
@@ -603,7 +661,7 @@ router.post('/set/:setId/assign', authMiddleware, async (req, res) => {
     const existingAssignments = await PediaCustomQuestionAssignment.find({
       questionId: { $in: questions.map(q => q._id) },
       childId: child._id,
-      appointmentId: appointmentId || null,
+      appointmentId: apptId,
     }).lean();
 
     const existingQuestionIds = new Set(existingAssignments.map(a => a.questionId.toString()));
@@ -618,7 +676,7 @@ router.post('/set/:setId/assign', authMiddleware, async (req, res) => {
       questionsToAssign.map(q => ({
         questionId: q._id,
         questionSetId: questionSet._id,
-        appointmentId: appointmentId || null,
+        appointmentId: apptId,
         childId: child._id,
         parentId: child.parentId,
       }))
