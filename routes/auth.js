@@ -1126,7 +1126,9 @@ router.post('/register', handleProfileUpload, async (req, res) => {
       }
     }
 
-    const token = signToken(user);
+    // A pending pediatrician must not get a working session before admin
+    // approval; login refuses the same account, so registration hands out no token.
+    const token = user.status === 'active' ? signToken(user) : undefined;
 
     // Parent sign-up should continue directly to the required pre-assessment only if child was created
     const needsPreAssessment = cleanRole === 'parent' && Boolean(child);
