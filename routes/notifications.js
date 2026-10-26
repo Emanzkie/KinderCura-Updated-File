@@ -74,6 +74,12 @@ function buildOwnedNotificationQuery(id, userId) {
   return { $and: [buildNotificationQuery(id), buildUserQuery(userId)] };
 }
 
+// A page on this site: one leading slash, no scheme, no host ("//host" or
+// "/\host" would leave the site), no whitespace or control characters.
+function isSitePath(value) {
+  return typeof value === 'string' && /^\/(?![\/\\])[^\s\u0000-\u001f]*$/.test(value);
+}
+
 function resolveNotificationModel() {
   if (!Notification) return null;
   if (typeof Notification.find === 'function') return Notification;
@@ -362,6 +368,12 @@ router.post('/send', authMiddleware, async (req, res) => {
   try {
     const { childId, title, message, type = 'system', relatedPage = null, relatedId = null } = req.body;
     if (!childId || !title || !message) return res.status(400).json({ error: 'childId, title and message are required.' });
+    // relatedPage is where the bell sends whoever clicks the notification, so it
+    // must be a page on this site; "javascript:..." or another host would run
+    // script or leave the site from every recipient's click.
+    if (relatedPage != null && relatedPage !== '' && !isSitePath(relatedPage)) {
+      return res.status(400).json({ error: 'relatedPage must be a path on this site, such as /parent/appointments.html.' });
+    }
 
     const child = await Child.findById(childId).lean();
     if (!child) return res.status(404).json({ error: 'Child not found.' });

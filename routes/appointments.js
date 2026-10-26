@@ -171,6 +171,13 @@ async function nextNotificationId() {
 // `extra` optionally carries { relatedPage, relatedId } so the bell UI can deep-link
 // straight to the relevant page/appointment without parsing the message text.
 async function pushNotification(userId, title, message, type = 'appointment', extra = {}) {
+  // A booking whose parent record is gone has nobody to notify. Building the
+  // ObjectId below used to throw for it, outside the try, so a status change
+  // that was already saved answered 500.
+  if (!userId || !mongoose.Types.ObjectId.isValid(String(userId))) {
+    console.warn('Notification skipped: no valid recipient for', title);
+    return;
+  }
   const notificationModel = resolveNotificationModel();
   const payload = {
     userId: new mongoose.Types.ObjectId(String(userId)),
@@ -1729,7 +1736,9 @@ function assertStatusTransition(from, to) {
 // Important: when secretaryName is provided, it means a secretary (not the pedia) performed
 // this action. In that case, we also send a separate notification to the pediatrician so
 // they always know what their secretary did on their behalf.
-async function updateAppointmentStatusById({ appointmentId, status, notes = null, secretaryName = null, pediatricianId = null }) {
+// familyActorName is set when a parent or guardian cancelled the appointment:
+// the pediatrician is told, since nobody else will.
+async function updateAppointmentStatusById({ appointmentId, status, notes = null, secretaryName = null, pediatricianId = null, familyActorName = null }) {
   const appt = await Appointment.findOne({ id: Number(appointmentId) });
   if (!appt) throw new Error('Appointment not found.');
 
@@ -1793,6 +1802,16 @@ async function updateAppointmentStatusById({ appointmentId, status, notes = null
     const pedNotifTitle = `Secretary ${label} an Appointment`;
     const pedNotifMessage = `Secretary ${secretaryName} ${label.toLowerCase()} an appointment for ${hydrated.childName} on ${dateStr} at ${timeStr}.`;
     await pushNotification(pediatricianId, pedNotifTitle, pedNotifMessage, 'appointment');
+  }
+
+  if (familyActorName && pediatricianId) {
+    await pushNotification(
+      pediatricianId,
+      'Appointment Cancelled',
+      `${familyActorName} cancelled the appointment for ${hydrated.childName} on ${dateStr} at ${timeStr}.`,
+      'appointment',
+      { relatedPage: '/pedia/pediatrician-appointments.html', relatedId: String(hydrated.id) }
+    );
   }
 
   return hydrated;
@@ -1914,7 +1933,21 @@ router.post('/:appointmentId/cancel', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: `A ${appt.status} appointment cannot be cancelled.` });
     }
 
-    await updateAppointmentStatusById({ appointmentId: appt.id, status: 'cancelled' });
+    // Cancelled by the pediatrician or an admin: the parent is told, as before.
+    // Cancelled by the parent or a guardian: the pediatrician must be told too.
+    const cancelledByClinic = req.user.role === 'admin' || String(appt.pediatricianId) === String(req.user.userId);
+    let familyActorName = null;
+    if (!cancelledByClinic) {
+      const actor = await User.findById(req.user.userId).select('firstName lastName').lean();
+      familyActorName = `${actor?.firstName || ''} ${actor?.lastName || ''}`.trim() || 'The parent';
+    }
+
+    await updateAppointmentStatusById({
+      appointmentId: appt.id,
+      status: 'cancelled',
+      pediatricianId: appt.pediatricianId,
+      familyActorName,
+    });
     res.json({ success: true });
   } catch (err) {
     console.error('appointments cancel error:', err);

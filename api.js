@@ -260,6 +260,12 @@ function calcAgeDisplay(dob) {
 // for ?appointmentId=, and the admin PRC page opens the review for
 // ?pediatricianId= (the pediatrician's user _id, which auth.js stores as
 // relatedId on "New PRC Verification Request").
+// A page on this site: one leading slash, no scheme, no host ("//host" or
+// "/\host" would leave the site), no whitespace or control characters.
+function isSitePath(value) {
+    return typeof value === 'string' && /^\/(?![\/\\])[^\s\u0000-\u001f]*$/.test(value);
+}
+
 function notificationDeepLink(page, relatedId) {
     if (!relatedId || page.includes('?')) return page;
     const path = page.split('#')[0].toLowerCase();
@@ -281,7 +287,10 @@ function notificationDestination(n) {
     const relatedId = String(n?.relatedId ?? '').trim();
     const says = (...words) => words.some((w) => title.includes(w) || msg.includes(w));
 
-    if (relatedPage) return notificationDeepLink(relatedPage, relatedId);
+    // Only a page on this site is followed. Anything else ("javascript:...",
+    // another host) is ignored, so a bad value stored earlier cannot run when
+    // the notification is clicked; the bell then just marks it read.
+    if (relatedPage) return isSitePath(relatedPage) ? notificationDeepLink(relatedPage, relatedId) : null;
 
     if (role === 'admin') {
         if (type === 'prc_verification' || title.includes('prc') || title.includes('license') || says('prc verification', 'pediatrician registration')) {
