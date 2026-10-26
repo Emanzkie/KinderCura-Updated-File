@@ -1279,7 +1279,12 @@ router.get('/patients', authMiddleware, async (req, res) => {
       if (!child) continue;
 
       const parent = await User.findById(appt.parentId).lean();
-      const latestAssessment = await Assessment.findOne({ childId: appt.childId }).sort({ startedAt: -1 }).lean();
+      // Scores come from the latest COMPLETED assessment, like My Patients and
+      // the results page. The newest started one may be an unfinished
+      // reassessment with no result yet, which used to drop the child from the
+      // list and from every filter.
+      const latestAssessment = await Assessment.findOne({ childId: appt.childId, status: 'complete' })
+        .sort({ completedAt: -1, startedAt: -1 }).lean();
       const latestResult = latestAssessment ? await AssessmentResult.findOne({ assessmentId: latestAssessment._id }).lean() : null;
 
       if (!latestResult) continue;
@@ -1318,10 +1323,12 @@ router.get('/patients', authMiddleware, async (req, res) => {
         socialScore: latestResult.socialScore,
         cognitiveScore: latestResult.cognitiveScore,
         overallScore: latestResult.overallScore,
-        motorStatus: getStatus(latestResult.motorScore || 0),
-        communicationStatus: getStatus(latestResult.communicationScore || 0),
-        socialStatus: getStatus(latestResult.socialScore || 0),
-        cognitiveStatus: getStatus(latestResult.cognitiveScore || 0),
+        // A domain with no score has no status; `score || 0` used to read it as
+        // 0 and label it delayed.
+        motorStatus: latestResult.motorScore != null ? getStatus(latestResult.motorScore) : null,
+        communicationStatus: latestResult.communicationScore != null ? getStatus(latestResult.communicationScore) : null,
+        socialStatus: latestResult.socialScore != null ? getStatus(latestResult.socialScore) : null,
+        cognitiveStatus: latestResult.cognitiveScore != null ? getStatus(latestResult.cognitiveScore) : null,
         lastAssessmentDate: latestResult.generatedAt || null,
         thresholdMatch: patientThreshold
       });
