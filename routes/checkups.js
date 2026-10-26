@@ -266,6 +266,12 @@ async function notifyParentOfCheckup(child, doc) {
 
 // ── Core business logic (exported for unit tests) ──────────────────────
 
+// The clinical fields an edit may change (see updateCheckupRecord).
+const EDITABLE_CHECKUP_FIELDS = [
+  'diagnosis', 'findings', 'recommendations', 'nextFollowUpDate', 'nextFollowUpReason',
+  'status', 'visitType', 'checkupDate',
+];
+
 async function createCheckupRecord(childId, user, body) {
   if (user.role !== 'pediatrician') throw new HttpError(403, 'Pediatricians only.');
 
@@ -375,6 +381,11 @@ async function updateCheckupRecord(childId, checkupId, user, body) {
   // previousRecordId) and createdAt are never touched here — this corrects
   // ONE historical record (e.g. a typo), it never restructures the chain or
   // overwrites a different record.
+  // What the record held before this edit, so the audit entry can say what
+  // changed: the edit overwrites in place, and the old text is otherwise gone.
+  const before = {};
+  for (const field of EDITABLE_CHECKUP_FIELDS) before[field] = record[field] ?? null;
+
   if (body.diagnosis !== undefined) record.diagnosis = validateDiagnosisText(body.diagnosis);
   if (body.findings !== undefined) record.findings = optionalText(body.findings, 4000, 'Findings');
   if (body.recommendations !== undefined) record.recommendations = optionalText(body.recommendations, 4000, 'Recommendations');
@@ -398,12 +409,19 @@ async function updateCheckupRecord(childId, checkupId, user, body) {
 
   await record.save();
 
+  // { field: { from, to } } for each field that really changed.
+  const changes = {};
+  for (const field of EDITABLE_CHECKUP_FIELDS) {
+    const to = record[field] ?? null;
+    if (JSON.stringify(before[field]) !== JSON.stringify(to)) changes[field] = { from: before[field], to };
+  }
+
   await AuditLog.create({
     actorId: user.userId,
     action: 'checkup_edited',
     targetType: 'PediatricianCheckup',
     targetId: record._id,
-    details: { childId: String(child._id) },
+    details: { childId: String(child._id), changes },
   });
 
   return record;

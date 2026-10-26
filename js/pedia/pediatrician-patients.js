@@ -993,7 +993,13 @@ const API = window.location.origin + '/api';
         document.getElementById('checkupFormWrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
+    // Set while a save is in flight. Without it a double click sent two POSTs and
+    // created two records and two parent notifications; the referral form below
+    // has the same guard.
+    let _checkupSaving = false;
+
     async function submitCheckup() {
+        if (_checkupSaving) return;
         const childId = window.currentProgressChildId;
         if (!childId) { alert('Child is missing. Please reopen the check-up history modal.'); return; }
 
@@ -1044,6 +1050,12 @@ const API = window.location.origin + '/api';
             if (linkedAssessmentId) payload.assessmentId = linkedAssessmentId;
         }
 
+        const btn = document.getElementById('checkupSubmitBtn');
+        const label = btn.textContent;
+        _checkupSaving = true;
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        let saved = false;
         try {
             if (editingId) {
                 await apiFetch(`/checkups/child/${childId}/${editingId}`, { method: 'PATCH', body: JSON.stringify(payload) });
@@ -1052,11 +1064,19 @@ const API = window.location.origin + '/api';
                 await apiFetch(`/checkups/child/${childId}`, { method: 'POST', body: JSON.stringify(payload) });
                 alert('✅ Check-up saved to the patient\'s history. Earlier check-ups remain unchanged.');
             }
+            saved = true;
             cancelAddCheckup();
             await loadCheckupHistory(childId);
             await loadPatients();
         } catch (err) {
             alert('Failed to save check-up: ' + err.message);
+        } finally {
+            _checkupSaving = false;
+            btn.disabled = false;
+            // After a successful save cancelAddCheckup() has already reset the
+            // label for a new entry; after a failure the form keeps its contents,
+            // so it keeps its label too and can be submitted again.
+            if (!saved) btn.textContent = label;
         }
     }
 
