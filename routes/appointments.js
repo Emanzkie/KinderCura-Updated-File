@@ -114,6 +114,25 @@ async function sendEmail(to, subject, html) {
   }
 }
 
+// Waits for an e-mail, but no longer than `ms`: 'sent', 'failed' or 'pending'
+// (still going; the send is not cancelled). Gmail's default timeouts run to
+// about two minutes on a slow relay, and the status and reschedule routes used
+// to await the whole send AFTER saving, so the request could hit the platform
+// limit (9.5 s on Vercel) and fail even though the change was already stored.
+const EMAIL_WAIT_MS = 4000;
+async function sendEmailWithin(ms, to, subject, html) {
+  let timer;
+  const timedOut = new Promise((resolve) => { timer = setTimeout(() => resolve('pending'), ms); });
+  try {
+    return await Promise.race([
+      sendEmail(to, subject, html).then((sent) => (sent ? 'sent' : 'failed'), () => 'failed'),
+      timedOut,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function resolveNotificationModel() {
   if (!Notification) return null;
   if (typeof Notification.create === 'function') return Notification;
@@ -1778,7 +1797,8 @@ async function updateAppointmentStatusById({ appointmentId, status, notes = null
   );
 
   const statusEmailTo = await parentAppointmentEmailTo(hydrated.parentId, hydrated.parentEmail);
-  await sendEmail(
+  await sendEmailWithin(
+    EMAIL_WAIT_MS,
     statusEmailTo,
     `Appointment ${label} — KinderCura`,
     `<h2>Appointment Status Update</h2>
@@ -2118,7 +2138,8 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
       }
 
       const rescheduleEmailTo = await parentAppointmentEmailTo(hydrated.parentId, hydrated.parentEmail);
-      await sendEmail(
+      await sendEmailWithin(
+        EMAIL_WAIT_MS,
         rescheduleEmailTo,
         'Appointment Rescheduled — KinderCura',
         `<h2>Appointment Rescheduled</h2>
@@ -2155,11 +2176,13 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
     );
 
     // Sent only after the save above succeeded. sendEmail never throws, so a
-    // mailer outage cannot undo a reschedule that is already committed; it
-    // returns false instead and the response reports emailSent.
+    // mailer outage cannot undo a reschedule that is already committed; the
+    // response reports emailSent (true/false), or emailSent null with
+    // emailPending true when the relay was still working after EMAIL_WAIT_MS.
     const parentEmailTo = await parentAppointmentEmailTo(hydrated.parentId, hydrated.parentEmail);
     const emailSkipped = hydrated.parentEmail && !parentEmailTo ? 'parent_opted_out' : null;
-    const emailSent = await sendEmail(
+    const emailResult = await sendEmailWithin(
+      EMAIL_WAIT_MS,
       parentEmailTo,
       'KinderCura — Your Appointment Has Been Rescheduled',
       `<h2>Appointment Rescheduled</h2>
@@ -2196,7 +2219,8 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
     // saved, so a mailer outage must not read as a failed reschedule.
     res.json({
       success: true,
-      emailSent,
+      emailSent: emailResult === 'pending' ? null : emailResult === 'sent',
+      emailPending: emailResult === 'pending',
       // Set when no email was attempted because the parent turned appointment
       // emails off, so the page does not report it as a mail failure.
       emailSkipped,

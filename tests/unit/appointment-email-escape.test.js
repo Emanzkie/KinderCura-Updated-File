@@ -89,7 +89,7 @@ const create = layer.route.stack[layer.route.stack.length - 1].handle;
   // 2. Static guard: every ${...} inside every appointment email body is
   //    escaped (or a conditional whose inner values are escaped).
   const src = fs.readFileSync(path.join(ROOT, 'routes/appointments.js'), 'utf8');
-  const bodies = [...src.matchAll(/sendEmail\(\s*[^,]+,\s*(?:`[^`]*`|'[^']*'),\s*`([\s\S]*?)`\s*\)/g)].map((m) => m[1]);
+  const bodies = [...src.matchAll(/sendEmail(?:Within)?\(\s*(?:EMAIL_WAIT_MS,\s*)?[^,]+,\s*(?:`[^`]*`|'[^']*'),\s*`([\s\S]*?)`\s*\)/g)].map((m) => m[1]);
   assert.strictEqual(bodies.length, 4, 'four appointment emails found');
   for (const body of bodies) {
     // Collapse "${cond ? `...${emailText(x)}...` : ''}" so only top-level values remain.

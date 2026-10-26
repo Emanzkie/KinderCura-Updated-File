@@ -530,4 +530,8 @@ if (!getToken() || !_u) {
         }
 
         document.addEventListener('click',e=>{if(!e.target.closest('.profile-btn'))document.getElementById('profileMenu').style.display='none';});
-        document.addEventListener('DOMContentLoaded',()=>{renderScoreGuideNote();initPediaCharts();loadDashboard();loadPediaAnalytics();loadNotificationCount();setInterval(()=>{loadDashboard();loadPediaAnalytics();loadNotificationCount();},5000);});
+        document.addEventListener('DOMContentLoaded',()=>{renderScoreGuideNote();initPediaCharts();loadDashboard();loadPediaAnalytics();loadNotificationCount();
+            // KC.poll never starts a run while the previous one is still going and
+            // pauses while the tab is hidden. A bare setInterval started all three
+            // loaders every 5 s without waiting, so a slow load piled up on itself.
+            window.KC.poll(async()=>{await Promise.all([loadDashboard(),loadPediaAnalytics(),loadNotificationCount()]);},15000);});
