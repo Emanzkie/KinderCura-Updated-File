@@ -489,6 +489,12 @@ async function buildHistoryForChild(childId, viewer = null) {
       cognitiveScore: r?.cognitiveScore ?? null,
       motorScore: r?.motorScore ?? null,
       overallScore: r?.overallScore ?? null,
+      // The stored status of each domain score, as the results route returns
+      // them. The pediatrician dashboard reads these next to the scores.
+      communicationStatus: r?.communicationStatus ?? null,
+      socialStatus: r?.socialStatus ?? null,
+      cognitiveStatus: r?.cognitiveStatus ?? null,
+      motorStatus: r?.motorStatus ?? null,
       // A. Developmental band — SCORE classification, computed live from
       // overallScore (never persisted). Separate from riskCategory/careStage
       // inside `prediction` below — see constants/developmental-staging.js.

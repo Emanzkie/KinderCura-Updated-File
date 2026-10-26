@@ -74,8 +74,13 @@ if (!getToken() || !_u) {
                 if(pending.length>0){pSub.innerHTML='Needs attention';pSub.style.color='var(--accent-red)';}
                 else{pSub.innerHTML='&#10003; All clear';pSub.style.color='#5a7560';}
 
-                const now=new Date(),in7=new Date(now.getTime()+7*24*60*60*1000);
-                document.getElementById('statUpcoming').textContent=approved.filter(n=>{const d=new Date(n.appointmentDate);return d>=now&&d<=in7;}).length;
+                // An appointment date is a calendar date (stored as UTC midnight), so it is
+                // compared with today's calendar date. Comparing it with the current instant
+                // dropped every appointment today, since its midnight is already past.
+                const dayKey=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+                const todayKey=dayKey(new Date());
+                const in7Key=dayKey(new Date(Date.now()+7*24*60*60*1000));
+                document.getElementById('statUpcoming').textContent=approved.filter(n=>{const k=String(n.appointmentDate||'').slice(0,10);return k>=todayKey&&k<=in7Key;}).length;
 
                 try {
                     const aptData = await apiFetch('/appointments/pedia');
@@ -129,6 +134,14 @@ if (!getToken() || !_u) {
         // pending list. The formula matches routes/assessments.js (Yes = 2,
         // Sometimes = 1, No = 0 points; area % = earned / possible; overall =
         // average of the four area scores); ranges come from KCScoring.
+        // " (On Track)" for a stored domain status such as 'on-track'; nothing when
+        // there is none. The label comes from constants/scoring.js like the overall band.
+        function statusText(status){
+            if(!status) return '';
+            const S = window.KCScoring;
+            return ' ('+escapeHtml(S && S.clinicalLabel ? S.clinicalLabel(status) : status)+')';
+        }
+
         function renderScoreGuideNote(){
             const el = document.getElementById('pendingScoreGuide');
             const S = window.KCScoring;
@@ -158,10 +171,10 @@ if (!getToken() || !_u) {
                     </div>
                     ${n.overallScore!=null
                         ?`<div class="scores-row"><strong style="color:var(--primary);"><img src="/icons/analytics.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Assessment Results:</strong><br>
-                           Communication: <strong>${n.communicationScore||0}%</strong>${n.communicationStatus?' ('+escapeHtml(n.communicationStatus)+')':''} &nbsp;·&nbsp;
-                           Social: <strong>${n.socialScore||0}%</strong>${n.socialStatus?' ('+escapeHtml(n.socialStatus)+')':''} &nbsp;·&nbsp;
-                           Cognitive: <strong>${n.cognitiveScore||0}%</strong>${n.cognitiveStatus?' ('+escapeHtml(n.cognitiveStatus)+')':''} &nbsp;·&nbsp;
-                           Motor: <strong>${n.motorScore||0}%</strong>${n.motorStatus?' ('+escapeHtml(n.motorStatus)+')':''}<br>
+                           Communication: <strong>${n.communicationScore||0}%</strong>${statusText(n.communicationStatus)} &nbsp;·&nbsp;
+                           Social: <strong>${n.socialScore||0}%</strong>${statusText(n.socialStatus)} &nbsp;·&nbsp;
+                           Cognitive: <strong>${n.cognitiveScore||0}%</strong>${statusText(n.cognitiveStatus)} &nbsp;·&nbsp;
+                           Motor: <strong>${n.motorScore||0}%</strong>${statusText(n.motorStatus)}<br>
                            Overall: <strong style="color:var(--primary);font-size:1rem;">${n.overallScore||0}%</strong>${overallBandText(n.overallScore)}
                            <span class="scores-caption">Latest completed assessment${n.assessmentDate ? ' (' + fmtDate(n.assessmentDate) + ')' : ''}. Domain % = that domain's assessment score; Overall = overall assessment score (average of the four domain scores).</span></div>`
                         :`<p style="color:var(--text-light);font-size:.85rem;font-style:italic;margin:.5rem 0;">No assessment results on file yet.</p>`
@@ -366,8 +379,11 @@ if (!getToken() || !_u) {
         function renderActivity(all){
             const el=document.getElementById('activityList');
             if(all.length===0){el.innerHTML='<div class="empty-state"><span><img src="/icons/analytics.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"></span>No patient activity yet.<br><small style="color:var(--text-light);">Activity appears here once parents book appointments.</small></div>';return;}
-            const iconMap={pending:'•',approved:'&#10003;',declined:'&#10007;'};
-            const labelMap={pending:'Appointment Requested',approved:'Appointment Approved',declined:'Appointment Declined'};
+            // The API's statuses are pending, approved, rejected, completed and cancelled;
+            // the feed used to look for 'declined', so everything but pending/approved
+            // showed as a generic "Activity".
+            const iconMap={pending:'•',approved:'&#10003;',rejected:'&#10007;',completed:'&#10003;',cancelled:'&#10007;'};
+            const labelMap={pending:'Appointment Requested',approved:'Appointment Approved',rejected:'Appointment Declined',completed:'Appointment Completed',cancelled:'Appointment Cancelled'};
             el.innerHTML=all.slice(0,6).map(n=>`
                 <div class="activity-item">
                     <div>
