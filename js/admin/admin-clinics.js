@@ -120,9 +120,9 @@
             byId('clinicSummaryCards').innerHTML = [
                 card('Registered clinics', count(c.registered), 'Distinct clinic records, each counted once by its ID, all dates. Not a count of pediatrician accounts.'),
                 card('Active', count(c.active), c.registered > 0
-                    ? `Status "active": ${pct(c.active, c.registered)} of registered clinics.`
-                    : 'Status "active". No registered clinics yet.'),
-                card('Inactive', count(c.inactive), 'Status "inactive": marked by an admin as no longer operating.'),
+                    ? `All registered clinics are currently operating. ${pct(c.active, c.registered)} of registered clinics.`
+                    : 'All registered clinics are currently operating.'),
+                card('Inactive', count(c.inactive), 'No registered clinics are currently marked as no longer operating.'),
                 card('With pediatricians', count(c.withPediatricians), 'Registered clinics with at least one linked pediatrician account, each clinic counted once.'),
                 card('Linked pediatricians', count(p.linked), p.total > 0
                     ? `Unique pediatrician accounts linked to a registered clinic (each account belongs to at most one): ${pct(p.linked, p.total)} of all ${count(p.total)} pediatrician accounts.`
