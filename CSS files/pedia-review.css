@@ -289,6 +289,11 @@
     background: rgba(232, 165, 165, 0.05);
 }
 
+/* "Recorded - not scored": neither positive nor a concern. */
+.ra-answer-neutral {
+    border-left: 4px solid var(--status-neutral-fg);
+}
+
 .ra-q-row {
     display: flex;
     align-items: flex-start;
@@ -387,6 +392,11 @@
 .ra-dot-concern {
     background: var(--danger);
     box-shadow: 0 0 0 2px rgba(232, 165, 165, 0.3);
+}
+
+.ra-dot-neutral {
+    background: var(--status-neutral-fg);
+    box-shadow: 0 0 0 2px var(--status-neutral-bg);
 }
 
 /* ── Existing diagnosis (read-only) ── */

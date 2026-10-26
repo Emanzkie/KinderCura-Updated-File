@@ -28,6 +28,7 @@ const router = express.Router();
 
 const { authMiddleware } = require('../middleware/auth');
 const { patientAccessFilter } = require('../services/patientAccess');
+const { CLINIC_TIME_ZONE } = require('../js/shared/child-age');
 const Assessment = require('../models/Assessment');
 const AssessmentResult = require('../models/AssessmentResult');
 const Appointment = require('../models/Appointment');
@@ -90,6 +91,40 @@ function bandMovement(fromBand, toBand) {
  * of the day so "to 8 August" means what the clinician setting the filter
  * expects. A full ISO timestamp is honoured exactly as given.
  */
+// Appointments, bookings and the report page itself work in the clinic's time
+// zone (Asia/Manila), not UTC. A date-only filter value is a calendar day there:
+// read as UTC, "8 August" began at 08:00 Manila time and ran to 07:59 the next
+// morning, so screenings at the edges fell on the wrong side of the filter.
+function clinicOffsetMs(instantMs) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: CLINIC_TIME_ZONE, year: 'numeric', month: 'numeric', day: 'numeric',
+    hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23',
+  }).formatToParts(new Date(instantMs));
+  const p = (type) => Number(parts.find((x) => x.type === type).value);
+  return Date.UTC(p('year'), p('month') - 1, p('day'), p('hour'), p('minute'), p('second')) - instantMs;
+}
+
+/** The UTC instant at which calendar day 'YYYY-MM-DD' begins on the clinic's clock. */
+function clinicDayStart(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const guess = Date.UTC(y, m - 1, d);
+  return new Date(guess - clinicOffsetMs(guess - clinicOffsetMs(guess)));
+}
+
+/** The last millisecond of that calendar day on the clinic's clock. */
+function clinicDayEnd(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+  return new Date(clinicDayStart(next).getTime() - 1);
+}
+
+/** 'YYYY-MM' of an instant, in the clinic's time zone. */
+function clinicMonthKey(date) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: CLINIC_TIME_ZONE, year: 'numeric', month: 'numeric' }).formatToParts(date);
+  const p = (type) => Number(parts.find((x) => x.type === type).value);
+  return `${p('year')}-${String(p('month')).padStart(2, '0')}`;
+}
+
 function parseRange(query) {
   const out = { from: null, to: null };
 
@@ -97,15 +132,14 @@ function parseRange(query) {
   if (rawFrom) {
     const d = new Date(rawFrom);
     if (Number.isNaN(d.getTime())) return { error: 'Query parameter `from` is not a valid ISO date.' };
-    out.from = d;
+    out.from = /^\d{4}-\d{2}-\d{2}$/.test(rawFrom) ? clinicDayStart(rawFrom) : d;
   }
 
   const rawTo = query.to == null ? '' : String(query.to).trim();
   if (rawTo) {
     const d = new Date(rawTo);
     if (Number.isNaN(d.getTime())) return { error: 'Query parameter `to` is not a valid ISO date.' };
-    if (/^\d{4}-\d{2}-\d{2}$/.test(rawTo)) d.setUTCHours(23, 59, 59, 999);
-    out.to = d;
+    out.to = /^\d{4}-\d{2}-\d{2}$/.test(rawTo) ? clinicDayEnd(rawTo) : d;
   }
 
   if (out.from && out.to && out.from > out.to) {
@@ -301,7 +335,7 @@ function assessmentsByMonth(results) {
     if (!r.generatedAt) continue;
     const d = new Date(r.generatedAt);
     if (Number.isNaN(d.getTime())) continue;
-    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    const key = clinicMonthKey(d);
     buckets.set(key, (buckets.get(key) || 0) + 1);
   }
   return Array.from(buckets.entries())
@@ -876,6 +910,6 @@ router.get('/clinical-status', authMiddleware, pediatriciansOnly, async (req, re
   }
 });
 
-router._internals = { csvCell, csvRow };
+router._internals = { csvCell, csvRow, parseRange, assessmentsByMonth };
 
 module.exports = router;

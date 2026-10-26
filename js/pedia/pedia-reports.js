@@ -1724,9 +1724,16 @@ function renderClinicalStatus() {
 
 // ── Loading ─────────────────────────────────────────────────────────────────
 
+// Only the newest loadReports() may change the page. The overview, progression
+// and patients requests used to have no such check, so changing a filter twice
+// quickly let a slow first answer land after the second and overwrite it (the
+// activity request below has had this guard from the start).
+let reportLoadSeq = 0;
+
 async function loadReports() {
     const meta = document.getElementById('reportMeta');
     const query = currentRangeQuery();
+    const loadSeq = ++reportLoadSeq;
 
     // Expansion state belongs to the rows that were on screen; a new filter
     // produces a different set of rows, so it is dropped rather than reapplied
@@ -1763,6 +1770,7 @@ async function loadReports() {
             apiFetch(`/pedia-reports/patients${query}`),
         ]);
     } catch (err) {
+        if (loadSeq !== reportLoadSeq) return;
         meta.textContent = 'Could not load reports';
         document.getElementById('cohortTiles').innerHTML = '';
         document.getElementById('classificationSection').innerHTML =
@@ -1773,6 +1781,7 @@ async function loadReports() {
         return;
     }
 
+    if (loadSeq !== reportLoadSeq) return;
     const patients = count(overviewData?.cohort?.patients);
     const screenings = count(overviewData?.cohort?.screenings);
     const rangeLabel = (overviewData?.range?.from || overviewData?.range?.to)

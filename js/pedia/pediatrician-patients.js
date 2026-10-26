@@ -135,9 +135,12 @@ const API = window.location.origin + '/api';
         const date = new Date();
         date.setHours(0, 0, 0, 0);
 
-        if (numericScore < 40) {
+        // The bands come from constants/scoring.js, not literals here: a score of
+        // exactly 60 is "Developing", so the old `<= 60` put it in the at-risk interval.
+        const band = window.KCScoring.bandFor(numericScore);
+        if (band === 'delayed') {
             date.setDate(date.getDate() + 14);
-        } else if (numericScore <= 60) {
+        } else if (band === 'at-risk') {
             date.setMonth(date.getMonth() + 1);
         } else {
             date.setMonth(date.getMonth() + 3);
@@ -1333,6 +1336,9 @@ function toggleProfileMenu() {
     function insightIcon(level) {
         if (level === 'positive') return '<span class="ra-insight-dot ra-dot-positive"></span>';
         if (level === 'warning')  return '<span class="ra-insight-dot ra-dot-warning"></span>';
+        // "Recorded - not scored" (a custom answer the scoring does not read):
+        // neither good news nor a concern, so it must not borrow either colour.
+        if (level === 'neutral')  return '<span class="ra-insight-dot ra-dot-neutral"></span>';
         return '<span class="ra-insight-dot ra-dot-concern"></span>';
     }
 
@@ -1493,7 +1499,8 @@ function toggleProfileMenu() {
 
             answers.forEach((q, idx) => {
                 const answerClass = q.insightLevel === 'concern' ? 'ra-answer-concern'
-                    : q.insightLevel === 'warning' ? 'ra-answer-warning' : 'ra-answer-positive';
+                    : q.insightLevel === 'warning' ? 'ra-answer-warning'
+                    : q.insightLevel === 'neutral' ? 'ra-answer-neutral' : 'ra-answer-positive';
 
                 html += `
                 <div class="ra-answer-card ${answerClass}">
