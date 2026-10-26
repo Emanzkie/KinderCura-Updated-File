@@ -210,10 +210,10 @@ router.post('/appointment/:appointmentId', authMiddleware, (req, res) => {
                 description: req.body.description || null
             });
 
-            // Mark appointment as having video
+            // Mark appointment as having video. `appointment` is a lean plain
+            // object (no save()), so update the document directly.
             if (!appointment.hasVideo) {
-                appointment.hasVideo = true;
-                await appointment.save();
+                await Appointment.updateOne({ _id: appointment._id }, { $set: { hasVideo: true } });
             }
 
             // Notify pediatrician if there is one assigned
