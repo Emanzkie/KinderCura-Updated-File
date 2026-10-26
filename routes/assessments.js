@@ -7,6 +7,9 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const { authMiddleware } = require('../middleware/auth');
 const { hasPermission, canViewChild } = require('../middleware/guardianAccess');
+const {
+  ACCESS_APPOINTMENT_STATUSES, patientAccessFilter, pediatricianHasPatient, findLinkedAppointment,
+} = require('../services/patientAccess');
 const Assessment = require('../models/Assessment');
 const AssessmentAnswer = require('../models/AssessmentAnswer');
 const AssessmentResult = require('../models/AssessmentResult');
@@ -652,7 +655,7 @@ async function notifyPediatricianCustomAnswer({ pediatricianId, child, questionT
 // whose link grants submitAssessments. Shared by initialize/save-draft/submit.
 async function canSubmitForChild(user, child) {
   if (String(child.parentId) === String(user.userId)) return true;
-  if (user.role === 'pediatrician' && await Appointment.exists({ childId: child._id, pediatricianId: user.userId })) return true;
+  if (user.role === 'pediatrician' && await pediatricianHasPatient(user.userId, child._id)) return true;
   return hasPermission(user.userId, child._id, 'submitAssessments');
 }
 
@@ -1123,13 +1126,21 @@ router.get('/pedia-patients', authMiddleware, async (req, res) => {
       if (!current || a.id > current.id) uniqueByChild.set(key, a);
     }
 
+    // Declined and cancelled bookings stay listed (the page has a Cancelled /
+    // Rejected filter), but a child with no live booking is no longer this
+    // pediatrician's patient: no scores, diagnosis, ML label or parent e-mail.
+    const linkedChildIds = new Set(
+      appointments.filter((a) => ACCESS_APPOINTMENT_STATUSES.includes(a.status)).map((a) => String(a.childId))
+    );
+
     const patients = [];
     for (const appt of uniqueByChild.values()) {
+      const linked = linkedChildIds.has(String(appt.childId));
       const [child, parent, latestAssessment, latestCompletedAssessment] = await Promise.all([
         Child.findById(appt.childId).lean(),
         User.findById(appt.parentId).lean(),
-        Assessment.findOne({ childId: appt.childId }).sort({ startedAt: -1 }).lean(),
-        Assessment.findOne({ childId: appt.childId, status: 'complete' }).sort({ completedAt: -1, startedAt: -1 }).lean(),
+        linked ? Assessment.findOne({ childId: appt.childId }).sort({ startedAt: -1 }).lean() : null,
+        linked ? Assessment.findOne({ childId: appt.childId, status: 'complete' }).sort({ completedAt: -1, startedAt: -1 }).lean() : null,
       ]);
       // Scores and the stored prediction come from the latest COMPLETED
       // assessment — the same record the parent Results page shows — so an
@@ -1149,7 +1160,7 @@ router.get('/pedia-patients', authMiddleware, async (req, res) => {
         childProfileIcon: child?.profileIcon || null,
         parentFirstName: parent?.firstName || '',
         parentLastName: parent?.lastName || '',
-        parentEmail: parent?.email || '',
+        parentEmail: linked ? (parent?.email || '') : '',
         appointmentId: appt.id,
         appointmentStatus: appt.status,
         appointmentDate: appt.appointmentDate,
@@ -1229,7 +1240,7 @@ router.get('/patients', authMiddleware, async (req, res) => {
   try {
     const { category, threshold } = req.query;
 
-    const appointments = await Appointment.find({ pediatricianId: req.user.userId }).sort({ appointmentDate: -1, createdAt: -1 }).lean();
+    const appointments = await Appointment.find(patientAccessFilter(req.user.userId)).sort({ appointmentDate: -1, createdAt: -1 }).lean();
     const uniqueByChild = new Map();
     for (const a of appointments) {
       const key = String(a.childId);
@@ -1374,7 +1385,7 @@ router.post('/diagnose/:childId', authMiddleware, async (req, res) => {
 
     // Same link rule as progress notes, review-answers and check-ups: only a
     // pediatrician with an appointment for this child may diagnose them.
-    const linked = await Appointment.exists({ childId: child._id, pediatricianId: req.user.userId });
+    const linked = await pediatricianHasPatient(req.user.userId, child._id);
     if (!linked) {
       return res.status(403).json({ error: 'You can only diagnose your own patients.' });
     }
@@ -1487,7 +1498,7 @@ async function reviewAssessmentMlLabel(assessmentId, user, input) {
   // /:assessmentId/compare and routes/recommendations.js. Role alone is not
   // enough; this is what stops one pediatrician labelling another's
   // unrelated patient.
-  const isPediaLinked = await Appointment.exists({ childId: assessment.childId, pediatricianId: user.userId });
+  const isPediaLinked = await pediatricianHasPatient(user.userId, assessment.childId);
   if (!isPediaLinked) {
     throw new HttpError(403, 'You are not linked to this patient — only a pediatrician with an appointment for this child may review it.');
   }
@@ -1562,7 +1573,7 @@ router.post('/:assessmentId/ml-label/exclude', authMiddleware, async (req, res) 
     const assessment = await Assessment.findById(req.params.assessmentId);
     if (!assessment) return res.status(404).json({ error: 'Assessment not found.' });
 
-    const isPediaLinked = await Appointment.exists({ childId: assessment.childId, pediatricianId: req.user.userId });
+    const isPediaLinked = await pediatricianHasPatient(req.user.userId, assessment.childId);
     if (!isPediaLinked) {
       return res.status(403).json({ error: 'You are not linked to this patient.' });
     }
@@ -1664,7 +1675,7 @@ router.get('/:childId/history', authMiddleware, async (req, res) => {
     if (!child) return res.status(404).json({ error: 'Child not found.' });
 
     const isParentOwner = String(child.parentId) === String(req.user.userId);
-    const isPediaLinked = req.user.role === 'pediatrician' && await Appointment.exists({ childId: child._id, pediatricianId: req.user.userId });
+    const isPediaLinked = req.user.role === 'pediatrician' && await pediatricianHasPatient(req.user.userId, child._id);
     const allowed = isParentOwner || isPediaLinked || req.user.role === 'admin' || await hasPermission(req.user.userId, child._id, 'viewAssessments');
     if (!allowed) return res.status(403).json({ error: 'Access denied.' });
 
@@ -1685,10 +1696,7 @@ router.get('/child/:childId/progress-notes', authMiddleware, async (req, res) =>
     if (!child) return res.status(404).json({ error: 'Child not found.' });
 
     const isParentOwner = String(child.parentId) === String(req.user.userId);
-    const isPediaLinked = req.user.role === 'pediatrician' && await Appointment.exists({
-      childId: child._id,
-      pediatricianId: req.user.userId,
-    });
+    const isPediaLinked = req.user.role === 'pediatrician' && await pediatricianHasPatient(req.user.userId, child._id);
 
     const allowed = isParentOwner || isPediaLinked || req.user.role === 'admin' || await hasPermission(req.user.userId, child._id, 'viewAssessments');
     if (!allowed) return res.status(403).json({ error: 'Access denied.' });
@@ -1743,10 +1751,7 @@ router.post('/child/:childId/progress-notes', authMiddleware, async (req, res) =
     const child = await Child.findById(req.params.childId).lean();
     if (!child) return res.status(404).json({ error: 'Child not found.' });
 
-    const linkedAppointment = await Appointment.findOne({
-      childId: child._id,
-      pediatricianId: req.user.userId,
-    }).sort({ appointmentDate: -1, createdAt: -1 }).lean();
+    const linkedAppointment = await findLinkedAppointment(req.user.userId, child._id);
 
     if (!linkedAppointment) {
       return res.status(403).json({ error: 'You can only update progress for your own patients.' });
@@ -1809,10 +1814,7 @@ router.get('/:childId/review-answers', authMiddleware, async (req, res) => {
     if (!child) return res.status(404).json({ error: 'Child not found.' });
 
     // Ensure pediatrician is linked to this patient through an appointment
-    const linked = await Appointment.exists({
-      childId: child._id,
-      pediatricianId: req.user.userId,
-    });
+    const linked = await pediatricianHasPatient(req.user.userId, child._id);
     if (!linked) {
       return res.status(403).json({ error: 'You can only review answers for your own patients.' });
     }
@@ -1933,7 +1935,7 @@ router.get('/:assessmentId/compare', authMiddleware, async (req, res) => {
     if (!child) return res.status(404).json({ error: 'Child not found.' });
 
     const isOwner = String(child.parentId) === String(req.user.userId);
-    const isPediaLinked = req.user.role === 'pediatrician' && await Appointment.exists({ childId: child._id, pediatricianId: req.user.userId });
+    const isPediaLinked = req.user.role === 'pediatrician' && await pediatricianHasPatient(req.user.userId, child._id);
     const allowed = isOwner || isPediaLinked || req.user.role === 'admin' || await hasPermission(req.user.userId, child._id, 'viewAssessments');
     if (!allowed) return res.status(403).json({ error: 'Access denied.' });
 

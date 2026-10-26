@@ -78,7 +78,9 @@ function seed() {
 }
 
 const same = (a, b) => String(a) === String(b);
-const query = (rows, filter) => rows.filter((r) => Object.entries(filter).every(([k, v]) => same(r[k], v)));
+// Equality, plus the { $in: [...] } form the pediatrician-link check uses for status.
+const matchField = (row, k, v) => (v && Array.isArray(v.$in) ? v.$in.some((x) => same(row[k], x)) : same(row[k], v));
+const query = (rows, filter) => rows.filter((r) => Object.entries(filter).every(([k, v]) => matchField(r, k, v)));
 const chain = (value) => {
   const o = { sort: () => o, populate: () => o, select: () => o, lean: async () => clone(value),
     then: (a, b) => Promise.resolve(clone(value)).then(a, b) };
@@ -220,7 +222,7 @@ async function authorizationTests() {
   // Pediatrician B is linked to the other child; pointing at this child's check-up fails.
   await expectHttp(createReferralRecord(String(ids.otherChild), pediaB, validBody()), 400, 'check-up of a different child');
   // Pediatrician A is linked here, but cannot refer from pediatrician B's record.
-  db.appointments.push({ id: 103, childId: ids.otherChild, pediatricianId: ids.pediaA });
+  db.appointments.push({ id: 103, childId: ids.otherChild, pediatricianId: ids.pediaA, status: 'approved' });
   await expectHttp(createReferralRecord(String(ids.otherChild), pediaA, validBody({ sourceCheckupId: String(db.checkups[3]._id) })), 403, "another pediatrician's check-up");
   await expectHttp(createReferralRecord(String(oid()), pediaA, validBody()), 404, 'unknown child');
   await expectHttp(createReferralRecord('not-an-id', pediaA, validBody()), 404, 'malformed child id');
@@ -253,7 +255,7 @@ async function duplicateTests() {
   assert.deepStrictEqual([a.duplicate, b.duplicate].sort(), [false, true]);
   ok('F: two simultaneous submissions still produce exactly one referral');
 
-  db.appointments.push({ id: 104, childId: ids.otherChild, pediatricianId: ids.pediaA });
+  db.appointments.push({ id: 104, childId: ids.otherChild, pediatricianId: ids.pediaA, status: 'approved' });
   await expectHttp(createReferralRecord(String(ids.otherChild), pediaA, validBody({ clientRequestId: 'req-0002-race' })), 409, 'request id reused for another child');
   assert.strictEqual(db.referrals.length, 1);
 }

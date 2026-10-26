@@ -1,7 +1,7 @@
 // middleware/guardianAccess.js
 const Child = require('../models/Child');
 const GuardianLink = require('../models/GuardianLink');
-const Appointment = require('../models/Appointment');
+const { pediatricianHasPatient } = require('../services/patientAccess');
 
 async function resolveChildIdFromReq(req) {
   return req.params.childId || req.body.childId || req.query.childId || null;
@@ -40,7 +40,7 @@ async function canViewChild(user, child, permissionKey) {
   if (String(child.parentId) === String(user.userId)) return true;
   if (user.role === 'admin') return true;
   if (user.role === 'pediatrician') {
-    if (await Appointment.exists({ childId: child._id, pediatricianId: user.userId })) return true;
+    if (await pediatricianHasPatient(user.userId, child._id)) return true;
   }
   return hasPermission(user.userId, child._id, permissionKey);
 }

@@ -27,6 +27,7 @@ const express = require('express');
 const router = express.Router();
 
 const { authMiddleware } = require('../middleware/auth');
+const { patientAccessFilter } = require('../services/patientAccess');
 const Assessment = require('../models/Assessment');
 const AssessmentResult = require('../models/AssessmentResult');
 const Appointment = require('../models/Appointment');
@@ -198,7 +199,7 @@ function pediatriciansOnly(req, res, next) {
 async function loadScope(req, range, filters) {
   const active = filters || { classification: null, childId: null };
 
-  const appointments = await Appointment.find({ pediatricianId: req.user.userId })
+  const appointments = await Appointment.find(patientAccessFilter(req.user.userId))
     .select('childId')
     .lean();
 

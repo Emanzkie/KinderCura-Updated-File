@@ -23,6 +23,7 @@ const router = express.Router();
 
 const { authMiddleware } = require('../middleware/auth');
 const { hasPermission } = require('../middleware/guardianAccess');
+const { pediatricianHasPatient, findLinkedAppointment } = require('../services/patientAccess');
 const Child = require('../models/Child');
 const Appointment = require('../models/Appointment');
 const Assessment = require('../models/Assessment');
@@ -59,7 +60,7 @@ async function loadChildAndAccess(childId, user) {
 
   const isParentOwner = String(child.parentId) === String(user.userId);
   const isPediaLinked = user.role === 'pediatrician'
-    && Boolean(await Appointment.exists({ childId: child._id, pediatricianId: user.userId }));
+    && await pediatricianHasPatient(user.userId, child._id);
   const isAdmin = user.role === 'admin';
   const hasSharedAccess = (user.role === 'parent' && !isParentOwner)
     ? await hasPermission(user.userId, child._id, 'viewMedicalRecords')
@@ -205,9 +206,7 @@ async function resolveAppointmentRef(rawAppointmentId, child, pediatricianId) {
   // pediatrician and child, the same convenience routes/assessments.js POST
   // /child/:childId/progress-notes already provides, so the pediatrician
   // does not have to look up an appointment id by hand.
-  const linked = await Appointment.findOne({ childId: child._id, pediatricianId })
-    .sort({ appointmentDate: -1, createdAt: -1 })
-    .lean();
+  const linked = await findLinkedAppointment(pediatricianId, child._id);
   return linked ? linked.id : null;
 }
 
