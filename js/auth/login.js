@@ -26,6 +26,7 @@ const API = window.location.origin + '/api';
             e.preventDefault();
             const btn = document.getElementById('submitBtn');
             const err = document.getElementById('errorMsg');
+            err.className = 'auth-message auth-message--error';
             err.style.display = 'none';
             btn.textContent = 'Signing in…';
             btn.disabled = true;
@@ -46,7 +47,12 @@ const API = window.location.origin + '/api';
                 });
                 const data = await res.json();
 
-                if (!res.ok) throw new Error(data.error || 'Login failed.');
+                if (!res.ok) {
+                    // A rejected PRC check: the message carries the admin's reason, and
+                    // the response includes a one-purpose token for resubmitting.
+                    if (data.code === 'PRC_REJECTED' && data.resubmitToken) showPrcResubmit(data);
+                    throw new Error(data.error || 'Login failed.');
+                }
 
                 // Save session to localStorage
                 localStorage.setItem('kc_token', data.token);
@@ -105,6 +111,52 @@ const API = window.location.origin + '/api';
                 err.textContent = error.message || 'Cannot connect to server. Make sure the server is running.';
                 err.style.display = 'block';
                 btn.textContent = 'Sign In';
+                btn.disabled = false;
+            }
+        });
+
+        // ── PRC resubmission (pediatrician whose verification was rejected) ──
+        let prcResubmitToken = null;
+
+        function showPrcResubmit(data) {
+            prcResubmitToken = data.resubmitToken;
+            document.getElementById('prcLicenseNumber').value = data.prcLicenseNumber || '';
+            document.getElementById('prcResubmitMsg').style.display = 'none';
+            document.getElementById('prcResubmitForm').style.display = 'block';
+        }
+
+        document.getElementById('prcResubmitForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('prcResubmitBtn');
+            const msg = document.getElementById('prcResubmitMsg');
+            const file = document.getElementById('prcDocument').files[0];
+            msg.style.display = 'none';
+            if (!file) return;
+            btn.textContent = 'Submitting…';
+            btn.disabled = true;
+
+            try {
+                const form = new FormData();
+                form.append('prcLicenseNumber', document.getElementById('prcLicenseNumber').value.trim());
+                form.append('prcDocument', file);
+                const res = await fetch(`${API}/prc/resubmit`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${prcResubmitToken}` },
+                    body: form
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || 'Could not resubmit your documents.');
+
+                prcResubmitToken = null;
+                document.getElementById('prcResubmitForm').style.display = 'none';
+                const err = document.getElementById('errorMsg');
+                err.className = 'auth-message auth-message--info';
+                err.textContent = 'Your PRC documents were resubmitted. An administrator will review them again, and you can sign in once your account is approved.';
+                err.style.display = 'block';
+            } catch (error) {
+                msg.textContent = error.message || 'Cannot connect to server. Make sure the server is running.';
+                msg.style.display = 'block';
+                btn.textContent = 'Resubmit for review';
                 btn.disabled = false;
             }
         });

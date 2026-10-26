@@ -17,7 +17,7 @@ const GuardianLink = require('../models/GuardianLink');
 const Assessment = require('../models/Assessment');
 const OtpCode = require('../models/OtpCode');
 const Notification = require('../models/Notification');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, signPrcResubmitToken } = require('../middleware/auth');
 const sse = require('../sse');
 const fileStorage = require('../services/fileStorage');
 const { parseSignupConsent } = require('../constants/legalConsent');
@@ -1191,6 +1191,19 @@ router.post('/login', async (req, res) => {
     if (!match) {
       console.log(`[LOGIN] PASSWORD MISMATCH for user ${user._id}`);
       return res.status(401).json({ error: 'Invalid email/username or password.' });
+    }
+
+    // A rejected PRC check also leaves the account pending. Say why, and hand
+    // over a one-purpose token so they can resubmit (POST /api/prc/resubmit).
+    if (user.status === 'pending' && user.role === 'pediatrician' && user.prcVerificationStatus === 'rejected') {
+      console.log(`[LOGIN] Account PRC REJECTED: _id=${user._id}`);
+      const reason = user.prcAdminNotes ? ` Reason: ${user.prcAdminNotes}` : '';
+      return res.status(403).json({
+        error: `Your PRC verification was not approved.${reason} You can resubmit your documents below.`,
+        code: 'PRC_REJECTED',
+        prcLicenseNumber: user.prcLicenseNumber || '',
+        resubmitToken: signPrcResubmitToken(user),
+      });
     }
 
     if (user.status === 'pending') {

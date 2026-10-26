@@ -11,6 +11,7 @@
 //
 // ENDPOINTS ADDED:
 //   POST   /api/prc/upload          – Pediatrician uploads PRC ID + license number
+//   POST   /api/prc/resubmit        – Rejected pediatrician resubmits (resubmit token)
 //   GET    /api/prc/status          – Pediatrician checks own verification status
 //   GET    /api/prc/pending         – Admin lists all pending verifications
 //   GET    /api/prc/document/:userId – Admin views a specific PRC ID document
@@ -32,7 +33,7 @@ const jwt = require('jsonwebtoken');
 
 const User = require('../models/User');
 const Notification = require('../models/Notification');
-const { authMiddleware, adminOnly } = require('../middleware/auth');
+const { authMiddleware, adminOnly, prcResubmitAuth } = require('../middleware/auth');
 const fileStorage = require('../services/fileStorage');
 
 const router = express.Router();
@@ -166,8 +167,12 @@ async function pushNotification(userId, title, message, type = 'admin', relatedP
 // ──────────────────────────────────────────────────────────────────
 // POST /api/prc/upload
 // Pediatrician submits PRC License Number + PRC ID image
+// POST /api/prc/resubmit
+// Same submission, for a pediatrician whose verification was rejected. They
+// cannot log in, so they present the one-purpose token that login gave them
+// (prcResubmitAuth) instead of a session token.
 // ──────────────────────────────────────────────────────────────────
-router.post('/upload', authMiddleware, (req, res) => {
+function submitPrcDocument(req, res) {
   prcUpload.single('prcDocument')(req, res, (multerErr) => finalizePrc(req, res, async (storeErr) => {
     const err = multerErr || storeErr;
     if (err) {
@@ -255,7 +260,10 @@ router.post('/upload', authMiddleware, (req, res) => {
       res.status(500).json({ error: e.message });
     }
   }));
-});
+}
+
+router.post('/upload', authMiddleware, submitPrcDocument);
+router.post('/resubmit', prcResubmitAuth, submitPrcDocument);
 
 // ──────────────────────────────────────────────────────────────────
 // GET /api/prc/status

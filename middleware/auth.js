@@ -67,6 +67,47 @@ function authMiddleware(req, res, next) {
     }
 }
 
+// A pediatrician whose PRC check was rejected cannot log in (their account is
+// pending again), yet has to be able to resubmit documents. Login hands them a
+// short-lived token for that one purpose. It is signed with a different key
+// from normal session tokens, so authMiddleware above rejects it everywhere and
+// it works only on POST /api/prc/resubmit.
+const PRC_RESUBMIT_TTL = '30m';
+const prcResubmitKey = () => `${process.env.JWT_SECRET}:prc-resubmit`;
+
+function signPrcResubmitToken(user) {
+    return jwt.sign({ userId: String(user._id), purpose: 'prc-resubmit' }, prcResubmitKey(), { expiresIn: PRC_RESUBMIT_TTL });
+}
+
+// Runs before the upload middleware, so a request without a valid token never
+// gets a file stored.
+async function prcResubmitAuth(req, res, next) {
+    const m = String(req.headers.authorization || '').trim().match(/^Bearer\s+(.+)$/i);
+    let payload;
+    try {
+        payload = jwt.verify(m ? m[1].trim() : '', prcResubmitKey());
+    } catch (err) {
+        return res.status(401).json({ error: 'This resubmission link has expired. Please sign in again.' });
+    }
+    if (payload.purpose !== 'prc-resubmit') {
+        return res.status(401).json({ error: 'This resubmission link has expired. Please sign in again.' });
+    }
+
+    let account;
+    try {
+        account = await User.findById(payload.userId).select('role status prcVerificationStatus').lean();
+    } catch (err) {
+        console.error('[auth] Could not check PRC resubmission account:', err && err.message ? err.message : err);
+        return res.status(503).json({ error: 'Could not verify your account. Please try again.' });
+    }
+    if (!account || account.role !== 'pediatrician'
+        || account.status !== 'pending' || account.prcVerificationStatus !== 'rejected') {
+        return res.status(403).json({ error: 'This account is not awaiting PRC resubmission.' });
+    }
+    req.user = { userId: String(payload.userId), role: 'pediatrician' };
+    next();
+}
+
 // adminOnly — blocks all non-admin users from admin-restricted endpoints.
 function adminOnly(req, res, next) {
     if (req.user?.role !== 'admin') {
@@ -87,4 +128,4 @@ function secretaryOrPediatrician(req, res, next) {
     next();
 }
 
-module.exports = { authMiddleware, adminOnly, secretaryOrPediatrician };
+module.exports = { authMiddleware, adminOnly, secretaryOrPediatrician, signPrcResubmitToken, prcResubmitAuth };
