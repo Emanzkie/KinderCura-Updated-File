@@ -407,6 +407,62 @@ function normalizeBreaks(breaks) {
     .filter(Boolean);
 }
 
+// validateAvailabilitySettings — checks the schedule a pediatrician saves in
+// Settings > Availability, so bookings never have to cope with a nonsense one.
+// Returns { error } or { startTime, endTime, maxPatientsPerDay, breaks }.
+//   - times are HH:mm on a 24-hour clock ("25:99" used to be stored as-is, and
+//     then every booking failed with "schedule incomplete")
+//   - the end is after the start (an earlier end was read as an overnight shift)
+//   - capacity is a whole number from 1 to 50 (it used to be silently clamped,
+//     fractions included); blank keeps the default of 10
+//   - breaks sent with the request have valid times, start before end, and do
+//     not overlap each other; breaks already stored are kept as they are
+const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const hhmmToMinutes = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
+
+function validateAvailabilitySettings(availability, storedBreaks) {
+  const startTime = String(availability.startTime || '09:00').trim();
+  const endTime = String(availability.endTime || '17:00').trim();
+  if (!HHMM_RE.test(startTime) || !HHMM_RE.test(endTime)) {
+    return { error: 'Start and end time must be valid times, like 09:00.' };
+  }
+  if (hhmmToMinutes(endTime) <= hhmmToMinutes(startTime)) {
+    return { error: 'End time must be later than start time.' };
+  }
+
+  const rawCapacity = availability.maxPatientsPerDay;
+  let maxPatientsPerDay = 10;
+  if (rawCapacity !== undefined && rawCapacity !== null && String(rawCapacity).trim() !== '') {
+    maxPatientsPerDay = Number(rawCapacity);
+    if (!Number.isInteger(maxPatientsPerDay) || maxPatientsPerDay < 1 || maxPatientsPerDay > 50) {
+      return { error: 'Maximum patients per day must be a whole number from 1 to 50.' };
+    }
+  }
+
+  let breaks;
+  if (availability.breaks !== undefined) {
+    breaks = normalizeBreaks(availability.breaks);
+    for (const pause of breaks) {
+      if (!HHMM_RE.test(pause.startTime) || !HHMM_RE.test(pause.endTime)) {
+        return { error: 'Break times must be valid times, like 12:00.' };
+      }
+      if (hhmmToMinutes(pause.endTime) <= hhmmToMinutes(pause.startTime)) {
+        return { error: 'Each break must end later than it starts.' };
+      }
+    }
+    const ordered = [...breaks].sort((a, b) => hhmmToMinutes(a.startTime) - hhmmToMinutes(b.startTime));
+    for (let i = 1; i < ordered.length; i += 1) {
+      if (hhmmToMinutes(ordered[i].startTime) < hhmmToMinutes(ordered[i - 1].endTime)) {
+        return { error: 'Breaks cannot overlap each other.' };
+      }
+    }
+  } else {
+    breaks = normalizeBreaks(storedBreaks || []);
+  }
+
+  return { startTime, endTime, maxPatientsPerDay, breaks };
+}
+
 async function notifyAdmin(title, message, relatedPage = '/admin/admin-users.html', relatedId = null) {
   try {
     const admin = await User.findOne({ role: 'admin' });
@@ -479,12 +535,6 @@ function publicUser(user) {
       researchParticipation: user.consents?.mlConsentGiven === true,
     },
   };
-}
-
-function parseNumberOrNull(value) {
-  if (value === undefined || value === null || value === '') return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
 }
 
 // Consultation fee is the pediatrician's CURRENT rate — it gets snapshotted
@@ -1552,6 +1602,12 @@ router.put('/pediatrician/settings', authMiddleware, async (req, res) => {
     if (consultationFee !== undefined) {
       try {
         const cleanConsultationFee = parseConsultationFee(consultationFee);
+        // Clearing a fee that is set would make every new booking free, since
+        // the fee is copied into each booking's total. A blank box when no fee
+        // was ever set just leaves it unset.
+        if (cleanConsultationFee === null && user.consultationFee != null) {
+          return res.status(400).json({ error: 'The consultation fee cannot be cleared. Enter the new amount instead.' });
+        }
         if (cleanConsultationFee !== undefined) user.consultationFee = cleanConsultationFee;
       } catch (err) {
         return res.status(400).json({ error: err.message });
@@ -1567,25 +1623,21 @@ router.put('/pediatrician/settings', authMiddleware, async (req, res) => {
 
     // Save availability in one place so appointments can enforce it later.
     if (availability && typeof availability === 'object') {
-      const startTime = String(availability.startTime || '09:00');
-      const endTime = String(availability.endTime || '17:00');
       const days = normalizeDays(availability.days || []);
-      const maxPatientsPerDay = parseNumberOrNull(availability.maxPatientsPerDay) ?? 10;
-
       if (!days.length) {
         return res.status(400).json({ error: 'Please select at least one available day.' });
       }
+      // Preserves existing breaks when this settings form only updates days/hours.
+      const checked = validateAvailabilitySettings(availability, user.availability?.breaks);
+      if (checked.error) {
+        return res.status(400).json({ error: checked.error });
+      }
       user.availability = {
         days,
-        startTime,
-        endTime,
-        maxPatientsPerDay: Math.max(1, Math.min(50, maxPatientsPerDay)),
-        // Preserve existing breaks when this settings form only updates days/hours.
-        breaks: normalizeBreaks(
-          availability.breaks !== undefined
-            ? availability.breaks
-            : (user.availability?.breaks || [])
-        ),
+        startTime: checked.startTime,
+        endTime: checked.endTime,
+        maxPatientsPerDay: checked.maxPatientsPerDay,
+        breaks: checked.breaks,
       };
     }
 
