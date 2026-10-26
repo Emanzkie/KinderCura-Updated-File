@@ -97,6 +97,13 @@ const appointmentSchema = new mongoose.Schema(
     },
     hasVideo: { type: Boolean, default: false },
 
+    // True while the booking is pending or approved, i.e. while it occupies its
+    // time slot. Set by the pre('validate') hook below on every save; it exists
+    // so the unique index below can be limited to live bookings using plain
+    // equality, which every MongoDB version accepts in a partial index. Records
+    // saved before this field existed simply lack it and stay out of the index.
+    slotHeld: { type: Boolean, default: false },
+
     // ── Synthetic/demo marker (additive) ────────────────────────────────────
     // false/null on every real booking. Synthetic appointments take their
     // numeric `id` from the reserved block in constants/syntheticData.js
@@ -107,6 +114,20 @@ const appointmentSchema = new mongoose.Schema(
   },
   { timestamps: true, collection: 'appointments' }
 );
+
+// evaluateAvailability() checks a slot before the insert, but two requests can
+// both pass that check. This index is the guard that cannot be raced: only one
+// live (pending/approved) booking per pediatrician, date and time.
+const SLOT_INDEX_NAME = 'one_live_booking_per_slot';
+appointmentSchema.index(
+  { pediatricianId: 1, appointmentDate: 1, appointmentTime: 1 },
+  { unique: true, name: SLOT_INDEX_NAME, partialFilterExpression: { slotHeld: true } }
+);
+
+appointmentSchema.pre('validate', function (next) {
+  this.slotHeld = ['pending', 'approved'].includes(this.status);
+  next();
+});
 
 appointmentSchema.pre('validate', async function (next) {
   if (!this.isNew || this.id != null) return next();
@@ -123,4 +144,6 @@ appointmentSchema.pre('validate', async function (next) {
   }
 });
 
-module.exports = mongoose.models.Appointment || mongoose.model('Appointment', appointmentSchema);
+const Appointment = mongoose.models.Appointment || mongoose.model('Appointment', appointmentSchema);
+Appointment.SLOT_INDEX_NAME = SLOT_INDEX_NAME;
+module.exports = Appointment;

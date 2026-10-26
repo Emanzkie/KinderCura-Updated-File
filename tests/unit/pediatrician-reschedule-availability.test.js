@@ -278,6 +278,25 @@ test('rescheduling an already approved appointment keeps it approved', async () 
   assert.strictEqual(appt.status, 'approved');
 });
 
+// PEDIATRICIAN_BUGS.md #5: the unique index is the guard against two writers
+// taking the same slot; its error must come back as a 409, not a 500.
+test('a reschedule that loses the slot race to the unique index returns 409', async () => {
+  reset();
+  appointments[0].save = async () => {
+    throw Object.assign(
+      new Error('E11000 duplicate key error collection: kindercura.appointments index: one_live_booking_per_slot dup key: {}'),
+      { code: 11000 }
+    );
+  };
+  const res = await call(reschedule, {
+    user: pediaUser,
+    params: { appointmentId: '1' },
+    body: { newDate: ymd(MONDAY), newTime: '11:00', reason: 'Doctor emergency' },
+  });
+  assert.strictEqual(res.status, 409);
+  assert.match(res.body.error, /just booked by someone else/);
+});
+
 (async () => {
   let failed = 0;
   for (const { name, fn } of tests) {

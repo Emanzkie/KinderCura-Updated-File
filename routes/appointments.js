@@ -1502,6 +1502,13 @@ router.get('/pedia-notifications', authMiddleware, secretaryOrPediatrician, asyn
   }
 });
 
+// True when a write was refused by the one-live-booking-per-slot unique index,
+// i.e. someone else took the slot between the availability check and the save.
+const SLOT_TAKEN_MESSAGE = 'That time was just booked by someone else. Please choose another time.';
+function isSlotTakenError(err) {
+  return Boolean(err) && err.code === 11000 && String(err.message || '').includes(Appointment.SLOT_INDEX_NAME);
+}
+
 // POST /api/appointments/create
 // Parent books a new appointment.
 router.post('/create', authMiddleware, async (req, res) => {
@@ -1646,6 +1653,7 @@ router.post('/create', authMiddleware, async (req, res) => {
     });
   } catch (err) {
     console.error('appointments create error:', err);
+    if (isSlotTakenError(err)) return res.status(409).json({ error: SLOT_TAKEN_MESSAGE });
     const status = /payment|amount|fee|installment|minimum|required/i.test(err.message) ? 400 : 500;
     res.status(status).json({ error: err.message });
   }
@@ -2117,6 +2125,7 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
     });
   } catch (err) {
     console.error('appointments reschedule error:', err);
+    if (isSlotTakenError(err)) return res.status(409).json({ error: SLOT_TAKEN_MESSAGE });
     res.status(500).json({ error: err.message });
   }
 
