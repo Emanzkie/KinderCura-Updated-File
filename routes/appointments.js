@@ -21,6 +21,7 @@ const SystemSetting = require('../models/SystemSetting');
 const scoring = require('../constants/scoring');
 const paymentService = require('../services/paymentService');
 const { getSecretaryPermissions } = require('../services/secretaryPermissions');
+const { CLINIC_TIME_ZONE } = require('../js/shared/child-age');
 const sse = require('../sse');
 
 const router = express.Router();
@@ -564,9 +565,23 @@ function normalizeUtcDate(value) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function getTodayUtcStart() {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+// Appointments are booked on the clinic's calendar and clock (Asia/Manila, the
+// same zone the child-age rules use), not the server's UTC. Comparing against
+// the UTC date let yesterday count as "today" for the first 8 hours of each
+// clinic day, and nothing compared the time of day at all.
+//   dateStart: the clinic's calendar date as a UTC-midnight Date, the same form
+//              normalizeUtcDate gives a requested date
+//   minutes:   minutes since midnight on the clinic's clock
+function getClinicNow(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: CLINIC_TIME_ZONE, year: 'numeric', month: 'numeric', day: 'numeric',
+    hour: 'numeric', minute: 'numeric', hourCycle: 'h23',
+  }).formatToParts(now);
+  const pick = (type) => Number(parts.find((p) => p.type === type).value);
+  return {
+    dateStart: new Date(Date.UTC(pick('year'), pick('month') - 1, pick('day'))),
+    minutes: pick('hour') * 60 + pick('minute'),
+  };
 }
 
 async function getLatestAssessmentResultForChild(childId) {
@@ -835,8 +850,8 @@ async function evaluateAvailability({ pediatrician, appointmentDate, appointment
 
   const isDayAvailable = availableDays.includes(dayName);
 
-  const todayUtc = getTodayUtcStart();
-  if (dateOnly < todayUtc) {
+  const clinicNow = getClinicNow();
+  if (dateOnly < clinicNow.dateStart) {
     return {
       ...baseUnavailable,
       available: false,
@@ -911,9 +926,12 @@ async function evaluateAvailability({ pediatrician, appointmentDate, appointment
   const takenGeneratedSlots = generatedSlotEntries
     .filter((slot) => existingIntervals.some((busy) => busy.valid && intervalsOverlap(slot.startMinutes, slot.endMinutes, busy.startMinutes, busy.endMinutes)))
     .map((slot) => slot.value);
+  // On the clinic's current date, a start time that has already begun is not offered.
+  const isClinicToday = dateOnly.getTime() === clinicNow.dateStart.getTime();
   const availableSlots = remainingSlots > 0
     ? generatedSlotEntries
       .filter((slot) => !takenGeneratedSlots.includes(slot.value))
+      .filter((slot) => !isClinicToday || slot.startMinutes > clinicNow.minutes)
       .map((slot) => slot.value)
     : [];
   const breakRanges = breakWindows.map((pause) => ({
@@ -944,6 +962,25 @@ async function evaluateAvailability({ pediatrician, appointmentDate, appointment
     }
 
     const requestedMinutes = requestedValidation.requestedMinutes;
+    if (isClinicToday && requestedMinutes <= clinicNow.minutes) {
+      return {
+        ...baseUnavailable,
+        available: false,
+        message: 'That time has already passed today. Please choose a later time.',
+        dayName,
+        startTime,
+        endTime,
+        maxPatientsPerDay,
+        bookedCount,
+        bookedTimes,
+        remainingSlots,
+        generatedSlots,
+        availableSlots,
+        breakRanges,
+        requestedTime: requestedValidation.requestedTime,
+        isDayAvailable: true,
+      };
+    }
     const normalizedRequestedMinutes = normalizeMinutesForWindow(requestedMinutes, timeWindow);
     const isWithinHours = normalizedRequestedMinutes >= timeWindow.startMinutes
       && normalizedRequestedMinutes < timeWindow.endMinutes;
