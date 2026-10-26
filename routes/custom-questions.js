@@ -187,6 +187,31 @@ function parseAppointmentId(raw) {
   return { value: n };
 }
 
+// A question's age window is whole years from 0 to 18 with the minimum not
+// above the maximum. Nothing used to check it, so "ageMin: 30, ageMax: -2" was
+// stored and the question then matched no child, or every child.
+function parseAge(raw, fallback) {
+  if (raw == null || raw === '') return fallback;
+  const n = typeof raw === 'object' ? NaN : Number(raw);
+  return Number.isInteger(n) && n >= 0 && n <= 18 ? n : NaN;
+}
+function parseAgeRange(minRaw, maxRaw) {
+  const ageMin = parseAge(minRaw, 0);
+  const ageMax = parseAge(maxRaw, 18);
+  if (Number.isNaN(ageMin) || Number.isNaN(ageMax)) return { error: 'Age range must be whole numbers from 0 to 18.' };
+  if (ageMin > ageMax) return { error: 'The minimum age cannot be above the maximum age.' };
+  return { ageMin, ageMax };
+}
+
+// A malformed id in the URL used to reach Mongoose as NaN or a bad ObjectId and
+// come back as a 500 CastError; it is a bad request.
+const NUMERIC_ID = /^\d{1,15}$/;
+const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
+router.param('id', (req, res, next, value) => (NUMERIC_ID.test(value) ? next() : res.status(400).json({ error: 'Invalid question id.' })));
+router.param('assignmentId', (req, res, next, value) => (NUMERIC_ID.test(value) ? next() : res.status(400).json({ error: 'Invalid assignment id.' })));
+router.param('setId', (req, res, next, value) => (OBJECT_ID.test(value) ? next() : res.status(400).json({ error: 'Invalid question set id.' })));
+router.param('childId', (req, res, next, value) => (OBJECT_ID.test(value) ? next() : res.status(400).json({ error: 'Invalid child id.' })));
+
 // Once a question has reached a parent its wording is frozen, so the answers
 // stay answers to the question that was asked. A question in a set is locked
 // when the set is assigned or answered (it used to be only 'assigned', so the
@@ -332,6 +357,12 @@ router.post('/bulk', authMiddleware, async (req, res) => {
         continue;
       }
 
+      const age = parseAgeRange(q.ageMin, q.ageMax);
+      if (age.error) {
+        errors.push({ index, error: `Question ${index}: ${age.error}` });
+        continue;
+      }
+
       try {
         const doc = await PediaCustomQuestion.create({
           pediatricianId: req.user.userId,
@@ -340,8 +371,8 @@ router.post('/bulk', authMiddleware, async (req, res) => {
           questionType: q.questionType,
           options: q.questionType === 'multiple_choice' ? cleanOptions : [],
           domain: q.domain || undefined,
-          ageMin: q.ageMin != null ? Number(q.ageMin) : 0,
-          ageMax: q.ageMax != null ? Number(q.ageMax) : 18,
+          ageMin: age.ageMin,
+          ageMax: age.ageMax,
           isActive: true,
           // Set on the server, never read from req.body. Reaching this route
           // means an authenticated pediatrician created the question.
@@ -416,14 +447,17 @@ router.post('/', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: `Domain must be one of: ${ASSESSMENT_DOMAINS.join(', ')}.` });
     }
 
+    const age = parseAgeRange(ageMin, ageMax);
+    if (age.error) return res.status(400).json({ error: age.error });
+
     const doc = await PediaCustomQuestion.create({
       pediatricianId: req.user.userId,
       questionText: String(questionText).trim(),
       questionType,
       options: questionType === 'multiple_choice' ? cleanOptions : [],
       domain: domain || undefined,
-      ageMin: ageMin != null ? Number(ageMin) : 0,
-      ageMax: ageMax != null ? Number(ageMax) : 18,
+      ageMin: age.ageMin,
+      ageMax: age.ageMax,
       isActive: true,
       // Set on the server, never read from req.body. Reaching this route
       // means an authenticated pediatrician created the question.
@@ -491,8 +525,13 @@ router.put('/:id', authMiddleware, async (req, res) => {
       }
       doc.domain = domain;
     }
-    if (ageMin !== undefined) doc.ageMin = Number(ageMin);
-    if (ageMax !== undefined) doc.ageMax = Number(ageMax);
+    if (ageMin !== undefined || ageMax !== undefined) {
+      // Judge the window the question would end up with, not each bound alone.
+      const age = parseAgeRange(ageMin !== undefined ? ageMin : doc.ageMin, ageMax !== undefined ? ageMax : doc.ageMax);
+      if (age.error) return res.status(400).json({ error: age.error });
+      doc.ageMin = age.ageMin;
+      doc.ageMax = age.ageMax;
+    }
     if (isActive !== undefined) doc.isActive = Boolean(isActive);
 
     if (doc.questionType === 'multiple_choice' && doc.options.length < 2) {

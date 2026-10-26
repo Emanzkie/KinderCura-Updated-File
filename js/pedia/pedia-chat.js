@@ -247,7 +247,12 @@ async function sendMessage(){
     const btn=document.getElementById('sendBtn'); btn.disabled=true;
     try{
         let vPath=null,vName=null,vSize=null;
-        if(pendingVideoFile){ const r=await uploadChatVideo(); if(r){ vPath=r.path; vName=r.fileName; vSize=pendingVideoFile.size; } }
+        if(pendingVideoFile){
+            const r=await uploadChatVideo();
+            // Sending on without it would drop the video silently and clear the attachment.
+            if(!r) throw new Error('The video could not be uploaded, so nothing was sent. Please try again.');
+            vPath=r.path; vName=r.fileName; vSize=pendingVideoFile.size;
+        }
         await apiFetch(`/chat/${activeApptId}`,{ method:'POST', body:JSON.stringify({ message:text||null, videoPath:vPath, videoName:vName, videoSize:vSize }) });
         input.value=''; input.style.height='auto';
         clearAttach(); await loadMessages();

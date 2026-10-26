@@ -43,7 +43,8 @@ requireAuth();
                 currentSettings = u;
                 localStorage.setItem('kc_user', JSON.stringify(u));
                 document.getElementById('menuWelcome').textContent = `Welcome, Dr. ${u.firstName || ''}`;
-                if (u.profileIcon) document.getElementById('navProfilePic').src = u.profileIcon;
+                // Same rule as api.js: anything else would replace the default avatar with a broken image.
+                if (u.profileIcon && String(u.profileIcon).startsWith('/uploads/')) document.getElementById('navProfilePic').src = u.profileIcon;
 
                 document.getElementById('emailInput').value = u.email || '';
                 document.getElementById('phoneInput').value = u.phoneNumber || '';

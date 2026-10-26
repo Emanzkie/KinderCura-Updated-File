@@ -92,15 +92,15 @@
             const questionText = document.getElementById('qText').value.trim();
             const questionType = document.getElementById('qType').value;
             const domain = document.getElementById('qDomain').value;
-            const ageMin = parseInt(document.getElementById('qAgeMin').value) || 0;
-            const ageMax = parseInt(document.getElementById('qAgeMax').value) || 18;
+            const age = readAgeRange();
 
             if (!questionText) { errEl.textContent = 'Question text is required.'; errEl.style.display = 'block'; return; }
+            if (age.error) { errEl.textContent = age.error; errEl.style.display = 'block'; return; }
             const options = questionType === 'multiple_choice' ? getOptions() : [];
             if (questionType === 'multiple_choice' && options.length < 2) { errEl.textContent = 'Add at least 2 options.'; errEl.style.display = 'block'; return; }
 
             // Add to batch
-            questionBatch.push({ questionText, questionType, options, domain, ageMin, ageMax });
+            questionBatch.push({ questionText, questionType, options, domain, ageMin: age.ageMin, ageMax: age.ageMax });
 
             // Clear form for next question
             document.getElementById('qText').value = '';
@@ -869,19 +869,43 @@
             optionCount = 0;
         }
 
-        // Add one option input row
+        // Add one option input row. The value is set as a property, not written
+        // into markup: an option containing a double quote used to cut the
+        // attribute short, so editing a question dropped the rest of that option.
         function addOption(value = '') {
             optionCount++;
-            const inputId = `opt_${optionCount}`;
 
             const div = document.createElement('div');
             div.className = 'options-input-row';
-            div.innerHTML = `
-            <input type="text" id="${inputId}" value="${value}" placeholder="Option ${optionCount}">
-            <button type="button" class="option-remove-btn" onclick="this.parentElement.remove()">&#215;</button>
-        `;
 
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.id = `opt_${optionCount}`;
+            input.value = value;
+            input.placeholder = `Option ${optionCount}`;
+
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'option-remove-btn';
+            remove.textContent = '\u00D7';
+            remove.addEventListener('click', () => div.remove());
+
+            div.append(input, remove);
             document.getElementById('optionsContainer').appendChild(div);
+        }
+
+        // The age window from the form: whole years 0-18, minimum not above maximum.
+        // An empty field takes its default; a typed 0 is kept (it used to become 18).
+        function readAgeRange() {
+            const minRaw = document.getElementById('qAgeMin').value.trim();
+            const maxRaw = document.getElementById('qAgeMax').value.trim();
+            const ageMin = minRaw === '' ? 0 : Number(minRaw);
+            const ageMax = maxRaw === '' ? 18 : Number(maxRaw);
+            if (![ageMin, ageMax].every(n => Number.isInteger(n) && n >= 0 && n <= 18)) {
+                return { error: 'Ages must be whole numbers from 0 to 18.' };
+            }
+            if (ageMin > ageMax) return { error: 'The minimum age cannot be above the maximum age.' };
+            return { ageMin, ageMax };
         }
 
         // Collect option values from UI
@@ -901,12 +925,17 @@
             const questionText = document.getElementById('qText').value.trim();
             const questionType = document.getElementById('qType').value;
             const domain = document.getElementById('qDomain').value;
-            const ageMin = parseInt(document.getElementById('qAgeMin').value) || 0;
-            const ageMax = parseInt(document.getElementById('qAgeMax').value) || 18;
+            const age = readAgeRange();
             const options = questionType === 'multiple_choice' ? getOptions() : [];
 
             if (!questionText) {
                 errEl.textContent = 'Question text is required.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            if (age.error) {
+                errEl.textContent = age.error;
                 errEl.style.display = 'block';
                 return;
             }
@@ -921,7 +950,7 @@
             btn.disabled = true;
 
             try {
-                const payload = { questionText, questionType, options, domain, ageMin, ageMax };
+                const payload = { questionText, questionType, options, domain, ageMin: age.ageMin, ageMax: age.ageMax };
 
                 if (editingId) {
                     await apiFetch(`/questions/${editingId}`, {

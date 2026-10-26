@@ -134,6 +134,13 @@ async function apiFetch(endpoint, options = {}) {
     }
 
     if (!res.ok) {
+        // 401 on a signed-in request means the session is over (expired, or the
+        // account was removed). Sign-in itself also answers 401 for a wrong
+        // password, so it and the sign-in page are left alone.
+        if (res.status === 401 && KC.token() && !endpoint.startsWith('/auth/login') && !/login\.html$/.test(window.location.pathname)) {
+            KC.clear();
+            window.location.href = '/login.html';
+        }
         // `error` can be an object (e.g. { code, message }); never show "[object Object]".
         const e = data.error;
         const text = typeof e === 'string' ? e
