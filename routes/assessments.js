@@ -447,7 +447,24 @@ function predictionSummary(careStageInfo) {
   };
 }
 
-async function buildHistoryForChild(childId) {
+// An Assessment holds ONE set of diagnosis fields (diagnosis, recommendations,
+// next assessment, clinical outcome), written by whichever pediatrician last
+// reviewed it, and one ML label. A DIFFERENT pediatrician reading the same
+// child must not see them; parents, guardians and admins still do. Records
+// with no reviewer on file (older data) stay visible.
+function diagnosisHiddenFrom(viewer, assessment) {
+  if (!viewer || viewer.role !== 'pediatrician' || !assessment) return false;
+  const author = assessment.reviewedByPediatrician;
+  return Boolean(author) && String(author) !== String(viewer.userId);
+}
+
+function mlLabelHiddenFrom(viewer, assessment) {
+  if (!viewer || viewer.role !== 'pediatrician' || !assessment) return false;
+  const reviewer = assessment.mlLabel && assessment.mlLabel.reviewedBy;
+  return Boolean(reviewer) && String(reviewer) !== String(viewer.userId);
+}
+
+async function buildHistoryForChild(childId, viewer = null) {
   const assessments = await Assessment.find({ childId }).sort({ startedAt: -1 }).lean();
   const assessmentIds = assessments.map((a) => a._id);
   const results = await AssessmentResult.find({ assessmentId: { $in: assessmentIds } }).lean();
@@ -455,6 +472,7 @@ async function buildHistoryForChild(childId) {
 
   return assessments.map((a) => {
     const r = resultMap.get(String(a._id));
+    const hideDx = diagnosisHiddenFrom(viewer, a);
     return {
       id: String(a._id),
       childId: String(a.childId),
@@ -462,10 +480,10 @@ async function buildHistoryForChild(childId) {
       currentProgress: a.currentProgress,
       startedAt: a.startedAt,
       completedAt: a.completedAt,
-      diagnosis: a.diagnosis || null,
-      recommendations: a.recommendations || null,
-      nextAssessmentDate: a.nextAssessmentDate || null,
-      nextAssessmentReason: a.nextAssessmentReason || null,
+      diagnosis: hideDx ? null : (a.diagnosis || null),
+      recommendations: hideDx ? null : (a.recommendations || null),
+      nextAssessmentDate: hideDx ? null : (a.nextAssessmentDate || null),
+      nextAssessmentReason: hideDx ? null : (a.nextAssessmentReason || null),
       communicationScore: r?.communicationScore ?? null,
       socialScore: r?.socialScore ?? null,
       cognitiveScore: r?.cognitiveScore ?? null,
@@ -1150,6 +1168,8 @@ router.get('/pedia-patients', authMiddleware, async (req, res) => {
         : null;
 
       const paymentConfirmed = appt.paymentStatus === 'Paid' || Boolean(appt.paymentOverride?.isOverridden);
+      const dxOwn = diagnosisHiddenFrom(req.user, latestCompletedAssessment) ? null : latestCompletedAssessment;
+      const mlOwn = mlLabelHiddenFrom(req.user, latestAssessment) ? null : latestAssessment;
 
       patients.push({
         childId: child ? String(child._id) : null,
@@ -1177,30 +1197,32 @@ router.get('/pedia-patients', authMiddleware, async (req, res) => {
         // Diagnosis fields come from the latest COMPLETED assessment — the one
         // POST /diagnose/:childId writes to — so an unfinished reassessment
         // never hides a saved diagnosis from the card or its edit form.
-        diagnosis: latestCompletedAssessment?.diagnosis || null,
-        recommendations: latestCompletedAssessment?.recommendations || null,
-        nextAssessmentDate: latestCompletedAssessment?.nextAssessmentDate || null,
-        nextAssessmentReason: latestCompletedAssessment?.nextAssessmentReason || null,
+        // Another pediatrician's diagnosis, outcome and ML label are not shown
+        // here (see diagnosisHiddenFrom): dxOwn / mlOwn are null in that case.
+        diagnosis: dxOwn?.diagnosis || null,
+        recommendations: dxOwn?.recommendations || null,
+        nextAssessmentDate: dxOwn?.nextAssessmentDate || null,
+        nextAssessmentReason: dxOwn?.nextAssessmentReason || null,
 
         // Additive: the structured outcome label, so reopening the diagnosis
         // modal can show what was already recorded instead of a blank
         // dropdown. Kept separate from `diagnosis` above — see
         // models/Assessment.js on why the free text can never stand in for it.
-        clinicalOutcome: latestCompletedAssessment?.clinicalOutcome || null,
-        clinicalOutcomeDomains: Array.isArray(latestCompletedAssessment?.clinicalOutcomeDomains)
-          ? latestCompletedAssessment.clinicalOutcomeDomains
+        clinicalOutcome: dxOwn?.clinicalOutcome || null,
+        clinicalOutcomeDomains: Array.isArray(dxOwn?.clinicalOutcomeDomains)
+          ? dxOwn.clinicalOutcomeDomains
           : [],
-        clinicalOutcomeAt: latestCompletedAssessment?.clinicalOutcomeAt || null,
+        clinicalOutcomeAt: dxOwn?.clinicalOutcomeAt || null,
 
         // Step 10: reviewed ML training-target label — separate from
         // clinicalOutcome above. Additive so reopening the diagnosis modal
         // can show what was already reviewed instead of a blank dropdown.
-        mlLabel: latestAssessment?.mlLabel ? {
-          riskCategory: latestAssessment.mlLabel.riskCategory,
-          reviewedAt: latestAssessment.mlLabel.reviewedAt,
-          notes: latestAssessment.mlLabel.notes || null,
+        mlLabel: mlOwn?.mlLabel ? {
+          riskCategory: mlOwn.mlLabel.riskCategory,
+          reviewedAt: mlOwn.mlLabel.reviewedAt,
+          notes: mlOwn.mlLabel.notes || null,
         } : null,
-        mlReviewStatus: latestAssessment?.mlReviewStatus || 'unreviewed',
+        mlReviewStatus: mlOwn?.mlReviewStatus || 'unreviewed',
 
         // Step 14: pediatrician view — same developmentalBand/prediction
         // shape already exposed to the parent (GET
@@ -1398,6 +1420,27 @@ router.post('/diagnose/:childId', authMiddleware, async (req, res) => {
       .sort({ completedAt: -1, startedAt: -1 });
     if (!latest) return res.status(404).json({ error: 'No completed assessment found for this child.' });
 
+    // An assessment holds ONE set of diagnosis fields. When a different
+    // pediatrician replaces another's review, the earlier one is kept in the
+    // audit log instead of being silently overwritten, and the earlier outcome
+    // label (that doctor's conclusion) does not stay attached to this doctor's
+    // diagnosis unless this review supplies its own.
+    const replacedReview = latest.reviewedByPediatrician
+      && String(latest.reviewedByPediatrician) !== String(req.user.userId)
+      ? {
+          reviewedBy: String(latest.reviewedByPediatrician),
+          reviewedAt: latest.reviewedAt || null,
+          diagnosis: latest.diagnosis || null,
+          recommendations: latest.recommendations || null,
+          nextAssessmentDate: latest.nextAssessmentDate || null,
+          nextAssessmentReason: latest.nextAssessmentReason || null,
+          clinicalOutcome: latest.clinicalOutcome || null,
+          clinicalOutcomeDomains: latest.clinicalOutcomeDomains || [],
+          clinicalOutcomeBy: latest.clinicalOutcomeBy ? String(latest.clinicalOutcomeBy) : null,
+          clinicalOutcomeAt: latest.clinicalOutcomeAt || null,
+        }
+      : null;
+
     // Save the diagnosis on the assessment so the Results page can display it later.
     latest.diagnosis = diagnosisText;
     // Only stamp the outcome when one was actually supplied — an absent label
@@ -1407,6 +1450,11 @@ router.post('/diagnose/:childId', authMiddleware, async (req, res) => {
       latest.clinicalOutcomeDomains = outcomeDomains;
       latest.clinicalOutcomeBy = req.user.userId;
       latest.clinicalOutcomeAt = new Date();
+    } else if (replacedReview) {
+      latest.clinicalOutcome = null;
+      latest.clinicalOutcomeDomains = [];
+      latest.clinicalOutcomeBy = null;
+      latest.clinicalOutcomeAt = null;
     }
     latest.recommendations = recommendations || null;
     latest.nextAssessmentDate = parsedNextAssessmentDate.value;
@@ -1414,6 +1462,16 @@ router.post('/diagnose/:childId', authMiddleware, async (req, res) => {
     latest.reviewedByPediatrician = req.user.userId;
     latest.reviewedAt = new Date();
     await latest.save();
+
+    if (replacedReview) {
+      await AuditLog.create({
+        actorId: req.user.userId,
+        action: 'diagnosis_replaced',
+        targetType: 'Assessment',
+        targetId: latest._id,
+        details: { childId: String(child._id), replaced: replacedReview },
+      });
+    }
 
     // Create the parent notification after the diagnosis is saved.
     // This is the part that makes the bell badge/list show the new diagnosis.
@@ -1617,6 +1675,7 @@ router.get('/:assessmentId/results', authMiddleware, async (req, res) => {
     // that were already saved for THIS assessment and never re-scores them.
     const answers = await AssessmentAnswer.find({ assessmentId: req.params.assessmentId }).lean();
     const domainDetails = buildDomainDetails(answers, result);
+    const hideDx = diagnosisHiddenFrom(req.user, assessment);
 
     res.json({
       success: true,
@@ -1637,12 +1696,13 @@ router.get('/:assessmentId/results', authMiddleware, async (req, res) => {
         generatedAt: result.generatedAt,
 
         // These fields come from the Assessment document, not AssessmentResult.
-        diagnosis: assessment?.diagnosis || null,
-        recommendations: assessment?.recommendations || null,
-        nextAssessmentDate: assessment?.nextAssessmentDate || null,
-        nextAssessmentReason: assessment?.nextAssessmentReason || null,
-        reviewedByPediatrician: assessment?.reviewedByPediatrician ? String(assessment.reviewedByPediatrician) : null,
-        reviewedAt: assessment?.reviewedAt || null,
+        // Another pediatrician's review is not shown to this one.
+        diagnosis: hideDx ? null : (assessment?.diagnosis || null),
+        recommendations: hideDx ? null : (assessment?.recommendations || null),
+        nextAssessmentDate: hideDx ? null : (assessment?.nextAssessmentDate || null),
+        nextAssessmentReason: hideDx ? null : (assessment?.nextAssessmentReason || null),
+        reviewedByPediatrician: !hideDx && assessment?.reviewedByPediatrician ? String(assessment.reviewedByPediatrician) : null,
+        reviewedAt: hideDx ? null : (assessment?.reviewedAt || null),
 
         // Additive. null when the assessment has no stored answers (older
         // records) — callers must treat it as optional. Every field above is
@@ -1679,7 +1739,7 @@ router.get('/:childId/history', authMiddleware, async (req, res) => {
     const allowed = isParentOwner || isPediaLinked || req.user.role === 'admin' || await hasPermission(req.user.userId, child._id, 'viewAssessments');
     if (!allowed) return res.status(403).json({ error: 'Access denied.' });
 
-    const history = await buildHistoryForChild(child._id);
+    const history = await buildHistoryForChild(child._id, req.user);
     res.json({ success: true, assessments: history });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1877,6 +1937,8 @@ router.get('/:childId/review-answers', authMiddleware, async (req, res) => {
     // Age calculation
     const ageInfo = getAgeInfo(child.dateOfBirth);
 
+    const hideDx = diagnosisHiddenFrom(req.user, assessment);
+
     res.json({
       success: true,
       child: {
@@ -1892,10 +1954,11 @@ router.get('/:childId/review-answers', authMiddleware, async (req, res) => {
         id: String(assessment._id),
         status: assessment.status,
         completedAt: assessment.completedAt,
-        diagnosis: assessment.diagnosis || null,
-        recommendations: assessment.recommendations || null,
-        nextAssessmentDate: assessment.nextAssessmentDate || null,
-        nextAssessmentReason: assessment.nextAssessmentReason || null,
+        // Another pediatrician's review is not shown to this one.
+        diagnosis: hideDx ? null : (assessment.diagnosis || null),
+        recommendations: hideDx ? null : (assessment.recommendations || null),
+        nextAssessmentDate: hideDx ? null : (assessment.nextAssessmentDate || null),
+        nextAssessmentReason: hideDx ? null : (assessment.nextAssessmentReason || null),
       },
       overallScore: result ? result.overallScore : null,
       overallRisk: result ? OVERALL_RISK_BY_BAND[scoring.bandFor(result.overallScore)] : null,

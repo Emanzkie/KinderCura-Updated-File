@@ -222,17 +222,18 @@ async function resolveAssessmentRef(rawAssessmentId, child) {
 // previousRecordId auto-threads to the child's own most recent check-up when
 // the caller does not supply one, so the chain stays connected without the
 // pediatrician having to look up an id by hand — an initial check-up (no
-// prior records) naturally resolves to null. Never crosses to another child.
-async function resolvePreviousRecordRef(rawPreviousRecordId, child) {
+// prior records) naturally resolves to null. Never crosses to another child,
+// nor to another pediatrician's records: a pediatrician's timeline is their own.
+async function resolvePreviousRecordRef(rawPreviousRecordId, child, pediatricianId) {
   if (rawPreviousRecordId != null && String(rawPreviousRecordId).trim() !== '') {
     const id = String(rawPreviousRecordId).trim();
     if (!mongoose.Types.ObjectId.isValid(id)) throw new HttpError(400, 'previousRecordId is not a valid id.');
-    const prev = await PediatricianCheckup.findOne({ _id: id, childId: child._id }).lean();
-    if (!prev) throw new HttpError(400, 'previousRecordId does not belong to this child.');
+    const prev = await PediatricianCheckup.findOne({ _id: id, childId: child._id, pediatricianId }).lean();
+    if (!prev) throw new HttpError(400, 'previousRecordId is not one of your check-ups for this child.');
     return prev._id;
   }
 
-  const latest = await PediatricianCheckup.findOne({ childId: child._id })
+  const latest = await PediatricianCheckup.findOne({ childId: child._id, pediatricianId })
     .sort({ checkupDate: -1, createdAt: -1 })
     .lean();
   return latest ? latest._id : null;
@@ -289,7 +290,7 @@ async function createCheckupRecord(childId, user, body) {
   const [appointmentId, assessmentId, previousRecordId] = await Promise.all([
     resolveAppointmentRef(body.appointmentId, child, user.userId),
     resolveAssessmentRef(body.assessmentId, child),
-    resolvePreviousRecordRef(body.previousRecordId, child),
+    resolvePreviousRecordRef(body.previousRecordId, child, user.userId),
   ]);
 
   const created = await PediatricianCheckup.create({

@@ -672,7 +672,15 @@ router.get('/assigned/:childId', authMiddleware, hasPermission('view_assessments
       }
     }
 
-    const assignments = await PediaCustomQuestionAssignment.find({ childId: child._id })
+    // A pediatrician only sees the questions they assigned (and the parent's
+    // answers to them), never another pediatrician's for the same child.
+    const filter = { childId: child._id };
+    if (req.user.role === 'pediatrician') {
+      const ownQuestions = await PediaCustomQuestion.find({ pediatricianId: req.user.userId }).select('_id').lean();
+      filter.questionId = { $in: ownQuestions.map((q) => q._id) };
+    }
+
+    const assignments = await PediaCustomQuestionAssignment.find(filter)
       .populate({
         path: 'questionId',
         populate: { path: 'pediatricianId', select: 'firstName lastName' },
