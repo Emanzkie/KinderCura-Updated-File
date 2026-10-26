@@ -1651,6 +1651,27 @@ router.post('/create', authMiddleware, async (req, res) => {
   }
 });
 
+// Which status an appointment may move to next. Completed, cancelled and
+// rejected are final: without this a closed booking could be approved again
+// (keeping its 'Cancelled' payment status and skipping the availability check),
+// a pending one completed unseen, and a repeat call would resend every
+// notification and e-mail.
+const STATUS_TRANSITIONS = {
+  pending: ['approved', 'rejected', 'cancelled'],
+  approved: ['completed', 'cancelled'],
+  completed: [],
+  cancelled: [],
+  rejected: [],
+};
+
+function assertStatusTransition(from, to) {
+  if (!(STATUS_TRANSITIONS[from] || []).includes(to)) {
+    const err = new Error(`Cannot change an appointment from ${from} to ${to}.`);
+    err.statusCode = 400;
+    throw err;
+  }
+}
+
 // updateAppointmentStatusById — updates the appointment status and sends notifications.
 // Important: when secretaryName is provided, it means a secretary (not the pedia) performed
 // this action. In that case, we also send a separate notification to the pediatrician so
@@ -1658,6 +1679,8 @@ router.post('/create', authMiddleware, async (req, res) => {
 async function updateAppointmentStatusById({ appointmentId, status, notes = null, secretaryName = null, pediatricianId = null }) {
   const appt = await Appointment.findOne({ id: Number(appointmentId) });
   if (!appt) throw new Error('Appointment not found.');
+
+  assertStatusTransition(appt.status, status);
 
   if (status === 'approved') {
     const paymentCheck = paymentService.canConfirmAppointment(appt);
@@ -1757,6 +1780,9 @@ router.put('/:appointmentId/status', authMiddleware, clinicStaffOrAdmin, async (
     const appt = await Appointment.findOne(apptQuery);
     if (!appt) return res.status(404).json({ error: 'Appointment not found.' });
 
+    // Before the payment block below, which can write an admin override.
+    assertStatusTransition(appt.status, status);
+
     if (status === 'approved') {
       const paymentCheck = paymentService.canConfirmAppointment(appt);
       const wantsOverride = Boolean(req.body.overridePayment);
@@ -1786,7 +1812,7 @@ router.put('/:appointmentId/status', authMiddleware, clinicStaffOrAdmin, async (
     res.json({ success: true });
   } catch (err) {
     console.error('appointments status error:', err);
-    const statusCode = /payment|minimum|paid/i.test(err.message) ? 400 : 500;
+    const statusCode = err.statusCode || (/payment|minimum|paid/i.test(err.message) ? 400 : 500);
     res.status(statusCode).json({ error: err.message });
   }
 });
@@ -1812,7 +1838,7 @@ router.put('/pedia-notifications/:id', authMiddleware, async (req, res) => {
     res.json({ success: true, status: incoming });
   } catch (err) {
     console.error('appointments pedia-notifications update error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 

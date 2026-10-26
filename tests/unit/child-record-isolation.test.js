@@ -479,6 +479,10 @@ async function run() {
   assert.strictEqual((await statusPut(parent, 'completed')).statusCode, 403, 'parents cannot use /status');
   assert.strictEqual((await statusPut(pedB, 'completed')).statusCode, 404, 'another pediatrician cannot reach it');
   assert.strictEqual(appt.status, 'pending');
+  // A pending booking has to be approved before it can be completed.
+  assert.strictEqual((await statusPut(pedA, 'completed')).statusCode, 400, 'a pending booking cannot be completed unseen');
+  assert.strictEqual(appt.status, 'pending');
+  appt.status = 'approved';
   const completed = await statusPut(pedA, 'completed');
   assert.strictEqual(completed.statusCode, 200, `the linked pediatrician can complete it: ${JSON.stringify(completed.body)}`);
   assert.strictEqual(appt.status, 'completed');
