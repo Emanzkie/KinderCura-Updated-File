@@ -1582,6 +1582,7 @@ router.put('/pediatrician/settings', authMiddleware, async (req, res) => {
       institution,
       specialization,
       email,
+      currentPassword,
       availability,
       notificationSettings,
       privacySettings,
@@ -1591,6 +1592,21 @@ router.put('/pediatrician/settings', authMiddleware, async (req, res) => {
       const cleanEmail = String(email).trim().toLowerCase();
       if (!isValidEmail(cleanEmail)) {
         return res.status(400).json({ error: 'Please enter a valid email address.' });
+      }
+      // Changing the sign-in e-mail needs the current password, like changing
+      // the password does: otherwise a stolen or left-open session could point
+      // the account at an address of its own and take it over through
+      // "forgot password". The settings page sends the e-mail on every save, so
+      // this applies only when it actually changes. It runs before the
+      // "already in use" check so a wrong password cannot be used to learn
+      // which addresses have accounts.
+      if (cleanEmail !== String(user.email || '').trim().toLowerCase()) {
+        if (!currentPassword) {
+          return res.status(400).json({ error: 'Enter your current password to change your email address.' });
+        }
+        if (!await bcrypt.compare(String(currentPassword), user.passwordHash)) {
+          return res.status(400).json({ error: 'Current password is incorrect.' });
+        }
       }
       const emailUsed = await User.findOne({ email: cleanEmail, _id: { $ne: user._id } }).select('_id').lean();
       if (emailUsed) {

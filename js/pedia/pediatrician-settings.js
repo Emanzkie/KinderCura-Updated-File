@@ -81,6 +81,7 @@ requireAuth();
                     method: 'PUT',
                     body: JSON.stringify({
                         email: document.getElementById('emailInput').value.trim(),
+                        currentPassword: document.getElementById('currentPasswordInput').value,
                         phoneNumber: document.getElementById('phoneInput').value.trim(),
                         clinicName: document.getElementById('clinicNameInput').value.trim(),
                         clinicAddress: document.getElementById('clinicAddressInput').value.trim(),
@@ -92,6 +93,7 @@ requireAuth();
                 });
                 localStorage.setItem('kc_user', JSON.stringify(data.user));
                 showNotice('success', 'Account settings saved successfully.');
+                document.getElementById('currentPasswordInput').value = '';
                 await loadSettings();
             } catch (err) {
                 showNotice('error', err.message);

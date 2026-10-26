@@ -9,8 +9,13 @@
 //   - capacity could be a fraction and was silently clamped;
 //   - breaks were never checked for format, order or overlap.
 //
+// Also PEDIATRICIAN_BUGS.md #20: the sign-in e-mail could be changed with no password,
+// so a stolen token could point the account at an address of its own and take it over
+// through "forgot password".
+//
 // No DB: User.findById is stubbed and the real handler runs from the router stack.
 const assert = require('assert');
+const bcrypt = require('bcrypt');
 const mongoose = require('mongoose');
 
 mongoose.set('bufferCommands', false);
@@ -29,16 +34,20 @@ const save = layer.route.stack[layer.route.stack.length - 1].handle;
 
 let doc;
 let saves;
+let emailTaken = false;
+const PASSWORD = 'correct-horse-battery';
+const passwordHash = bcrypt.hashSync(PASSWORD, 4);
 function reset(fields = {}) {
   saves = 0;
   doc = {
-    _id: pediaId, role: 'pediatrician', email: 'dr@example.invalid', consultationFee: 500,
+    _id: pediaId, role: 'pediatrician', email: 'dr@example.invalid', passwordHash, consultationFee: 500,
     availability: { days: ['Monday'], startTime: '09:00', endTime: '17:00', maxPatientsPerDay: 10, breaks: [{ label: 'Lunch', startTime: '12:00', endTime: '13:00' }] },
     ...fields,
   };
   doc.save = async function save() { saves += 1; };
 }
 User.findById = () => Promise.resolve(doc);
+User.findOne = () => ({ select: () => ({ lean: () => Promise.resolve(emailTaken ? { _id: new mongoose.Types.ObjectId() } : null) }) });
 
 const put = (body) => new Promise((resolve, reject) => {
   const res = { statusCode: 200, status(c) { this.statusCode = c; return this; }, json(b) { resolve({ status: this.statusCode, body: b }); return this; }, setHeader() {} };
@@ -142,6 +151,46 @@ const avail = (over = {}) => ({ availability: { days: ['Monday', 'Tuesday'], sta
   assert.strictEqual(r.status, 200);
   assert.deepStrictEqual(doc.availability.breaks, [], 'an empty list removes the breaks');
   ok('breaks sent with the request must be valid, ordered and non-overlapping; stored breaks are kept when none are sent');
+
+  // ── Changing the sign-in e-mail ─────────────────────────────────────────
+  reset();
+  r = await put({ email: 'DR@example.invalid', bio: 'x' });
+  assert.strictEqual(r.status, 200, 'saving with the same e-mail (the page sends it every time) needs no password');
+
+  reset();
+  r = await put({ email: 'attacker@example.invalid' });
+  assert.strictEqual(r.status, 400);
+  assert.match(r.body.error, /current password/i);
+  assert.strictEqual(doc.email, 'dr@example.invalid', 'the e-mail is unchanged');
+  assert.strictEqual(saves, 0);
+
+  reset();
+  r = await put({ email: 'attacker@example.invalid', currentPassword: 'wrong' });
+  assert.strictEqual(r.status, 400);
+  assert.match(r.body.error, /incorrect/i);
+  assert.strictEqual(doc.email, 'dr@example.invalid');
+  assert.strictEqual(saves, 0);
+
+  reset();
+  r = await put({ email: 'New.Address@Example.invalid', currentPassword: PASSWORD });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.strictEqual(doc.email, 'new.address@example.invalid', 'a correct password lets the e-mail change (stored lower-case)');
+
+  emailTaken = true;
+  reset();
+  r = await put({ email: 'someone@example.invalid', currentPassword: 'wrong' });
+  assert.strictEqual(r.status, 400, 'a wrong password is refused before it can reveal that an address has an account');
+  assert.match(r.body.error, /incorrect/i);
+  reset();
+  r = await put({ email: 'someone@example.invalid', currentPassword: PASSWORD });
+  assert.strictEqual(r.status, 409, 'with the right password a taken address is still refused');
+  emailTaken = false;
+
+  reset();
+  r = await put({ email: 'not-an-email', currentPassword: PASSWORD });
+  assert.strictEqual(r.status, 400);
+  assert.match(r.body.error, /valid email/i);
+  ok('changing the sign-in e-mail needs the current password; an unchanged e-mail does not, and a wrong password never reveals whether an address is taken');
 
   console.log(results.map((m) => `  ✓ ${m}`).join('\n'));
   console.log(`\npediatrician-settings-validation.test.js: ${results.length} checks passed`);
