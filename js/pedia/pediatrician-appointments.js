@@ -199,7 +199,9 @@ function getDisplayInfo(a) {
     ].find(v => typeof v === 'string' && v.trim()) || '—';
 
     const age = a.childAge || a.age || a.child?.age || '—';
-    return { child, parent, age };
+    // Parent-supplied text: callers interpolate these into HTML and data-*
+    // attributes, so they are returned already escaped.
+    return { child: escapeHtml(child), parent: escapeHtml(parent), age: escapeHtml(age) };
 }
 
 // ── Badge ─────────────────────────────────────────────────────────────────────
@@ -282,7 +284,7 @@ function renderUpcoming(apts) {
                 </div>
                 <div>
                     <p class="info-label">Reason</p>
-                    <p class="info-val">${a.reason||'General checkup'}</p>
+                    <p class="info-val">${escapeHtml(a.reason||'General checkup')}</p>
                 </div>
                 <div>
                     <p class="info-label">Status</p>
@@ -292,14 +294,14 @@ function renderUpcoming(apts) {
                 </div>
             </div>
             ${paymentSection(a)}
-            ${a.notes ? `<p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem;"><img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${a.notes}</p>` : ''}
+            ${a.notes ? `<p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem;"><img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.notes)}</p>` : ''}
             <div class="action-row">
-                ${isPending  ? `<button class="btn btn-primary btn-sm" onclick="updateStatus('${a.id}','approved','${info.child}')"><img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Approve</button>` : ''}
-                ${isPending  ? `<button class="btn btn-secondary btn-sm" style="color:var(--danger,#3d4738);border-color:var(--danger,#e8a5a5);" onclick="openStatusModal('${a.id}','rejected','${info.child}')"><img src="/icons/reject_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reject</button>` : ''}
-                ${isApproved ? `<button class="btn btn-primary btn-sm" onclick="openStatusModal('${a.id}','completed','${info.child}')"><img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Mark Completed</button>` : ''}
-                ${isApproved ? `<button class="btn btn-secondary btn-sm" onclick="window.location.href='/pedia/pedia-chat.html?appointmentId=${a.id}'"> Chat</button>` : ''}
-                <button class="btn btn-secondary btn-sm" onclick="openReschedule('${a.id}','${encodeURIComponent(info.child)}','${encodeURIComponent(info.parent)}')"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reschedule</button>
-                <button class="btn btn-secondary btn-sm" onclick="cancelConfirm('${a.id}','${encodeURIComponent(info.child)}')"><img src="/icons/cancelled_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Cancel</button>
+                ${isPending  ? `<button class="btn btn-primary btn-sm" data-appt-act="approve" data-appt-id="${escapeHtml(a.id)}" data-child="${info.child}"><img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Approve</button>` : ''}
+                ${isPending  ? `<button class="btn btn-secondary btn-sm" style="color:var(--danger,#3d4738);border-color:var(--danger,#e8a5a5);" data-appt-act="reject" data-appt-id="${escapeHtml(a.id)}" data-child="${info.child}"><img src="/icons/reject_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reject</button>` : ''}
+                ${isApproved ? `<button class="btn btn-primary btn-sm" data-appt-act="complete" data-appt-id="${escapeHtml(a.id)}" data-child="${info.child}"><img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Mark Completed</button>` : ''}
+                ${isApproved ? `<button class="btn btn-secondary btn-sm" data-appt-act="chat" data-appt-id="${escapeHtml(a.id)}"> Chat</button>` : ''}
+                <button class="btn btn-secondary btn-sm" data-appt-act="reschedule" data-appt-id="${escapeHtml(a.id)}" data-child="${info.child}" data-parent="${info.parent}"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reschedule</button>
+                <button class="btn btn-secondary btn-sm" data-appt-act="cancel" data-appt-id="${escapeHtml(a.id)}" data-child="${info.child}"><img src="/icons/cancelled_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Cancel</button>
             </div>
         </div>`;
     }).join('');
@@ -321,10 +323,10 @@ function renderCompleted(apts) {
             <div class="info-grid">
                 <div><p class="info-label">Date</p><p class="info-val">${fmtDate(a.appointmentDate)}</p></div>
                 <div><p class="info-label">Time</p><p class="info-val">${fmtTime(a.appointmentTime)}</p></div>
-                <div><p class="info-label">Reason</p><p class="info-val">${a.reason||'General checkup'}</p></div>
+                <div><p class="info-label">Reason</p><p class="info-val">${escapeHtml(a.reason||'General checkup')}</p></div>
             </div>
             ${paymentSection(a)}
-            ${a.notes ? `<p style="color:var(--text-light);font-size:0.85rem;"><img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${a.notes}</p>` : ''}
+            ${a.notes ? `<p style="color:var(--text-light);font-size:0.85rem;"><img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.notes)}</p>` : ''}
         </div>`;
     }).join('');
 }
@@ -340,7 +342,7 @@ function renderCancelled(apts) {
                     <p style="font-weight:700;font-size:1rem;color:var(--text-dark);margin:0 0 0.2rem;">${info.child}</p>
                     <p style="color:var(--text-light);font-size:0.82rem;margin:0;">Parent: ${info.parent}</p>
                     <p style="color:var(--text-light);font-size:0.82rem;margin:0.3rem 0 0;">${fmtDate(a.appointmentDate)} at ${fmtTime(a.appointmentTime)}</p>
-                    <p style="color:var(--text-light);font-size:0.82rem;margin:0.2rem 0 0;">Reason: ${a.reason||'—'}</p>
+                    <p style="color:var(--text-light);font-size:0.82rem;margin:0.2rem 0 0;">Reason: ${escapeHtml(a.reason||'—')}</p>
                 </div>
                 ${badge(a.status)}
             </div>
@@ -501,6 +503,20 @@ function toggleProfileMenu() {
 }
 document.addEventListener('click', e => {
     if (!e.target.closest('.profile-btn')) document.getElementById('profileMenu').style.display = 'none';
+});
+
+// Card action buttons carry data-* attributes instead of inline onclick strings,
+// so a parent-supplied name can never break out of an attribute or JS string.
+document.addEventListener('click', e => {
+    const btn = e.target.closest('[data-appt-act]');
+    if (!btn) return;
+    const { apptAct: act, apptId: id, child = '', parent = '' } = btn.dataset;
+    if (act === 'approve') updateStatus(id, 'approved', child);
+    else if (act === 'reject') openStatusModal(id, 'rejected', child);
+    else if (act === 'complete') openStatusModal(id, 'completed', child);
+    else if (act === 'chat') window.location.href = `/pedia/pedia-chat.html?appointmentId=${encodeURIComponent(id)}`;
+    else if (act === 'reschedule') openReschedule(id, encodeURIComponent(child), encodeURIComponent(parent));
+    else if (act === 'cancel') cancelConfirm(id, encodeURIComponent(child));
 });
 
 document.getElementById('rDate').addEventListener('change', loadRescheduleAvailability);

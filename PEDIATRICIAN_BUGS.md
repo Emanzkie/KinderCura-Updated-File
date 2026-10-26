@@ -1,0 +1,59 @@
+# Pediatrician Side Bug Audit
+
+Read-only audit, 2026-10-26, branch `claude/pediatrician-side-audit-d036de` (tree was clean). No earlier bug report existed, so nothing is duplicated.
+Evidence: **V** = I re-read the cited lines myself. **T** = traced by a code-reading pass, not run. Nothing was exercised at runtime.
+
+| # | Severity | Feature | File:Line | Evidence / Problem | Suggested Fix |
+|---|---|---|---|---|---|
+| 1 | Critical | Stored XSS (parent to pediatrician) | `js/pedia/pediatrician-appointments.js:269-343`; `pediatrician-dashboard.js:153,155,374,375`; `pediatrician-patients.js:294,325,335,342,377,743`; `pedia-chat.js:61,66,198-206` (T) | Child/parent names, reason, notes, diagnosis and chat text go into `innerHTML` unescaped. Server only trims them (`routes/appointments.js:1564`, `children.js:119`, `chat.js:274-305`). Script runs in the doctor's session and can read `kc_token` (48h JWT). | `escapeHtml`/`textContent` on every interpolation. Validate names and `videoPath` on the server. |
+| 2 | High | Account-status gate | `middleware/auth.js:13-36` (V); `routes/auth.js:1129-1141`, `1196` (T) | The JWT is checked but the user is never loaded. Registration returns a token for `pending` pediatricians, so pending, rejected or suspended accounts can call every pediatrician API for 48h. | Withhold the token for non-active users. `authMiddleware` or the role guards should check `status==='active'`. |
+| 3 | High | Reschedule skips payment gate | `routes/appointments.js:1950` (V) | `if (isClinic) appt.status='approved'` never calls `canConfirmAppointment`. The dashboard Reschedule button reaches it on pending, unpaid requests. `PUT /:id/status` does block this (`:1760`). | Promote only if `canConfirmAppointment(appt).ok`. |
+| 4 | High | Appointment status transitions | `appointments.js:1658,1725-1792,1795` (T) | Any status can follow any status. Completed, cancelled or rejected can return to approved. A revived booking keeps `paymentStatus='Cancelled'` and skips the availability check. Repeat calls resend notifications and email. | Transition map. Re-run `evaluateAvailability` when reviving. |
+| 5 | High | Double booking | `appointments.js:1527-1570`; `models/Appointment.js` (T) | Availability check and insert are not atomic and there is no unique index on pediatrician, date and time. | Partial unique index for pending/approved. Handle the duplicate-key error. |
+| 6 | High | Video upload | `routes/videos.js:176,216` (V) | `findOne().lean()` followed by `appointment.save()` throws, so the first video per appointment returns 500. The file and `AppointmentVideo` row are already saved, `hasVideo` and the pediatrician notification never happen, and a retry duplicates. | `Appointment.updateOne({_id},{$set:{hasVideo:true}})`. |
+| 7 | High | Open full report | `pediatrician-patients.js:479`; `api.js:60-71`; `tests/unit/parent-page-role-guard.test.js:45` (T) | The button opens `/parent/results.html`, and `api.js` redirects pediatricians off `/parent/` pages. The pediatrician branches in `js/parent/results.js:778,1049` are unreachable. | Exempt `results.html` for pediatricians or add a `/pedia/` results page. |
+| 8 | High | Rejected pediatrician cannot resubmit | `routes/prc-verification.js:667,492`; `auth.js:1196` (T) | Rejection sets `pending`, login is then blocked, and `/api/prc/upload` needs a token. The rejection notes are never shown. | Restricted-token resubmission flow. |
+| 9 | Medium | Record access ignores appointment status | `assessments.js:1118,1377,1490,1565,1667,1688,1812,1936`; `checkups.js:62`; `middleware/guardianAccess.js:43`; `pedia-reports.js:201` (T) | `Appointment.exists({childId,pediatricianId})` accepts pending, cancelled and rejected bookings. That gives read access to scores, answers and `parentEmail`, and write access to diagnose and check-ups. `custom-questions.js:172` filters status, so the rules are inconsistent. | One shared helper that requires approved or completed. |
+| 10 | Medium | Cross-pediatrician data | `assessments.js:1169-1192,1391-1405`; `custom-questions.js:675`; `checkups.js:231,236` (T) | `/pedia-patients` returns other doctors' diagnoses, labelled "Your Diagnosis". `/diagnose` overwrites another doctor's diagnosis. `/questions/assigned/:childId` returns every doctor's questions and parent answers (filtered only client-side). | Scope by author. Keep diagnosis history. |
+| 11 | Medium | Secretary access not revoked | `appointments.js:1447,1736,1872`; `auth.js:375`; `secretary.js:506,598` (T) | Appointment routes trust `linkedPediatricianId` from the JWT. A deactivated or unlinked secretary keeps access for up to 48h. | Load the secretary from the database. |
+| 12 | Medium | Secretary permissions unenforced | `appointments.js:1443,1469,1882` (T) | `viewAppointments` is not checked and `rescheduleRequests` is ignored. | Enforce both flags. |
+| 13 | Medium | ML label on wrong assessment | `assessments.js:1131,1165,1187`; `pediatrician-patients.js:406,555-567` (T) | Uses the latest started assessment, not the latest completed one. Saving a label fails with 400 when a newer in-progress reassessment exists. | Use `resultAssessmentId`. |
+| 14 | Medium | Assign modal drops patients | `assessments.js:1246-1249,1285-1288` (T) | A newer in-progress reassessment hides scores. A null score is read as 0, which shows "delayed". | Use the latest completed assessment. Keep null as null. |
+| 15 | Medium | Custom-question locking and assign | `custom-questions.js:418,491,496,543-549,587`; `pedia-questions.js:257-265,1555,1586` (T) | Answered sets can be edited or deleted. DELETE removes answered assignments. Single assign skips the `isActive` check. The newest cancelled booking id is sent, which gives a false 403. `appointmentId` is unvalidated and lands in the query filter. | Lock answered sets. Validate the id. Pick an eligible appointment. |
+| 16 | Medium | Booking notes overwritten | `appointments.js:1667` (T) | Reject or complete replaces the parent's `notes`, and a reason is not required. | Separate `statusNote` field. |
+| 17 | Medium | Same-day past times accepted | `appointments.js:837` (T) | Server checks the date only, using a UTC "today". Past times are filtered only in the browser. | Compare the full datetime in the clinic timezone. |
+| 18 | Medium | Cancel and notification routing | `appointments.js:1836,173,1264`; `notifications.js:363-387`; `api.js:278`; `notifications-card-ui.js:322` (T) | A parent cancel does not notify the pediatrician. A missing parent causes a 500 after the save. `/notifications/send` accepts any `relatedPage`, which the bell assigns to `location.href`, so a `javascript:` URL can run. | Pass `pediatricianId`. Allow only same-origin paths. |
+| 19 | Medium | Consultation fee and settings validation | `pediatrician-settings.js:89`; `auth.js:499,1540,1555-1558,394`; `appointments.js:1532` (T) | A cleared fee becomes null, so `totalAmount` is 0. Times accept "25:99", end earlier than start is read as overnight, capacity is not an integer, and breaks are unchecked. | Validate `HH:mm`, `end>start`, integer capacity, and a required fee. |
+| 20 | Medium | Email change without verification | `auth.js:1525-1534` (T) | No password or OTP is required, so a stolen token becomes permanent takeover via forgot-password. | Require the current password and an OTP. |
+| 21 | Medium | Upload and storage handling | `upload.js:143-164,203`; `prc-verification.js:170-186`; `videos.js:158-163,300`; `server.js:139` (T) | Files are saved before the role check and not deleted on a 403. Chat videos are public. The PRC ID goes to the public profile folder. | Check the role first. Use private storage and an authenticated route. |
+| 22 | Medium | Chat gaps | `pedia-chat.js:41-54`; `chat.js:84-107,102` (T) | Older appointments' threads and unread counts are unreachable. A guardian can bypass chat permissions with `?childId=`. An admin can read and post as the pediatrician. | Aggregate by child. Derive the child from the appointment. |
+| 23 | Medium | Polling load and email timeouts | `pediatrician-dashboard.js:533`; `appointments.js:1455,1478,1694,1999,2040` (T) | A bare 5s `setInterval` triggers about 4 queries per appointment plus per-pending history calls, with no overlap guard. Status and reschedule await email, so they can time out after saving. | Use `KC.poll`. Fire email without awaiting. |
+| 24 | Medium | CSV formula injection | `js/pedia/pedia-reports.js:738-741`; `pediatrician-patients.js:677-679` (T) | Cells are quoted but a leading `= + - @` is not neutralized. | Prefix with `'`. |
+| 25 | Medium | Check-up submit and audit | `pediatrician-patients.js:984-1049`; `checkups.js:378-406` (T) | No in-flight guard, so double clicks create duplicates and notifications. Edits overwrite in place and the audit keeps no before/after. | Disable on submit. Log the diff. |
+| 26 | Low | Dashboard numbers and labels | `pediatrician-dashboard.js:78,95-101,370`; `assessments.js:447-481` (T) | The upcoming count excludes today. `declined` is used where the API says `rejected`. The `*Status` fields are never returned. | Fix the comparison and label map. |
+| 27 | Low | Reports and report UI | `pedia-reports.js:97-107,303`; `js/pedia/pedia-reports.js:911,1760-1764,1463`; `pediatrician-patients.js:138-143` (T) | UTC date ranges against local days. No stale-response guard. A neutral insight renders as a concern. A hard-coded 60 cutoff conflicts with `scoring.js`. | Use clinic-local ranges. Use `bandFor`. |
+| 28 | Low | Apostrophe breaks buttons | `pediatrician-appointments.js:297-302` (T) | A name like "O'Brien" breaks the inline `onclick`. A crafted name can inject script. | Use data attributes. |
+| 29 | Low | Question form and misc. | `pedia-questions.js:870`; `custom-questions.js:306,388,410,449-460`; `pedia-chat.js:149,255`; `pediatrician-settings.js:46`; `api.js:130-136` (T) | Quotes in options corrupt the edit form. There is no age range check. A bad id gives 500. A failed chat video upload is silent. The avatar `src` is a broken fallback. A 401 does not redirect to login. | Escape. Validate. Handle 401. |
+
+Also noted at Low (T): no login rate limiting, JWTs survive password change, `licenseNumber` is editable after approval, and the admin token is accepted in a query string (`routes/prc-verification.js:340`).
+
+Paths without a folder are under `routes/` (backend) or `js/pedia/` (frontend).
+
+## 1. Features audited
+Login and role access; pediatrician dashboard and stats; patients and child records; assessments, risk bands and history; recommendations, check-ups and referrals; appointments (accept, reject, reschedule, availability) and secretary workflows; notifications; chat and video; profile, settings and availability; reports and analytics; custom questions; PRC verification and uploads.
+
+## 2. Checks executed
+- `git status` was clean.
+- `npm test` exited 0. The final libuv assertion is the known Windows ML-client crash.
+- `tests/unit/pedia-reports-asset-versions.test.js` passes.
+- Three findings were re-read by me against the code: #2, #3 and #6.
+- The rest come from code-reading passes with line citations and were not run.
+- Checked and fine: appointment IDOR, notification ownership, check-up and referral gating, `/pedia-reports/*` scoping, and profile mass-assignment.
+
+## 3. Not verified
+Everything at runtime: no server, database or browser sessions. Pediatrician and secretary credentials and live data are not available, and real appointments must not be changed. Also not run: video upload against R2 or Blob, PayMongo and email delivery, the ML service, and video calls.
+
+## 4. Top three
+1. #1 Stored XSS: a parent can take over a pediatrician session.
+2. #2 Pending, rejected or suspended pediatrician tokens work on every pediatrician API.
+3. #3 and #4: reschedule and status changes bypass the payment gate and state rules, and #5 allows double booking.

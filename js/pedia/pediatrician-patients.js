@@ -291,7 +291,7 @@ const API = window.location.origin + '/api';
             const avatarCls  = p.childGender === 'female' ? 'avatar-girl' : p.childGender === 'male' ? 'avatar-boy' : 'avatar-other';
             const hasPhoto   = p.childProfileIcon && p.childProfileIcon.startsWith('/uploads/');
             const avatarHTML = hasPhoto
-                ? `<img src="${p.childProfileIcon}" alt="${p.childFirstName}" class="avatar ${avatarCls}" style="object-fit:cover;border:2px solid var(--primary);" onerror="this.onerror=null;this.src='/icons/profile_icon.png';">`
+                ? `<img src="${escapeHtml(p.childProfileIcon)}" alt="${escapeHtml(p.childFirstName)}" class="avatar ${avatarCls}" style="object-fit:cover;border:2px solid var(--primary);" onerror="this.onerror=null;this.src='/icons/profile_icon.png';">`
                 : `<div class="avatar ${avatarCls}" style="font-size:0.65rem;font-weight:700;flex-direction:column;gap:0.1rem;color:#FAFAF6;text-align:center;line-height:1.2;">
                     <span style="font-size:0.9rem;">${p.childGender==='female'?'♀':'♂'}</span>
                     <span>${genderLabel}</span>
@@ -322,8 +322,8 @@ const API = window.location.origin + '/api';
             <div class="patient-card"
                 data-status="${aptStatus}"
                 data-age-group="${ageGroup}"
-                data-name="${(p.childFirstName+' '+p.childLastName).toLowerCase()}"
-                data-email="${(p.parentEmail||'').toLowerCase()}">
+                data-name="${escapeHtml((p.childFirstName+' '+p.childLastName).toLowerCase())}"
+                data-email="${escapeHtml((p.parentEmail||'').toLowerCase())}">
 
                 <!-- Patient Header -->
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.2rem;">
@@ -332,14 +332,14 @@ const API = window.location.origin + '/api';
                         <div>
                             <p style="font-size:0.7rem;font-weight:600;color:var(--primary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.15rem;"><img src="/icons/profile_icon.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Child</p>
                             <p style="font-weight:700;font-size:1.1rem;color:var(--text-dark);margin-bottom:0.3rem;">
-                                ${p.childFirstName} ${p.childLastName}
+                                ${escapeHtml(p.childFirstName)} ${escapeHtml(p.childLastName)}
                             </p>
                             <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.3rem;">
                                 <span style="background:var(--status-positive-bg);color:var(--status-positive-fg);padding:0.2rem 0.6rem;border-radius:8px;font-size:0.78rem;font-weight:600;">Age: ${age}</span>
                                 <span style="background:var(--status-info-bg);color:var(--status-info-fg);padding:0.2rem 0.6rem;border-radius:8px;font-size:0.78rem;font-weight:600;">${genderLabel}</span>
                             </div>
                             <p style="color:var(--text-light);font-size:0.82rem;margin-bottom:0.15rem;">
-                                <img src="/icons/account.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Parent: <strong style="color:var(--text-dark);">${parentName}</strong>
+                                <img src="/icons/account.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Parent: <strong style="color:var(--text-dark);">${escapeHtml(parentName)}</strong>
                             </p>
                             <p style="color:var(--text-light);font-size:0.82rem;">
                                 <img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Last Appt: <strong style="color:var(--text-dark);">${lastApt}</strong>
@@ -374,7 +374,7 @@ const API = window.location.origin + '/api';
                     ${hasDiag ? `
                     <div style="margin-top:1rem;padding:0.8rem 1rem;background:#FAFAF6;border-radius:8px;border-left:3px solid var(--primary);">
                         <p style="font-size:0.8rem;font-weight:600;color:var(--primary);margin-bottom:0.3rem;">Your Diagnosis:</p>
-                        <p style="font-size:0.85rem;color:var(--text-dark);">${p.diagnosis}</p>
+                        <p style="font-size:0.85rem;color:var(--text-dark);">${escapeHtml(p.diagnosis)}</p>
                     </div>` : ''}
                     ${nextDateDisplay ? `
                     <div style="margin-top:1rem;padding:0.85rem 1rem;background:#FAFAF6;border-radius:8px;border-left:3px solid var(--primary);">
@@ -388,7 +388,7 @@ const API = window.location.origin + '/api';
                             <p style="font-size:0.8rem;font-weight:700;color:var(--text-dark);margin:0;">Latest Progress Update</p>
                             <span style="background:${progressMeta.bg};color:${progressMeta.color};padding:0.2rem 0.6rem;border-radius:999px;font-size:0.74rem;font-weight:700;">${progressMeta.label}</span>
                         </div>
-                        <p style="font-size:0.83rem;color:var(--text-dark);margin:0.45rem 0 0;line-height:1.45;">${p.latestProgressNote || "No note text."}</p>
+                        <p style="font-size:0.83rem;color:var(--text-dark);margin:0.45rem 0 0;line-height:1.45;">${escapeHtml(p.latestProgressNote || "No note text.")}</p>
                         <p style="font-size:0.75rem;color:var(--text-light);margin:0.45rem 0 0;">${p.progressNotesCount} note${p.progressNotesCount !== 1 ? "s" : ""} • Last update ${latestProgressDate}</p>
                     </div>` : ''}
                 </div>` : `
@@ -740,7 +740,7 @@ const API = window.location.origin + '/api';
                         <span style="background:${meta.bg};color:${meta.color};padding:0.2rem 0.65rem;border-radius:999px;font-size:0.74rem;font-weight:700;">${meta.label}</span>
                         <span style="font-size:0.74rem;color:var(--text-light);">${dateText}</span>
                     </div>
-                    <p style="font-size:0.85rem;color:var(--text-dark);margin:0.6rem 0 0;line-height:1.5;">${n.note || '—'}</p>
+                    <p style="font-size:0.85rem;color:var(--text-dark);margin:0.6rem 0 0;line-height:1.5;">${escapeHtml(n.note || '—')}</p>
                 </div>`;
         }).join('');
     }

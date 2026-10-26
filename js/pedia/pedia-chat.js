@@ -56,14 +56,14 @@ async function loadThreads(){
         const M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         tl.innerHTML = threads.map(t=>{
             const d   = new Date(t.appointmentDate);
-            const ini = (t.parentName||'P').split(' ').map(w=>w[0]||'').join('').substring(0,2).toUpperCase();
+            const ini = escapeHtml((t.parentName||'P').split(' ').map(w=>w[0]||'').join('').substring(0,2).toUpperCase());
             const av  = t.parentPhoto&&t.parentPhoto.startsWith('/uploads/')
-                      ? `<img src="${t.parentPhoto}" style="width:100%;height:100%;object-fit:cover;">` : ini;
-            return `<div class="thread-item${t.appointmentId==activeApptId?' active':''}" onclick="openThread(${t.appointmentId})">
+                      ? `<img src="${escapeHtml(t.parentPhoto)}" style="width:100%;height:100%;object-fit:cover;">` : ini;
+            return `<div class="thread-item${t.appointmentId==activeApptId?' active':''}" onclick="openThread(${Number(t.appointmentId)})">
                 <div class="thread-avatar">${av}</div>
                 <div class="thread-info">
                     <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <p class="thread-name">${t.childName || 'Child'} – ${t.parentName||'Parent'}</p>
+                        <p class="thread-name">${escapeHtml(t.childName || 'Child')} – ${escapeHtml(t.parentName||'Parent')}</p>
                         ${t.unread>0?`<span class="thread-badge">${t.unread}</span>`:''}
                     </div>
                     <p class="thread-sub"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Latest: ${M[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}</p>
@@ -74,7 +74,7 @@ async function loadThreads(){
         if(urlAppt&&!activeApptId) openThread(parseInt(urlAppt));
         else if(!activeApptId&&threads.length) openThread(threads[0].appointmentId);
     }catch(e){
-        document.getElementById('threadsList').innerHTML=`<div style="padding:1rem;color:var(--status-attention-fg);font-size:.82rem;">${e.message}</div>`;
+        document.getElementById('threadsList').innerHTML=`<div style="padding:1rem;color:var(--status-attention-fg);font-size:.82rem;">${escapeHtml(e.message)}</div>`;
     }
 }
 
@@ -125,8 +125,8 @@ async function loadMessages(){
         document.getElementById('pchChildName').textContent  = childFull||'—';
         document.getElementById('pchBadges').innerHTML = `
             ${ageStr  ? `<span class="pch-badge pb-age">${ageStr}</span>` : ''}
-            ${gender  ? `<span class="pch-badge pb-gender">${gender}</span>` : ''}
-            <span class="pch-badge ${sbCls}">${statusLabel}</span>
+            ${gender  ? `<span class="pch-badge pb-gender">${escapeHtml(gender)}</span>` : ''}
+            <span class="pch-badge ${sbCls}">${escapeHtml(statusLabel)}</span>
         `;
         document.getElementById('pchReason').textContent = info.reason||'General Check-up';
 
@@ -134,7 +134,7 @@ async function loadMessages(){
         const avEl  = document.getElementById('pchAvatar');
         const photo = info.childPhoto||info.parPhoto;
         if(photo&&photo.startsWith('/uploads/')){
-            avEl.innerHTML=`<img src="${photo}" style="width:100%;height:100%;object-fit:cover;"
+            avEl.innerHTML=`<img src="${escapeHtml(photo)}" style="width:100%;height:100%;object-fit:cover;"
                                  onerror="this.onerror=null;this.style.display='none'">`;
         } else {
             avEl.textContent = `${(info.childFirst||'?')[0]}${(info.childLast||'')[0]||''}`.toUpperCase();
@@ -184,26 +184,28 @@ function renderMessages(msgs){
         const mine    = m.senderId===myId;
         const cls     = mine?'mine':'theirs';
         const timeStr = new Date(m.createdAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-        const ini     = (m.senderName||'?').split(' ').map(w=>w[0]||'').join('').substring(0,2).toUpperCase();
+        // Initials also land inside a JS string in the onerror attribute below, where
+        // HTML-escaping is not enough, so keep letters and digits only.
+        const ini     = (m.senderName||'?').split(' ').map(w=>w[0]||'').join('').substring(0,2).toUpperCase().replace(/[^\p{L}\p{N}]/gu,'');
 
         let avInner;
         if(m.senderPhoto&&m.senderPhoto.startsWith('/uploads/')){
-            avInner=`<img src="${m.senderPhoto}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;"
+            avInner=`<img src="${escapeHtml(m.senderPhoto)}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;"
                          onerror="this.onerror=null;this.outerHTML='<span style=\\'display:flex;width:32px;height:32px;border-radius:50%;background:var(--primary);color:#FAFAF6;font-weight:700;font-size:.7rem;align-items:center;justify-content:center;\\'>${ini}</span>'">`;
         } else {
             avInner=`<span style="display:flex;width:32px;height:32px;border-radius:50%;background:var(--primary);color:#FAFAF6;font-weight:700;font-size:.7rem;align-items:center;justify-content:center;">${ini}</span>`;
         }
 
         const videoHtml = m.videoPath ? `<div class="msg-video-wrap">
-            <video src="${m.videoPath}" controls playsinline></video>
-            <div class="msg-video-label"><img src="/icons/change_photo.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${m.videoName||'Video'}</div>
+            <video src="${escapeHtml(m.videoPath)}" controls playsinline></video>
+            <div class="msg-video-label"><img src="/icons/change_photo.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(m.videoName||'Video')}</div>
         </div>` : '';
 
         return `<div class="msg-row ${cls}">
             <div class="msg-av">${avInner}</div>
             <div class="msg-body">
-                ${!mine?`<p class="msg-sender-name">${m.senderName||'Parent'}</p>`:''}
-                <div class="msg-bubble">${m.message?`<span>${m.message}</span>`:''}${videoHtml}</div>
+                ${!mine?`<p class="msg-sender-name">${escapeHtml(m.senderName||'Parent')}</p>`:''}
+                <div class="msg-bubble">${m.message?`<span>${escapeHtml(m.message)}</span>`:''}${videoHtml}</div>
                 <div class="msg-time">${timeStr}</div>
             </div>
         </div>`;

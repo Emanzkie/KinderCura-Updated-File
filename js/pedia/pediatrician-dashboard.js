@@ -150,18 +150,18 @@ if (!getToken() || !_u) {
                 <div class="apt-card" id="apt-${n.id}">
                     <div class="apt-header">
                         <div>
-                            <h4>${n.parentName||'Parent'} — ${n.childName||'Child'}</h4>
+                            <h4>${escapeHtml(n.parentName||'Parent')} — ${escapeHtml(n.childName||'Child')}</h4>
                             <p>${fmtDate(n.appointmentDate)} at ${fmtTime(n.appointmentTime)}</p>
-                            <p><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${n.reason||'General checkup'}</p>
+                            <p><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(n.reason||'General checkup')}</p>
                         </div>
                         <span class="badge-pending">Pending</span>
                     </div>
                     ${n.overallScore!=null
                         ?`<div class="scores-row"><strong style="color:var(--primary);"><img src="/icons/analytics.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Assessment Results:</strong><br>
-                           Communication: <strong>${n.communicationScore||0}%</strong>${n.communicationStatus?' ('+n.communicationStatus+')':''} &nbsp;·&nbsp;
-                           Social: <strong>${n.socialScore||0}%</strong>${n.socialStatus?' ('+n.socialStatus+')':''} &nbsp;·&nbsp;
-                           Cognitive: <strong>${n.cognitiveScore||0}%</strong>${n.cognitiveStatus?' ('+n.cognitiveStatus+')':''} &nbsp;·&nbsp;
-                           Motor: <strong>${n.motorScore||0}%</strong>${n.motorStatus?' ('+n.motorStatus+')':''}<br>
+                           Communication: <strong>${n.communicationScore||0}%</strong>${n.communicationStatus?' ('+escapeHtml(n.communicationStatus)+')':''} &nbsp;·&nbsp;
+                           Social: <strong>${n.socialScore||0}%</strong>${n.socialStatus?' ('+escapeHtml(n.socialStatus)+')':''} &nbsp;·&nbsp;
+                           Cognitive: <strong>${n.cognitiveScore||0}%</strong>${n.cognitiveStatus?' ('+escapeHtml(n.cognitiveStatus)+')':''} &nbsp;·&nbsp;
+                           Motor: <strong>${n.motorScore||0}%</strong>${n.motorStatus?' ('+escapeHtml(n.motorStatus)+')':''}<br>
                            Overall: <strong style="color:var(--primary);font-size:1rem;">${n.overallScore||0}%</strong>${overallBandText(n.overallScore)}
                            <span class="scores-caption">Latest completed assessment${n.assessmentDate ? ' (' + fmtDate(n.assessmentDate) + ')' : ''}. Domain % = that domain's assessment score; Overall = overall assessment score (average of the four domain scores).</span></div>`
                         :`<p style="color:var(--text-light);font-size:.85rem;font-style:italic;margin:.5rem 0;">No assessment results on file yet.</p>`
@@ -371,8 +371,8 @@ if (!getToken() || !_u) {
             el.innerHTML=all.slice(0,6).map(n=>`
                 <div class="activity-item">
                     <div>
-                        <p class="activity-title">${labelMap[n.status]||'Activity'}: ${n.childName||'Child'}</p>
-                        <p class="activity-time">Parent: ${n.parentName||'—'} · ${fmt(n.createdAt)}</p>
+                        <p class="activity-title">${labelMap[n.status]||'Activity'}: ${escapeHtml(n.childName||'Child')}</p>
+                        <p class="activity-time">Parent: ${escapeHtml(n.parentName||'—')} ·${fmt(n.createdAt)}</p>
                     </div>
                     <span class="activity-icon">${iconMap[n.status]||'<img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">'}</span>
                 </div>`).join('');
