@@ -1944,10 +1944,14 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
 
     appt.appointmentDate = normalizeUtcDate(newDate);
     appt.appointmentTime = availability.requestedTime || normalizeTimeString(newTime) || newTime;
-    // A clinic reschedule confirms the new slot (status -> approved). A parent
+    // A clinic reschedule confirms the new slot (status -> approved), but only
+    // when the same payment rule as PUT /:id/status is met; otherwise an unpaid
+    // request would be approved here without the minimum payment. A parent
     // reschedule keeps the current status: a pending request stays pending
     // (still needs clinic approval), an approved appointment stays approved.
-    if (isClinic) appt.status = 'approved';
+    if (isClinic && appt.status === 'pending' && paymentService.canConfirmAppointment(appt).ok) {
+      appt.status = 'approved';
+    }
     if (note && String(note).trim()) appt.notes = String(note).trim();
 
     // Reschedule history, written only on the path that actually saves. The

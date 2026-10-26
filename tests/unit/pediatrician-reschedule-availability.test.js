@@ -96,6 +96,9 @@ function makeAppt(fields) {
     childId,
     status: 'pending',
     reason: 'Development Check',
+    // Defaults of models/Appointment.js: a booking with no fee is free to confirm.
+    totalAmount: 0,
+    amountPaid: 0,
     ...fields,
   };
   doc.save = async function save() { saves.push({ id: this.id, date: this.appointmentDate, time: this.appointmentTime }); };
@@ -238,6 +241,41 @@ test('valid reschedule updates the right appointment, approves it and notifies t
   assert.strictEqual(appt.reschedule.reason, 'Doctor emergency');
   assert.strictEqual(appointments[1].appointmentTime, '09:00', 'other appointments untouched');
   assert.ok(notificationsCreated.some((n) => String(n.userId) === String(parentId) && n.title === 'Appointment Rescheduled'));
+});
+
+// PEDIATRICIAN_BUGS.md #3: a clinic reschedule used to approve any pending
+// request, skipping the minimum-payment rule that PUT /:id/status enforces.
+async function rescheduleWith(paymentFields, status = 'pending') {
+  reset();
+  Object.assign(appointments[0], { status, ...paymentFields });
+  const res = await call(reschedule, {
+    user: pediaUser,
+    params: { appointmentId: '1' },
+    body: { newDate: ymd(MONDAY), newTime: '11:00', reason: 'Doctor emergency' },
+  });
+  assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+  assert.strictEqual(appointments[0].appointmentTime, '11:00', 'the slot is still moved');
+  return appointments[0];
+}
+
+test('rescheduling an unpaid pending request moves it but does not approve it', async () => {
+  const appt = await rescheduleWith({ totalAmount: 500, amountPaid: 0, paymentStatus: 'Unpaid' });
+  assert.strictEqual(appt.status, 'pending');
+});
+
+test('rescheduling a pending request approves it once the minimum is paid', async () => {
+  const appt = await rescheduleWith({ totalAmount: 500, amountPaid: 500, paymentStatus: 'Paid' });
+  assert.strictEqual(appt.status, 'approved');
+});
+
+test('rescheduling a pending request approves it when an admin overrode the payment', async () => {
+  const appt = await rescheduleWith({ totalAmount: 500, amountPaid: 0, paymentOverride: { isOverridden: true } });
+  assert.strictEqual(appt.status, 'approved');
+});
+
+test('rescheduling an already approved appointment keeps it approved', async () => {
+  const appt = await rescheduleWith({ totalAmount: 500, amountPaid: 0, paymentStatus: 'Unpaid' }, 'approved');
+  assert.strictEqual(appt.status, 'approved');
 });
 
 (async () => {
