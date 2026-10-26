@@ -102,6 +102,7 @@ function publicAppointmentForSecretary(appt, child = null, parent = null) {
     appointmentTime: appt.appointmentTime,
     reason: appt.reason || null,
     notes: appt.notes || null,
+    statusNote: appt.statusNote || null,
     location: appt.location || null,
     createdAt: appt.createdAt,
     updatedAt: appt.updatedAt,

@@ -295,6 +295,7 @@ function renderUpcoming(apts) {
             </div>
             ${paymentSection(a)}
             ${a.notes ? `<p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem;"><img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.notes)}</p>` : ''}
+            ${a.statusNote ? `<p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem;"><strong>Update note:</strong> ${escapeHtml(a.statusNote)}</p>` : ''}
             <div class="action-row">
                 ${isPending  ? `<button class="btn btn-primary btn-sm" data-appt-act="approve" data-appt-id="${escapeHtml(a.id)}" data-child="${info.child}"><img src="/icons/approve_completed_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Approve</button>` : ''}
                 ${isPending  ? `<button class="btn btn-secondary btn-sm" style="color:var(--danger,#3d4738);border-color:var(--danger,#e8a5a5);" data-appt-act="reject" data-appt-id="${escapeHtml(a.id)}" data-child="${info.child}"><img src="/icons/reject_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reject</button>` : ''}
@@ -327,6 +328,7 @@ function renderCompleted(apts) {
             </div>
             ${paymentSection(a)}
             ${a.notes ? `<p style="color:var(--text-light);font-size:0.85rem;"><img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.notes)}</p>` : ''}
+            ${a.statusNote ? `<p style="color:var(--text-light);font-size:0.85rem;"><strong>Update note:</strong> ${escapeHtml(a.statusNote)}</p>` : ''}
         </div>`;
     }).join('');
 }
@@ -343,6 +345,7 @@ function renderCancelled(apts) {
                     <p style="color:var(--text-light);font-size:0.82rem;margin:0;">Parent: ${info.parent}</p>
                     <p style="color:var(--text-light);font-size:0.82rem;margin:0.3rem 0 0;">${fmtDate(a.appointmentDate)} at ${fmtTime(a.appointmentTime)}</p>
                     <p style="color:var(--text-light);font-size:0.82rem;margin:0.2rem 0 0;">Reason: ${escapeHtml(a.reason||'—')}</p>
+                    ${a.statusNote ? `<p style="color:var(--text-light);font-size:0.82rem;margin:0.2rem 0 0;">Note: ${escapeHtml(a.statusNote)}</p>` : ''}
                 </div>
                 ${badge(a.status)}
             </div>

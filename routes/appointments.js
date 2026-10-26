@@ -1269,6 +1269,7 @@ async function hydrateAppointment(appointmentDoc) {
     appointmentTime: appointmentDoc.appointmentTime,
     reason: appointmentDoc.reason,
     notes: appointmentDoc.notes,
+    statusNote: appointmentDoc.statusNote || null,
     location: appointmentDoc.location,
     status: appointmentDoc.status,
     // Reschedule history. isRescheduled drives the 'Rescheduled' badge the
@@ -1702,7 +1703,9 @@ async function updateAppointmentStatusById({ appointmentId, status, notes = null
     if (!paymentCheck.ok) throw new Error(paymentCheck.message);
   }
 
-  if (notes != null && String(notes).trim()) appt.notes = String(notes).trim();
+  // The clinic's note goes in statusNote; appt.notes is the parent's booking
+  // note and used to be overwritten here.
+  if (notes != null && String(notes).trim()) appt.statusNote = String(notes).trim();
   appt.status = status;
   // A cancelled or rejected booking that already took money keeps its payment
   // status (Paid / Down Payment / Partially Paid) so the payment stays on record
@@ -1741,7 +1744,7 @@ async function updateAppointmentStatusById({ appointmentId, status, notes = null
        <p><strong>Time:</strong> ${emailText(timeStr)}</p>
        <p><strong>Status:</strong> ${emailText(label)}</p>
        ${hydrated.reason ? `<p><strong>Reason:</strong> ${emailText(hydrated.reason)}</p>` : ''}
-       ${hydrated.notes ? `<p><strong>Note:</strong> ${emailText(hydrated.notes)}</p>` : ''}
+       ${hydrated.statusNote ? `<p><strong>Note:</strong> ${emailText(hydrated.statusNote)}</p>` : ''}
      </div>
      <p>Please check KinderCura for the latest update.</p>`
   );
@@ -1996,7 +1999,8 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
     if (isClinic && mayApprove && appt.status === 'pending' && paymentService.canConfirmAppointment(appt).ok) {
       appt.status = 'approved';
     }
-    if (note && String(note).trim()) appt.notes = String(note).trim();
+    // A reschedule note is not the booking note: it used to replace it.
+    if (note && String(note).trim()) appt.statusNote = String(note).trim();
 
     // Reschedule history, written only on the path that actually saves. The
     // first reschedule captures the schedule the parent originally booked;

@@ -135,6 +135,7 @@
                                 <p class="mini"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${fmtDate(a.appointmentDate)} at ${fmtTime(a.appointmentTime)}</p>
                                 <p class="mini"><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.reason||'General checkup')}</p>
                                 ${a.notes ? `<p class="mini"><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(a.notes)}</p>` : ''}
+                                ${a.statusNote ? `<p class="mini"><strong>Update note:</strong> ${escapeHtml(a.statusNote)}</p>` : ''}
                                 ${a.paymentStatus ? `<p class="mini" style="margin-top:0.3rem;">&#8369; Payment: <strong>${escapeHtml(a.paymentStatus)}</strong>${a.pendingPaymentMode === 'walk_in' ? ' — Walk-in' : a.pendingPaymentMode === 'ewallet' ? ' — E-Wallet' : ''}</p>` : ''}
                             </div>
                             <span class="badge ${a.status}">${a.status.charAt(0).toUpperCase()+a.status.slice(1)}</span>

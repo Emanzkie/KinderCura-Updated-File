@@ -22,6 +22,10 @@ const appointmentSchema = new mongoose.Schema(
     appointmentTime: { type: String, required: true },
     reason: { type: String, trim: true, default: null },
     notes: { type: String, trim: true, default: null },
+    // The clinic's note on the latest status change or reschedule (a rejection
+    // reason, a completion remark, why a visit moved). Kept apart from `notes`,
+    // which is the parent's own note from booking and must not be overwritten.
+    statusNote: { type: String, trim: true, default: null },
     location: { type: String, trim: true, default: null },
     paymentType: {
       type: String,

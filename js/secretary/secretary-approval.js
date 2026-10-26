@@ -110,6 +110,7 @@ requireAuth();
                     <td>
                         <p class="sub-line">${escapeHtml(item.reason || 'General checkup')}</p>
                         ${item.notes ? `<p class="sub-line">${escapeHtml(item.notes)}</p>` : ''}
+                        ${item.statusNote ? `<p class="sub-line"><strong>Update note:</strong> ${escapeHtml(item.statusNote)}</p>` : ''}
                     </td>
                     <td>
                         <div class="row-actions">
