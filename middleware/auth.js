@@ -12,19 +12,31 @@ require('dotenv').config();
 // Login refuses these two statuses, so a token must stop working for them too.
 // A pediatrician who is pending (new, or sent back after a rejected PRC check)
 // or suspended after the token was issued would otherwise keep full access
-// until it expires. Accounts with no stored status keep working, as at login.
-const BLOCKED_STATUS_MESSAGES = {
-    pending: 'Your pediatrician account is still pending admin approval.',
-    suspended: 'Your account has been suspended.',
-};
+// until it expires; a secretary a pediatrician deactivates is the same.
+// Accounts with no stored status keep working, as at login.
+function blockedStatusMessage(role, status) {
+    if (status === 'suspended') return 'Your account has been suspended.';
+    if (status === 'pending') {
+        return role === 'pediatrician'
+            ? 'Your pediatrician account is still pending admin approval.'
+            : 'Your account is not yet active. Please contact the clinic administrator.';
+    }
+    return null;
+}
 
-// Re-reads a pediatrician's account status, which the signed token cannot
-// reflect. Only this role is checked, so every other role keeps the
+// Re-reads the account of a clinic role (pediatrician, secretary), which the
+// signed token cannot keep current. A secretary's token also carries the
+// pediatrician they were linked to at login; an admin can unlink or re-link
+// them afterwards, so that is refreshed here too and every route that reads
+// req.user.linkedPediatricianId sees the current link. Other roles keep the
 // no-database-lookup path.
-async function requireActivePediatrician(req, res, next) {
+async function requireActiveClinicAccount(req, res, next) {
+    const isSecretary = req.user.role === 'secretary';
     let account;
     try {
-        account = await User.findById(req.user.userId).select('status').lean();
+        account = await User.findById(req.user.userId)
+            .select(isSecretary ? 'status linkedPediatricianId' : 'status')
+            .lean();
     } catch (err) {
         console.error('[auth] Could not check account status:', err && err.message ? err.message : err);
         return res.status(503).json({ error: 'Could not verify your account. Please try again.' });
@@ -32,9 +44,13 @@ async function requireActivePediatrician(req, res, next) {
     if (!account) {
         return res.status(401).json({ error: 'Account not found. Please log in again.' });
     }
-    const blocked = BLOCKED_STATUS_MESSAGES[account.status];
+    const blocked = blockedStatusMessage(req.user.role, account.status);
     if (blocked) {
         return res.status(403).json({ error: blocked });
+    }
+    if (isSecretary) {
+        if (account.linkedPediatricianId) req.user.linkedPediatricianId = String(account.linkedPediatricianId);
+        else delete req.user.linkedPediatricianId;
     }
     next();
 }
@@ -57,7 +73,7 @@ function authMiddleware(req, res, next) {
     try {
         // Allow a small clock tolerance when verifying to avoid rejecting near-expiry tokens
         req.user = jwt.verify(token, process.env.JWT_SECRET, { clockTolerance: 120 });
-        if (req.user.role === 'pediatrician') return requireActivePediatrician(req, res, next);
+        if (req.user.role === 'pediatrician' || req.user.role === 'secretary') return requireActiveClinicAccount(req, res, next);
         next();
     } catch (err) {
         if (err && err.name === 'TokenExpiredError') {

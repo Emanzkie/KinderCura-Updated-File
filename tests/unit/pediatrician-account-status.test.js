@@ -80,7 +80,7 @@ async function runMiddleware(role, lookup) {
   assert.strictEqual(r.nextCalled, false, 'a failed status lookup must not let the request through');
   ok('a failed status lookup refuses the request instead of letting it through');
 
-  for (const role of ['parent', 'admin', 'secretary', 'legal_guardian']) {
+  for (const role of ['parent', 'admin', 'legal_guardian']) {
     r = await runMiddleware(role, () => ({ status: 'pending' }));
     assert.strictEqual(r.nextCalled, true, `${role} must be unaffected`);
     assert.strictEqual(r.lookups, 0, `${role}: no extra database read`);
