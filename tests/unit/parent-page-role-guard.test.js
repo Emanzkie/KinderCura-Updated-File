@@ -42,12 +42,25 @@ const STAFF = {
 
 // 1. Every staff role is sent to its own dashboard from parent pages,
 //    including the pages that never checked before.
-for (const page of ['/parent/dashboard.html', '/parent/results.html', '/parent/appointments.html', '/parent/settings.html', '/PARENT/payment.html', '/parent/guardians']) {
+for (const page of ['/parent/dashboard.html', '/parent/appointments.html', '/parent/settings.html', '/PARENT/payment.html', '/parent/guardians']) {
   for (const [role, home] of Object.entries(STAFF)) {
     assert.deepStrictEqual(load(page, { id: 'u1', role }), [home], `${role} on ${page}`);
   }
 }
 ok('secretary, pediatrician and admin are redirected to their dashboards from parent pages');
+
+// 1b. The Results page is the one parent page a pediatrician opens on purpose
+//     ("Open full report" on My Patients, PEDIATRICIAN_BUGS.md #7). Secretaries
+//     and admins are still sent away from it.
+for (const page of ['/parent/results.html', '/PARENT/results.html']) {
+  assert.deepStrictEqual(load(page, { id: 'u1', role: 'pediatrician' }), [], `pediatrician on ${page}`);
+  assert.deepStrictEqual(load(page, { id: 'u1', role: 'secretary' }), [STAFF.secretary], `secretary on ${page}`);
+  assert.deepStrictEqual(load(page, { id: 'u1', role: 'admin' }), [STAFF.admin], `admin on ${page}`);
+}
+assert.deepStrictEqual(load('/parent/results.html', { id: 'u1', role: 'parent' }), []);
+assert.deepStrictEqual(load('/parent/dashboard.html', { id: 'u1', role: 'pediatrician' }), [STAFF.pediatrician],
+  'the exception is only the Results page, not the rest of the parent area');
+ok('a pediatrician can open the Results page; secretaries and admins are still redirected; other parent pages unchanged');
 
 // 2. Parent-side roles stay on parent pages.
 for (const role of ['parent', 'legal_guardian', 'foster_parent', 'court_appointed']) {

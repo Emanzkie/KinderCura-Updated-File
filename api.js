@@ -57,11 +57,17 @@ if (localStorage.getItem('kc_remember') === '0' && !/(?:^|;\s*)kc_session=1(?:;|
 // of them handled secretaries. The invitation page is left alone: an invited
 // person may open it while signed in to another account. The server still
 // enforces access on every API call; this only keeps staff off the wrong UI.
+//
+// Exception: the Results page has a pediatrician mode (js/parent/results.js)
+// that "Open full report" on My Patients opens in a new tab, so a pediatrician
+// is let through there. Secretaries and admins are not: nothing links them to it.
 (function redirectStaffAwayFromParentPages() {
+    const allowedParentPages = { pediatrician: ['/parent/results.html'] };
     const path = String((window.location && window.location.pathname) || '').toLowerCase();
     if (!path.startsWith('/parent/') || path.startsWith('/parent/accept-invitation')) return;
     const user = window.KC.user();
     if (!user || !window.KC.token()) return;
+    if ((allowedParentPages[user.role] || []).includes(path)) return;
     const staffHome = {
         admin: '/admin/admin-dashboard.html',
         pediatrician: '/pedia/pediatrician-dashboard.html',
