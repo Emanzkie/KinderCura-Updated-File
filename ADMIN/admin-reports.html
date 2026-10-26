@@ -425,11 +425,17 @@
                     <summary style="cursor:pointer;font-weight:600;padding:0.5rem 0;">How these averages are calculated</summary>
                     <p class="muted pr-scope-line" id="averageScoreDetailMethod">Loading…</p>
                     <div style="overflow-x:auto;margin-bottom:1rem;">
-                        <table class="simple-table">
+                        <table class="simple-table" id="averageScoreCalcTable" style="min-width:560px;">
                             <thead>
-                                <tr><th>Domain</th><th class="num">Results included</th><th class="num">Sum of stored %</th><th class="num">Mean (sum ÷ results)</th><th class="num">Rounded</th><th class="num">Card shows</th></tr>
+                                <tr>
+                                    <th style="width:20%;">Domain</th>
+                                    <th class="num" style="width:20%;">Results included</th>
+                                    <th class="num" style="width:18%;">Sum of stored %</th>
+                                    <th class="num" style="width:26%;">Mean (sum ÷ results)</th>
+                                    <th class="num" style="width:16%;">Rounded</th>
+                                </tr>
                             </thead>
-                            <tbody id="averageScoreCalcRows"><tr><td colspan="6" class="muted">Loading...</td></tr></tbody>
+                            <tbody id="averageScoreCalcRows"><tr><td colspan="5" class="muted">Loading...</td></tr></tbody>
                         </table>
                     </div>
                     <p class="muted pr-scope-line" id="averageScoreRecordsNote"></p>
@@ -604,7 +610,7 @@
     <!-- window.KCScoring: score bands, labels and colours for the status legend. -->
     <script src="/constants/scoring.js"></script>
     <script src="/js/admin/admin-reports-interpretations.js?v=c1d520932d"></script>
-    <script src="/js/admin/admin-reports.js?v=4a6d2c95a2"></script>
-    <script src="/js/admin/admin-clinics.js?v=0fac6174fe"></script>
+    <script src="/js/admin/admin-reports.js?v=6118847e07"></script>
+    <script src="/js/admin/admin-clinics.js?v=77d0ba9aed"></script>
 </body>
 </html>
