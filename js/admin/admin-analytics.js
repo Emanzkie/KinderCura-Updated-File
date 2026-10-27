@@ -399,18 +399,48 @@ requireAuth();
             loadAnalytics({ userAction: true });
         }
 
-        let eventSource = null;
+        // Live updates (local server only). Read with fetch so the admin token
+        // is sent. A refusal — 501 on Vercel, which has no live stream, or an
+        // auth error — ends the attempts for this page; it used to retry every
+        // 5 s forever. A dropped connection is retried a few times, and the
+        // 30 s refresh (KC.poll below) keeps the page current either way.
+        const SSE_RETRY_MS = 30000;
+        const SSE_MAX_RETRIES = 5;
+        let sseActive = false;
+        let sseRetries = 0;
 
-        function initSSE() {
-            if (eventSource) return;
-            eventSource = new EventSource('/api/admin/sse');
-            // A background update never cancels a request already in flight.
-            eventSource.addEventListener('analytics:update', () => { if (!activeController) loadAnalytics(); });
-            eventSource.onerror = () => {
-                eventSource.close();
-                eventSource = null;
-                setTimeout(initSSE, 5000);
-            };
+        async function initSSE() {
+            if (sseActive || !window.fetch || !window.TextDecoder) return;
+            sseActive = true;
+            let retry = false;
+            try {
+                const res = await fetch('/api/admin/sse', {
+                    headers: { Accept: 'text/event-stream', ...(KC.token() ? { Authorization: `Bearer ${KC.token()}` } : {}) },
+                });
+                if (!res.ok || !res.body) return;
+                sseRetries = 0;
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                for (;;) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const events = buffer.split('\n\n');
+                    buffer = events.pop();
+                    // A background update never cancels a request already in flight.
+                    if (events.some((e) => /^event: analytics:update$/m.test(e)) && !activeController) loadAnalytics();
+                }
+                retry = true;
+            } catch {
+                retry = true;
+            } finally {
+                sseActive = false;
+                if (retry && sseRetries < SSE_MAX_RETRIES) {
+                    sseRetries += 1;
+                    setTimeout(initSSE, SSE_RETRY_MS);
+                }
+            }
         }
 
         document.addEventListener('DOMContentLoaded', () => {

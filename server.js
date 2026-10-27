@@ -341,14 +341,19 @@ app.get('/api/health', (req, res) => {
 
 // SSE is only supported in long-lived server environments.
 // In Vercel serverless, SSE connections will time out, so return a
-// clear error instead of hanging.
-app.get('/api/admin/sse', (req, res) => {
+// clear error instead of hanging (the page then stops trying).
+// Admins only: the events describe admin activity. The page reads the stream
+// with fetch so it can send the Authorization header (EventSource cannot).
+const { authMiddleware: sseAuth, adminOnly: sseAdminOnly } = require('./middleware/auth');
+app.get('/api/admin/sse', (req, res, next) => {
     if (IS_VERCEL) {
         return res.status(501).json({
             error: 'SSE is not supported in serverless environments',
             hint: 'Use polling or a WebSocket service for real-time updates',
         });
     }
+    next();
+}, sseAuth, sseAdminOnly, (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
