@@ -17,6 +17,10 @@
             });
         }
 
+        // Every value that comes from the server (names, emails, clinic names,
+        // statuses, ids, error text) must go through this before it is put into
+        // innerHTML. Names and emails are typed by whoever signs up, so an
+        // unescaped value could run script in the admin's session.
         function escapeHtml(value) {
             return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
                 '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -41,7 +45,7 @@
                 renderPending((data.users || []).filter(u => u.status === 'pending'));
                 document.getElementById('userCount').textContent = `(${(data.users || []).length})`;
             } catch (e) {
-                document.getElementById('usersList').innerHTML = `<tr><td colspan="6" style="padding:2rem;color:red;text-align:center;">Error: ${e.message}</td></tr>`;
+                document.getElementById('usersList').innerHTML = `<tr><td colspan="6" style="padding:2rem;color:red;text-align:center;">Error: ${escapeHtml(e.message)}</td></tr>`;
             }
         }
 
@@ -53,19 +57,19 @@
             document.getElementById('usersList').innerHTML = users.length
                 ? users.map(u => `
                     <tr style="border-bottom:1px solid var(--border);">
-                        <td style="padding:1rem;font-weight:600;">${u.firstName} ${u.lastName}</td>
-                        <td style="padding:1rem;color:var(--text-light);">${u.email}</td>
-                        <td style="padding:1rem;"><span style="background:var(--bg-primary);padding:0.3rem 0.8rem;border-radius:4px;font-size:0.85rem;text-transform:capitalize;">${u.role}</span></td>
-                        <td style="padding:1rem;"><span style="background:${statusColor[u.status]||'var(--border)'};color:#3D4738;padding:0.3rem 0.8rem;border-radius:4px;font-size:0.85rem;text-transform:capitalize;">${u.status}</span></td>
-                        <td style="padding:1rem;color:var(--text-light);">${u.createdAt}</td>
+                        <td style="padding:1rem;font-weight:600;">${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)}</td>
+                        <td style="padding:1rem;color:var(--text-light);">${escapeHtml(u.email)}</td>
+                        <td style="padding:1rem;"><span style="background:var(--bg-primary);padding:0.3rem 0.8rem;border-radius:4px;font-size:0.85rem;text-transform:capitalize;">${escapeHtml(u.role)}</span></td>
+                        <td style="padding:1rem;"><span style="background:${statusColor[u.status]||'var(--border)'};color:#3D4738;padding:0.3rem 0.8rem;border-radius:4px;font-size:0.85rem;text-transform:capitalize;">${escapeHtml(u.status)}</span></td>
+                        <td style="padding:1rem;color:var(--text-light);">${escapeHtml(u.createdAt)}</td>
                         <td style="padding:1rem;text-align:center;">
                             ${u.status === 'pending' ? `
-                                <button onclick="approveUser('${u.id}')" style="padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;margin-right:0.3rem;">Approve</button>
-                                <button onclick="rejectUser('${u.id}')" style="padding:0.4rem 0.8rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Reject</button>
+                                <button onclick="approveUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;margin-right:0.3rem;">Approve</button>
+                                <button onclick="rejectUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Reject</button>
                             ` : u.status === 'active' ? `
-                                <button onclick="suspendUser('${u.id}')" style="padding:0.4rem 0.8rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Suspend</button>
+                                <button onclick="suspendUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Suspend</button>
                             ` : `
-                                <button onclick="approveUser('${u.id}')" style="padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Re-activate</button>
+                                <button onclick="approveUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Re-activate</button>
                             `}
                         </td>
                     </tr>`).join('')
@@ -81,12 +85,12 @@
             document.getElementById('pendingList').innerHTML = pending.length
                 ? pending.map(u => `
                     <div style="background:var(--bg-primary);padding:1.5rem;border-radius:10px;border-left:4px solid #f4d89f;">
-                        <p style="font-weight:600;">${u.firstName} ${u.lastName}</p>
-                        <p style="color:var(--text-light);font-size:0.85rem;margin:0.3rem 0;">${u.email}</p>
-                        <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:1rem;text-transform:capitalize;">Role: ${u.role}</p>
+                        <p style="font-weight:600;">${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)}</p>
+                        <p style="color:var(--text-light);font-size:0.85rem;margin:0.3rem 0;">${escapeHtml(u.email)}</p>
+                        <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:1rem;text-transform:capitalize;">Role: ${escapeHtml(u.role)}</p>
                         <div style="display:flex;gap:0.5rem;">
-                            <button onclick="approveUser('${u.id}')" style="flex:1;padding:0.5rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Approve</button>
-                            <button onclick="rejectUser('${u.id}')" style="flex:1;padding:0.5rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Reject</button>
+                            <button onclick="approveUser('${escapeHtml(u.id)}')" style="flex:1;padding:0.5rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Approve</button>
+                            <button onclick="rejectUser('${escapeHtml(u.id)}')" style="flex:1;padding:0.5rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Reject</button>
                         </div>
                     </div>`).join('')
                 : '<p style="color:var(--text-light);text-align:center;grid-column:1/-1;">No pending approvals</p>';
@@ -132,23 +136,23 @@
                     ? list.map(s => `
                         <div style="background:var(--bg-primary);padding:1rem;border-radius:8px;margin-bottom:0.8rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;">
                             <div>
-                                <p style="font-weight:600;margin:0 0 0.2rem;">${s.firstName} ${s.lastName}</p>
-                                <p class="mini" style="margin:0;">${s.email} | Status: <span style="text-transform:capitalize;">${s.status}</span></p>
-                                <p class="mini" style="margin:0.2rem 0 0;">Linked to: <strong style="color:var(--text-dark);">${s.linkedPediatricianName}</strong></p>
+                                <p style="font-weight:600;margin:0 0 0.2rem;">${escapeHtml(s.firstName)} ${escapeHtml(s.lastName)}</p>
+                                <p class="mini" style="margin:0;">${escapeHtml(s.email)} | Status: <span style="text-transform:capitalize;">${escapeHtml(s.status)}</span></p>
+                                <p class="mini" style="margin:0.2rem 0 0;">Linked to: <strong style="color:var(--text-dark);">${escapeHtml(s.linkedPediatricianName)}</strong></p>
                             </div>
                             <div style="display:flex;gap:0.5rem;align-items:center;">
                                 <!-- Dropdown to re-assign or unlink the secretary from a pediatrician -->
-                                <select id="linkSelect_${s.id}" style="padding:0.4rem;border-radius:4px;border:1px solid var(--border);font-size:0.85rem;">
+                                <select id="linkSelect_${escapeHtml(s.id)}" style="padding:0.4rem;border-radius:4px;border:1px solid var(--border);font-size:0.85rem;">
                                     <option value="">Unlink</option>
-                                    ${pediaOptions.map(p => `<option value="${p.id}" ${s.linkedPediatricianId === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+                                    ${pediaOptions.map(p => `<option value="${escapeHtml(p.id)}" ${s.linkedPediatricianId === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
                                 </select>
                                 <!-- Update Link button: uses KinderCura primary green (#6B8E6F) instead of off-brand teal -->
-                                <button onclick="linkSecretary('${s.id}')" style="padding:0.4rem 0.8rem;background:var(--primary);color:#FAFAF6;border:none;border-radius:4px;cursor:pointer;font-size:0.85rem;">Update Link</button>
+                                <button onclick="linkSecretary('${escapeHtml(s.id)}')" style="padding:0.4rem 0.8rem;background:var(--primary);color:#FAFAF6;border:none;border-radius:4px;cursor:pointer;font-size:0.85rem;">Update Link</button>
                             </div>
                         </div>`).join('')
                     : '<p style="color:var(--text-light);text-align:center;">No assistant/secretary accounts created yet.</p>';
             } catch(e) {
-                document.getElementById('secList').innerHTML = `<p style="color:red;">Error loading secretaries: ${e.message}</p>`;
+                document.getElementById('secList').innerHTML = `<p style="color:red;">Error loading secretaries: ${escapeHtml(e.message)}</p>`;
             }
         }
 
@@ -171,7 +175,7 @@
                 const sel = document.getElementById('secPediaSelect');
                 if (sel) {
                     sel.innerHTML = `<option value="">-- Do not link yet --</option>`
-                        + pediaOptions.map(p => `<option value="${p.id}">${p.name} (${p.clinic})</option>`).join('');
+                        + pediaOptions.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)} (${escapeHtml(p.clinic)})</option>`).join('');
                 }
             } catch(e) {
                 console.error("Failed to load pedia dropdown", e);
