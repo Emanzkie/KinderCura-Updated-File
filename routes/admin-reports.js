@@ -40,6 +40,7 @@ const Assessment = require('../models/Assessment');
 const AssessmentResult = require('../models/AssessmentResult');
 const PediaCustomQuestionAssignment = require('../models/PediaCustomQuestionAssignment');
 const scoring = require('../constants/scoring');
+const { DATE_ONLY, CLINIC_TIMEZONE, clinicDayStart, clinicDayEnd } = require('../constants/clinicTime');
 
 // Collection names are read off the models rather than typed as strings, so a
 // `collection:` option change in models/ cannot silently break a $lookup here.
@@ -265,19 +266,17 @@ function parseFilters(query) {
   const rawTo = query.to == null ? '' : String(query.to).trim();
 
   if (rawTo) {
-    const d = new Date(rawTo);
+    // A date-only `to` means the whole of that clinic (Manila) day, so "to
+    // 8 August" includes everything that happened on 8 August.
+    const d = DATE_ONLY.test(rawTo) ? clinicDayEnd(rawTo) : new Date(rawTo);
     if (Number.isNaN(d.getTime())) return { error: 'Query parameter `to` is not a valid ISO date.' };
-    // A date-only `to` parses to midnight, which would exclude everything that
-    // happened during that day. Extend to end of day so "to 8 August" means what
-    // the person setting the filter expects. Matches routes/pedia-reports.js.
-    if (/^\d{4}-\d{2}-\d{2}$/.test(rawTo)) d.setUTCHours(23, 59, 59, 999);
     out.to = d;
   } else {
     out.to = new Date();
   }
 
   if (rawFrom) {
-    const d = new Date(rawFrom);
+    const d = DATE_ONLY.test(rawFrom) ? clinicDayStart(rawFrom) : new Date(rawFrom);
     if (Number.isNaN(d.getTime())) return { error: 'Query parameter `from` is not a valid ISO date.' };
     out.from = d;
   } else {
@@ -507,7 +506,7 @@ router.get('/users', authMiddleware, adminOnly, async (req, res) => {
             { $match: { createdAt: { $gte: filters.from, $lte: filters.to } } },
             {
               $group: {
-                _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
+                _id: { $dateToString: { format: '%Y-%m', date: '$createdAt', timezone: CLINIC_TIMEZONE } },
                 count: { $sum: 1 },
               },
             },
@@ -754,7 +753,7 @@ router.get('/screenings', authMiddleware, adminOnly, async (req, res) => {
           overTime: [
             {
               $group: {
-                _id: { $dateToString: { format: '%Y-%m', date: '$screenedAt' } },
+                _id: { $dateToString: { format: '%Y-%m', date: '$screenedAt', timezone: CLINIC_TIMEZONE } },
                 count: { $sum: 1 },
               },
             },
@@ -1224,4 +1223,4 @@ module.exports = router;
 // Attaching to the router function is inert for Express — app.use() only ever
 // calls it as a request handler, so this does not affect routing. Mirrors the
 // pattern already used by routes/assessments.js (router.__testables).
-router.__testables = { computeDiagnosisMode };
+router.__testables = { computeDiagnosisMode, parseFilters };

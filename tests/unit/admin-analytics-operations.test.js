@@ -70,9 +70,10 @@ function testSummarizePayments() {
 
 function testParsePeriod() {
   assert.deepStrictEqual(Ops.parsePeriod({}), { from: null, to: null });
+  // Whole Manila (UTC+8) days: 1 Sep 00:00 Manila is 31 Aug 16:00 UTC.
   const p = Ops.parsePeriod({ from: '2026-09-01', to: '2026-09-30' });
-  assert.strictEqual(p.from.toISOString(), '2026-09-01T00:00:00.000Z');
-  assert.strictEqual(p.to.toISOString(), '2026-09-30T23:59:59.999Z');
+  assert.strictEqual(p.from.toISOString(), '2026-08-31T16:00:00.000Z');
+  assert.strictEqual(p.to.toISOString(), '2026-09-30T15:59:59.999Z');
   assert.ok(Ops.parsePeriod({ from: '09/01/2026' }).error);
   assert.ok(Ops.parsePeriod({ from: '2026-10-02', to: '2026-10-01' }).error);
   assert.deepStrictEqual(Ops.periodMatch('createdAt', { from: null, to: null }), {});
@@ -87,6 +88,10 @@ function testBuildMonthlySignups() {
   // A month with no accounts is a real 0, not missing.
   assert.deepStrictEqual(months[5], { month: 'Oct 2026', count: 0, syntheticCount: 0 });
   assert.ok(Ops.monthlySignupsPipeline()[0].$group.syntheticCount);
+  // 1 Nov 06:00 Manila is still 31 Oct in UTC; the current month is November.
+  const early = Ops.buildMonthlySignups([], new Date('2026-10-31T22:00:00.000Z'));
+  assert.strictEqual(early[5].month, 'Nov 2026');
+  assert.deepStrictEqual(Ops.monthlySignupsPipeline()[0].$group._id.month, { $month: { date: '$createdAt', timezone: 'Asia/Manila' } });
 }
 
 function testSplitBySynthetic() {

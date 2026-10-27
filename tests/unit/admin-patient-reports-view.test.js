@@ -31,8 +31,9 @@ function run() {
   assert.strictEqual(parsed.page, 2);
   assert.strictEqual(parsed.limit, 10);
   // dateTo extended to end of day, not left at midnight.
-  assert.strictEqual(parsed.dateTo.getUTCHours(), 23);
-  assert.strictEqual(parsed.dateTo.getUTCMinutes(), 59);
+  // Whole clinic (Manila, UTC+8) days: 18 Sep 23:59:59.999 Manila.
+  assert.strictEqual(parsed.dateTo.toISOString(), '2026-09-18T15:59:59.999Z');
+  assert.strictEqual(parsed.dateFrom.toISOString(), '2026-08-31T16:00:00.000Z');
 
   // ── 'all' and blank are both "no filter", not a literal id lookup ────────
   const cleared = parsePatientReportQuery({ pediatricianId: 'all', parentId: '', childId: undefined });

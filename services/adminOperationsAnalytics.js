@@ -31,11 +31,11 @@ function paymentGroupFor(status) {
   return g ? g.key : 'other';
 }
 
-const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const { DATE_ONLY, CLINIC_TIMEZONE, clinicDayStart, clinicDayEnd } = require('../constants/clinicTime');
 
 /**
- * Optional ?from=YYYY-MM-DD&to=YYYY-MM-DD, as whole UTC days — the same
- * day boundaries the Admin Payments monitor applies to its own date filter.
+ * Optional ?from=YYYY-MM-DD&to=YYYY-MM-DD, as whole clinic (Manila) days —
+ * also the day boundaries of the Admin Payments monitor's date filter.
  * Absent = all time. Returns { from, to } as Dates or null, or { error }.
  */
 function parsePeriod(query) {
@@ -45,12 +45,12 @@ function parsePeriod(query) {
   const out = { from: null, to: null };
   if (rawFrom) {
     if (!DATE_ONLY.test(rawFrom)) return { error: '`from` must be a date in YYYY-MM-DD format.' };
-    out.from = new Date(`${rawFrom}T00:00:00.000Z`);
+    out.from = clinicDayStart(rawFrom);
     if (Number.isNaN(out.from.getTime())) return { error: '`from` is not a valid date.' };
   }
   if (rawTo) {
     if (!DATE_ONLY.test(rawTo)) return { error: '`to` must be a date in YYYY-MM-DD format.' };
-    out.to = new Date(`${rawTo}T23:59:59.999Z`);
+    out.to = clinicDayEnd(rawTo);
     if (Number.isNaN(out.to.getTime())) return { error: '`to` is not a valid date.' };
   }
   if (out.from && out.to && out.from > out.to) return { error: '`from` must not be later than `to`.' };
@@ -131,17 +131,18 @@ function splitBySynthetic(rows) {
 }
 
 /**
- * New user accounts per calendar month of createdAt, with how many of them
- * are synthetic demo accounts. One definition, shared by GET /analytics and
- * GET /analytics/operations so the two can never report different months.
+ * New user accounts per calendar month (clinic time) of createdAt, with how
+ * many of them are synthetic demo accounts. One definition, shared by GET
+ * /analytics and GET /analytics/operations so the two can never report
+ * different months.
  */
 function monthlySignupsPipeline() {
   return [
     {
       $group: {
         _id: {
-          year: { $year: '$createdAt' },
-          month: { $month: '$createdAt' },
+          year: { $year: { date: '$createdAt', timezone: CLINIC_TIMEZONE } },
+          month: { $month: { date: '$createdAt', timezone: CLINIC_TIMEZONE } },
         },
         count: { $sum: 1 },
         // How many of `count` are synthetic demo accounts (isSynthetic: true).
@@ -164,12 +165,15 @@ function buildMonthlySignups(rows, now) {
     monthlyMap[`${m._id.year}-${String(m._id.month).padStart(2, '0')}`] = m.count;
     monthlySyntheticMap[`${m._id.year}-${String(m._id.month).padStart(2, '0')}`] = m.syntheticCount || 0;
   });
+  // The current month is the clinic's, not the server's (UTC on Vercel).
+  const [year, month] = new Intl.DateTimeFormat('en-CA', { timeZone: CLINIC_TIMEZONE, year: 'numeric', month: '2-digit' })
+    .format(now).split('-').map(Number);
   const monthlySignups = [];
   for (let i = 5; i >= 0; i -= 1) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const d = new Date(Date.UTC(year, month - 1 - i, 1));
+    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
     monthlySignups.push({
-      month: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+      month: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }),
       count: monthlyMap[key] || 0,
       syntheticCount: monthlySyntheticMap[key] || 0,
     });

@@ -30,6 +30,7 @@
 // statement about which patients are of interest, not an incidental filter.
 
 const mongoose = require('mongoose');
+const { DATE_ONLY, clinicDayStart, clinicDayEnd } = require('../constants/clinicTime');
 
 const REPORT_SCOPES = Object.freeze(['all', 'assessments', 'reviewed', 'followup']);
 const SORT_DIRECTIONS = Object.freeze(['newest', 'oldest']);
@@ -67,21 +68,18 @@ function parsePatientReportQuery(query = {}) {
   }
 
   const rawFrom = query.dateFrom == null ? '' : String(query.dateFrom).trim();
+  // Date-only values are whole clinic (Manila) days (constants/clinicTime.js),
+  // so "to Sep 18" includes every assessment completed on Sep 18.
   if (rawFrom) {
-    const d = new Date(rawFrom);
+    const d = DATE_ONLY.test(rawFrom) ? clinicDayStart(rawFrom) : new Date(rawFrom);
     if (Number.isNaN(d.getTime())) return { error: 'dateFrom is not a valid date.' };
     out.dateFrom = d;
   }
 
   const rawTo = query.dateTo == null ? '' : String(query.dateTo).trim();
   if (rawTo) {
-    const d = new Date(rawTo);
+    const d = DATE_ONLY.test(rawTo) ? clinicDayEnd(rawTo) : new Date(rawTo);
     if (Number.isNaN(d.getTime())) return { error: 'dateTo is not a valid date.' };
-    // A date-only `to` (e.g. "2026-09-18") parses to midnight UTC, which would
-    // exclude every assessment completed during that day. Extended to the end
-    // of day so "to Sep 18" behaves the way an admin picking that date expects
-    // — same rule routes/pedia-reports.js parseRange() uses.
-    if (/^\d{4}-\d{2}-\d{2}$/.test(rawTo)) d.setUTCHours(23, 59, 59, 999);
     out.dateTo = d;
   }
 

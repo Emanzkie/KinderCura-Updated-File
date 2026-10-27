@@ -23,6 +23,7 @@ const TrainingDataset = require('../models/TrainingDataset');
 const Notification = require('../models/Notification');
 const SystemSetting = require('../models/SystemSetting');
 const { createLog } = require('../controllers/auditController');
+const { CLINIC_TIMEZONE } = require('../constants/clinicTime');
 const paymentService = require('../services/paymentService');
 const adminOps = require('../services/adminOperationsAnalytics');
 const fileStorage = require('../services/fileStorage');
@@ -1162,7 +1163,7 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
           },
         },
         { $unwind: '$result' },
-        { $addFields: { monthKey: { $dateToString: { format: '%Y-%m', date: '$completedAt' } } } },
+        { $addFields: { monthKey: { $dateToString: { format: '%Y-%m', date: '$completedAt', timezone: CLINIC_TIMEZONE } } } },
         {
           $group: {
             _id: '$monthKey',
