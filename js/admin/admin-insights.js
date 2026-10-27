@@ -1158,10 +1158,17 @@ function renderConcordance(data) {
  * Each section loads independently and renders its own error card, so one
  * failing endpoint leaves the other three readable rather than blanking the page.
  */
-async function loadSection(endpoint, sectionId, renderFn, label) {
+// Bumped by every loadAll(). A response that arrives after a newer filter
+// change is dropped, so a slow older request can no longer draw over the
+// newer results.
+let loadGeneration = 0;
+const STALE = Symbol('stale');
+
+async function loadSection(endpoint, sectionId, renderFn, label, generation) {
     const section = document.getElementById(sectionId);
     try {
         const data = await apiFetch(`/admin-reports/${endpoint}${filterQuery()}`);
+        if (generation !== loadGeneration) return STALE;
         if (data.vocabulary) {
             vocab = data.vocabulary;
             buildFilterControls();
@@ -1169,6 +1176,7 @@ async function loadSection(endpoint, sectionId, renderFn, label) {
         renderFn(data);
         return data;
     } catch (err) {
+        if (generation !== loadGeneration) return STALE;
         console.error(`admin-insights ${endpoint} error:`, err);
         section.innerHTML = errorCard(`Could not load ${label}`, err.message || 'Request failed.');
         return null;
@@ -1176,15 +1184,17 @@ async function loadSection(endpoint, sectionId, renderFn, label) {
 }
 
 async function loadAll() {
+    const generation = ++loadGeneration;
     const meta = document.getElementById('insightMeta');
     if (meta) meta.textContent = 'Loading…';
 
     const results = await Promise.all([
-        loadSection('users', 'usersSection', renderUsers, 'user demographics'),
-        loadSection('children', 'childrenSection', renderChildren, 'child demographics'),
-        loadSection('screenings', 'screeningsSection', renderScreenings, 'assessment reports'),
-        loadSection('concordance', 'concordanceSection', renderConcordance, 'concordance'),
+        loadSection('users', 'usersSection', renderUsers, 'user demographics', generation),
+        loadSection('children', 'childrenSection', renderChildren, 'child demographics', generation),
+        loadSection('screenings', 'screeningsSection', renderScreenings, 'assessment reports', generation),
+        loadSection('concordance', 'concordanceSection', renderConcordance, 'concordance', generation),
     ]);
+    if (generation !== loadGeneration) return;
 
     annotateGuardianReconciliation(results[0], results[1]);
 
