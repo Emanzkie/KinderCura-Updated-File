@@ -70,7 +70,7 @@ if (localStorage.getItem('kc_remember') === '0' && !/(?:^|;\s*)kc_session=1(?:;|
     if ((allowedParentPages[user.role] || []).includes(path)) return;
     const staffHome = {
         admin: '/admin/admin-dashboard.html',
-        pediatrician: '/pedia/pediatrician-dashboard.html',
+        pediatrician: '/pedia/pediatrician-dashboard',
         secretary: '/secretary/secretary-dashboard.html',
     }[user.role];
     if (staffHome) window.location.replace(staffHome);
@@ -276,7 +276,8 @@ function isSitePath(value) {
 function notificationDeepLink(page, relatedId) {
     if (!relatedId || page.includes('?')) return page;
     const path = page.split('#')[0].toLowerCase();
-    if (path === '/pedia/pediatrician-appointments.html') return `${page}?appointmentId=${encodeURIComponent(relatedId)}`;
+    // Stored notifications still say ".html"; the server redirects those.
+    if (/^\/pedia\/pediatrician-appointments(\.html)?$/.test(path)) return `${page}?appointmentId=${encodeURIComponent(relatedId)}`;
     if (path === '/admin/prc-verification') return `${page}?pediatricianId=${encodeURIComponent(relatedId)}`;
     return page;
 }
@@ -309,11 +310,11 @@ function notificationDestination(n) {
     }
 
     if (role === 'pediatrician') {
-        if (type === 'payment' || title.includes('payment')) return notificationDeepLink('/pedia/pediatrician-appointments.html', relatedId);
-        if (type === 'chat' || title.includes('message') || msg.includes('message from')) return '/pedia/pedia-chat.html';
-        if (type === 'appointment' || says('appointment')) return '/pedia/pediatrician-appointments.html';
-        if (type === 'assessment' || title.includes('custom question') || title.includes('assessment question') || title.includes('question answered') || title.includes('question set')) return '/pedia/pedia-questions.html';
-        if (says('diagnosis', 'recommendation') || title.includes('review')) return '/pedia/pediatrician-patients.html';
+        if (type === 'payment' || title.includes('payment')) return notificationDeepLink('/pedia/pediatrician-appointments', relatedId);
+        if (type === 'chat' || title.includes('message') || msg.includes('message from')) return '/pedia/pedia-chat';
+        if (type === 'appointment' || says('appointment')) return '/pedia/pediatrician-appointments';
+        if (type === 'assessment' || title.includes('custom question') || title.includes('assessment question') || title.includes('question answered') || title.includes('question set')) return '/pedia/pedia-questions';
+        if (says('diagnosis', 'recommendation') || title.includes('review')) return '/pedia/pediatrician-patients';
         return null;
     }
 

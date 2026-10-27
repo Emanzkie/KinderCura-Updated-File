@@ -175,15 +175,16 @@ function rootStaticTarget(urlPath) {
     }
 }
 
-// Parent pages are left to /parent/:page, which serves clean addresses and
-// redirects ".html" ones. Root static would otherwise answer /PARENT/x.html
-// directly, and on Windows /parent/x.html too (case-insensitive file system).
-const PARENT_PAGES_DIR = /^\/parent(\/|$)/i;
+// Parent and pediatrician pages are left to their /:page routes, which serve
+// clean addresses and redirect ".html" ones. Root static would otherwise answer
+// /PARENT/x.html directly, and on Windows /parent/x.html too (case-insensitive
+// file system).
+const CLEAN_PAGE_DIRS = /^\/(parent|pedia)(\/|$)/i;
 
 const rootStatic = cachedStatic(__dirname, { index: false });
 app.use((req, res, next) => {
     const target = rootStaticTarget(req.path);
-    if (target === null || SERVER_ONLY_DIRS.test(target) || SERVER_ONLY_FILES.test(target) || PARENT_PAGES_DIR.test(target)) return next();
+    if (target === null || SERVER_ONLY_DIRS.test(target) || SERVER_ONLY_FILES.test(target) || CLEAN_PAGE_DIRS.test(target)) return next();
     rootStatic(req, res, next);
 });
 
@@ -271,7 +272,7 @@ function servePage(dir, cleanUrlPrefix = null) {
 
 // Friendly page routes for parent / pedia / admin pages
 app.get('/parent/:page', servePage('PARENT', '/parent'));
-app.get('/pedia/:page', servePage('PEDIA'));
+app.get('/pedia/:page', servePage('PEDIA', '/pedia'));
 
 // Admin payment verification page — review e-wallet proofs
 app.get('/admin/payments', (req, res) => {

@@ -1,10 +1,10 @@
-// Clean addresses for sign-in, sign-up and the parent pages.
+// Clean addresses for sign-in, sign-up, the parent and the pediatrician pages.
 //
-// /login, /signup and /parent/<page> serve the page directly. The old ".html"
-// address answers a 302 to the clean one and keeps its query string, so
-// bookmarks, emails, stored notification links and the staff pages that still
-// link to ".html" keep working. Pediatrician, admin and secretary pages are
-// not part of this change and still use ".html".
+// /login, /signup, /parent/<page> and /pedia/<page> serve the page directly.
+// The old ".html" address answers a 302 to the clean one and keeps its query
+// string, so bookmarks, emails, stored notification links and the pages that
+// still link to ".html" keep working. Admin and secretary pages are not part
+// of this change and still use ".html".
 //
 // No DB: server.js exports the Express app when it is required rather than
 // run, and none of these requests touch Mongo.
@@ -66,7 +66,10 @@ async function run() {
     ok('2: .html addresses redirect to the clean address with the query string kept');
 
     // 3. The redirect never leaves the site, and odd names are still refused.
-    for (const url of ['/parent/dashboard.js', '/parent/..%2Fserver', '/parent/.env', '/parent/does-not-exist']) {
+    for (const url of [
+      '/parent/dashboard.js', '/parent/..%2Fserver', '/parent/.env', '/parent/does-not-exist',
+      '/pedia/pedia-chat.js', '/pedia/..%2Fserver', '/pedia/.env', '/pedia/does-not-exist',
+    ]) {
       const r = await get(url);
       assert.strictEqual(r.status, 404, `${url} should be 404 (got ${r.status})`);
     }
@@ -74,14 +77,36 @@ async function run() {
     assert.strictEqual(missing.location, '/parent/does-not-exist', 'a missing page redirects within /parent, then 404s');
     ok('3: traversal and unknown names are 404; redirects stay on /parent');
 
-    // 4. Staff pages are unchanged: .html still serves directly, no clean form.
-    for (const [prefix, dir] of [['pedia', 'PEDIA'], ['admin', 'ADMIN'], ['secretary', 'SECRETARY']]) {
+    // 4. Pediatrician pages: clean addresses serve, .html redirects.
+    const pediaPages = fs.readdirSync(path.join(ROOT, 'PEDIA')).filter((f) => f.endsWith('.html'));
+    for (const file of pediaPages) {
+      const name = file.slice(0, -'.html'.length);
+      const r = await get(`/pedia/${name}`);
+      assert.strictEqual(r.status, 200, `/pedia/${name} should load (got ${r.status})`);
+      assert.strictEqual(r.body, read('PEDIA', file), `/pedia/${name} serves ${file}`);
+      const old = await get(`/pedia/${file}`);
+      assert.strictEqual(old.status, 302, `/pedia/${file} should redirect (got ${old.status})`);
+      assert.strictEqual(old.location, `/pedia/${name}`);
+    }
+    for (const [from, to] of [
+      ['/pedia/pedia-chat.html?appointmentId=7', '/pedia/pedia-chat?appointmentId=7'],
+      ['/pedia/pediatrician-appointments.html?appointmentId=108', '/pedia/pediatrician-appointments?appointmentId=108'],
+      ['/PEDIA/pediatrician-dashboard.html', '/pedia/pediatrician-dashboard'],
+    ]) {
+      const r = await get(from);
+      assert.strictEqual(r.status, 302, `${from} should redirect (got ${r.status})`);
+      assert.strictEqual(r.location, to, `${from} redirects to ${to}`);
+    }
+    ok(`4: all ${pediaPages.length} pediatrician pages load without .html; .html redirects keep the query`);
+
+    // 5. Admin and secretary pages are unchanged: .html still serves directly, no clean form.
+    for (const [prefix, dir] of [['admin', 'ADMIN'], ['secretary', 'SECRETARY']]) {
       const file = fs.readdirSync(path.join(ROOT, dir)).find((f) => f.endsWith('.html'));
       const r = await get(`/${prefix}/${file}`);
       assert.strictEqual(r.status, 200, `/${prefix}/${file} still loads`);
     }
-    assert.strictEqual((await get('/pedia/pediatrician-dashboard')).status, 404);
-    ok('4: pediatrician, admin and secretary pages still use .html');
+    assert.strictEqual((await get('/admin/admin-dashboard')).status, 404);
+    ok('5: admin and secretary pages still use .html');
   } finally {
     server.closeAllConnections();
     server.close();

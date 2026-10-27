@@ -517,7 +517,7 @@ document.addEventListener('click', e => {
     if (act === 'approve') updateStatus(id, 'approved', child);
     else if (act === 'reject') openStatusModal(id, 'rejected', child);
     else if (act === 'complete') openStatusModal(id, 'completed', child);
-    else if (act === 'chat') window.location.href = `/pedia/pedia-chat.html?appointmentId=${encodeURIComponent(id)}`;
+    else if (act === 'chat') window.location.href = `/pedia/pedia-chat?appointmentId=${encodeURIComponent(id)}`;
     else if (act === 'reschedule') openReschedule(id, encodeURIComponent(child), encodeURIComponent(parent));
     else if (act === 'cancel') cancelConfirm(id, encodeURIComponent(child));
 });

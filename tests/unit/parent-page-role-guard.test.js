@@ -36,7 +36,7 @@ function load(pathname, user) {
 
 const STAFF = {
   secretary: '/secretary/secretary-dashboard.html',
-  pediatrician: '/pedia/pediatrician-dashboard.html',
+  pediatrician: '/pedia/pediatrician-dashboard',
   admin: '/admin/admin-dashboard.html',
 };
 
@@ -73,7 +73,7 @@ assert.deepStrictEqual(load('/parent/accept-invitation', { id: 'u1', role: 'secr
 assert.deepStrictEqual(load('/parent/accept-invitation.html', { id: 'u1', role: 'pediatrician' }), []);
 assert.deepStrictEqual(load('/parent/dashboard', null), []);
 assert.deepStrictEqual(load('/secretary/secretary-dashboard.html', { id: 'u1', role: 'secretary' }), []);
-assert.deepStrictEqual(load('/pedia/pediatrician-dashboard.html', { id: 'u1', role: 'pediatrician' }), []);
+assert.deepStrictEqual(load('/pedia/pediatrician-dashboard', { id: 'u1', role: 'pediatrician' }), []);
 ok('invitation page, signed-out visitors and non-parent pages are left alone');
 
 console.log('\nParent page role guard tests OK');

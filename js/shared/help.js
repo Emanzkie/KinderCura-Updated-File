@@ -4,7 +4,7 @@
 (function () {
     const DASHBOARDS = {
         admin: '/admin/admin-dashboard.html',
-        pediatrician: '/pedia/pediatrician-dashboard.html',
+        pediatrician: '/pedia/pediatrician-dashboard',
         secretary: '/secretary/secretary-dashboard.html',
     };
 

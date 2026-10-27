@@ -414,7 +414,7 @@ const API = window.location.origin + '/api';
                         style="flex:1;min-width:130px;padding:0.7rem;border-color:var(--primary-dark);color:var(--primary-dark);">
                         <img src="/icons/analytics.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Check-up History
                     </button>
-                    ${p.appointmentId ? `<button class="btn btn-secondary" onclick="window.location.href='/pedia/pedia-chat.html?appointmentId=${p.appointmentId}'" style="flex:1;min-width:130px;padding:0.7rem;border-color:var(--primary);color:var(--primary);"> Chat with Parent</button>` : ''}
+                    ${p.appointmentId ? `<button class="btn btn-secondary" onclick="window.location.href='/pedia/pedia-chat?appointmentId=${p.appointmentId}'" style="flex:1;min-width:130px;padding:0.7rem;border-color:var(--primary);color:var(--primary);"> Chat with Parent</button>` : ''}
                 </div>
             </div>`;
         }).join('');

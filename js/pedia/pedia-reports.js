@@ -1616,7 +1616,7 @@ function clinicalRowHtml(row) {
                 <p>${escapeHtml(interpretation)}</p>
                 <p class="clin-action"><strong>Suggested action:</strong> ${escapeHtml(action)}</p>
             </td>
-            <td><a class="btn btn-secondary clin-link" href="/pedia/pediatrician-patients.html?history=${encodeURIComponent(row.childId)}">Check-up history</a></td>
+            <td><a class="btn btn-secondary clin-link" href="/pedia/pediatrician-patients?history=${encodeURIComponent(row.childId)}">Check-up history</a></td>
         </tr>`;
 }
 

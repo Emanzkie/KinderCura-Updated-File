@@ -110,7 +110,7 @@ function assertEscaped(html, label) {
     click({ apptAct: 'reschedule', apptId: '7', child: "O'Brien", parent: 'Mom' });
     assert.strictEqual(page.el('rSub').textContent, "Patient: O'Brien  |  Parent: Mom");
     click({ apptAct: 'chat', apptId: '7' });
-    assert.strictEqual(page.sandbox.location.href, '/pedia/pedia-chat.html?appointmentId=7');
+    assert.strictEqual(page.sandbox.location.href, '/pedia/pedia-chat?appointmentId=7');
     ok('appointments: delegated click handler still reaches reject / cancel / reschedule / chat');
   }
 

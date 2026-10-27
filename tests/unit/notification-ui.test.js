@@ -116,18 +116,23 @@ function destinationTests() {
   const pedia = loadApi('pediatrician');
   assert.strictEqual(
     pedia.notificationDestination({ title: 'Payment Received', type: 'payment', relatedPage: '/pedia/pediatrician-appointments.html', relatedId: '108' }),
-    '/pedia/pediatrician-appointments.html?appointmentId=108'
+    '/pedia/pediatrician-appointments.html?appointmentId=108',
+    'a stored .html relatedPage still gets the appointment deep link'
+  );
+  assert.strictEqual(
+    pedia.notificationDestination({ title: 'Payment Received', type: 'payment', relatedPage: '/pedia/pediatrician-appointments', relatedId: '108' }),
+    '/pedia/pediatrician-appointments?appointmentId=108'
   );
   assert.strictEqual(
     pedia.notificationDestination({ title: 'Walk-in Payment Confirmed', type: 'payment', message: 'x' }),
-    '/pedia/pediatrician-appointments.html'
+    '/pedia/pediatrician-appointments'
   );
   assert.strictEqual(
     pedia.notificationDestination({ title: 'Question Set Answered', type: 'assessment', relatedPage: '/pedia/pedia-questions.html', relatedId: 'abc' }),
     '/pedia/pedia-questions.html',
     'relatedId is only appended where the page reads it'
   );
-  assert.strictEqual(pedia.notificationDestination({ title: '💬 New message from Pat', type: 'chat', message: 'Pat: hi' }), '/pedia/pedia-chat.html');
+  assert.strictEqual(pedia.notificationDestination({ title: '💬 New message from Pat', type: 'chat', message: 'Pat: hi' }), '/pedia/pedia-chat');
   ok('pediatrician: appointment/payment links focus the appointment card; chat and questions route by type');
 
   const parent = loadApi('parent');
