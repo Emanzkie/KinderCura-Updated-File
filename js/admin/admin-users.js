@@ -64,10 +64,14 @@
                         <td style="padding:1rem;color:var(--text-light);">${escapeHtml(u.createdAt)}</td>
                         <td style="padding:1rem;text-align:center;">
                             ${u.status === 'pending' ? `
-                                <button onclick="approveUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;margin-right:0.3rem;">Approve</button>
+                                ${needsPrcReview(u)
+                                    ? `<a href="${PRC_PAGE}" style="display:inline-block;padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border-radius:4px;text-decoration:none;margin-right:0.3rem;">Review PRC</a>`
+                                    : `<button onclick="approveUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;margin-right:0.3rem;">Approve</button>`}
                                 <button onclick="rejectUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Reject</button>
                             ` : u.status === 'active' ? `
                                 <button onclick="suspendUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Suspend</button>
+                            ` : needsPrcReview(u) ? `
+                                <a href="${PRC_PAGE}" style="display:inline-block;padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border-radius:4px;text-decoration:none;">Review PRC</a>
                             ` : `
                                 <button onclick="approveUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Re-activate</button>
                             `}
@@ -89,11 +93,20 @@
                         <p style="color:var(--text-light);font-size:0.85rem;margin:0.3rem 0;">${escapeHtml(u.email)}</p>
                         <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:1rem;text-transform:capitalize;">Role: ${escapeHtml(u.role)}</p>
                         <div style="display:flex;gap:0.5rem;">
-                            <button onclick="approveUser('${escapeHtml(u.id)}')" style="flex:1;padding:0.5rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Approve</button>
+                            ${needsPrcReview(u)
+                                ? `<a href="${PRC_PAGE}" style="flex:1;padding:0.5rem;background:var(--success);color:#3D4738;border-radius:4px;text-decoration:none;text-align:center;">Review PRC</a>`
+                                : `<button onclick="approveUser('${escapeHtml(u.id)}')" style="flex:1;padding:0.5rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Approve</button>`}
                             <button onclick="rejectUser('${escapeHtml(u.id)}')" style="flex:1;padding:0.5rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Reject</button>
                         </div>
                     </div>`).join('')
                 : '<p style="color:var(--text-light);text-align:center;grid-column:1/-1;">No pending approvals</p>';
+        }
+
+        // A pediatrician whose PRC license is still under review (or was rejected)
+        // is decided on the PRC Verification page; the server refuses Approve.
+        const PRC_PAGE = '/admin/admin-prc-verification.html';
+        function needsPrcReview(u) {
+            return u.role === 'pediatrician' && ['pending', 'rejected'].includes(u.prcVerificationStatus);
         }
 
         async function approveUser(userId) {
@@ -101,13 +114,14 @@
             catch (e) { alert(e.message); }
         }
         async function suspendUser(userId) {
-            if (!confirm('Suspend this user?')) return;
-            try { await apiFetch('/admin/users/suspend', { method:'POST', body: JSON.stringify({ userId, reason:'Suspended by admin' }) }); loadUsers(); }
+            const reason = prompt('Suspend this user? They will be signed out.\n\nReason (optional, kept in the admin logs):');
+            if (reason === null) return;
+            try { await apiFetch('/admin/users/suspend', { method:'POST', body: JSON.stringify({ userId, reason }) }); loadUsers(); }
             catch (e) { alert(e.message); }
         }
         async function rejectUser(userId) {
-            if (!confirm('Permanently delete this user?')) return;
-            try { await apiFetch(`/admin/users/${userId}`, { method:'DELETE' }); loadUsers(); }
+            if (!confirm('Reject this pending sign-up? The account will be deleted.')) return;
+            try { await apiFetch(`/admin/users/${encodeURIComponent(userId)}`, { method:'DELETE' }); loadUsers(); }
             catch (e) { alert(e.message); }
         }
 

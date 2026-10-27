@@ -22,6 +22,7 @@ const Payment = require('../models/Payment');
 const TrainingDataset = require('../models/TrainingDataset');
 const Notification = require('../models/Notification');
 const SystemSetting = require('../models/SystemSetting');
+const { createLog } = require('../controllers/auditController');
 const paymentService = require('../services/paymentService');
 const adminOps = require('../services/adminOperationsAnalytics');
 const fileStorage = require('../services/fileStorage');
@@ -825,14 +826,21 @@ router.get('/dashboard', authMiddleware, adminOnly, async (req, res) => {
 });
 
 // GET /api/admin/users
+// Matches the search box text literally. It used to be passed to RegExp as
+// typed, so "(" returned a 500 and a crafted pattern could stall the server.
+function literalSearchRegex(text) {
+  const clean = String(text).trim().slice(0, 100);
+  return new RegExp(clean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+}
+
 router.get('/users', authMiddleware, adminOnly, async (req, res) => {
   try {
     const { role, status, search = '' } = req.query;
     const filter = {};
-    if (role) filter.role = role;
-    if (status) filter.status = status;
-    if (search) {
-      const rx = new RegExp(search, 'i');
+    if (role) filter.role = String(role);
+    if (status) filter.status = String(status);
+    if (String(search).trim()) {
+      const rx = literalSearchRegex(search);
       filter.$or = [
         { firstName: rx },
         { lastName: rx },
@@ -852,6 +860,9 @@ router.get('/users', authMiddleware, adminOnly, async (req, res) => {
         email: u.email,
         role: u.role,
         status: u.status,
+        // Lets the Users page send a pediatrician with an open PRC review to
+        // the PRC Verification page instead of offering Approve.
+        prcVerificationStatus: u.role === 'pediatrician' ? (u.prcVerificationStatus || null) : null,
         createdAt: fmtDate(u.createdAt),
         licenseNumber: u.licenseNumber || null,
         institution: u.institution || null,
@@ -861,59 +872,152 @@ router.get('/users', authMiddleware, adminOnly, async (req, res) => {
       })),
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('admin users list error:', err);
+    res.status(500).json({ error: 'Could not load users.' });
   }
 });
 
-// POST /api/admin/users/approve
+// ── Account actions (Users page) ─────────────────────────────────────────
+// Every action is checked here, not just in the page, and written to the
+// audit log (GET /api/v2/audit-logs, the admin Logs page). Status changes
+// use updateOne so an unrelated legacy field cannot fail validation.
+
+// An admin who is not suspended or pending can still sign in.
+const SIGN_IN_ADMIN_FILTER = { role: 'admin', status: { $nin: ['suspended', 'pending'] } };
+
+async function loadTargetUser(userId) {
+  if (!mongoose.Types.ObjectId.isValid(String(userId || ''))) return null;
+  return User.findById(userId).select('role status prcVerificationStatus firstName lastName').lean();
+}
+
+// POST /api/admin/users/approve  — also used by "Re-activate" for suspended users.
+// A pediatrician whose PRC review is still open or was rejected must be decided
+// on the PRC Verification page, which checks the license and notifies them.
 router.post('/users/approve', authMiddleware, adminOnly, async (req, res) => {
   try {
-    const { userId } = req.body;
-    const user = await User.findByIdAndUpdate(userId, { status: 'active' }, { new: true });
+    const { userId } = req.body || {};
+    const user = await loadTargetUser(userId);
     if (!user) return res.status(404).json({ error: 'User not found.' });
+    if (user.status === 'active') return res.json({ success: true, message: 'User is already active.' });
+
+    if (user.role === 'pediatrician' && ['pending', 'rejected'].includes(user.prcVerificationStatus)) {
+      return res.status(409).json({
+        error: user.prcVerificationStatus === 'rejected'
+          ? 'This pediatrician\'s PRC license was rejected. Review it on the PRC Verification page before activating the account.'
+          : 'Verify this pediatrician\'s PRC license on the PRC Verification page first.',
+      });
+    }
+
+    const reactivated = user.status === 'suspended';
+    await User.updateOne({ _id: user._id }, { $set: { status: 'active' } });
 
     sse.broadcast('analytics:update', { type: 'user', action: 'approve', role: user.role });
+    await createLog({
+      actorId: req.user.userId,
+      action: reactivated ? 'user_reactivated' : 'user_approved',
+      targetType: 'User',
+      targetId: user._id,
+      details: { role: user.role, previousStatus: user.status || null },
+    });
 
-    // Pediatricians should be told when their account is approved.
+    // Pediatricians are told when their account is approved or re-activated.
     if (user.role === 'pediatrician') {
       await pushNotification(
         user._id,
-        'Account approved',
-        'Your pediatrician account has been approved. You can now log in and start using KinderCura.',
+        reactivated ? 'Account re-activated' : 'Account approved',
+        reactivated
+          ? 'Your pediatrician account has been re-activated. You can log in again.'
+          : 'Your pediatrician account has been approved. You can now log in and start using KinderCura.',
         'admin',
         '/pedia/pediatrician-dashboard.html'
       );
     }
 
-    res.json({ success: true, message: 'User approved.' });
+    res.json({ success: true, message: reactivated ? 'User re-activated.' : 'User approved.' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('admin approve user error:', err);
+    res.status(500).json({ error: 'Could not update the user.' });
   }
 });
 
-// POST /api/admin/users/suspend
+// POST /api/admin/users/suspend   body: { userId, reason? }
 router.post('/users/suspend', authMiddleware, adminOnly, async (req, res) => {
   try {
-    const { userId } = req.body;
-    const user = await User.findByIdAndUpdate(userId, { status: 'suspended' }, { new: true });
+    const { userId } = req.body || {};
+    const reason = String((req.body || {}).reason || '').trim().slice(0, 500) || null;
+    if (String(userId) === String(req.user.userId)) {
+      return res.status(400).json({ error: 'You cannot suspend your own account.' });
+    }
+    const user = await loadTargetUser(userId);
     if (!user) return res.status(404).json({ error: 'User not found.' });
+    if (user.status === 'suspended') return res.json({ success: true, message: 'User is already suspended.' });
+
+    if (user.role === 'admin') {
+      const otherSignInAdmins = await User.countDocuments({ ...SIGN_IN_ADMIN_FILTER, _id: { $ne: user._id } });
+      if (otherSignInAdmins === 0) {
+        return res.status(409).json({ error: 'You cannot suspend the last active admin.' });
+      }
+    }
+
+    await User.updateOne({ _id: user._id }, { $set: { status: 'suspended' } });
 
     sse.broadcast('analytics:update', { type: 'user', action: 'suspend', role: user.role });
+    await createLog({
+      actorId: req.user.userId,
+      action: 'user_suspended',
+      targetType: 'User',
+      targetId: user._id,
+      details: { role: user.role, previousStatus: user.status || null, reason },
+    });
 
     res.json({ success: true, message: 'User suspended.' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('admin suspend user error:', err);
+    res.status(500).json({ error: 'Could not suspend the user.' });
   }
 });
 
-// DELETE /api/admin/users/:id
+// DELETE /api/admin/users/:id  — "Reject" on a pending sign-up.
+// Only a still-pending account with nothing attached to it is deleted. An
+// active account must be suspended instead (deleting it would orphan its
+// children, appointments and files), and admins and your own account are
+// never deleted here.
 router.delete('/users/:id', authMiddleware, adminOnly, async (req, res) => {
   try {
-    const user = await User.findByIdAndDelete(req.params.id);
+    if (String(req.params.id) === String(req.user.userId)) {
+      return res.status(400).json({ error: 'You cannot delete your own account.' });
+    }
+    const user = await loadTargetUser(req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found.' });
-    res.json({ success: true });
+    if (user.role === 'admin') {
+      return res.status(409).json({ error: 'Admin accounts cannot be deleted here.' });
+    }
+    if (user.status !== 'pending') {
+      return res.status(409).json({ error: 'Only a pending sign-up can be rejected and removed. Suspend an active account instead.' });
+    }
+    const [children, appointments] = await Promise.all([
+      Child.countDocuments({ parentId: user._id }),
+      Appointment.countDocuments({ $or: [{ parentId: user._id }, { pediatricianId: user._id }] }),
+    ]);
+    if (children || appointments) {
+      return res.status(409).json({ error: 'This account already has children or appointments on record, so it cannot be deleted. Suspend it instead.' });
+    }
+
+    await User.deleteOne({ _id: user._id });
+    await Notification.deleteMany({ userId: user._id });
+    sse.broadcast('analytics:update', { type: 'user', action: 'delete', role: user.role });
+    await createLog({
+      actorId: req.user.userId,
+      action: 'user_rejected',
+      targetType: 'User',
+      targetId: user._id,
+      details: { role: user.role, previousStatus: user.status },
+    });
+
+    res.json({ success: true, message: 'Sign-up rejected and removed.' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('admin delete user error:', err);
+    res.status(500).json({ error: 'Could not remove the user.' });
   }
 });
 
