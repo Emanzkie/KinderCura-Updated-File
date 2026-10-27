@@ -1528,10 +1528,48 @@ function computeDatasetProvenance(d) {
   };
 }
 
+// ── Abandoned training runs ─────────────────────────────────────────────
+// A run cannot outlive the trainer's own 5-minute limit (ml/model_manager.js),
+// so a dataset still marked 'training' well after that was abandoned —
+// typically a serverless instance frozen once the response was sent, or a
+// failure that could not be saved. It used to stay 'training' forever with
+// Retrain and Delete disabled; it is now marked failed so it can be retried.
+const STALE_TRAINING_MS = 15 * 60 * 1000;
+const STALE_TRAINING_MESSAGE = 'Training did not finish (the server stopped before it completed). You can train this dataset again.';
+
+async function failStaleTrainingRuns(now = Date.now()) {
+  const TrainedModel = require('../models/TrainedModel');
+  const cutoff = new Date(now - STALE_TRAINING_MS);
+  const stale = await TrainingDataset.find({ status: 'training', updatedAt: { $lt: cutoff } }).select('_id').lean();
+  if (!stale.length) return 0;
+  const ids = stale.map((d) => d._id);
+  await TrainingDataset.updateMany(
+    { _id: { $in: ids }, status: 'training' },
+    { $set: { status: 'failed', errorMessage: STALE_TRAINING_MESSAGE, trainingSummary: `Training failed: ${STALE_TRAINING_MESSAGE}` } }
+  );
+  await TrainedModel.updateMany(
+    { datasetId: { $in: ids }, status: 'training', createdAt: { $lt: cutoff } },
+    { $set: { status: 'failed', errorMessage: STALE_TRAINING_MESSAGE } }
+  );
+  console.warn(`[ml] Marked ${ids.length} abandoned training run(s) as failed.`);
+  return ids.length;
+}
+
+// Keeps a serverless instance alive until background work settles. Vercel
+// exposes waitUntil on its request context (what @vercel/functions reads);
+// elsewhere — a normal Node process — the promise simply runs on.
+function keepAliveUntil(promise) {
+  try {
+    const ctx = globalThis[Symbol.for('@vercel/request-context')]?.get?.();
+    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(promise);
+  } catch { /* not on Vercel */ }
+}
+
 // GET /api/admin/training/datasets
 // Loads dataset cards and the admin upload/training table.
 router.get('/training/datasets', authMiddleware, adminOnly, async (req, res) => {
   try {
+    await failStaleTrainingRuns().catch((err) => console.error('Stale training check failed:', err.message));
     const docs = await TrainingDataset.find().sort({ createdAt: -1 }).populate('uploadedBy', 'firstName lastName').populate('trainedBy', 'firstName lastName').lean();
 
     // ── Model linkage (read-only) ────────────────────────────────────────
@@ -1673,7 +1711,8 @@ router.get('/training/datasets', authMiddleware, adminOnly, async (req, res) => 
 
     res.json({ success: true, summary, datasets });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('admin training datasets error:', err);
+    res.status(500).json({ error: 'Could not load the training datasets.' });
   }
 });
 
@@ -1751,6 +1790,15 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
     const modelManager = require('../ml/model_manager');
     const TrainedModel = require('../models/TrainedModel');
 
+    // Checked before anything is claimed: an unknown feature set used to reach
+    // the trainer only after the dataset had been marked 'training'.
+    const featureSet = req.body?.featureSet || 'score_based';
+    if (!modelManager.TRAINING_FEATURE_SETS.includes(featureSet)) {
+      return res.status(400).json({ error: `Unknown model type "${String(featureSet).slice(0, 40)}". Choose one of: ${modelManager.TRAINING_FEATURE_SETS.join(', ')}.` });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(String(req.params.id))) return res.status(404).json({ error: 'Dataset not found.' });
+    await failStaleTrainingRuns();
     const dataset = await TrainingDataset.findById(req.params.id);
     if (!dataset) return res.status(404).json({ error: 'Dataset not found.' });
 
@@ -1786,7 +1834,6 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
 
     // Validate the CSV here so a malformed file is reported before the ML
     // service is contacted.
-    const featureSet = req.body?.featureSet || 'score_based';
     let validation = null;
     const csvText = datasetContent
       || (datasetPath && datasetPath.toLowerCase().endsWith('.csv') && fs.existsSync(datasetPath) ? fs.readFileSync(datasetPath, 'utf8') : null);
@@ -1858,7 +1905,8 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
     // current model version impossible to report. (trained_models still holds
     // one such pair from before this fix — v2 and v3, same artifact, same
     // second.) Every other caller of trainModel() keeps the old behaviour.
-    modelManager.trainModel(datasetPath, dataset._id, { featureSet, datasetContent, ownsModelDoc: false }).then(async (metrics) => {
+    // keepAliveUntil asks a serverless host not to freeze before it settles.
+    keepAliveUntil(modelManager.trainModel(datasetPath, dataset._id, { featureSet, datasetContent, ownsModelDoc: false }).then(async (metrics) => {
       // Step 7: a successfully trained model is a CANDIDATE only. It does
       // NOT become active and the currently active model is left untouched
       // — an admin must explicitly activate it via the Trained Models panel
@@ -1922,8 +1970,8 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
       // Before this guard, that second failure was an unhandled rejection, and
       // server.js's unhandledRejection handler shut the whole process down: a
       // transient Atlas blip during training took the entire app offline.
-      // The dataset/model are left in 'training' when this happens, which the
-      // admin pages already render as an in-progress run.
+      // The dataset/model are left in 'training' when this happens, and
+      // failStaleTrainingRuns() marks them failed once the run is abandoned.
       try {
         modelDoc.status = 'failed';
         modelDoc.errorMessage = trainErr.message;
@@ -1938,9 +1986,10 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
       } catch (persistErr) {
         console.error('Could not persist the training failure state:', persistErr.message);
       }
-    });
+    }));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('admin start training error:', err);
+    if (!res.headersSent) res.status(500).json({ error: 'Could not start training.' });
   }
 });
 
@@ -2150,14 +2199,24 @@ router.get('/demo-data/summary', authMiddleware, adminOnly, async (req, res) => 
 });
 
 // DELETE /api/admin/training/:id
+// A run still in progress is not deleted (the page disables the button too):
+// its result would be written to a dataset that no longer exists.
 router.delete('/training/:id', authMiddleware, adminOnly, async (req, res) => {
   try {
-    const dataset = await TrainingDataset.findByIdAndDelete(req.params.id);
-    if (!dataset) return res.status(404).json({ error: 'Dataset not found.' });
+    if (!mongoose.Types.ObjectId.isValid(String(req.params.id))) return res.status(404).json({ error: 'Dataset not found.' });
+    await failStaleTrainingRuns();
+    const dataset = await TrainingDataset.findOneAndDelete({ _id: req.params.id, status: { $ne: 'training' } });
+    if (!dataset) {
+      const exists = await TrainingDataset.exists({ _id: req.params.id });
+      return exists
+        ? res.status(409).json({ error: 'This dataset is being trained. Wait for training to finish before deleting it.' })
+        : res.status(404).json({ error: 'Dataset not found.' });
+    }
     safeRemoveUpload(dataset.filePath);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('admin delete dataset error:', err);
+    res.status(500).json({ error: 'Could not delete the dataset.' });
   }
 });
 

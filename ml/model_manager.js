@@ -986,6 +986,8 @@ module.exports = {
   modelArtifactFilename,
   buildRemoteTrainingPayload,
   validateTrainingCsv,
+  // The feature sets ml/trainer.py accepts (its --feature-set choices).
+  TRAINING_FEATURE_SETS: Object.keys(TRAINING_REQUIRED_COLUMNS),
   MAX_REMOTE_ARTIFACT_BYTES,
   MODEL_STORE_DIR,
   isRemoteML,
