@@ -158,8 +158,9 @@
             });
             loadDashboardData();
             if (typeof loadNotificationCount === 'function') loadNotificationCount();
-            setInterval(() => {
+            // Visible tabs only, never overlapping a load still in flight (api.js).
+            KC.poll(() => {
                 if (typeof loadNotificationCount === 'function') loadNotificationCount();
-                loadDashboardData();
+                return loadDashboardData();
             }, 30000);
         });

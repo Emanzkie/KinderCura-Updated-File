@@ -128,32 +128,6 @@ function fullName(doc) {
   return `${doc.firstName || ''} ${doc.lastName || ''}`.trim() || null;
 }
 
-async function hydratePaymentAppointment(appointment) {
-  const [child, parent, pediatrician] = await Promise.all([
-    appointment.childId ? Child.findById(appointment.childId).lean() : null,
-    appointment.parentId ? User.findById(appointment.parentId).lean() : null,
-    appointment.pediatricianId ? User.findById(appointment.pediatricianId).lean() : null,
-  ]);
-
-  return {
-    id: appointment.id,
-    appointmentId: appointment.id,
-    childName: fullName(child) || 'Unknown Child',
-    parentName: fullName(parent) || 'Unknown Parent',
-    pediatricianName: fullName(pediatrician),
-    appointmentDate: appointment.appointmentDate,
-    appointmentTime: appointment.appointmentTime,
-    status: appointment.status,
-    paymentType: appointment.paymentType || null,
-    paymentStatus: appointment.paymentStatus || 'Unpaid',
-    totalAmount: appointment.totalAmount || 0,
-    amountPaid: appointment.amountPaid || 0,
-    balanceDue: appointment.balanceDue || 0,
-    requiredDownPayment: paymentService.calculateRequiredDownPayment(appointment.totalAmount || 0),
-    createdAt: appointment.createdAt,
-  };
-}
-
 function ensureDatasetDir() {
   const dir = path.join(__dirname, '..', 'public', 'uploads', 'datasets');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -734,7 +708,6 @@ router.get('/dashboard', authMiddleware, adminOnly, async (req, res) => {
       latestUsers,
       latestAppointments,
       latestAssessments,
-      paymentAppointments,
       trainingDatasetCount,
       trainedDatasetCount,
     ] = await Promise.all([
@@ -766,16 +739,11 @@ router.get('/dashboard', authMiddleware, adminOnly, async (req, res) => {
       User.find().sort({ createdAt: -1 }).limit(3).lean(),
       Appointment.find().sort({ createdAt: -1 }).limit(3).lean(),
       Assessment.find().sort({ createdAt: -1 }).limit(3).lean(),
-      Appointment.find().sort({ createdAt: -1 }).limit(12).lean(),
       TrainingDataset.countDocuments(),
       TrainingDataset.countDocuments({ status: 'trained' }),
     ]);
 
     const recentTraining = await TrainingDataset.find().sort({ updatedAt: -1 }).limit(2).lean();
-    const recentPaymentAppointments = [];
-    for (const appointment of paymentAppointments) {
-      recentPaymentAppointments.push(await hydratePaymentAppointment(appointment));
-    }
 
     const recentActivity = [
       ...latestUsers.map((u) => ({
@@ -821,10 +789,10 @@ router.get('/dashboard', authMiddleware, adminOnly, async (req, res) => {
       trainingDatasetCount,
       trainedDatasetCount,
       recentActivity,
-      paymentAppointments: recentPaymentAppointments,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('admin dashboard error:', err);
+    res.status(500).json({ error: 'Could not load the dashboard.' });
   }
 });
 
