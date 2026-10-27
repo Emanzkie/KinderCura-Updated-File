@@ -187,6 +187,15 @@ router.get('/overview', authMiddleware, adminOnly, async (req, res) => {
       { $limit: ROSTER_CAP },
     ]);
 
+    // Every pediatrician account, names only, for the Pediatrician filter. It
+    // used to be filled from the capped roster above, so a pediatrician
+    // outside the 25 most active could not be selected — while the page told
+    // the admin to use that filter to find them.
+    const pediatricianUsers = await User.find({ role: 'pediatrician' })
+      .select('firstName lastName')
+      .sort({ lastName: 1, firstName: 1, _id: 1 })
+      .lean();
+
     res.json({
       success: true,
       range: { from: filters.dateFrom ? filters.dateFrom.toISOString() : null, to: filters.dateTo ? filters.dateTo.toISOString() : null },
@@ -201,6 +210,10 @@ router.get('/overview', authMiddleware, adminOnly, async (req, res) => {
         latestActivity: p.latestActivity || null,
       })),
       pediatricianSummaryCapped: pediatricianSummary.length >= ROSTER_CAP,
+      pediatricianOptions: pediatricianUsers.map((u) => ({
+        pediatricianId: String(u._id),
+        name: fullName(u) || 'Unknown Pediatrician',
+      })),
       parentSummary: parentSummary.map((p) => ({
         parentId: p.parentId,
         name: fullName(p) || 'Unknown Parent',
@@ -211,7 +224,7 @@ router.get('/overview', authMiddleware, adminOnly, async (req, res) => {
     });
   } catch (err) {
     console.error('admin-patient-reports overview error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Could not load the patient report overview.' });
   }
 });
 

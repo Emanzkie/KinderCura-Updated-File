@@ -353,12 +353,13 @@ requireAuth();
                         `Completed assessments with a recorded pediatrician review: ${shareOfText(t.totalReviewed ?? 0, t.totalCompletedAssessments ?? 0, 'completed assessments')}.`),
                 ].join('');
 
-                // Pediatrician dropdown — populated from the roster response so
-                // it never needs to load the whole User collection (req 23).
+                // Pediatrician dropdown — every pediatrician account (names only,
+                // from the overview response), not just the capped roster below.
                 const pedSelect = document.getElementById('prPediatrician');
                 const currentPed = patientFilters.pediatricianId;
+                const pedOptions = data.pediatricianOptions || data.pediatricianSummary || [];
                 pedSelect.innerHTML = '<option value="all">All Pediatricians</option>'
-                    + (data.pediatricianSummary || []).map((p) => `<option value="${escapeHtml(p.pediatricianId)}" ${currentPed === p.pediatricianId ? 'selected' : ''}>${escapeHtml(p.name)} (${p.patients})</option>`).join('');
+                    + pedOptions.map((p) => `<option value="${escapeHtml(p.pediatricianId)}" ${currentPed === p.pediatricianId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
 
                 const pedRowsEl = document.getElementById('pediatricianReportSummaryRows');
                 const pedList = data.pediatricianSummary || [];
