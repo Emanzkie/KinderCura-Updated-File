@@ -313,7 +313,19 @@ async function confirmWalkIn(req, res) {
     appointment.balanceDue = 0;
     appointment.paymentStatus = 'Paid';
     appointment.paymentType = 'Full';
-    await appointment.save();
+    // Claimed atomically: two clicks at once (or a secretary and an admin)
+    // used to both pass the checks above and record two Paid cash payments.
+    const claimed = await Appointment.findOneAndUpdate(
+      {
+        _id: appointment._id,
+        pendingPaymentMode: 'walk_in',
+        paymentStatus: { $in: ['Pending Payment', 'Unpaid'] },
+        status: { $nin: ['cancelled', 'rejected'] },
+      },
+      { $set: { amountPaid: total, balanceDue: 0, paymentStatus: 'Paid', paymentType: 'Full' } },
+      { new: true }
+    );
+    if (!claimed) return res.status(409).json({ error: 'This walk-in payment has already been confirmed.' });
 
     // Create the payment record
     await Payment.create([{
@@ -1150,6 +1162,14 @@ async function confirmClinicPayment(req, res) {
     }
     if (payment.paymentMethod !== 'pay_at_clinic') {
       return res.status(400).json({ error: 'This payment is not a Pay at Clinic transaction.' });
+    }
+    // Only an open reference can be paid. A refunded, cancelled, failed or
+    // expired one used to be switched back to Paid by a scan.
+    if (!['Pending', 'Verification Pending'].includes(payment.status)) {
+      return res.status(409).json({
+        error: `This payment is ${payment.status} and cannot be confirmed. Ask the parent to choose Pay at Clinic again for a new reference.`,
+        code: 'NOT_PAYABLE',
+      });
     }
     if (['cancelled', 'rejected'].includes(appointment.status)) {
       return res.status(400).json({ error: 'Cannot take payment for a cancelled appointment.' });
