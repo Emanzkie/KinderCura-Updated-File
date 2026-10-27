@@ -19,6 +19,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const zlib = require('zlib');
 
 const TrainedModel = require('../models/TrainedModel');
@@ -553,8 +554,8 @@ async function checkPythonEnvironment() {
  * models per training run, consecutive versions, identical modelPath and
  * identical metrics — which made "current model version" unreportable. The
  * live database still contains such a pair (v2 and v3, same artifact, same
- * second). Defaults to true so every other caller — routes/ml.js
- * POST /train-model, ml/tests, any direct call — behaves exactly as before.
+ * second). Defaults to true so every other caller — ml/tests, any direct
+ * call — behaves exactly as before.
  */
 async function trainModel(datasetPath, datasetId, options = {}) {
   const outputDir = ensureModelDir();
@@ -613,10 +614,22 @@ async function trainModel(datasetPath, datasetId, options = {}) {
       result.model_path = await persistModelArtifact(filename, artifactBuffer);
     } else {
       // ── Local Python Subprocess Execution ────────────────────────────────
+      // With object storage on, the dataset arrives as text and datasetPath
+      // is only its storage key, not a file trainer.py can open: write it to
+      // a temporary file for the run.
+      let inputPath = datasetPath;
+      let tempInput = null;
+      if (options?.datasetContent && !(typeof datasetPath === 'string' && fs.existsSync(datasetPath))) {
+        const ext = typeof datasetPath === 'string' && datasetPath.toLowerCase().endsWith('.json') ? '.json' : '.csv';
+        tempInput = path.join(os.tmpdir(), `kindercura_dataset_${process.pid}_${Date.now()}${ext}`);
+        fs.writeFileSync(tempInput, options.datasetContent, 'utf8');
+        inputPath = tempInput;
+      }
+      try {
       result = await new Promise((resolve, reject) => {
         const proc = spawn(
           'python',
-          [TRAINER_SCRIPT, '--input', datasetPath, '--output', outputDir, '--feature-set', featureSet],
+          [TRAINER_SCRIPT, '--input', inputPath, '--output', outputDir, '--feature-set', featureSet],
           { timeout: 300000 }
         );
 
@@ -649,6 +662,9 @@ async function trainModel(datasetPath, datasetId, options = {}) {
           reject(new Error(`Failed to start training process: ${err.message}`));
         });
       });
+      } finally {
+        if (tempInput) { try { fs.unlinkSync(tempInput); } catch { /* already gone */ } }
+      }
 
       // trainer.py reports the absolute path on THIS machine (e.g. a Windows
       // C:/Users/... path). Never record that: store the artifact under its

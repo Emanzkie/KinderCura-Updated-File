@@ -17,165 +17,10 @@ const fileStorage = require('../services/fileStorage');
 const staging = require('../constants/developmental-staging');
 const sse = require('../sse');
 
-/**
- * POST /api/ml/train-model
- * Triggers real ML training on a dataset.
- * Body: { datasetId: string }
- */
-router.post('/train-model', authMiddleware, adminOnly, async (req, res) => {
-    const { datasetId, featureSet = 'score_based' } = req.body;
-    if (!datasetId) {
-      return res.status(400).json({ error: 'datasetId is required.' });
-    }
-
-    try {
-      // 1. Check Python environment first
-      const envCheck = await modelManager.checkPythonEnvironment();
-      if (!envCheck.ok) {
-        return res.status(503).json({ error: envCheck.error });
-      }
-
-      // 2. Find the dataset
-      const dataset = await TrainingDataset.findById(datasetId);
-      if (!dataset) {
-        return res.status(404).json({ error: 'Dataset not found.' });
-      }
-
-      if (dataset.status === 'training') {
-        return res.status(409).json({ error: 'This dataset is already being trained.' });
-      }
-
-      // 3. Resolve dataset file on disk or in storage
-      let datasetPath = modelManager.resolveDatasetPath(dataset.filePath);
-      let datasetContent = null;
-      if (!datasetPath) {
-        const storedName = dataset.storedName || path.basename(dataset.filePath);
-        const storedBuffer = await fileStorage.readStored('public/uploads/datasets', storedName);
-        if (storedBuffer) {
-          datasetContent = storedBuffer.toString('utf8');
-          datasetPath = `/uploads/datasets/${storedName}`;
-        }
-      }
-
-      if (!datasetPath && !datasetContent) {
-        return res.status(404).json({
-          error: `Dataset file not found. Expected at: ${dataset.filePath}`,
-        });
-      }
-
-      // 4. Mark dataset as training
-      dataset.status = 'training';
-      dataset.errorMessage = null;
-      await dataset.save();
-
-
-      // 5. Determine next model version
-      const lastModel = await TrainedModel.findOne().sort({ version: -1 }).lean();
-      const nextVersion = (lastModel?.version || 0) + 1;
-
-      // 6. Create a placeholder TrainedModel doc
-      const modelDoc = await TrainedModel.create({
-        datasetId: dataset._id,
-        version: nextVersion,
-        modelPath: '',
-        status: 'training',
-        featureSetType: featureSet,
-        trainedBy: req.user.userId,
-      });
-
-      // Broadcast that training has started
-      sse.broadcast('analytics:update', {
-        type: 'ml',
-        action: 'training_started',
-        datasetId: String(dataset._id),
-        modelVersion: nextVersion,
-      });
-
-      // 7. Respond immediately — training runs in the background
-      res.json({
-        success: true,
-        message: 'Training started. Check model status for progress.',
-        modelId: String(modelDoc._id),
-        version: nextVersion,
-      });
-
-      // 8. Run training asynchronously
-      try {
-        const metrics = await modelManager.trainModel(datasetPath, dataset._id, { featureSet, datasetContent });
-
-        // Step 7: a successfully trained model is a CANDIDATE only — it does
-        // NOT become active, and the currently active model (if any) is left
-        // completely untouched. Activation is a separate, explicit admin
-        // action: POST /api/ml/models/:modelId/activate below.
-        modelDoc.modelPath = metrics.model_path;
-        modelDoc.accuracy = metrics.accuracy;
-        modelDoc.precision = metrics.precision;
-        modelDoc.recall = metrics.recall;
-        modelDoc.f1Score = metrics.f1;
-        modelDoc.featureImportances = metrics.feature_importances;
-        modelDoc.perClassMetrics = metrics.per_class_metrics || {};
-        modelDoc.confusionMatrix = metrics.confusion_matrix || null;
-        modelDoc.classDistribution = metrics.class_distribution || null;
-        modelDoc.classNames = metrics.class_names || [];
-        modelDoc.featuresUsed = metrics.features_used || [];
-        modelDoc.featureCount = metrics.feature_count || (metrics.features_used ? metrics.features_used.length : 0);
-        modelDoc.featureSetType = metrics.feature_set_type || featureSet;
-        modelDoc.trainingSamples = metrics.training_samples;
-        modelDoc.testSamples = metrics.test_samples;
-        modelDoc.totalRows = metrics.total_rows || 0;
-        modelDoc.rowsDropped = metrics.rows_dropped || 0;
-        modelDoc.status = 'completed';
-        // isActive intentionally not set here — stays false (schema default).
-        await modelDoc.save();
-
-      // Update dataset
-      dataset.status = 'trained';
-      dataset.trainedBy = req.user.userId;
-      dataset.trainedAt = new Date();
-      dataset.modelId = modelDoc._id;
-      dataset.trainingMetrics = {
-        accuracy: metrics.accuracy,
-        precision: metrics.precision,
-        recall: metrics.recall,
-        f1: metrics.f1,
-      };
-      dataset.trainingSummary =
-        `Model v${nextVersion} trained with ${metrics.accuracy * 100}% accuracy. ` +
-        `${metrics.training_samples} training / ${metrics.test_samples} test samples. ` +
-        `Risk categories: ${(metrics.class_names || []).join(', ')}.`;
-      await dataset.save();
-
-      sse.broadcast('analytics:update', {
-        type: 'ml',
-        action: 'training_completed',
-        datasetId: String(dataset._id),
-        modelVersion: nextVersion,
-        accuracy: metrics.accuracy,
-      });
-    } catch (trainErr) {
-      // Training failed — update records
-      console.error('ML training failed:', trainErr.message);
-      modelDoc.status = 'failed';
-      modelDoc.errorMessage = trainErr.message;
-      await modelDoc.save();
-
-      dataset.status = 'failed';
-      dataset.errorMessage = trainErr.message;
-      dataset.trainingSummary = `Training failed: ${trainErr.message}`;
-      await dataset.save();
-
-      sse.broadcast('analytics:update', {
-        type: 'ml',
-        action: 'training_failed',
-        datasetId: String(dataset._id),
-        error: trainErr.message,
-      });
-    }
-  } catch (err) {
-    console.error('ML train-model endpoint error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+// POST /api/ml/train-model was removed (ADMIN bug scan C18). It duplicated
+// POST /api/admin/training/:id/train without its checks (dataset validation,
+// atomic claim, quality gate) and saved two model records per run. The admin
+// Training page uses that route; it is the only way to train a model.
 
 /**
  * GET /api/ml/model-status
@@ -352,8 +197,7 @@ router.get('/models', authMiddleware, adminOnly, async (req, res) => {
         // Step 13: the dataset's own structured provenance — never
         // re-derived here, just read from what POST /training/upload
         // recorded (routes/admin.js). 'unknown' for datasets uploaded
-        // before that field existed, or trained via routes/ml.js
-        // /train-model directly (no datasetId join).
+        // before that field existed.
         const sourceType = m.datasetId?.provenance?.sourceType || 'unknown';
         return {
           id: String(m._id),
@@ -411,7 +255,7 @@ router.get('/models', authMiddleware, adminOnly, async (req, res) => {
  * POST /api/ml/models/:modelId/activate
  *
  * Step 7 — the ONLY place a model's isActive flag is ever set to true.
- * Training (routes/admin.js, routes/ml.js POST /train-model, ml/model_manager.js)
+ * Training (routes/admin.js POST /training/:id/train, ml/model_manager.js)
  * never activates a model on its own; it only produces a candidate. This
  * endpoint is the explicit, admin-approved promotion of a candidate to the
  * model actually used for live predictions.
