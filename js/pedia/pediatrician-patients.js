@@ -193,7 +193,7 @@ const API = window.location.origin + '/api';
     // a glance whether this patient's latest assessment still needs review.
     function mlReviewBadge(mlLabel, mlReviewStatus) {
         if (mlLabel?.riskCategory) {
-            return `<span class="badge" style="background:var(--status-info-bg);color:var(--status-info-fg);">ML Review: ${escapeHtml(mlLabel.riskCategory)}</span>`;
+            return `<span class="badge" style="background:var(--status-info-bg);color:var(--status-info-fg);">ML Review: ${escapeHtml(window.KCCarePlan.riskCategoryLabel(mlLabel.riskCategory))}</span>`;
         }
         if (mlReviewStatus === 'excluded') {
             return `<span class="badge" style="background:var(--status-neutral-bg);color:var(--status-neutral-fg);">ML Review: Excluded</span>`;
@@ -254,7 +254,7 @@ const API = window.location.origin + '/api';
             <ul class="score-guide-points">
                 <li><strong>Domain assessment score (Communication, Social Skills, Cognitive, Motor Skills)</strong> &mdash; share of possible points earned on that domain's questions in the child's latest completed assessment. Each answer earns Yes = 2, Sometimes = 1, No = 0 points.</li>
                 <li><strong>Overall assessment score</strong> &mdash; the average of the four domain scores. The Developmental Band is set from this score.</li>
-                <li><strong>Risk Category &amp; Care Stage</strong> &mdash; Risk Category is the assessment prediction model's Low / Medium / High result ("No ML prediction" when none was available). Care Stage is the follow-up level KinderCura's care-plan rules set from the risk category, or from the Developmental Band when there is no prediction ("Standard scoring fallback").</li>
+                <li><strong>Risk Category &amp; Care Stage</strong> &mdash; Risk Category is the assessment prediction model's Low / Moderate / High result ("No ML prediction" when none was available). Care Stage is the follow-up level KinderCura's care-plan rules set from the risk category, or from the Developmental Band when there is no prediction ("Standard scoring fallback").</li>
             </ul>
             <p class="score-guide-ranges-label">Score ranges (colour and label under each %):</p>
             <ul class="score-guide-ranges" aria-label="Score ranges">
@@ -563,7 +563,7 @@ const API = window.location.origin + '/api';
         }
         const riskCategory = document.getElementById('ml-label-select')?.value || '';
         if (!riskCategory) {
-            alert('Choose Low, Medium, or High before saving the ML label.');
+            alert('Choose Low, Moderate, or High before saving the ML label.');
             return;
         }
         const notes = document.getElementById('ml-label-notes')?.value.trim() || '';

@@ -603,7 +603,7 @@ function perClassDetails(m) {
             <table class="per-class-table">
                 <thead><tr><th>Risk category</th><th>Precision</th><th>Recall</th><th>F1</th><th>Test rows</th>${showAll ? '<th>All rows</th>' : ''}</tr></thead>
                 <tbody>${rows.map((r) => `
-                    <tr><td>${escapeHtml(r.cls)}</td><td>${formatMetric(r.precision)}</td><td>${formatMetric(r.recall)}</td><td>${formatMetric(r.f1)}</td><td>${TD.formatCount(r.testRows)}</td>${showAll ? `<td>${TD.formatCount(r.allRows)}</td>` : ''}</tr>`).join('')}
+                    <tr><td>${escapeHtml(TD.classLabel(r.cls))}</td><td>${formatMetric(r.precision)}</td><td>${formatMetric(r.recall)}</td><td>${formatMetric(r.f1)}</td><td>${TD.formatCount(r.testRows)}</td>${showAll ? `<td>${TD.formatCount(r.allRows)}</td>` : ''}</tr>`).join('')}
                 </tbody>
             </table>
             <p class="dataset-meta">Test rows = rows of that category in the test split (the weights for the averages above).${showAll ? ' All rows = rows of that category the model was trained and tested on.' : ''}</p>
@@ -854,7 +854,7 @@ async function openActivationModal(modelId, version) {
         <h4>Safety checks</h4>
         ${renderSmokeChecks(smoke && smoke.checks)}
         ${passed
-            ? `<p style="color:var(--primary-dark);margin:0.5rem 0 0;"><strong>All checks passed.</strong>${predicted ? ` The test prediction returned "${escapeHtml(predicted)}".` : ''}</p>`
+            ? `<p style="color:var(--primary-dark);margin:0.5rem 0 0;"><strong>All checks passed.</strong>${predicted ? ` The test prediction returned "${escapeHtml(TD.classLabel(predicted))}".` : ''}</p>`
             : `<div class="act-warning"><strong>Activation is blocked.</strong><br>${escapeHtml(result.blocker || 'The safety checks did not pass.')}</div>`}
 
         <h4>What activating this model does</h4>
@@ -937,7 +937,7 @@ async function loadReviewedSummary() {
         countEl.textContent = data.total ?? 0;
         const byLabel = data.byLabel || {};
         byLabelEl.textContent = data.total
-            ? `Pediatrician labels: Low ${byLabel.Low || 0} · Medium ${byLabel.Medium || 0} · High ${byLabel.High || 0}`
+            ? `Pediatrician labels: Low ${byLabel.Low || 0} · Moderate ${byLabel.Medium || 0} · High ${byLabel.High || 0}`
             : 'No assessments have been reviewed yet.';
     } catch (err) {
         countEl.textContent = '—';
@@ -980,7 +980,7 @@ async function loadReviewedQuality() {
         details.innerHTML = `
             <div class="quality-grid">
                 <div><strong>${q.eligibleAssessments}</strong> eligible <div class="dataset-meta">of ${q.totalReviewedAssessments} reviewed. Eligible = completed, reviewed, with a valid label and a stored result; these are the rows the export contains.</div></div>
-                <div><strong>${cd.Low?.count ?? 0} / ${cd.Medium?.count ?? 0} / ${cd.High?.count ?? 0}</strong><div class="dataset-meta">Low / Medium / High labels (${classShare('Low')} / ${classShare('Medium')} / ${classShare('High')} of the ${q.eligibleAssessments} eligible)</div></div>
+                <div><strong>${cd.Low?.count ?? 0} / ${cd.Medium?.count ?? 0} / ${cd.High?.count ?? 0}</strong><div class="dataset-meta">Low / Moderate / High labels (${classShare('Low')} / ${classShare('Medium')} / ${classShare('High')} of the ${q.eligibleAssessments} eligible)</div></div>
                 <div><strong>${q.duplicateCount}</strong><div class="dataset-meta">Duplicate rows: eligible rows with the same child and completion time as another row</div></div>
                 <div><strong>${missingAge}</strong><div class="dataset-meta">Eligible rows with no computable age_months</div></div>
                 <div><strong>${q.excludedAssessments}</strong><div class="dataset-meta">Excluded: assessments a reviewer excluded from model training (not counted as reviewed)</div></div>
@@ -1114,7 +1114,7 @@ async function loadPipelineSummary() {
                     Measured by <code>ml/trainer.py</code> on its held-out test split of ${escapeHtml(mpsNumber(model.testSamples) || '—')} rows.
                     Precision, recall and F1 are weighted averages across risk categories (each weighted by its number of test rows);
                     see "What do Accuracy, Precision, Recall and F1 mean?" under Trained Models. They measure agreement with the dataset's labels, not clinical accuracy.
-                    Classes: ${TD.orderedClasses(model.classNames || []).map(escapeHtml).join(', ') || '—'}.
+                    Classes: ${TD.orderedClasses(model.classNames || []).map((c) => escapeHtml(TD.classLabel(c))).join(', ') || '—'}.
                     Features: ${escapeHtml(model.featureSetType || '—')} (${mpsNumber((model.featuresUsed || []).length) || 0} columns).
                     ${model.rowsDropped ? `${mpsNumber(model.rowsDropped)} row(s) dropped by the trainer's own validation.` : ''}
                 </p>`

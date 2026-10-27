@@ -983,7 +983,7 @@ requireAuth();
                     </div>
                     <p class="sub" style="margin-top:0.85rem;">
                         Trained ${escapeHtml(formatDateTime(model.trainedAt))} on ${num(model.totalRows)} rows.
-                        Classes: ${['Low', 'Medium', 'High'].filter((c) => (model.classNames || []).includes(c)).concat((model.classNames || []).filter((c) => !['Low', 'Medium', 'High'].includes(c))).map(escapeHtml).join(', ') || '—'}.
+                        Classes: ${['Low', 'Medium', 'High'].filter((c) => (model.classNames || []).includes(c)).concat((model.classNames || []).filter((c) => !['Low', 'Medium', 'High'].includes(c))).map((c) => escapeHtml(c === 'Medium' ? 'Moderate' : c)).join(', ') || '—'}.
                     </p>
                 </div>`;
         }

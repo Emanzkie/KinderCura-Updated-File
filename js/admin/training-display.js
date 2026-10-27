@@ -58,6 +58,11 @@
     return REJECTION_LABELS[key] || String(key || 'Unspecified reason').replace(/_/g, ' ');
   }
 
+  /** A class name as people read it: the stored 'Medium' is shown as "Moderate". */
+  function classLabel(name) {
+    return name === 'Medium' ? 'Moderate' : name;
+  }
+
   /** Low, Medium, High first (in that order), then any other class names. */
   function orderedClasses(names) {
     const list = Array.isArray(names) ? names.filter(Boolean) : [];
@@ -133,6 +138,7 @@
     formatCount,
     formatFraction,
     rejectionLabel,
+    classLabel,
     orderedClasses,
     perClassRows,
     describeCleaning,
