@@ -24,12 +24,15 @@ const { adminOnly } = require('../../middleware/auth');
 
 function testPaymentGroupsMatchMonitor() {
   assert.strictEqual(Ops.paymentGroupFor('Paid'), 'collected');
+  // A down or partial payment record holds money actually received.
+  assert.strictEqual(Ops.paymentGroupFor('Down Payment'), 'collected');
+  assert.strictEqual(Ops.paymentGroupFor('Partially Paid'), 'collected');
   assert.strictEqual(Ops.paymentGroupFor('Pending'), 'pending');
   assert.strictEqual(Ops.paymentGroupFor('Verification Pending'), 'pending');
   assert.strictEqual(Ops.paymentGroupFor('Failed'), 'failed');
   assert.strictEqual(Ops.paymentGroupFor('Expired'), 'failed');
   assert.strictEqual(Ops.paymentGroupFor('Refunded'), 'refunded');
-  for (const s of ['Down Payment', 'Partially Paid', 'Cancelled', 'Something New']) {
+  for (const s of ['Cancelled', 'Something New']) {
     assert.strictEqual(Ops.paymentGroupFor(s), 'other', s);
   }
   // Every status the Payment schema allows is either grouped or "other".
@@ -47,16 +50,18 @@ function testSummarizePayments() {
     { _id: { status: 'Failed', currency: 'PHP' }, count: 1, amount: 0 },
     { _id: { status: 'Expired', currency: 'PHP' }, count: 1, amount: 0 },
     { _id: { status: 'Down Payment', currency: 'PHP' }, count: 3, amount: 1500.5 },
+    { _id: { status: 'Cancelled', currency: 'PHP' }, count: 2, amount: 300 },
   ]);
   const g = Object.fromEntries(t.groups.map((x) => [x.key, x]));
-  assert.strictEqual(t.totalCount, 31);
-  assert.deepStrictEqual([g.collected.count, g.collected.amount], [16, 12650]);
+  assert.strictEqual(t.totalCount, 33);
+  // Down payments are money received, so they count as collected.
+  assert.deepStrictEqual([g.collected.count, g.collected.amount], [19, 14150.5]);
   // A pending record's amount is never added to collected money.
   assert.deepStrictEqual([g.pending.count, g.pending.amount], [10, 500]);
   assert.strictEqual(g.failed.count, 2);
   assert.strictEqual(g.refunded.count, 0);
-  assert.deepStrictEqual(g.other.statuses, ['Down Payment']);
-  assert.deepStrictEqual([g.other.count, g.other.amount], [3, 1500.5]);
+  assert.deepStrictEqual(g.other.statuses, ['Cancelled']);
+  assert.deepStrictEqual([g.other.count, g.other.amount], [2, 300]);
   assert.strictEqual(t.groups.reduce((n, x) => n + x.count, 0), t.totalCount);
   assert.deepStrictEqual(t.currencies, ['PHP']);
   assert.strictEqual(t.recordsWithoutCurrency, 6);
@@ -213,7 +218,7 @@ async function run() {
   testBuildMonthlySignups();
   testSplitBySynthetic();
   await testRoute();
-  console.log('Admin analytics operations OK — payment groups match the payments monitor, collected = Paid only, period on registrations and transactions only, real/synthetic split, admin-only, no clinical fields, no settings write');
+  console.log('Admin analytics operations OK — payment groups match the payments monitor, collected = money received (paid, down and partial), period on registrations and transactions only, real/synthetic split, admin-only, no clinical fields, no settings write');
   process.exit(0);
 }
 

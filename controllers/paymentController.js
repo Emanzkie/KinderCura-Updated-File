@@ -12,8 +12,12 @@ const QRCode = require('qrcode');
 const SystemSetting = require('../models/SystemSetting');
 const paymongoService = require('../services/paymongoService');
 const receiptService = require('../services/receiptService');
+const adminOps = require('../services/adminOperationsAnalytics');
 
 const fileStorage = require('../services/fileStorage');
+
+// Rows the Admin Payments table lists (newest first); its totals count all.
+const ADMIN_MONITOR_ROW_LIMIT = 500;
 
 // Project-relative folder. fileStorage maps it to disk locally and to a
 // private Vercel Blob prefix in production — see services/fileStorage.js.
@@ -1244,27 +1248,36 @@ async function getAdminPaymentMonitor(req, res) {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admins only.' });
 
-    const { from, to, method, status } = req.query;
-    const query = {};
-    if (from || to) {
-      query.createdAt = {};
-      if (from) query.createdAt.$gte = new Date(from);
-      if (to) query.createdAt.$lte = new Date(`${to}T23:59:59.999Z`);
-    }
-    if (method) query.paymentMethod = method;
-    if (status) query.status = status;
+    const { method, status } = req.query;
+    // Same period rules and status groups as Admin Analytics and Reports.
+    const period = adminOps.parsePeriod(req.query);
+    if (period.error) return res.status(400).json({ error: period.error });
+    const query = { ...adminOps.periodMatch('createdAt', period) };
+    if (method) query.paymentMethod = String(method);
+    if (status) query.status = String(status);
 
-    const payments = await Payment.find(query).sort({ createdAt: -1 }).limit(500).lean();
+    // The table shows the newest rows; the totals cover every matching
+    // payment (they used to be added up from those 500 rows only).
+    const [payments, groupRows] = await Promise.all([
+      Payment.find(query).sort({ createdAt: -1 }).limit(ADMIN_MONITOR_ROW_LIMIT).lean(),
+      Payment.aggregate([
+        { $match: query },
+        { $group: { _id: { status: '$status', method: '$paymentMethod' }, count: { $sum: 1 }, amount: { $sum: { $ifNull: ['$amount', 0] } } } },
+      ]),
+    ]);
 
     const totals = { paid: 0, pending: 0, failed: 0, refunded: 0, payAtClinic: 0, online: 0 };
     let paidAmount = 0;
-    for (const p of payments) {
-      if (p.status === 'Paid') { totals.paid += 1; paidAmount += Number(p.amount || 0); }
-      else if (['Pending', 'Verification Pending'].includes(p.status)) totals.pending += 1;
-      else if (['Failed', 'Expired'].includes(p.status)) totals.failed += 1;
-      else if (p.status === 'Refunded') totals.refunded += 1;
-      if (p.paymentMethod === 'pay_at_clinic') totals.payAtClinic += 1;
-      if (p.paymentMethod === 'paymongo') totals.online += 1;
+    let count = 0;
+    for (const row of groupRows) {
+      const n = row.count || 0;
+      count += n;
+      const group = adminOps.paymentGroupFor(row._id && row._id.status);
+      if (group === 'collected') { totals.paid += n; paidAmount += Number(row.amount || 0); }
+      else if (group in totals) totals[group] += n;
+      const rowMethod = row._id && row._id.method;
+      if (rowMethod === 'pay_at_clinic') totals.payAtClinic += n;
+      if (rowMethod === 'paymongo') totals.online += n;
     }
 
     // Batch-fetch display names rather than hydrating per row, same pattern
@@ -1283,7 +1296,7 @@ async function getAdminPaymentMonitor(req, res) {
 
     res.json({
       success: true,
-      summary: { ...totals, paidAmount: Math.round(paidAmount * 100) / 100, count: payments.length },
+      summary: { ...totals, paidAmount: Math.round(paidAmount * 100) / 100, count, shown: payments.length },
       payments: payments.map((p) => ({
         id: p.id,
         paymentRef: p.paymentRef || p.referenceNumber,
@@ -1310,7 +1323,7 @@ async function getAdminPaymentMonitor(req, res) {
     });
   } catch (err) {
     console.error('getAdminPaymentMonitor error:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Could not load payments.' });
   }
 }
 

@@ -1089,7 +1089,10 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
           },
         },
       ]),
+      // Money received only: a pending, failed or refunded record is not
+      // collected (same "collected" group as the Payments monitor).
       Payment.aggregate([
+        { $match: { status: { $in: adminOps.PAYMENT_STATUS_GROUPS.find((g) => g.key === 'collected').statuses } } },
         {
           $group: {
             _id: '$paymentType',

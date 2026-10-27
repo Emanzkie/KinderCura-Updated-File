@@ -68,7 +68,7 @@ function testTransactionSplit() {
   const sumA = adminOps.summarizePayments(split.get(a));
   const none = adminOps.summarizePayments(split.get('none'));
   assert.strictEqual(sumA.totalCount, 3);
-  assert.strictEqual(sumA.groups.find((g) => g.key === 'collected').amount, 1000, 'collected = Paid only');
+  assert.strictEqual(sumA.groups.find((g) => g.key === 'collected').amount, 1000, 'collected = money received, not pending');
   assert.strictEqual(none.totalCount, 5, 'unlinked payments kept apart');
   const total = [...split.values()].reduce((n, r) => n + adminOps.summarizePayments(r).totalCount, 0);
   assert.strictEqual(total, rows.reduce((n, r) => n + r.count, 0), 'parts add up to the whole');
@@ -112,7 +112,7 @@ function testPageScriptContract() {
   assert.ok(ids.size > 25, `found ${ids.size} ids`);
   const missing = [...ids].filter((id) => !html.includes(`id="${id}"`));
   assert.deepStrictEqual(missing, [], `script uses ids the page lacks: ${missing.join(', ')}`);
-  assert.ok(html.includes('<script src="/js/admin/admin-clinics.js"></script>'));
+  assert.ok(/<script src="\/js\/admin\/admin-clinics\.js(\?v=[0-9a-f]+)?"><\/script>/.test(html), 'the page loads admin-clinics.js');
   assert.ok(js.trim().startsWith('//') && js.includes('(function () {'), 'script is wrapped so it adds no globals');
 }
 
@@ -144,8 +144,13 @@ function testReportModules() {
   const categories = ['cat-clinics', 'cat-patients', 'cat-assessments', 'cat-appointments', 'cat-system'];
   const missing = categories.filter((id) => !html.includes(`id="${id}"`));
   assert.deepStrictEqual(missing, [], `report categories missing: ${missing.join(', ')}`);
-  // The status legend reads band colours from the shared scoring module.
-  assert.ok(html.indexOf('<script src="/constants/scoring.js"></script>') < html.indexOf('<script src="/js/admin/admin-reports.js"></script>'));
+  // The status legend reads band colours from the shared scoring module. The
+  // page script carries a ?v= content version (pedia-reports-asset-versions
+  // test), so match it by path.
+  const scoringAt = html.indexOf('<script src="/constants/scoring.js');
+  const reportsAt = html.indexOf('<script src="/js/admin/admin-reports.js');
+  assert.ok(scoringAt >= 0 && reportsAt >= 0, 'both scripts are loaded');
+  assert.ok(scoringAt < reportsAt, 'scoring.js loads before admin-reports.js');
 }
 
 (async () => {

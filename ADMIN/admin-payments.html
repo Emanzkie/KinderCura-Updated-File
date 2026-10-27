@@ -76,7 +76,7 @@
     </div>
 
     <div class="stat-row">
-        <div class="stat-card"><div class="stat-num" id="monPaid">—</div><div class="stat-label">Paid</div></div>
+        <div class="stat-card"><div class="stat-num" id="monPaid">—</div><div class="stat-label">Paid (in full or in part)</div></div>
         <div class="stat-card"><div class="stat-num" id="monAmount">—</div><div class="stat-label">Total Collected</div></div>
         <div class="stat-card"><div class="stat-num" id="monPending">—</div><div class="stat-label">Pending</div></div>
         <div class="stat-card"><div class="stat-num" id="monFailed">—</div><div class="stat-label">Failed / Expired</div></div>
@@ -97,6 +97,8 @@
             <select id="monStatus" class="form-input" style="max-width:200px;" onchange="loadPaymentMonitor()">
                 <option value="">All statuses</option>
                 <option value="Paid">Paid</option>
+                <option value="Down Payment">Down Payment</option>
+                <option value="Partially Paid">Partially Paid</option>
                 <option value="Pending">Pending</option>
                 <option value="Failed">Failed</option>
                 <option value="Expired">Expired</option>
@@ -161,7 +163,13 @@
 <script src="/assets/js/admin-nav.js"></script>
 <script src="/js/shared/mobile-nav.js"></script>
 <script>
-requireAuth();
+// Admin-only page, guarded the same way as the other admin pages (the API
+// refuses non-admins too; this just keeps them off the page).
+(function guardAdminPage() {
+    requireAuth();
+    const user = KC.user();
+    if (user && user.role !== 'admin') window.location.href = '/parent/dashboard.html';
+})();
 
 function escapeHtml(str) {
     return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -189,6 +197,11 @@ function monMethodLabel(method) {
         simulated_gateway: 'Online (legacy)',
     }[method] || String(method || '—');
 }
+
+// Money received (services/adminOperationsAnalytics.js "collected"): the row
+// shows the amount paid. A receipt exists only once a payment is fully Paid
+// (the receipt route refuses anything else).
+const COLLECTED_STATUSES = ['Paid', 'Down Payment', 'Partially Paid'];
 
 function monStatusColor(status) {
     if (status === 'Paid') return '#5A7560';
@@ -222,11 +235,15 @@ async function loadPaymentMonitor() {
 
         const rows = data.payments || [];
         if (!rows.length) {
-            body.innerHTML = '<tr><td colspan="7" style="padding:1rem 0.5rem;color:var(--text-light);">No payments match this filter.</td></tr>';
+            body.innerHTML = '<tr><td colspan="12" style="padding:1rem 0.5rem;color:var(--text-light);">No payments match this filter.</td></tr>';
             return;
         }
 
-        body.innerHTML = rows.map((p) => `
+        // The totals above cover every matching payment; the table lists the newest.
+        const more = Number(s.count) > rows.length
+            ? `<tr><td colspan="12" style="padding:0.6rem 0.5rem;color:var(--text-light);font-size:0.86rem;">Showing the newest ${rows.length.toLocaleString('en-PH')} of ${Number(s.count).toLocaleString('en-PH')} payments. Use the filters to narrow the list; the totals above include all of them.</td></tr>`
+            : '';
+        body.innerHTML = more + rows.map((p) => `
             <tr style="border-bottom:1px solid var(--border,#DDD9CC);">
                 <td style="padding:0.6rem 0.5rem;font-family:monospace;font-size:0.86rem;">${escapeHtml(p.paymentRef || '—')}</td>
                 <td style="padding:0.6rem 0.5rem;font-family:monospace;font-size:0.86rem;">${escapeHtml(p.receiptNumber || '—')}</td>
@@ -237,9 +254,9 @@ async function loadPaymentMonitor() {
                 <td style="padding:0.6rem 0.5rem;">${escapeHtml(monMethodLabel(p.paymentMethod))}</td>
                 <td style="padding:0.6rem 0.5rem;font-family:monospace;font-size:0.8rem;">${escapeHtml(p.paymongoPaymentId || '—')}</td>
                 <td style="padding:0.6rem 0.5rem;font-weight:700;color:${monStatusColor(p.status)};">${escapeHtml(p.status)}</td>
-                <td style="padding:0.6rem 0.5rem;text-align:right;font-weight:600;">${monMoney(p.status === 'Paid' ? p.amount : p.totalAmount)}</td>
+                <td style="padding:0.6rem 0.5rem;text-align:right;font-weight:600;">${monMoney(COLLECTED_STATUSES.includes(p.status) ? p.amount : p.totalAmount)}</td>
                 <td style="padding:0.6rem 0.5rem;white-space:nowrap;">${p.paidAt ? escapeHtml(new Date(p.paidAt).toLocaleString('en-PH')) : '—'}</td>
-                <td style="padding:0.6rem 0.5rem;white-space:nowrap;">${(p.paymentRef || p.receiptNumber) ? `<button class="btn btn-secondary" style="padding:0.3rem 0.7rem;font-size:0.78rem;" onclick="viewReceipt('${escapeHtml(p.paymentRef || p.receiptNumber)}')">Receipt</button>` : ''}</td>
+                <td style="padding:0.6rem 0.5rem;white-space:nowrap;">${p.status === 'Paid' && (p.paymentRef || p.receiptNumber) ? `<button class="btn btn-secondary" style="padding:0.3rem 0.7rem;font-size:0.78rem;" onclick="viewReceipt('${escapeHtml(p.paymentRef || p.receiptNumber)}')">Receipt</button>` : ''}</td>
             </tr>`).join('');
     } catch (err) {
         body.innerHTML = `<tr><td colspan="12" style="padding:1rem 0.5rem;color:#3D4738;">${escapeHtml(err.message || 'Could not load payments.')}</td></tr>`;

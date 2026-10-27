@@ -9,16 +9,18 @@
 // Identical to the grouping the Admin Payments monitor already uses
 // (controllers/paymentController.js getAdminPaymentMonitor), so the two admin
 // pages can never disagree about what "collected" means:
-//   collected  'Paid'                          (only these amounts are money received)
+//   collected  'Paid', 'Down Payment', 'Partially Paid'
+//              (only these amounts are money received — a down or partial
+//              payment record holds the amount actually paid in that
+//              transaction, see services/paymentService.js)
 //   pending    'Pending', 'Verification Pending'
 //   failed     'Failed', 'Expired'
 //   refunded   'Refunded'
-// Every other stored status (e.g. 'Down Payment', 'Partially Paid',
-// 'Cancelled') is listed under "other" by its own name and never added to the
-// collected total.
+// Every other stored status (e.g. 'Cancelled') is listed under "other" by its
+// own name and never added to the collected total.
 
 const PAYMENT_STATUS_GROUPS = Object.freeze([
-  Object.freeze({ key: 'collected', label: 'Paid (collected)', statuses: Object.freeze(['Paid']) }),
+  Object.freeze({ key: 'collected', label: 'Collected (paid in full or in part)', statuses: Object.freeze(['Paid', 'Down Payment', 'Partially Paid']) }),
   Object.freeze({ key: 'pending', label: 'Pending', statuses: Object.freeze(['Pending', 'Verification Pending']) }),
   Object.freeze({ key: 'failed', label: 'Failed or expired', statuses: Object.freeze(['Failed', 'Expired']) }),
   Object.freeze({ key: 'refunded', label: 'Refunded', statuses: Object.freeze(['Refunded']) }),

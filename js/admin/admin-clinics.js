@@ -312,7 +312,7 @@
                 </tr>`).join('')
                 : '<tr><td colspan="4" class="muted">No transactions for this clinic in the reporting period.</td></tr>';
             byId('clinicDetailTxNote').textContent = [
-                `Reporting period: ${periodText()}. Payment records whose appointment was booked under this clinic. Only "Paid (collected)" is money received; the other amounts are what those records state.`,
+                `Reporting period: ${periodText()}. Payment records whose appointment was booked under this clinic. Only "Collected" (paid in full or in part) is money received; the other amounts are what those records state.`,
                 currencyNote(t),
             ].filter(Boolean).join(' ');
         } catch (err) {

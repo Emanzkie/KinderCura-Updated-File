@@ -19,7 +19,8 @@
 //                         are never assigned to a clinic by guesswork.
 //
 // Transaction figures reuse services/adminOperationsAnalytics.js: the same
-// status groups as the Admin Payments monitor (collected = 'Paid' only), the
+// status groups as the Admin Payments monitor (collected = money received:
+// 'Paid', 'Down Payment', 'Partially Paid'), the
 // same Payment.createdAt period filter, counts and amounts kept apart. One
 // $group per request, and each payment has one appointment, so no payment is
 // counted twice.
