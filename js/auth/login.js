@@ -100,10 +100,10 @@ const API = window.location.origin + '/api';
                             localStorage.setItem('kc_childId', data.preAssessmentChildId || data.childId);
                         }
                         localStorage.removeItem('kc_assessmentId');
-                        window.location.href = `/parent/screening.html?mode=pre&source=login&childId=${encodeURIComponent(data.preAssessmentChildId || data.childId || '')}`;
+                        window.location.href = `/parent/screening?mode=pre&source=login&childId=${encodeURIComponent(data.preAssessmentChildId || data.childId || '')}`;
                     } else {
                         localStorage.removeItem('kc_preAssessmentRequired');
-                        window.location.href = '/parent/dashboard.html';
+                        window.location.href = '/parent/dashboard';
                     }
                 }
 

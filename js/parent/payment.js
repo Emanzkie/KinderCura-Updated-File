@@ -127,7 +127,7 @@ async function loadAppointmentSummary() {
     if (!summaryEl) return;
 
     if (!appointmentId) {
-        summaryEl.innerHTML = '<p style="color:#3d4738;">No appointment ID provided. <a href="/parent/appointments.html">Go back</a>.</p>';
+        summaryEl.innerHTML = '<p style="color:#3d4738;">No appointment ID provided. <a href="/parent/appointments">Go back</a>.</p>';
         return;
     }
 
@@ -139,7 +139,7 @@ async function loadAppointmentSummary() {
         const appt = (data.appointments || []).find((a) => String(a.id) === String(appointmentId));
 
         if (!appt) {
-            summaryEl.innerHTML = '<p style="color:#3d4738;">Appointment not found. <a href="/parent/appointments.html">Go back</a>.</p>';
+            summaryEl.innerHTML = '<p style="color:#3d4738;">Appointment not found. <a href="/parent/appointments">Go back</a>.</p>';
             return;
         }
 

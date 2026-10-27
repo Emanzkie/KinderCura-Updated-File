@@ -837,7 +837,7 @@ async function verifyAndRegister() {
             if (result.childId) localStorage.setItem('kc_childId', result.childId);
         }
 
-        window.location.href = result.needsPreAssessment ? '/parent/screening.html' : '/parent/dashboard.html';
+        window.location.href = result.needsPreAssessment ? '/parent/screening' : '/parent/dashboard';
     } catch (err) {
         // A code the server will not accept is only recoverable by asking for
         // a new one, so say so rather than leaving the user to guess. Resending
@@ -1030,7 +1030,7 @@ async function registerPedia() {
             const modal = byId('regSuccessModal');
             if (modal) modal.style.display = 'flex';
             setTimeout(() => {
-                window.location.href = '/login.html';
+                window.location.href = '/login';
             }, 3000);
             return;
         }
@@ -1124,7 +1124,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const okBtn = byId('regSuccessOkBtn');
     if (okBtn) {
         okBtn.addEventListener('click', function() {
-            window.location.href = '/login.html';
+            window.location.href = '/login';
         });
     }
 });

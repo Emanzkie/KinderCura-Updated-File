@@ -459,7 +459,7 @@ requireAuth();
 
                 // Important: after finishing the assessment, return the parent to the dashboard first.
                 // The latest result will still appear in Dashboard, Results, and Recommendations.
-                window.location.href = '/parent/dashboard.html';
+                window.location.href = '/parent/dashboard';
             } catch (e) {
                 content.innerHTML = `
                     <div class="assessment-error">
@@ -499,14 +499,14 @@ requireAuth();
                 selectedChild = await getSelectedChild();
                 if (!selectedChild) {
                     alert('No child registered. Please complete your profile first.');
-                    window.location.href = '/parent/profile.html';
+                    window.location.href = '/parent/profile';
                     return;
                 }
 
                 const ageMonths = getAgeInMonths(selectedChild.dateOfBirth);
                 if (isNaN(ageMonths) || ageMonths < 36) {
                     alert('This assessment is available for children aged 3 to 8 only.');
-                    window.location.href = '/parent/dashboard.html';
+                    window.location.href = '/parent/dashboard';
                     return;
                 }
 
@@ -523,7 +523,7 @@ requireAuth();
                             <button
                                 type="button"
                                 class="assessment-action-btn primary"
-                                onclick="window.location.href='/parent/dashboard.html'"
+                                onclick="window.location.href='/parent/dashboard'"
                                 style="max-width:220px;"
                             >
                                 Back to Dashboard

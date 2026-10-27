@@ -30,7 +30,7 @@ async function loadThreads() {
       tl.innerHTML = `
         <div style="padding:1.5rem;text-align:center;color:var(--text-light);font-size:.85rem;">
           No conversations yet.<br>
-          <a href="/parent/appointments.html" style="color:var(--primary);">Book an appointment first</a>
+          <a href="/parent/appointments" style="color:var(--primary);">Book an appointment first</a>
         </div>`;
       return;
     }

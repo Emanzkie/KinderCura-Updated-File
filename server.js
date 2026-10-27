@@ -175,12 +175,31 @@ function rootStaticTarget(urlPath) {
     }
 }
 
+// Parent pages are left to /parent/:page, which serves clean addresses and
+// redirects ".html" ones. Root static would otherwise answer /PARENT/x.html
+// directly, and on Windows /parent/x.html too (case-insensitive file system).
+const PARENT_PAGES_DIR = /^\/parent(\/|$)/i;
+
 const rootStatic = cachedStatic(__dirname, { index: false });
 app.use((req, res, next) => {
     const target = rootStaticTarget(req.path);
-    if (target === null || SERVER_ONLY_DIRS.test(target) || SERVER_ONLY_FILES.test(target)) return next();
+    if (target === null || SERVER_ONLY_DIRS.test(target) || SERVER_ONLY_FILES.test(target) || PARENT_PAGES_DIR.test(target)) return next();
     rootStatic(req, res, next);
 });
+
+// Clean addresses for sign-in, sign-up and the parent pages. The old ".html"
+// address redirects to the clean one with its query string, so bookmarks,
+// emails, stored notifications and staff pages that still link to ".html" keep
+// working. 302, not 301: browsers would cache a permanent redirect for good.
+function redirectKeepingQuery(req, res, cleanPath) {
+    const q = req.originalUrl.indexOf('?');
+    res.redirect(302, cleanPath + (q === -1 ? '' : req.originalUrl.slice(q)));
+}
+app.get('/login', (req, res) => sendPage(res, path.join(__dirname, 'SIGN-UP,LOGIN', 'login.html')));
+app.get('/signup', (req, res) => sendPage(res, path.join(__dirname, 'SIGN-UP,LOGIN', 'signup.html')));
+app.get('/login.html', (req, res) => redirectKeepingQuery(req, res, '/login'));
+app.get('/signup.html', (req, res) => redirectKeepingQuery(req, res, '/signup'));
+
 app.use(cachedStatic(path.join(__dirname, 'SIGN-UP,LOGIN')));
 
 // Minimal EJS test routes for guardian UI (rendered pages)
@@ -198,9 +217,7 @@ app.get('/admin/guardian-management', (req, res) => res.render('admin/guardian-m
 app.get('/parent/guardians', (req, res) => {
   sendPage(res, path.join(__dirname, 'PARENT', 'guardian-management.html'));
 });
-app.get('/parent/guardians.html', (req, res) => {
-  sendPage(res, path.join(__dirname, 'PARENT', 'guardian-management.html'));
-});
+app.get('/parent/guardians.html', (req, res) => redirectKeepingQuery(req, res, '/parent/guardians'));
 
 // Public invitation-acceptance page
 // Serves the standalone accept-invitation page (route kept for backward compat;
@@ -231,11 +248,18 @@ app.get('/parent/payment', (req, res) => {
 // the SERVER_ONLY_* guard above fixed. Every file in these folders is a flat .html
 // page, so anything else is refused, and `root` makes send() reject traversal
 // as a second line of defence.
+// With cleanUrlPrefix the folder uses clean addresses: "/parent/results" serves
+// results.html and "/parent/results.html" redirects there. The name with
+// ".html" added must still pass PAGE_NAME, so traversal is refused the same way.
 const PAGE_NAME = /^[A-Za-z0-9_-]+\.html$/;
-function servePage(dir) {
+function servePage(dir, cleanUrlPrefix = null) {
     const root = path.join(__dirname, dir);
     return (req, res, next) => {
-        const page = req.params.page;
+        let page = req.params.page;
+        if (cleanUrlPrefix) {
+            if (PAGE_NAME.test(page)) return redirectKeepingQuery(req, res, `${cleanUrlPrefix}/${page.slice(0, -'.html'.length)}`);
+            page += '.html';
+        }
         if (!PAGE_NAME.test(page)) return res.status(404).send('Not found');
         res.sendFile(page, sendFileOptions(path.join(root, page), { root }), (err) => {
             if (!err || res.headersSent) return;
@@ -246,7 +270,7 @@ function servePage(dir) {
 }
 
 // Friendly page routes for parent / pedia / admin pages
-app.get('/parent/:page', servePage('PARENT'));
+app.get('/parent/:page', servePage('PARENT', '/parent'));
 app.get('/pedia/:page', servePage('PEDIA'));
 
 // Admin payment verification page — review e-wallet proofs

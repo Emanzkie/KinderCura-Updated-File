@@ -47,7 +47,7 @@ const document = {
 };
 // As in a browser, `window` is the global object, so api.js's window.KC is KC.
 const window = {
-  location: { hostname: 'kindercura.example', href: '/parent/profile.html', pathname: '/parent/profile.html' },
+  location: { hostname: 'kindercura.example', href: '/parent/profile', pathname: '/parent/profile' },
   document, localStorage, console: { log() {}, warn() {}, error() {} },
   setTimeout, clearTimeout, setInterval, clearInterval,
 };
@@ -62,7 +62,7 @@ localStorage.setItem('kc_remember', '1');
 vm.runInContext('logout()', ctx);
 for (const k of KEYS) assert.strictEqual(localStorage.getItem(k), null, `logout must remove ${k}`);
 assert.strictEqual(cookie, '', 'logout must expire the kc_session cookie');
-assert.strictEqual(window.location.href, '/login.html', 'logout returns to the login page');
+assert.strictEqual(window.location.href, '/login', 'logout returns to the login page');
 ok('shared logout() clears all 9 kc_* keys and the session cookie');
 
 console.log('\nProfile shared helper tests OK');

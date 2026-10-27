@@ -168,7 +168,7 @@ async function loadProfile() {
                             ${field('Gender', c.gender ? c.gender.charAt(0).toUpperCase()+c.gender.slice(1) : '—')}
                             ${field('Relationship', c.relationship || '—')}
                         </div>
-                        <button class="btn btn-primary btn-full-small" onclick="localStorage.setItem('kc_childId','${c.id}');window.location.href='/parent/screening.html'">Start Assessment</button>
+                        <button class="btn btn-primary btn-full-small" onclick="localStorage.setItem('kc_childId','${c.id}');window.location.href='/parent/screening'">Start Assessment</button>
                         ${canEdit ? `<button type="button" class="btn btn-secondary btn-full-small" style="margin-top:.5rem;" onclick="toggleEditChild('${c.id}')">Edit Details</button>
                         <div id="editChildForm_${c.id}" class="add-child-form">
                             <h3 class="form-title">Edit Child Details</h3>
@@ -335,7 +335,7 @@ async function addChild() {
             localStorage.setItem('kc_viewChildId', data.childId);
         }
         localStorage.removeItem('kc_assessmentId');
-        window.location.href = '/parent/screening.html';
+        window.location.href = '/parent/screening';
     } catch (e) {
         err.textContent = e.message;
         err.style.display = 'block';

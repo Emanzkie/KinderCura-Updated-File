@@ -500,7 +500,7 @@ function GuardianManagement() {
             <p>Invite family members and caregivers, choose what they can see, and manage who is linked to your child.</p>
           </div>
           <div className="gm-header-actions">
-            <a className="gm-btn gm-btn--primary" href="/parent/profile.html">Edit Profile</a>
+            <a className="gm-btn gm-btn--primary" href="/parent/profile">Edit Profile</a>
             <span className="gm-btn gm-btn--current" aria-current="page">Manage Guardians</span>
           </div>
         </div>
@@ -543,7 +543,7 @@ function GuardianManagement() {
           <div className="gm-empty">
             No child is registered on your account yet. Add a child from your profile before inviting guardians.
             <div style={{ marginTop: '0.9rem' }}>
-              <a className="gm-btn gm-btn--primary" href="/parent/profile.html">Go to Profile</a>
+              <a className="gm-btn gm-btn--primary" href="/parent/profile">Go to Profile</a>
             </div>
           </div>
         </div>

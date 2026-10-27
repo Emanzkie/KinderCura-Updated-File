@@ -20,11 +20,11 @@ function handleBackspace() {}
 
 function verifyOTP(event) {
     if (event && typeof event.preventDefault === 'function') event.preventDefault();
-    window.location.replace('/signup.html');
+    window.location.replace('/signup');
 }
 
 function resendOTP() {
-    window.location.replace('/signup.html');
+    window.location.replace('/signup');
 }
 
-window.location.replace('/signup.html');
+window.location.replace('/signup');

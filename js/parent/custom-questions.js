@@ -49,11 +49,11 @@ function updateParentNavLinks() {
   };
 
   // Keep question navigation in sync with the active child filter.
-  setHref('.main-nav a[href="/parent/dashboard.html"]', '/parent/dashboard.html');
-  setHref('.main-nav a[href="/parent/results.html"]', '/parent/results.html', true);
-  setHref('.main-nav a[href="/parent/recommendations.html"]', '/parent/recommendations.html', true);
-  setHref('.main-nav a[href="/parent/appointments.html"]', '/parent/appointments.html');
-  setHref('.main-nav a[href="/parent/custom-questions.html"]', '/parent/custom-questions.html');
+  setHref('.main-nav a[href="/parent/dashboard"]', '/parent/dashboard');
+  setHref('.main-nav a[href="/parent/results"]', '/parent/results', true);
+  setHref('.main-nav a[href="/parent/recommendations"]', '/parent/recommendations', true);
+  setHref('.main-nav a[href="/parent/appointments"]', '/parent/appointments');
+  setHref('.main-nav a[href="/parent/custom-questions"]', '/parent/custom-questions');
 }
 
 let currentChildId = safeRequestedChildId() || storedChildId() || 'all';
@@ -145,8 +145,8 @@ function openAppointmentsPage() {
   const childId = currentChildId !== 'all' ? currentChildId : storedChildId();
   if (childId) saveParentChildContext(childId, storedAssessmentId());
   window.location.href = childId
-    ? `/parent/appointments.html?childId=${encodeURIComponent(childId)}`
-    : '/parent/appointments.html';
+    ? `/parent/appointments?childId=${encodeURIComponent(childId)}`
+    : '/parent/appointments';
 }
 
 // Change visible questions based on selected child

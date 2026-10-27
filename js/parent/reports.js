@@ -82,7 +82,7 @@ function getRequestedChildId() {
 
 function switchChild(childId) {
     if (childId) localStorage.setItem('kc_childId', childId);
-    window.location.href = `/parent/reports.html?childId=${encodeURIComponent(childId)}`;
+    window.location.href = `/parent/reports?childId=${encodeURIComponent(childId)}`;
 }
 
 function renderChildSwitcher() {
@@ -102,11 +102,11 @@ function renderChildSwitcher() {
 }
 
 function goToAppointments() {
-    window.location.href = '/parent/appointments.html';
+    window.location.href = '/parent/appointments';
 }
 
 function goToScreening() {
-    window.location.href = '/parent/screening.html';
+    window.location.href = '/parent/screening';
 }
 
 // ── Section renderers ───────────────────────────────────────────────────────
@@ -760,7 +760,7 @@ async function loadReport() {
                 <div class="report-state">
                     <h2>No child registered yet</h2>
                     <p>Add your child from the dashboard to start tracking assessment results.</p>
-                    <button class="btn btn-primary" onclick="window.location.href='/parent/dashboard.html'">Go to dashboard</button>
+                    <button class="btn btn-primary" onclick="window.location.href='/parent/dashboard'">Go to dashboard</button>
                 </div>`;
             return;
         }

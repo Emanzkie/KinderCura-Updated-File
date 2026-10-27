@@ -57,7 +57,7 @@
 <body>
 <header class="top-nav">
   <div class="nav-container">
-    <a href="/parent/dashboard.html" class="logo">
+    <a href="/parent/dashboard" class="logo">
       <img src="/icons/logo.png" alt="KinderCura Logo" class="logo-img">
       <span class="logo-text"><span class="logo-kinder">Kinder</span><span class="logo-cura">Cura</span></span>
     </a>
@@ -142,7 +142,7 @@ function errToState(status, body) {
 
 function signInAgain() {
   ['kc_token', 'token', 'kc_user', 'kc_childId'].forEach(k => localStorage.removeItem(k));
-  window.location.href = '/login.html?next=' + encodeURIComponent(window.location.pathname + window.location.search);
+  window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname + window.location.search);
 }
 
 /* "Kemri Soto" or "Kemri Soto, Mia Soto" — names only. */
@@ -291,7 +291,7 @@ function AcceptInvitation() {
         }
         addToast(`You now have access to ${childNames(inv)}'s profile!`);
         // The confirmation email is sent by the server after the link is saved.
-        setTimeout(() => { window.location.href = '/parent/dashboard.html'; }, 2000);
+        setTimeout(() => { window.location.href = '/parent/dashboard'; }, 2000);
       } catch (err) {
         const m = err.name === 'AbortError' ? 'Request timed out — please try again.' : 'Network error — please try again.';
         setState('error'); setErrMsg(m);
@@ -345,7 +345,7 @@ function AcceptInvitation() {
     setTimeout(() => { window.location.href = '/'; }, 1500);
   }, []);
 
-  const goLogin = () => { window.location.href = '/login.html?next=' + encodeURIComponent(window.location.pathname + window.location.search); };
+  const goLogin = () => { window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname + window.location.search); };
 
   /* ── Render based on state ── */
   if (state === 'no_token') {
@@ -373,7 +373,7 @@ function AcceptInvitation() {
           {confirmationSent ? ` A confirmation was emailed to ${inv?.sentTo || 'you'}.` : ''}
           Sign in with that email and the password you just chose to see {nm} on your dashboard.
         </p>
-        <a href="/login.html" className="btn btn-primary">Sign In</a>
+        <a href="/login" className="btn btn-primary">Sign In</a>
       </div>
     );
   }
@@ -486,8 +486,8 @@ function AcceptInvitation() {
         <p style={{color:'var(--text-light)',fontSize:'.92rem',lineHeight:1.6}}>{cfg.msg}</p>
         <div style={{display:'flex',gap:'10px',flexWrap:'wrap',marginTop:'14px'}}>
           {state === 'used' && (isLoggedIn()
-            ? <a href="/parent/dashboard.html" className="btn btn-primary">Go to Dashboard</a>
-            : <a href="/login.html" className="btn btn-primary">Log In</a>)}
+            ? <a href="/parent/dashboard" className="btn btn-primary">Go to Dashboard</a>
+            : <a href="/login" className="btn btn-primary">Log In</a>)}
           {state === 'mismatch' && <button onClick={signInAgain} className="btn btn-primary">Sign in with a different account</button>}
           {state === 'error' && <button onClick={() => window.location.reload()} className="btn btn-secondary">Try Again</button>}
           {(state === 'expired' || state === 'invalid') && <a href="/" className="btn btn-secondary">Go to Home</a>}

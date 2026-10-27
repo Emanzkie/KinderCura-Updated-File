@@ -301,15 +301,17 @@ const base = { questionText: 'Does the child wave?', questionType: 'yes_no' };
       return { href: sandbox.location.href, cleared: cleared.length, error };
     };
     let r = await run({ status: 401 });
-    assert.strictEqual(r.href, '/login.html', 'an expired session goes back to sign in');
+    assert.strictEqual(r.href, '/login', 'an expired session goes back to sign in');
     assert.strictEqual(r.cleared, 1, 'the dead session is cleared');
     assert.match(r.error.message, /expired/i, 'the caller still gets the error');
     r = await run({ status: 401, endpoint: '/auth/login' });
     assert.deepStrictEqual([r.href, r.cleared], ['', 0], 'a wrong password is not a session ending');
     r = await run({ status: 401, token: '' });
     assert.deepStrictEqual([r.href, r.cleared], ['', 0], 'no token, nothing to end');
-    r = await run({ status: 401, pathname: '/login.html' });
-    assert.deepStrictEqual([r.href, r.cleared], ['', 0], 'no redirect loop on the sign-in page');
+    for (const pathname of ['/login', '/login.html']) {
+      r = await run({ status: 401, pathname });
+      assert.deepStrictEqual([r.href, r.cleared], ['', 0], `no redirect loop on the sign-in page (${pathname})`);
+    }
     r = await run({ status: 403 });
     assert.deepStrictEqual([r.href, r.cleared], ['', 0], 'a 403 is not a session ending');
     r = await run({ status: 200 });

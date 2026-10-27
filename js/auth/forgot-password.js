@@ -84,7 +84,7 @@
             resetForm.style.display = 'none';
             intro.textContent = 'Password updated.';
             show(info, `${data.message || 'Your password has been reset.'} Redirecting to sign in…`);
-            setTimeout(() => { window.location.href = '/login.html'; }, 2500);
+            setTimeout(() => { window.location.href = '/login'; }, 2500);
         } catch (err) {
             show(error, err.message);
             btn.disabled = false;

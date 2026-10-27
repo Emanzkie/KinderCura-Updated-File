@@ -42,7 +42,7 @@ const STAFF = {
 
 // 1. Every staff role is sent to its own dashboard from parent pages,
 //    including the pages that never checked before.
-for (const page of ['/parent/dashboard.html', '/parent/appointments.html', '/parent/settings.html', '/PARENT/payment.html', '/parent/guardians']) {
+for (const page of ['/parent/dashboard', '/parent/appointments', '/parent/settings', '/PARENT/payment', '/parent/guardians']) {
   for (const [role, home] of Object.entries(STAFF)) {
     assert.deepStrictEqual(load(page, { id: 'u1', role }), [home], `${role} on ${page}`);
   }
@@ -52,26 +52,26 @@ ok('secretary, pediatrician and admin are redirected to their dashboards from pa
 // 1b. The Results page is the one parent page a pediatrician opens on purpose
 //     ("Open full report" on My Patients, PEDIATRICIAN_BUGS.md #7). Secretaries
 //     and admins are still sent away from it.
-for (const page of ['/parent/results.html', '/PARENT/results.html']) {
+for (const page of ['/parent/results', '/PARENT/results']) {
   assert.deepStrictEqual(load(page, { id: 'u1', role: 'pediatrician' }), [], `pediatrician on ${page}`);
   assert.deepStrictEqual(load(page, { id: 'u1', role: 'secretary' }), [STAFF.secretary], `secretary on ${page}`);
   assert.deepStrictEqual(load(page, { id: 'u1', role: 'admin' }), [STAFF.admin], `admin on ${page}`);
 }
-assert.deepStrictEqual(load('/parent/results.html', { id: 'u1', role: 'parent' }), []);
-assert.deepStrictEqual(load('/parent/dashboard.html', { id: 'u1', role: 'pediatrician' }), [STAFF.pediatrician],
+assert.deepStrictEqual(load('/parent/results', { id: 'u1', role: 'parent' }), []);
+assert.deepStrictEqual(load('/parent/dashboard', { id: 'u1', role: 'pediatrician' }), [STAFF.pediatrician],
   'the exception is only the Results page, not the rest of the parent area');
 ok('a pediatrician can open the Results page; secretaries and admins are still redirected; other parent pages unchanged');
 
 // 2. Parent-side roles stay on parent pages.
 for (const role of ['parent', 'legal_guardian', 'foster_parent', 'court_appointed']) {
-  assert.deepStrictEqual(load('/parent/dashboard.html', { id: 'u1', role }), [], role);
+  assert.deepStrictEqual(load('/parent/dashboard', { id: 'u1', role }), [], role);
 }
 ok('parent-side roles stay on parent pages');
 
 // 3. No redirect on the invitation page, for signed-out visitors, or off the parent area.
 assert.deepStrictEqual(load('/parent/accept-invitation', { id: 'u1', role: 'secretary' }), []);
 assert.deepStrictEqual(load('/parent/accept-invitation.html', { id: 'u1', role: 'pediatrician' }), []);
-assert.deepStrictEqual(load('/parent/dashboard.html', null), []);
+assert.deepStrictEqual(load('/parent/dashboard', null), []);
 assert.deepStrictEqual(load('/secretary/secretary-dashboard.html', { id: 'u1', role: 'secretary' }), []);
 assert.deepStrictEqual(load('/pedia/pediatrician-dashboard.html', { id: 'u1', role: 'pediatrician' }), []);
 ok('invitation page, signed-out visitors and non-parent pages are left alone');

@@ -271,7 +271,7 @@ function availabilitySummary(ped) {
 
 function switchChild(childId) {
     setParentContext(childId, null);
-    window.location.href = `/parent/appointments.html?childId=${encodeURIComponent(childId)}`;
+    window.location.href = `/parent/appointments?childId=${encodeURIComponent(childId)}`;
 }
 
 function renderChildSwitcher() {
@@ -345,7 +345,7 @@ function renderSelectedPediatrician() {
 
     applyTimeFieldConstraints();
     // updatePaymentStep() used to run here. Payment selection moved to
-    // /parent/payment.html when booking was decoupled from payment, and that
+    // /parent/payment when booking was decoupled from payment, and that
     // change deleted the function but left these two calls behind. Every call
     // threw ReferenceError, which aborted renderSelectedPediatrician ->
     // loadPediatricians -> resolveContext, so loadAppointments() at the end of
@@ -947,7 +947,7 @@ function renderActive(list) {
             <div style="margin-top:.7rem;display:flex;gap:.5rem;flex-wrap:wrap;">
                 ${['pending', 'approved'].includes(a.status) ? `<button type="button" onclick="openReschedule(${a.id})" style="background:var(--surface-muted,#f0efe8);color:var(--text-dark);border:1px solid var(--border,#a8c49d);padding:.45rem 1.1rem;border-radius:20px;font-size:.8rem;cursor:pointer;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reschedule</button>` : ''}
                 ${['pending', 'approved'].includes(a.status) ? `<button type="button" id="cancelApptBtn_${a.id}" onclick="cancelAppointment(${a.id})" style="background:transparent;color:var(--text-dark);border:1px solid var(--border,#a8c49d);padding:.45rem 1.1rem;border-radius:20px;font-size:.8rem;cursor:pointer;">Cancel Appointment</button>` : ''}
-                ${['approved', 'completed'].includes(a.status) ? `<button type="button" onclick="window.location.href='/parent/chat.html?appointmentId=${a.id}'" style="background:var(--primary);color:#FAFAF6;border:none;padding:.45rem 1.1rem;border-radius:20px;font-size:.8rem;cursor:pointer;"><img src="/icons/chat.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Chat with Dr. ${escapeHtml(a.pediatricianName || 'Pediatrician')}</button>` : ''}
+                ${['approved', 'completed'].includes(a.status) ? `<button type="button" onclick="window.location.href='/parent/chat?appointmentId=${a.id}'" style="background:var(--primary);color:#FAFAF6;border:none;padding:.45rem 1.1rem;border-radius:20px;font-size:.8rem;cursor:pointer;"><img src="/icons/chat.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Chat with Dr. ${escapeHtml(a.pediatricianName || 'Pediatrician')}</button>` : ''}
             </div>
         </div>`).join('');
 }

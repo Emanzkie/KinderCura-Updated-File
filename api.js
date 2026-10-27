@@ -62,7 +62,7 @@ if (localStorage.getItem('kc_remember') === '0' && !/(?:^|;\s*)kc_session=1(?:;|
 // that "Open full report" on My Patients opens in a new tab, so a pediatrician
 // is let through there. Secretaries and admins are not: nothing links them to it.
 (function redirectStaffAwayFromParentPages() {
-    const allowedParentPages = { pediatrician: ['/parent/results.html'] };
+    const allowedParentPages = { pediatrician: ['/parent/results'] };
     const path = String((window.location && window.location.pathname) || '').toLowerCase();
     if (!path.startsWith('/parent/') || path.startsWith('/parent/accept-invitation')) return;
     const user = window.KC.user();
@@ -137,9 +137,9 @@ async function apiFetch(endpoint, options = {}) {
         // 401 on a signed-in request means the session is over (expired, or the
         // account was removed). Sign-in itself also answers 401 for a wrong
         // password, so it and the sign-in page are left alone.
-        if (res.status === 401 && KC.token() && !endpoint.startsWith('/auth/login') && !/login\.html$/.test(window.location.pathname)) {
+        if (res.status === 401 && KC.token() && !endpoint.startsWith('/auth/login') && !/^\/login(\.html)?$/.test(window.location.pathname)) {
             KC.clear();
-            window.location.href = '/login.html';
+            window.location.href = '/login';
         }
         // `error` can be an object (e.g. { code, message }); never show "[object Object]".
         const e = data.error;
@@ -152,7 +152,7 @@ async function apiFetch(endpoint, options = {}) {
 
 function requireAuth() {
     if (!KC.token()) {
-        window.location.href = '/login.html';
+        window.location.href = '/login';
         return false;
     }
     return true;
@@ -160,7 +160,7 @@ function requireAuth() {
 
 function logout() {
     KC.clear();
-    window.location.href = '/login.html';
+    window.location.href = '/login';
 }
 
 function fmtDate(d) {
@@ -326,12 +326,12 @@ function notificationDestination(n) {
     }
 
     // Parent and the other guardian roles share the /parent pages.
-    if (title.includes('review completed') || says('diagnosis', 'open results') || title.includes('result')) return '/parent/results.html';
-    if (says('recommendation')) return '/parent/recommendations.html';
-    if (type === 'payment' || type === 'appointment' || says('appointment')) return '/parent/appointments.html';
-    if (type === 'chat' || title.includes('message') || msg.includes('message from')) return '/parent/chat.html';
+    if (title.includes('review completed') || says('diagnosis', 'open results') || title.includes('result')) return '/parent/results';
+    if (says('recommendation')) return '/parent/recommendations';
+    if (type === 'payment' || type === 'appointment' || says('appointment')) return '/parent/appointments';
+    if (type === 'chat' || title.includes('message') || msg.includes('message from')) return '/parent/chat';
     if (type === 'assessment' || title.includes('assessment question') || title.includes('custom question') || title.includes('question assigned') || msg.includes('assigned a new custom question')) {
-        return '/parent/custom-questions.html';
+        return '/parent/custom-questions';
     }
     return null;
 }

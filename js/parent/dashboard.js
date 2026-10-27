@@ -11,7 +11,7 @@ function calcAge(dob) {
 }
 
 // -------------------- Child switcher state & helpers --------------------
-// Mirrors the pattern used in /parent/results.html so the dashboard supports
+// Mirrors the pattern used in /parent/results so the dashboard supports
 // parents with multiple children.
 let allChildren = [];
 let activeChild = null;
@@ -213,7 +213,7 @@ function renderAssessment(a) {
             <div class="score-item"><div class="score-num">${a.cognitiveScore}%</div><div class="score-label">Cognitive</div></div>
             <div class="score-item"><div class="score-num">${a.motorScore}%</div><div class="score-label">Motor</div></div>
         </div>
-        <button class="btn btn-primary btn-full" onclick="window.location.href='/parent/results.html?childId=${childId}&assessmentId=${a.id}'">View Detailed Results</button>`;
+        <button class="btn btn-primary btn-full" onclick="window.location.href='/parent/results?childId=${childId}&assessmentId=${a.id}'">View Detailed Results</button>`;
 }
 
 // Home-activity completion for the latest assessment's recommendations, as

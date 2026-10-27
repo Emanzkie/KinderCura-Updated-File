@@ -12,7 +12,7 @@
     const back = document.getElementById('helpBackLink');
     if (user && KC.token()) {
         // Every remaining role (parent, legal_guardian, foster_parent, court_appointed) uses the parent side.
-        back.href = DASHBOARDS[user.role] || '/parent/dashboard.html';
+        back.href = DASHBOARDS[user.role] || '/parent/dashboard';
         back.textContent = '← Back to dashboard';
     } else {
         back.textContent = '← Back to sign in';

@@ -741,14 +741,14 @@ function fmtScheduledDate(dateString) {
 
 function switchChild(childId) {
     setParentContext(childId, null);
-    window.location.href = `/parent/results.html?childId=${encodeURIComponent(childId)}`;
+    window.location.href = `/parent/results?childId=${encodeURIComponent(childId)}`;
 }
 
 function openRecommendationsPage() {
     const q = new URLSearchParams();
     if (activeChild?.id) q.set('childId', activeChild.id);
     if (activeAssessment?.id) q.set('assessmentId', activeAssessment.id);
-    window.location.href = `/parent/recommendations.html?${q.toString()}`;
+    window.location.href = `/parent/recommendations?${q.toString()}`;
 }
 
 function renderChildSwitcher() {
@@ -860,7 +860,7 @@ async function loadResults() {
                 <div style="text-align:center;padding:3rem;background:#FAFAF6;border-radius:15px;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);">
                     <p style="font-size:1.1rem;font-weight:600;margin-bottom:1rem;">No assessment results yet</p>
                     <p style="color:var(--text-light);margin-bottom:1.5rem;">Complete an assessment first to view results for this child.</p>
-                    <button class="btn btn-primary" onclick="window.location.href='/parent/screening.html'">Start Assessment</button>
+                    <button class="btn btn-primary" onclick="window.location.href='/parent/screening'">Start Assessment</button>
                 </div>`;
             return;
         }
@@ -955,7 +955,7 @@ async function loadResults() {
                     <p>${r.nextAssessmentDate ? `Your next scheduled assessment is on: <strong>${escapeHtml(fmtScheduledDate(r.nextAssessmentDate))}</strong>` : 'No follow-up scheduled yet.'}</p>
                     ${r.nextAssessmentReason ? `<p class="follow-up-note">${escapeHtml(r.nextAssessmentReason)}</p>` : ''}
                 </div>
-                <button class="follow-up-action" onclick="window.location.href='/parent/appointments.html'">Appointments</button>
+                <button class="follow-up-action" onclick="window.location.href='/parent/appointments'">Appointments</button>
             </div>`;
 
         document.getElementById('resultsContent').innerHTML = `
@@ -1011,8 +1011,8 @@ async function loadResults() {
                 <h3 style="margin-bottom:1.5rem;color:var(--primary);">Next Steps</h3>
                 <div style="display:flex;gap:1rem;flex-wrap:wrap;">
                     <button class="btn btn-primary" onclick="openRecommendationsPage()">View Recommendations</button>
-                    <button class="btn btn-secondary" onclick="window.location.href='/parent/appointments.html'">Book Appointment</button>
-                    <button class="btn btn-secondary" onclick="window.location.href='/parent/screening.html'">Reassessment</button>
+                    <button class="btn btn-secondary" onclick="window.location.href='/parent/appointments'">Book Appointment</button>
+                    <button class="btn btn-secondary" onclick="window.location.href='/parent/screening'">Reassessment</button>
                 </div>
             </div>`;
 

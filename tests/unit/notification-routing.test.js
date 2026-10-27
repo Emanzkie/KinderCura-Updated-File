@@ -162,7 +162,7 @@ const send = handlerFor(notificationsRouter, 'post', '/send');
   }
   assert.strictEqual(dest({ title: 'x', relatedPage: '/parent/appointments.html' }), '/parent/appointments.html');
   assert.strictEqual(dest({ title: 'x', relatedPage: '/pedia/pediatrician-appointments.html', relatedId: 5 }), '/pedia/pediatrician-appointments.html?appointmentId=5');
-  assert.strictEqual(dest({ title: 'Appointment Approved', type: 'appointment' }), '/parent/appointments.html', 'notifications with no relatedPage still route by title');
+  assert.strictEqual(dest({ title: 'Appointment Approved', type: 'appointment' }), '/parent/appointments', 'notifications with no relatedPage still route by title');
   ok('the bell follows only site paths: a stored javascript: or other-host link is ignored, real links and title routing are unchanged');
 
   console.log(results.map((m) => `  ✓ ${m}`).join('\n'));

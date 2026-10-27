@@ -156,16 +156,16 @@
             };
 
             // Keep the active child and assessment context when moving between parent pages.
-            setHref('.main-nav a[href="/parent/dashboard.html"]', '/parent/dashboard.html');
-            setHref('.main-nav a[href="/parent/results.html"]', '/parent/results.html', true);
-            setHref('.main-nav a[href="/parent/recommendations.html"]', '/parent/recommendations.html', true);
-            setHref('.main-nav a[href="/parent/appointments.html"]', '/parent/appointments.html');
-            setHref('.main-nav a[href="/parent/custom-questions.html"]', '/parent/custom-questions.html');
+            setHref('.main-nav a[href="/parent/dashboard"]', '/parent/dashboard');
+            setHref('.main-nav a[href="/parent/results"]', '/parent/results', true);
+            setHref('.main-nav a[href="/parent/recommendations"]', '/parent/recommendations', true);
+            setHref('.main-nav a[href="/parent/appointments"]', '/parent/appointments');
+            setHref('.main-nav a[href="/parent/custom-questions"]', '/parent/custom-questions');
         }
 
         function switchChild(childId) {
             saveParentChildContext(childId, null);
-            window.location.href = `/parent/recommendations.html?childId=${encodeURIComponent(childId)}`;
+            window.location.href = `/parent/recommendations?childId=${encodeURIComponent(childId)}`;
         }
 
         function renderChildSwitcher() {
@@ -212,7 +212,7 @@
         function goBookWithPediatrician(pediatricianId, assessmentId) {
             localStorage.setItem('kc_prefPediaId', pediatricianId);
             saveParentChildContext(activeChild?.id || null, assessmentId || null);
-            window.location.href = `/parent/appointments.html?childId=${encodeURIComponent(activeChild?.id || '')}`;
+            window.location.href = `/parent/appointments?childId=${encodeURIComponent(activeChild?.id || '')}`;
         }
 
         function renderSuggestedClinics(suggestedPediatricians, assessmentId, bookedConsultation, suggestionSummary) {
@@ -243,7 +243,7 @@
                                 <div style="display:flex;flex-direction:column;gap:.6rem;align-items:flex-end;">
                                     <span class="review-pill">${p.isSuggested ? 'Suggested Match' : 'Available Clinic'}</span>
                                     ${bookedConsultation
-                                        ? `<button class="btn btn-secondary" onclick="window.location.href='/parent/appointments.html?childId=${encodeURIComponent(activeChild.id)}'">View Appointment</button>`
+                                        ? `<button class="btn btn-secondary" onclick="window.location.href='/parent/appointments?childId=${encodeURIComponent(activeChild.id)}'">View Appointment</button>`
                                         : `<button class="btn btn-primary" onclick="goBookWithPediatrician('${p.id}', '${assessmentId}')">Book With This Clinic</button>`}
                                 </div>
                             </div>
@@ -358,7 +358,7 @@
                     <div style="text-align:center;padding:3rem;background:#FAFAF6;border-radius:15px;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);">
                         <p style="font-size:1.1rem;font-weight:600;margin-bottom:1rem;">No recommendations yet</p>
                         <p style="color:var(--text-light);margin-bottom:1.5rem;">Complete an assessment first to receive personalized recommendations for this child.</p>
-                        <button class="btn btn-primary" onclick="window.location.href='/parent/screening.html'">Start Assessment</button>
+                        <button class="btn btn-primary" onclick="window.location.href='/parent/screening'">Start Assessment</button>
                     </div>`;
                 return;
             }
@@ -396,7 +396,7 @@
                                 <h2 style="margin-bottom:0.5rem;">Schedule Professional Consultation</h2>
                                 <p style="margin-bottom:0.9rem;opacity:0.95;">${escapeHtml(data.suggestionSummary || 'Based on the assessment results, we recommend scheduling a consultation with a pediatrician.')}</p>
                                 ${Array.isArray(data.focusAreas) && data.focusAreas.length ? `<p style="margin:0 0 1.1rem;font-weight:600;">Focus areas: ${escapeHtml(data.focusAreas.join(', '))}</p>` : ''}
-                                <button class="btn btn-primary" onclick="window.location.href='/parent/appointments.html?childId=${encodeURIComponent(activeChild.id)}'" style="background:#FAFAF6;color:var(--text-dark);font-weight:700;">Book Appointment Now</button>
+                                <button class="btn btn-primary" onclick="window.location.href='/parent/appointments?childId=${encodeURIComponent(activeChild.id)}'" style="background:#FAFAF6;color:var(--text-dark);font-weight:700;">Book Appointment Now</button>
                             </div>
                         </div>
                     </div>`;
@@ -442,9 +442,9 @@
                 <div style="background:#FAFAF6;border-radius:15px;padding:2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);margin-top:1rem;">
                     <h3 style="margin-bottom:1.5rem;color:var(--primary);">Next Steps</h3>
                     <div style="display:flex;gap:1rem;flex-wrap:wrap;">
-                        <button class="btn btn-secondary" onclick="saveParentChildContext(activeChild.id, assessmentId); window.location.href='/parent/results.html?childId=${activeChild.id}&assessmentId=${assessmentId}'">Back to Results</button>
-                        <button class="btn btn-primary" onclick="saveParentChildContext(activeChild.id, assessmentId); window.location.href='/parent/appointments.html?childId=${activeChild.id}'">Appointments</button>
-                        <button class="btn btn-secondary" onclick="saveParentChildContext(activeChild.id, null); window.location.href='/parent/screening.html'">Reassessment</button>
+                        <button class="btn btn-secondary" onclick="saveParentChildContext(activeChild.id, assessmentId); window.location.href='/parent/results?childId=${activeChild.id}&assessmentId=${assessmentId}'">Back to Results</button>
+                        <button class="btn btn-primary" onclick="saveParentChildContext(activeChild.id, assessmentId); window.location.href='/parent/appointments?childId=${activeChild.id}'">Appointments</button>
+                        <button class="btn btn-secondary" onclick="saveParentChildContext(activeChild.id, null); window.location.href='/parent/screening'">Reassessment</button>
                     </div>
                 </div>`;
 

@@ -135,8 +135,8 @@ function destinationTests() {
     parent.notificationDestination({ title: 'Pediatrician diagnosis updated', relatedPage: '/parent/results.html?childId=c1&assessmentId=a1', relatedId: 'zzz' }),
     '/parent/results.html?childId=c1&assessmentId=a1'
   );
-  assert.strictEqual(parent.notificationDestination({ title: 'Online Payment Expired', type: 'payment', message: 'did not complete' }), '/parent/appointments.html');
-  assert.strictEqual(loadApi('legal_guardian').notificationDestination({ title: 'Appointment Approved', type: 'appointment', message: '' }), '/parent/appointments.html');
+  assert.strictEqual(parent.notificationDestination({ title: 'Online Payment Expired', type: 'payment', message: 'did not complete' }), '/parent/appointments');
+  assert.strictEqual(loadApi('legal_guardian').notificationDestination({ title: 'Appointment Approved', type: 'appointment', message: '' }), '/parent/appointments');
   ok('parent and guardian roles: stored relatedPage wins, payment/appointment notices open Appointments');
 
   const secretary = loadApi('secretary');
