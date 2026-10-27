@@ -37,7 +37,7 @@ function load(pathname, user) {
 const STAFF = {
   secretary: '/secretary/secretary-dashboard.html',
   pediatrician: '/pedia/pediatrician-dashboard',
-  admin: '/admin/admin-dashboard.html',
+  admin: '/admin/admin-dashboard',
 };
 
 // 1. Every staff role is sent to its own dashboard from parent pages,

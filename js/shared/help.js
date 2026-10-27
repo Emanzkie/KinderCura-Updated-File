@@ -3,7 +3,7 @@
 // contact the admin saves in System Settings (GET /api/payments/clinic-config).
 (function () {
     const DASHBOARDS = {
-        admin: '/admin/admin-dashboard.html',
+        admin: '/admin/admin-dashboard',
         pediatrician: '/pedia/pediatrician-dashboard',
         secretary: '/secretary/secretary-dashboard.html',
     };

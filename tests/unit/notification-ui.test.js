@@ -109,7 +109,7 @@ function destinationTests() {
     admin.notificationDestination({ title: 'New PRC Verification Request', relatedPage: '/admin/prc-verification', relatedId: '66f0a1b2c3d4e5f601234567' }),
     '/admin/prc-verification?pediatricianId=66f0a1b2c3d4e5f601234567'
   );
-  assert.strictEqual(admin.notificationDestination({ title: 'New pending registration', message: '' }), '/admin/admin-users.html');
+  assert.strictEqual(admin.notificationDestination({ title: 'New pending registration', message: '' }), '/admin/admin-users');
   assert.strictEqual(admin.notificationDestination({ title: 'Something else', message: 'hello' }), null);
   ok('admin: PRC requests open that pediatrician\'s review (ObjectId kept intact), unknown ones have no link');
 

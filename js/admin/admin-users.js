@@ -104,7 +104,7 @@
 
         // A pediatrician whose PRC license is still under review (or was rejected)
         // is decided on the PRC Verification page; the server refuses Approve.
-        const PRC_PAGE = '/admin/admin-prc-verification.html';
+        const PRC_PAGE = '/admin/admin-prc-verification';
         function needsPrcReview(u) {
             return u.role === 'pediatrician' && ['pending', 'rejected'].includes(u.prcVerificationStatus);
         }

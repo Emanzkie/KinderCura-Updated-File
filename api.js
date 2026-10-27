@@ -69,7 +69,7 @@ if (localStorage.getItem('kc_remember') === '0' && !/(?:^|;\s*)kc_session=1(?:;|
     if (!user || !window.KC.token()) return;
     if ((allowedParentPages[user.role] || []).includes(path)) return;
     const staffHome = {
-        admin: '/admin/admin-dashboard.html',
+        admin: '/admin/admin-dashboard',
         pediatrician: '/pedia/pediatrician-dashboard',
         secretary: '/secretary/secretary-dashboard.html',
     }[user.role];
@@ -304,7 +304,7 @@ function notificationDestination(n) {
         if (type === 'prc_verification' || title.includes('prc') || title.includes('license') || says('prc verification', 'pediatrician registration')) {
             return notificationDeepLink('/admin/prc-verification', relatedId);
         }
-        if (title.includes('pending') || title.includes('registration') || says('approval')) return '/admin/admin-users.html';
+        if (title.includes('pending') || title.includes('registration') || says('approval')) return '/admin/admin-users';
         if (type === 'payment' || title.includes('payment')) return '/admin/payments';
         return null;
     }

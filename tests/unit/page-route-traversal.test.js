@@ -68,8 +68,8 @@ async function run() {
     assert.strictEqual(res.status, 404, 'payment proof must not be served');
     ok('3: private/payment-proofs is not reachable through /parent/:page');
 
-    // 4. Only flat .html names are accepted (parent and pediatrician pages take them without .html).
-    for (const url of ['/parent/dashboard.js', '/pedia/pediatrician-dashboard.js', '/admin/admin-dashboard', '/parent/dashboard.html.js', '/admin/.env', '/pedia/..%2F']) {
+    // 4. Only flat .html names are accepted (parent, pediatrician and admin pages take them without .html).
+    for (const url of ['/parent/dashboard.js', '/pedia/pediatrician-dashboard.js', '/admin/admin-dashboard.js', '/secretary/secretary-dashboard', '/parent/dashboard.html.js', '/admin/.env', '/pedia/..%2F']) {
       const r = await get(url);
       assert.strictEqual(r.status, 404, `${url} should be 404 (got ${r.status})`);
     }

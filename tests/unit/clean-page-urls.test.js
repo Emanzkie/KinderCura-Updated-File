@@ -1,10 +1,10 @@
-// Clean addresses for sign-in, sign-up, the parent and the pediatrician pages.
+// Clean addresses for sign-in, sign-up, the parent, pediatrician and admin pages.
 //
-// /login, /signup, /parent/<page> and /pedia/<page> serve the page directly.
-// The old ".html" address answers a 302 to the clean one and keeps its query
-// string, so bookmarks, emails, stored notification links and the pages that
-// still link to ".html" keep working. Admin and secretary pages are not part
-// of this change and still use ".html".
+// /login, /signup, /parent/<page>, /pedia/<page> and /admin/<page> serve the
+// page directly. The old ".html" address answers a 302 to the clean one and
+// keeps its query string, so bookmarks, emails, stored notification links and
+// the pages that still link to ".html" keep working. Secretary pages are not
+// part of this change and still use ".html".
 //
 // No DB: server.js exports the Express app when it is required rather than
 // run, and none of these requests touch Mongo.
@@ -69,6 +69,7 @@ async function run() {
     for (const url of [
       '/parent/dashboard.js', '/parent/..%2Fserver', '/parent/.env', '/parent/does-not-exist',
       '/pedia/pedia-chat.js', '/pedia/..%2Fserver', '/pedia/.env', '/pedia/does-not-exist',
+      '/admin/admin-users.js', '/admin/..%2Fserver', '/admin/.env', '/admin/does-not-exist',
     ]) {
       const r = await get(url);
       assert.strictEqual(r.status, 404, `${url} should be 404 (got ${r.status})`);
@@ -99,14 +100,36 @@ async function run() {
     }
     ok(`4: all ${pediaPages.length} pediatrician pages load without .html; .html redirects keep the query`);
 
-    // 5. Admin and secretary pages are unchanged: .html still serves directly, no clean form.
-    for (const [prefix, dir] of [['admin', 'ADMIN'], ['secretary', 'SECRETARY']]) {
-      const file = fs.readdirSync(path.join(ROOT, dir)).find((f) => f.endsWith('.html'));
-      const r = await get(`/${prefix}/${file}`);
-      assert.strictEqual(r.status, 200, `/${prefix}/${file} still loads`);
+    // 5. Admin pages: clean addresses serve, .html redirects, the older short
+    //    routes (/admin/payments, /admin/prc-verification) still work.
+    const adminPages = fs.readdirSync(path.join(ROOT, 'ADMIN')).filter((f) => f.endsWith('.html'));
+    for (const file of adminPages) {
+      const name = file.slice(0, -'.html'.length);
+      const r = await get(`/admin/${name}`);
+      assert.strictEqual(r.status, 200, `/admin/${name} should load (got ${r.status})`);
+      assert.strictEqual(r.body, read('ADMIN', file), `/admin/${name} serves ${file}`);
+      const old = await get(`/admin/${file}`);
+      assert.strictEqual(old.status, 302, `/admin/${file} should redirect (got ${old.status})`);
+      assert.strictEqual(old.location, `/admin/${name}`);
     }
-    assert.strictEqual((await get('/admin/admin-dashboard')).status, 404);
-    ok('5: admin and secretary pages still use .html');
+    for (const [from, to] of [
+      ['/admin/admin-users.html?status=pending', '/admin/admin-users?status=pending'],
+      ['/ADMIN/admin-dashboard.html', '/admin/admin-dashboard'],
+    ]) {
+      const r = await get(from);
+      assert.strictEqual(r.status, 302, `${from} should redirect (got ${r.status})`);
+      assert.strictEqual(r.location, to, `${from} redirects to ${to}`);
+    }
+    for (const url of ['/admin/payments', '/admin/prc-verification']) {
+      assert.strictEqual((await get(url)).status, 200, `${url} still loads`);
+    }
+    ok(`5: all ${adminPages.length} admin pages load without .html; .html redirects keep the query`);
+
+    // 6. Secretary pages are unchanged: .html still serves directly, no clean form.
+    const secFile = fs.readdirSync(path.join(ROOT, 'SECRETARY')).find((f) => f.endsWith('.html'));
+    assert.strictEqual((await get(`/secretary/${secFile}`)).status, 200, `/secretary/${secFile} still loads`);
+    assert.strictEqual((await get(`/secretary/${secFile.slice(0, -'.html'.length)}`)).status, 404);
+    ok('6: secretary pages still use .html');
   } finally {
     server.closeAllConnections();
     server.close();

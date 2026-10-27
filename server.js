@@ -175,11 +175,11 @@ function rootStaticTarget(urlPath) {
     }
 }
 
-// Parent and pediatrician pages are left to their /:page routes, which serve
-// clean addresses and redirect ".html" ones. Root static would otherwise answer
-// /PARENT/x.html directly, and on Windows /parent/x.html too (case-insensitive
-// file system).
-const CLEAN_PAGE_DIRS = /^\/(parent|pedia)(\/|$)/i;
+// Parent, pediatrician and admin pages are left to their /:page routes, which
+// serve clean addresses and redirect ".html" ones. Root static would otherwise
+// answer /PARENT/x.html directly, and on Windows /parent/x.html too
+// (case-insensitive file system).
+const CLEAN_PAGE_DIRS = /^\/(parent|pedia|admin)(\/|$)/i;
 
 const rootStatic = cachedStatic(__dirname, { index: false });
 app.use((req, res, next) => {
@@ -284,7 +284,7 @@ app.get('/admin/prc-verification', (req, res) => {
     sendPage(res, path.join(__dirname, 'ADMIN', 'admin-prc-verification.html'));
 });
 
-app.get('/admin/:page', servePage('ADMIN'));
+app.get('/admin/:page', servePage('ADMIN', '/admin'));
 // Important: serves the new SECRETARY HTML pages under /secretary/
 app.get('/secretary/:page', servePage('SECRETARY'));
 

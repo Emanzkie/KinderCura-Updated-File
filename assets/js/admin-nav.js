@@ -76,7 +76,7 @@
     if (nav.querySelector('a[href*="data-sources"]')) return;
 
     var link = document.createElement('a');
-    link.href = '/admin/admin-data-sources.html';
+    link.href = '/admin/admin-data-sources';
     link.className = 'nav-link';
     link.textContent = 'Question Origin';
 
@@ -103,7 +103,7 @@
     if (nav.querySelector('a[href*="admin-insights"]')) return;
 
     var link = document.createElement('a');
-    link.href = '/admin/admin-insights.html';
+    link.href = '/admin/admin-insights';
     link.className = 'nav-link';
     link.textContent = 'Insights';
 
@@ -188,7 +188,7 @@
     if (!menu || menu.querySelector('a[href*="admin-settings"]')) return;
 
     var item = document.createElement('a');
-    item.href = '/admin/admin-settings.html';
+    item.href = '/admin/admin-settings';
     item.className = 'menu-item';
     item.innerHTML = '<img src="/icons/settings.png" class="menu-icon">Settings';
 

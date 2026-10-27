@@ -1086,7 +1086,7 @@ async function loadPipelineSummary() {
             body.innerHTML = `
                 <div class="mps-empty">
                     No synthetic model dataset has been generated yet, so there is nothing to report here.
-                    Generate one on the <a href="/admin/admin-data-sources.html">Question Origin / Data Sources</a> page,
+                    Generate one on the <a href="/admin/admin-data-sources">Question Origin / Data Sources</a> page,
                     or upload your own dataset using the form below.
                 </div>`;
             return;
@@ -1146,7 +1146,7 @@ async function loadPipelineSummary() {
                     − ${escapeHtml(String(mpsNumber(cleaning.invalidRecords) || '0'))} invalid
                     = ${escapeHtml(String(mpsNumber(cleaning.finalRecords) || '—'))} training-ready</code>
                     <br>Cleaning counts come from the actual <code>ml/preprocess.py</code> run recorded with this dataset.
-                    Full breakdown on the <a href="/admin/admin-data-sources.html#modelDatasetPipeline">Data Sources</a> page.
+                    Full breakdown on the <a href="/admin/admin-data-sources#modelDatasetPipeline">Data Sources</a> page.
                 </div>
                 ${cleaningDefinitions(cleaning)}
                 ${dataset.provenance && dataset.provenance.sourceType === 'synthetic'

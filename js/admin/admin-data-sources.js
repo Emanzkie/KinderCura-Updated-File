@@ -969,9 +969,9 @@ requireAuth();
                     <h4>Model v${escapeHtml(String(model.version))} ${statusChipFor(model.status)} ${model.isActive ? '<span class="pipeline-chip pipeline-chip--ok">Active</span>' : '<span class="pipeline-chip pipeline-chip--idle">Candidate</span>'}</h4>
                     ${model.isActive ? '' : `<p class="pipeline-message not-active-note">
                         <strong>v${escapeHtml(String(model.version))} is not the active model.</strong> These metrics describe the model trained from this generated dataset only.
-                        The model serving predictions is shown on the <a href="/admin/admin-training.html">Training</a> page.</p>`}
+                        The model serving predictions is shown on the <a href="/admin/admin-training">Training</a> page.</p>`}
                     <p class="sub">Metrics measured by <code>ml/trainer.py</code> on its held-out test split. Precision, recall and F1 are weighted averages across risk categories (each weighted by its number of test rows).
-                        They measure agreement with this synthetic dataset's labels, not clinical accuracy; definitions are on the <a href="/admin/admin-training.html">Training</a> page.
+                        They measure agreement with this synthetic dataset's labels, not clinical accuracy; definitions are on the <a href="/admin/admin-training">Training</a> page.
                         Training and test rows are counts. Feature set: ${escapeHtml(model.featureSetType || '—')}.</p>
                     <div class="dataset-stats">
                         <div class="dataset-stat"><span class="k">Accuracy</span><span class="v">${pct(model.accuracy)}</span></div>
@@ -1038,7 +1038,7 @@ requireAuth();
                 ${renderModel(data.model)}
                 <p class="sub" style="margin-top:1.2rem;">
                     ${num(data.pipelineDatasetCount)} pipeline dataset(s) recorded in total. Full history is on the
-                    <a href="/admin/admin-training.html">Training</a> page.
+                    <a href="/admin/admin-training">Training</a> page.
                 </p>`;
         }
 
