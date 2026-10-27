@@ -23,6 +23,7 @@ const TrainingDataset = require('../models/TrainingDataset');
 const Notification = require('../models/Notification');
 const SystemSetting = require('../models/SystemSetting');
 const { createLog } = require('../controllers/auditController');
+const { sendServerError } = require('../middleware/serverError');
 const { CLINIC_TIMEZONE } = require('../constants/clinicTime');
 const paymentService = require('../services/paymentService');
 const adminOps = require('../services/adminOperationsAnalytics');
@@ -592,7 +593,7 @@ router.get('/training/reviewed-assessments/quality', authMiddleware, adminOnly, 
     const summary = await buildReviewedAssessmentQualitySummary();
     res.json({ success: true, ...summary });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -604,7 +605,7 @@ router.get('/training/reviewed-assessments/summary', authMiddleware, adminOnly, 
     const { total, skipped, byLabel } = await buildReviewedAssessmentExportRows();
     res.json({ success: true, total, byLabel, skippedIncompleteResult: skipped.noResult, skippedNoConsent: skipped.noConsent });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -628,7 +629,7 @@ router.get('/training/reviewed-assessments/export', authMiddleware, adminOnly, a
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1377,7 +1378,7 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
       reviewedAssessmentsSystemWide,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1433,7 +1434,7 @@ router.get('/analytics/average-scores-detail', authMiddleware, adminOnly, async 
       .lean();
     res.json({ success: true, ...buildAverageScoreDetail(results) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1453,7 +1454,7 @@ router.get('/export-data', authMiddleware, adminOnly, async (req, res) => {
       })),
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -2088,7 +2089,7 @@ router.get('/dataset-pipeline/status', authMiddleware, adminOnly, async (req, re
         : null,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -2198,7 +2199,7 @@ router.get('/demo-data/summary', authMiddleware, adminOnly, async (req, res) => 
       generatorCommand: 'node scripts/generate-system-demo-data.js --users=1500',
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -2231,7 +2232,7 @@ router.get('/settings/appointments', authMiddleware, adminOnly, async (req, res)
     const doc = await getSystemSettingsDoc();
     res.json({ success: true, settings: formatAppointmentSlotSettings(doc) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -2257,7 +2258,7 @@ router.put('/settings/appointments', authMiddleware, adminOnly, async (req, res)
 
     res.json({ success: true, settings: formatAppointmentSlotSettings(doc) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -2440,7 +2441,7 @@ router.get('/analytics/pediatrician', authMiddleware, async (req, res) => {
       summaryTotals,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -2485,7 +2486,7 @@ router.get('/analytics/parent', authMiddleware, async (req, res) => {
       summaryTotals,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 

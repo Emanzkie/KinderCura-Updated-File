@@ -36,6 +36,7 @@ const mongoose = require('mongoose');
 const router = express.Router();
 
 const { authMiddleware, adminOnly } = require('../middleware/auth');
+const { sendServerError } = require('../middleware/serverError');
 const User = require('../models/User');
 const Child = require('../models/Child');
 const Assessment = require('../models/Assessment');
@@ -419,8 +420,7 @@ router.get('/patients', authMiddleware, adminOnly, async (req, res) => {
       pagination: paginationEnvelope(totalMatched, filters.page, filters.limit),
     });
   } catch (err) {
-    console.error('admin-patient-reports patients error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -468,8 +468,7 @@ router.get('/search', authMiddleware, adminOnly, async (req, res) => {
     const children = await Child.find(match).select('firstName lastName dateOfBirth').limit(20).lean();
     return res.json({ success: true, results: children.map((c) => ({ id: String(c._id), name: fullName(c) || 'Unnamed Child' })) });
   } catch (err) {
-    console.error('admin-patient-reports search error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 

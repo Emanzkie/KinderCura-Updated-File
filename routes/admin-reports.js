@@ -40,6 +40,7 @@ const Assessment = require('../models/Assessment');
 const AssessmentResult = require('../models/AssessmentResult');
 const PediaCustomQuestionAssignment = require('../models/PediaCustomQuestionAssignment');
 const scoring = require('../constants/scoring');
+const { sendServerError } = require('../middleware/serverError');
 const { DATE_ONLY, CLINIC_TIMEZONE, clinicDayStart, clinicDayEnd } = require('../constants/clinicTime');
 
 // Collection names are read off the models rather than typed as strings, so a
@@ -566,8 +567,7 @@ router.get('/users', authMiddleware, adminOnly, async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('admin-reports users error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -682,8 +682,7 @@ router.get('/children', authMiddleware, adminOnly, async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('admin-reports children error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -999,8 +998,7 @@ router.get('/screenings', authMiddleware, adminOnly, async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('admin-reports screenings error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1212,8 +1210,7 @@ router.get('/concordance', authMiddleware, adminOnly, async (req, res) => {
         + 'diagnostic reference standard.',
     });
   } catch (err) {
-    console.error('admin-reports concordance error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
