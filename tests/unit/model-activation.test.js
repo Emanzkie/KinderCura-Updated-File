@@ -69,6 +69,9 @@ async function run() {
     // countDocuments call after writing, so a single active model has to be
     // simulated here for the unit test to exercise the success path.
     TrainedModel.countDocuments = async () => 1;
+    // The newest activation is the one kept active.
+    const origFindOne = TrainedModel.findOne;
+    TrainedModel.findOne = () => { const q = { sort: () => q, select: () => q, lean: async () => ({ _id: 'candidate-id', version: 7 }) }; return q; };
 
     const candidate = {
       _id: 'candidate-id',
@@ -82,17 +85,53 @@ async function run() {
     const blocker = getModelActivationBlocker(candidate);
     assert.strictEqual(blocker, null, 'a completed, compatible, file-backed candidate must be activatable');
 
-    await performModelActivation(candidate);
+    const settled = await performModelActivation(candidate);
     TrainedModel.updateMany = origUpdateMany;
     TrainedModel.countDocuments = origCountDocuments;
+    TrainedModel.findOne = origFindOne;
 
     assert.strictEqual(candidate.isActive, true, 'candidate becomes active');
+    assert.ok(candidate.activatedAt instanceof Date, 'activation time is recorded');
     assert.strictEqual(candidate.saved, true, 'candidate is saved');
+    assert.strictEqual(settled.activeModelId, 'candidate-id');
     // Proves the "deactivate everything else" call is issued, scoped to
     // exclude only the newly activated model — this is what makes the
     // previously active model become inactive.
     assert.deepStrictEqual(updateManyFilter, { _id: { $ne: 'candidate-id' }, isActive: true });
     assert.deepStrictEqual(updateManyUpdate, { $set: { isActive: false } });
+  }
+
+  // ── C2: two activations at the same moment leave exactly one active ──
+  // (ADMIN bug scan C23: each used to deactivate "every model but mine", so
+  // the two could switch each other off and leave none active.)
+  {
+    const store = [
+      { _id: 'old', isActive: true, activatedAt: null, version: 1 },
+      { _id: 'a', isActive: false, activatedAt: null, version: 2 },
+      { _id: 'b', isActive: false, activatedAt: null, version: 3 },
+    ];
+    const tick = () => new Promise((r) => setImmediate(r));
+    const matches = (m, f) => (f.isActive === undefined || m.isActive === f.isActive) && (!f._id || m._id !== f._id.$ne);
+    const saved = { findOne: TrainedModel.findOne, updateMany: TrainedModel.updateMany, countDocuments: TrainedModel.countDocuments };
+    TrainedModel.findOne = (f) => {
+      const q = { sort: () => q, select: () => q, lean: async () => {
+        await tick();
+        const rows = store.filter((m) => matches(m, f))
+          .sort((x, y) => (y.activatedAt || 0) - (x.activatedAt || 0) || (y._id > x._id ? 1 : -1));
+        return rows[0] ? { _id: rows[0]._id, version: rows[0].version } : null;
+      } };
+      return q;
+    };
+    TrainedModel.updateMany = async (f, u) => { await tick(); store.filter((m) => matches(m, f)).forEach((m) => Object.assign(m, u.$set)); };
+    TrainedModel.countDocuments = async (f) => { await tick(); return store.filter((m) => matches(m, f)).length; };
+    const doc = (id) => ({ _id: id, async save() { await tick(); Object.assign(store.find((m) => m._id === id), { isActive: this.isActive, activatedAt: this.activatedAt }); } });
+
+    const results = await Promise.all([performModelActivation(doc('a')), performModelActivation(doc('b'))]);
+    Object.assign(TrainedModel, saved);
+    const active = store.filter((m) => m.isActive).map((m) => m._id);
+    assert.strictEqual(active.length, 1, `exactly one model stays active, got ${JSON.stringify(active)}`);
+    assert.notStrictEqual(active[0], 'old');
+    assert.ok(results.every((r) => String(r.activeModelId) === active[0]), 'both activations report the same winner');
   }
 
   // ── D: incompatible candidate activation is rejected ──

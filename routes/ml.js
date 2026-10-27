@@ -337,24 +337,35 @@ async function performModelActivation(model) {
   // Activate first, then deactivate the rest: if saving the new model fails,
   // the previously active model is still active (never zero active models).
   model.isActive = true;
+  model.activatedAt = new Date();
   await model.save();
-  await TrainedModel.updateMany({ _id: { $ne: model._id }, isActive: true }, { $set: { isActive: false } });
+  return settleActiveModel();
+}
 
-  const activeCount = await TrainedModel.countDocuments({ isActive: true });
-  if (activeCount !== 1) {
-    // Self-heal: re-run the deactivation, then re-check. If it still fails the
-    // caller is told, because silently reporting success here would leave the
-    // system in the exact state this function exists to prevent.
-    await TrainedModel.updateMany({ _id: { $ne: model._id }, isActive: true }, { $set: { isActive: false } });
-    const repaired = await TrainedModel.countDocuments({ isActive: true });
-    if (repaired !== 1) {
-      throw new Error(
-        `Model activation left ${repaired} active model(s) instead of exactly 1. ` +
-        'The active model may be ambiguous — check the Trained Models panel before relying on ML predictions.'
-      );
-    }
+// Leaves exactly one active model: the most recently activated one. Each
+// activation used to deactivate "every model but mine", so two activations at
+// the same moment could switch each other off and leave none active. Every
+// activation now runs this after its own write and they all keep the same
+// winner. Re-checked a few times because another activation may be settling
+// at the same moment; the newest one's own pass always leaves exactly one.
+async function settleActiveModel() {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const winner = await TrainedModel.findOne({ isActive: true })
+      .sort({ activatedAt: -1, _id: -1 })
+      .select('_id version')
+      .lean();
+    if (!winner) break;
+    await TrainedModel.updateMany({ _id: { $ne: winner._id }, isActive: true }, { $set: { isActive: false } });
+    const activeCount = await TrainedModel.countDocuments({ isActive: true });
+    if (activeCount === 1) return { activeCount: 1, activeModelId: winner._id, activeVersion: winner.version };
   }
-  return { activeCount: 1 };
+  // Silently reporting success here would leave the system in the exact
+  // state this function exists to prevent.
+  const activeCount = await TrainedModel.countDocuments({ isActive: true });
+  throw new Error(
+    `Model activation left ${activeCount} active model(s) instead of exactly 1. ` +
+    'The active model may be ambiguous — check the Trained Models panel before relying on ML predictions.'
+  );
 }
 
 /**
@@ -601,7 +612,12 @@ router.post('/models/:modelId/activate', authMiddleware, adminOnly, async (req, 
       .select('version')
       .lean();
 
-    await performModelActivation(model);
+    const settled = await performModelActivation(model);
+    if (String(settled.activeModelId) !== String(model._id)) {
+      return res.status(409).json({
+        error: `Another model (v${settled.activeVersion}) was activated at the same moment and is now the active model. Activate this one again if it should replace it.`,
+      });
+    }
 
     sse.broadcast('analytics:update', {
       type: 'ml',

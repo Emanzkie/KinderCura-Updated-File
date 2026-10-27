@@ -68,6 +68,9 @@ const trainedModelSchema = new mongoose.Schema(
 
     // Marks the model that should be used for live predictions.
     isActive: { type: Boolean, default: false, index: true },
+    // When an admin last activated this model. The most recent activation
+    // wins if two happen at once (routes/ml.js performModelActivation).
+    activatedAt: { type: Date, default: null },
 
     // Admin who triggered the training run.
     trainedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
