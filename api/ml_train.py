@@ -74,7 +74,9 @@ class handler(BaseHTTPRequestHandler):
         expected_secret = os.environ.get("ML_SERVICE_SECRET")
         provided_secret = self.headers.get("x-ml-secret")
 
-        if not expected_secret or provided_secret != expected_secret:
+        if not expected_secret or provided_secret is None or not hmac.compare_digest(
+            provided_secret.encode("utf-8"), expected_secret.encode("utf-8")
+        ):
             self._send_json(401, {
                 "success": False,
                 "error": "Unauthorized: invalid or missing ML_SERVICE_SECRET",
