@@ -42,6 +42,13 @@ const MODEL_STORE_DIR = 'uploads/models';
 
 // Vercel Functions reject request/response bodies over 4.5 MB. Artifacts travel
 // base64-encoded (x4/3) inside JSON, so the raw artifact must stay well below it.
+// A prediction runs inside a parent's assessment submission (and an admin's
+// activation check). On Vercel every request is answered with a 504 after
+// 9.5 s (server.js), so waiting up to 60 s there turned a slow ML function
+// into a "Request timed out" on submit. Giving up sooner lets the rule-based
+// fallback finish inside that budget; a long-lived server keeps 60 s.
+const PREDICT_TIMEOUT_MS = (process.env.VERCEL || process.env.NOW_REGION) ? 6000 : 60000;
+
 const MAX_REMOTE_ARTIFACT_BYTES = Math.floor((4.5 * 1024 * 1024 - 64 * 1024) * 3 / 4);
 
 // Datasets above this size are gzip-compressed before being sent to the remote
@@ -558,7 +565,6 @@ async function checkPythonEnvironment() {
  * call — behaves exactly as before.
  */
 async function trainModel(datasetPath, datasetId, options = {}) {
-  const outputDir = ensureModelDir();
   const featureSet = typeof options === 'string'
     ? options
     : (options?.featureSet || 'score_based');
@@ -614,6 +620,10 @@ async function trainModel(datasetPath, datasetId, options = {}) {
       result.model_path = await persistModelArtifact(filename, artifactBuffer);
     } else {
       // ── Local Python Subprocess Execution ────────────────────────────────
+      // Only this path writes to uploads/models. It used to be created before
+      // the remote/local choice, and on Vercel (read-only, and the folder is
+      // git-ignored so it is not deployed) that mkdir failed every training.
+      const outputDir = ensureModelDir();
       // With object storage on, the dataset arrives as text and datasetPath
       // is only its storage key, not a file trainer.py can open: write it to
       // a temporary file for the run.
@@ -902,7 +912,7 @@ async function getPrediction(modelPath, inputData) {
     const { ok, status, data } = await mlServiceRequest('/api/py/predict', {
       method: 'POST',
       body: JSON.stringify({ model_artifact_base64: loaded.buffer.toString('base64'), data: inputData }),
-      timeoutMs: 60000,
+      timeoutMs: PREDICT_TIMEOUT_MS,
     });
     if (!ok || !data.success) {
       const message = serviceErrorText(data.error) || `Prediction service returned HTTP ${status}`;

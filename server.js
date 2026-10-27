@@ -23,20 +23,11 @@ const IS_VERCEL = !!(process.env.VERCEL || process.env.NOW_REGION);
 
 // ── Serverless safety-timeout middleware ────────────────────────
 // Ensures every request sends *some* response before Vercel's
-// 10 s (hobby) / 60 s (pro) hard timeout kills the function.
+// 10 s (hobby) / 60 s (pro) hard timeout kills the function
+// (middleware/safetyTimeout.js).
 if (IS_VERCEL) {
-    app.use((req, res, next) => {
-        const SAFETY_MS = 9500; // 9.5 seconds — gives cold-start DB connect more room under 10 s hobby limit
-        const timer = setTimeout(() => {
-            if (!res.headersSent) {
-                console.error(`[TIMEOUT] Request timed out: ${req.method} ${req.originalUrl}`);
-                res.status(504).json({ error: 'Request timed out' });
-            }
-        }, SAFETY_MS);
-        res.on('finish', () => clearTimeout(timer));
-        res.on('close', () => clearTimeout(timer));
-        next();
-    });
+    const { safetyTimeout } = require('./middleware/safetyTimeout');
+    app.use(safetyTimeout(9500)); // 9.5 seconds — gives cold-start DB connect more room under 10 s hobby limit
 }
 
 // ── DB connection middleware for serverless ──────────────────────
