@@ -812,6 +812,22 @@ const VALID_RISK_LABELS = ['Low', 'Medium', 'High'];
  * Rows with an invalid label are reported, not rejected here — the trainer
  * drops them — but a file with no usable label at all is refused.
  */
+/**
+ * validateTrainingCsv for either upload format. A JSON dataset (an array of
+ * row objects — what the upload accepts and trainer.py reads with
+ * pandas.read_json) is checked by the same rules via the equivalent CSV.
+ */
+function validateTrainingDataset(content, featureSet = 'score_based', fileType = 'csv') {
+  if (fileType !== 'json') return validateTrainingCsv(content, featureSet);
+  let rows;
+  try { rows = JSON.parse(String(content || '')); } catch { return { ok: false, rows: 0, error: 'The dataset is not valid JSON.' }; }
+  if (!Array.isArray(rows)) return { ok: false, rows: 0, error: 'A JSON dataset must be an array of rows.' };
+  const columns = [...new Set(rows.flatMap((r) => (r && typeof r === 'object' ? Object.keys(r) : [])))];
+  const cell = (v) => (v === null || v === undefined ? '' : String(v).replace(/[",\r\n]/g, ' '));
+  const csv = [columns.join(','), ...rows.map((r) => columns.map((c) => cell(r && r[c])).join(','))].join('\n');
+  return validateTrainingCsv(csv, featureSet);
+}
+
 function validateTrainingCsv(content, featureSet = 'score_based') {
   const lines = String(content || '').split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return { ok: false, rows: 0, error: 'The dataset has no data rows.' };
@@ -986,6 +1002,7 @@ module.exports = {
   modelArtifactFilename,
   buildRemoteTrainingPayload,
   validateTrainingCsv,
+  validateTrainingDataset,
   // The feature sets ml/trainer.py accepts (its --feature-set choices).
   TRAINING_FEATURE_SETS: Object.keys(TRAINING_REQUIRED_COLUMNS),
   MAX_REMOTE_ARTIFACT_BYTES,

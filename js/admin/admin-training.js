@@ -238,6 +238,10 @@ async function loadDatasets() {
 
         renderDatasetPipelineSummary(datasets, summary);
 
+        // A run started before this page was (re)loaded is still watched, so
+        // the row and the Trained Models list update when it ends.
+        if (!_pollTimer && datasets.some((dataset) => dataset.status === 'training')) pollDatasetStatus();
+
         const rowsEl = document.getElementById('datasetRows');
         if (!datasets.length) {
             rowsEl.innerHTML = '<tr><td colspan="6" class="empty-cell">No datasets uploaded yet.</td></tr>';
@@ -319,6 +323,13 @@ async function uploadDataset() {
         errEl.style.display = 'block';
         return;
     }
+    // Matches the server limit (routes/admin.js DATASET_MAX_BYTES); larger
+    // bodies are refused by the host before they reach the server.
+    if (file.size > DATASET_MAX_BYTES) {
+        errEl.textContent = `This file is ${fileSizeText(file.size)}. Datasets can be up to 4 MB — split it into smaller files or remove unused columns.`;
+        errEl.style.display = 'block';
+        return;
+    }
 
     const btn = document.getElementById('uploadBtn');
     btn.disabled = true;
@@ -337,8 +348,9 @@ async function uploadDataset() {
             headers: KC.token() ? { Authorization: `Bearer ${KC.token()}` } : {},
             body: fd,
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Upload failed.');
+        // A host error page is not JSON; report the status instead of a parse error.
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || (res.status === 413 ? 'The dataset file is too large (4 MB maximum).' : `Upload failed (HTTP ${res.status}).`));
 
         okEl.textContent = 'Dataset uploaded successfully.';
         okEl.style.display = 'block';
@@ -375,11 +387,29 @@ function trainingStartedMessage(res, verb) {
     return `${verb} started${rows}. Model v${res.version} is training on the ML service; it will appear in Trained Models as a candidate when it finishes.`;
 }
 
+const DATASET_MAX_BYTES = 4 * 1024 * 1024;
+
+// The model type chosen in "Train using" (score_based or question_based).
+function selectedFeatureSet() {
+    const select = document.getElementById('trainFeatureSet');
+    return select && select.value ? select.value : 'score_based';
+}
+function selectedFeatureSetLabel() {
+    const select = document.getElementById('trainFeatureSet');
+    return select && select.selectedIndex >= 0 ? select.options[select.selectedIndex].text : 'Scores';
+}
+function startTraining(datasetId) {
+    return apiFetch(`/admin/training/${encodeURIComponent(datasetId)}/train`, {
+        method: 'POST',
+        body: JSON.stringify({ featureSet: selectedFeatureSet() }),
+    });
+}
+
 async function processDataset(datasetId, button) {
-    if (!confirm('Process this dataset now?\n\nIt will be validated, sent to the ML training service, and the trained model saved as a CANDIDATE (the active model is not changed).')) return;
+    if (!confirm(`Process this dataset now?\n\nModel type: ${selectedFeatureSetLabel()}\n\nIt will be validated, sent to the ML training service, and the trained model saved as a CANDIDATE (the active model is not changed).`)) return;
     await withBusy(button, 'Starting training…', async () => {
         try {
-            const res = await apiFetch(`/admin/training/${datasetId}/train`, { method: 'POST' });
+            const res = await startTraining(datasetId);
             alert(trainingStartedMessage(res, 'Training'));
             await loadDatasets();
             pollDatasetStatus(datasetId);
@@ -429,6 +459,7 @@ async function runMlDiagnostics(button) {
 async function retrainDataset(datasetId, button) {
     const confirmed = confirm(
         'Retrain this dataset?\n\n'
+        + `Model type: ${selectedFeatureSetLabel()}\n\n`
         + 'A new model will be trained as a CANDIDATE — it will not replace the '
         + 'currently active model. You can review its metrics and activate it '
         + 'manually in the Trained Models section below.'
@@ -436,7 +467,7 @@ async function retrainDataset(datasetId, button) {
     if (!confirmed) return;
     await withBusy(button, 'Starting training…', async () => {
         try {
-            const res = await apiFetch(`/admin/training/${datasetId}/train`, { method: 'POST' });
+            const res = await startTraining(datasetId);
             alert(trainingStartedMessage(res, 'Retraining'));
             await loadDatasets();
             pollDatasetStatus(datasetId);

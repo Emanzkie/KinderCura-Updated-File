@@ -12,6 +12,8 @@
 // No DB, no Python: models and the ML manager are stubbed, the real admin
 // router runs in-process.
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const http = require('http');
 const express = require('express');
 const mongoose = require('mongoose');
@@ -73,7 +75,6 @@ TrainedModel.create = async (doc) => { const m = { _id: newId(), createdAt: new 
 
 const CSV = 'communication_score,social_score,cognitive_score,motor_score,overall_score,risk_category\n1,1,1,1,1,Low\n2,2,2,2,2,High\n';
 fileStorage.readStored = async () => Buffer.from(CSV);
-fileStorage.deleteStored = async () => {};
 let trainCalls = 0;
 let finishTraining;
 modelManager.resolveDatasetPath = () => null;
@@ -157,6 +158,55 @@ const quiet = async (fn) => {
     r = await call('DELETE', '/api/admin/training/not-an-id');
     assert.strictEqual(r.status, 404);
     ok('an abandoned run can be deleted, and a malformed id is a 404');
+
+    // ── JSON datasets and the chosen model type (C15, C16) ────────────────
+    const v = modelManager.validateTrainingDataset(JSON.stringify([
+      { communication_score: 1, social_score: 1, cognitive_score: 1, motor_score: 1, overall_score: 1, risk_category: 'low' },
+      { communication_score: 2, social_score: 2, cognitive_score: 2, motor_score: 2, overall_score: 2, risk_category: 'High' },
+    ]), 'score_based', 'json');
+    assert.strictEqual(v.ok, true, JSON.stringify(v));
+    assert.deepStrictEqual(v.labelCounts, { Low: 1, High: 1 });
+    assert.strictEqual(modelManager.validateTrainingDataset('{not json', 'score_based', 'json').ok, false);
+    assert.strictEqual(modelManager.validateTrainingDataset('{"a":1}', 'score_based', 'json').ok, false);
+    assert.strictEqual(modelManager.validateTrainingDataset(JSON.stringify([{ communication_score: 1, risk_category: 'Low' }]), 'score_based', 'json').ok, false);
+    ok('JSON datasets are validated as JSON (rows, required columns, labels)');
+
+    const savedRead = fileStorage.readStored;
+    fileStorage.readStored = async () => Buffer.from(JSON.stringify([
+      { communication_score: 1, social_score: 1, cognitive_score: 1, motor_score: 1, overall_score: 1, risk_category: 'Low' },
+    ]));
+    let trainedWith = null;
+    modelManager.trainModel = (_p, _id, opts) => { trainedWith = opts; return new Promise(() => {}); };
+    const jsonDataset = addDataset({ storedName: 'x.json', filePath: '/uploads/datasets/x.json' });
+    r = await call('POST', `/api/admin/training/${jsonDataset}/train`, { featureSet: 'score_based' });
+    fileStorage.readStored = savedRead;
+    assert.strictEqual(r.status, 200, `a JSON dataset from storage can be trained: ${JSON.stringify(r.body)}`);
+    assert.strictEqual(trainedWith.featureSet, 'score_based');
+
+    r = await call('POST', `/api/admin/training/${fresh}/train`, { featureSet: 'question_based' });
+    assert.strictEqual(r.status, 400, 'a score-only CSV is refused for question-based training');
+    assert.match(r.body.error, /Q01/);
+    ok('the requested model type reaches the trainer, and JSON datasets from storage train');
+
+    // ── Upload limits (C17) ───────────────────────────────────────────────
+    const upload = async (name, content) => quiet(async () => {
+      const fd = new FormData();
+      fd.append('dataset', new Blob([content]), name);
+      const res = await fetch(`${base}/api/admin/training/upload`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+      return { status: res.status, body: await res.json().catch(() => ({})) };
+    });
+    r = await upload('big.csv', Buffer.alloc(4 * 1024 * 1024 + 10, 'a'));
+    assert.strictEqual(r.status, 413);
+    assert.match(r.body.error, /4 MB/);
+    r = await upload('labels.csv', 'name,age\nA,3\n');
+    assert.strictEqual(r.status, 400, 'a file no model type could train on is refused at upload');
+    assert.match(r.body.error, /cannot be trained/);
+    r = await upload('broken.json', '{not json');
+    assert.strictEqual(r.status, 400);
+    const datasetDir = path.join(__dirname, '..', '..', 'public', 'uploads', 'datasets');
+    const leftovers = fs.existsSync(datasetDir) ? fs.readdirSync(datasetDir).filter((f) => /_(labels\.csv|broken\.json|big\.csv)$/.test(f)) : [];
+    assert.deepStrictEqual(leftovers, [], 'a refused upload leaves no file behind');
+    ok('uploads over 4 MB get a clear 413, and untrainable or unreadable files are refused at upload');
   } finally {
     server.closeAllConnections();
     server.close();

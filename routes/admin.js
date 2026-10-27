@@ -173,6 +173,7 @@ const datasetFilename = (req, file, cb) => {
 
 const datasetStorage = fileStorage.makeStorage(DATASET_DIR, datasetFilename);
 
+const DATASET_MAX_BYTES = 4 * 1024 * 1024;
 const datasetUpload = multer({
   storage: datasetStorage,
   fileFilter: (req, file, cb) => {
@@ -180,7 +181,9 @@ const datasetUpload = multer({
     if (['.csv', '.json'].includes(ext)) return cb(null, true);
     cb(new Error('Only CSV and JSON datasets are allowed.'));
   },
-  limits: { fileSize: 10 * 1024 * 1024 },
+  // Vercel refuses request bodies over 4.5 MB before they reach this server,
+  // so a 10 MB limit here only produced a confusing host error page.
+  limits: { fileSize: DATASET_MAX_BYTES },
 });
 
 // Takes the file's text rather than a path, so it works for both a file on
@@ -1720,6 +1723,9 @@ router.get('/training/datasets', authMiddleware, adminOnly, async (req, res) => 
 // Stores dataset metadata and the uploaded file in /public/uploads/datasets.
 router.post('/training/upload', authMiddleware, adminOnly, (req, res) => {
   datasetUpload.single('dataset')(req, res, async (err) => {
+    if (err && err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: 'The dataset file is larger than 4 MB. Split it into smaller files or remove unused columns.' });
+    }
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'Dataset file is required.' });
 
@@ -1739,7 +1745,22 @@ router.post('/training/upload', authMiddleware, adminOnly, (req, res) => {
       const raw = req.file.buffer
         ? req.file.buffer.toString('utf8')
         : fs.readFileSync(path.join(ensureDatasetDir(), req.file.filename), 'utf8');
-      const parsed = parseDatasetContent(raw, ext);
+      let parsed;
+      try {
+        parsed = parseDatasetContent(raw, ext);
+      } catch {
+        safeRemoveUpload(`/uploads/datasets/${req.file.filename}`);
+        return res.status(400).json({ error: 'The dataset file could not be read. Check that it is valid CSV or JSON.' });
+      }
+      // Refuse a file no model type could train on now, rather than letting
+      // it fail later at training time.
+      const modelManager = require('../ml/model_manager');
+      const fileType = ext === '.json' ? 'json' : 'csv';
+      const checks = modelManager.TRAINING_FEATURE_SETS.map((set) => modelManager.validateTrainingDataset(raw, set, fileType));
+      if (!checks.some((c) => c.ok)) {
+        safeRemoveUpload(`/uploads/datasets/${req.file.filename}`);
+        return res.status(400).json({ error: `Dataset cannot be trained: ${checks[0].error}` });
+      }
       const storageKey = `${DATASET_DIR}/${req.file.filename}`;
       await fileStorage.storeFile(DATASET_DIR, req.file.filename, req.file, DATASET_ACCESS);
       // Never record a dataset whose file cannot be read back.
@@ -1834,11 +1855,14 @@ router.post('/training/:id/train', authMiddleware, adminOnly, async (req, res) =
 
     // Validate the CSV here so a malformed file is reported before the ML
     // service is contacted.
+    // JSON datasets are checked as JSON — they used to be read as CSV text and
+    // always refused once they came from object storage.
     let validation = null;
-    const csvText = datasetContent
-      || (datasetPath && datasetPath.toLowerCase().endsWith('.csv') && fs.existsSync(datasetPath) ? fs.readFileSync(datasetPath, 'utf8') : null);
-    if (csvText) {
-      validation = modelManager.validateTrainingCsv(csvText, featureSet);
+    const fileType = String(storedName).toLowerCase().endsWith('.json') ? 'json' : 'csv';
+    const datasetText = datasetContent
+      || (datasetPath && fs.existsSync(datasetPath) ? fs.readFileSync(datasetPath, 'utf8') : null);
+    if (datasetText) {
+      validation = modelManager.validateTrainingDataset(datasetText, featureSet, fileType);
       console.log(`[ml] Training dataset check: ${validation.ok ? 'ok' : 'failed'} — ${validation.rows} rows, ${validation.columns || '?'} columns, labels ${JSON.stringify(validation.labelCounts || {})}, invalid labels ${validation.invalidLabels || 0}`);
       if (!validation.ok) return res.status(400).json({ error: `Dataset cannot be trained: ${validation.error}`, validation });
     }
