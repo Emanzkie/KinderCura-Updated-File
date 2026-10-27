@@ -16,6 +16,12 @@ const modelManager = require('../ml/model_manager');
 const fileStorage = require('../services/fileStorage');
 const staging = require('../constants/developmental-staging');
 const sse = require('../sse');
+const mongoose = require('mongoose');
+
+// A malformed model id is "not found", not a database cast error (500).
+router.param('modelId', (req, res, next, id) => (
+  mongoose.Types.ObjectId.isValid(String(id)) ? next() : res.status(404).json({ error: 'Model not found.' })
+));
 
 // POST /api/ml/train-model was removed (ADMIN bug scan C18). It duplicated
 // POST /api/admin/training/:id/train without its checks (dataset validation,
@@ -76,7 +82,11 @@ router.get('/model-status', authMiddleware, adminOnly, async (req, res) => {
  * Predicts risk category for a set of assessment scores.
  * Body: { communication_score, social_score, cognitive_score, motor_score, overall_score, age_months?, gender? }
  */
-router.post('/predict', authMiddleware, async (req, res) => {
+// Admins only: no page calls it (assessments predict server-side through
+// services/assessmentProgress.js), and each call runs the model on arbitrary
+// scores — open to any signed-in account, that was free ML service usage and
+// a way to probe the model.
+router.post('/predict', authMiddleware, adminOnly, async (req, res) => {
   try {
     const activeModel = await TrainedModel.findOne({ isActive: true, status: 'completed' }).lean();
 

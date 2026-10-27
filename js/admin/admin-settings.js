@@ -186,7 +186,11 @@
             state.style.color = 'var(--text-light)';
             state.textContent = 'Checking the email connection...';
             try {
-                const res = await fetch(`${API}/auth/email-status`);
+                // Admin-only route; plain fetch so a 503 (email not working)
+                // still shows its code instead of throwing.
+                const res = await fetch(`${API}/auth/email-status`, {
+                    headers: KC.token() ? { Authorization: `Bearer ${KC.token()}` } : {},
+                });
                 const data = await res.json().catch(() => ({}));
                 if (data.ok) {
                     state.textContent = `Email connection OK (${data.code || 'ok'}). No email was sent.`;

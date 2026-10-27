@@ -17,7 +17,7 @@ const GuardianLink = require('../models/GuardianLink');
 const Assessment = require('../models/Assessment');
 const OtpCode = require('../models/OtpCode');
 const Notification = require('../models/Notification');
-const { authMiddleware, signPrcResubmitToken } = require('../middleware/auth');
+const { authMiddleware, adminOnly, signPrcResubmitToken } = require('../middleware/auth');
 const sse = require('../sse');
 const fileStorage = require('../services/fileStorage');
 const { parseSignupConsent } = require('../constants/legalConsent');
@@ -612,9 +612,11 @@ async function getParentPreAssessmentState(parentId) {
 // 25 plain). The host is fixed and the port is allowlisted, so this cannot be
 // pointed at anything else. It answers "is only 465 blocked, or all of SMTP?",
 // which decides between a one-line port change and a different transport.
+// Admins only (Settings > Test email): every call opens a mail connection,
+// so it must not be something anyone on the internet can trigger.
 const PROBE_PORTS = new Map([[465, true], [587, false], [25, false]]);
 
-router.get('/email-status', async (req, res) => {
+router.get('/email-status', authMiddleware, adminOnly, async (req, res) => {
   const startedAt = Date.now();
   const requestedPort = Number(req.query.port);
   const probePort = PROBE_PORTS.has(requestedPort) ? requestedPort : 465;
