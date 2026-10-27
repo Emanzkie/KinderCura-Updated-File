@@ -1,5 +1,13 @@
 // assets/js/prc-verification.js
 
+// Admin-only page, guarded the same way as the other admin pages (the API
+// refuses non-admins too; this just keeps them off the page).
+(function guardAdminPage() {
+    requireAuth();
+    const user = KC.user();
+    if (user && user.role !== 'admin') window.location.href = '/parent/dashboard.html';
+})();
+
 document.addEventListener('DOMContentLoaded', function() {
     // ── Listing / Filtering Logic ──
     let verifications = [];
@@ -23,10 +31,12 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch { return dateStr; }
     }
 
+    // Escapes text for HTML, including quotes so it is also safe inside an
+    // attribute. Everything a pediatrician typed goes through this.
     function esc(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
+        return String(str ?? '').replace(/[&<>"']/g, (ch) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[ch]));
     }
 
     function statusBadge(status) {
@@ -140,7 +150,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         cardView.innerHTML = items.map(p => `
-            <div class="prc-card prc-card--${p.status}">
+            <div class="prc-card prc-card--${esc(p.status)}">
                 <div class="prc-card__header">
                     <div>
                         <p class="prc-card__name">${esc(p.fullName)}</p>
@@ -193,11 +203,36 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ── Modal Logic ──
 
-    function withDocumentToken(url) {
-        const token = typeof KC !== 'undefined' && KC.token ? KC.token() : '';
-        if (!token || !url || !url.startsWith('/api/prc/document/')) return url;
-        if (/[?&]token=/.test(url)) return url;
-        return url + (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+    // The secure document endpoint is fetched with the Authorization header and
+    // shown from a blob: URL. It used to be an <img src> carrying the admin's
+    // login token in the query string, which leaked it into server logs,
+    // browser history and Referer headers.
+    const SECURE_DOCUMENT_PREFIX = '/api/prc/document/';
+    let activeDocumentBlobUrl = null;
+
+    function releaseDocumentBlob() {
+        if (activeDocumentBlobUrl) {
+            URL.revokeObjectURL(activeDocumentBlobUrl);
+            activeDocumentBlobUrl = null;
+        }
+    }
+
+    async function loadDocumentUrl(url) {
+        if (!url.startsWith(SECURE_DOCUMENT_PREFIX)) return { url, type: '' };
+        const res = await fetch(url, {
+            headers: { Authorization: `Bearer ${KC.token()}` },
+            cache: 'no-store',
+        });
+        if (!res.ok) throw new Error(`Document request failed (${res.status})`);
+        const blob = await res.blob();
+        releaseDocumentBlob();
+        activeDocumentBlobUrl = URL.createObjectURL(blob);
+        return { url: activeDocumentBlobUrl, type: blob.type || '' };
+    }
+
+    function documentFileName(pedia, type) {
+        const ext = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'application/pdf': '.pdf' }[type] || '';
+        return `prc-id-${pedia && pedia._id ? pedia._id : 'document'}${ext}`;
     }
 
     function normalizeDocumentUrl(rawUrl, pedia) {
@@ -206,12 +241,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const clean = String(rawUrl).trim().replace(/\\/g, '/');
         if (!clean) return '';
         if (/^https?:\/\//i.test(clean)) return clean;
-        if (clean.startsWith('/api/prc/document/')) return withDocumentToken(clean);
+        if (clean.startsWith(SECURE_DOCUMENT_PREFIX)) return clean;
         if (clean.startsWith('/uploads/')) return clean;
         if (clean.startsWith('uploads/')) return '/' + clean;
         if (clean.startsWith('/')) return clean;
 
-        return withDocumentToken((pedia && pedia.prcDocumentUrl) || ('/api/prc/document/' + pedia._id));
+        return (pedia && pedia.prcDocumentUrl) || (SECURE_DOCUMENT_PREFIX + pedia._id);
     }
 
     function buildPrcDocumentCandidates(pedia) {
@@ -246,14 +281,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!url || seen.has(url)) return;
             seen.add(url);
             candidates.push({ label: candidate.label, url });
-        });
-
-        console.log('[PRC] Document URL candidates:', {
-            pediatricianId: pedia?._id,
-            hasPrcDocument: pedia?.hasPrcDocument,
-            existsOnDisk: pedia?.prcDocumentExistsOnDisk,
-            source: pedia?.prcDocumentSource,
-            candidates,
         });
 
         return candidates;
@@ -297,53 +324,47 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         let currentIndex = 0;
+        const requestId = activeModalRequestId;
 
-        function setActionUrl(url) {
+        function setActionUrl(url, type) {
             if (viewBtn) {
-                viewBtn.onclick = function() { window.open(url, '_blank'); };
+                viewBtn.onclick = function() { window.open(url, '_blank', 'noopener'); };
             }
             if (downloadLink) {
                 downloadLink.href = url;
+                downloadLink.download = documentFileName(pedia, type);
             }
         }
 
-        function tryCandidate() {
+        function nextCandidate() {
+            currentIndex += 1;
+            tryCandidate();
+        }
+
+        async function tryCandidate() {
             const candidate = candidates[currentIndex];
             if (!candidate) {
                 if (actions) actions.style.display = 'none';
                 showDocumentPlaceholder(preview, 'Document could not be loaded', 'A document record exists, but every returned URL failed.');
-                console.error('[PRC] All document candidates failed:', {
-                    pediatricianId: pedia?._id,
-                    candidates,
-                });
                 return;
             }
 
-            console.log('[PRC] Loading document candidate:', {
-                pediatricianId: pedia?._id,
-                label: candidate.label,
-                url: candidate.url,
-            });
-            setActionUrl(candidate.url);
-            img.src = candidate.url;
+            let loaded;
+            try {
+                loaded = await loadDocumentUrl(candidate.url);
+            } catch (err) {
+                if (requestId !== activeModalRequestId) return; // another pediatrician was opened meanwhile
+                nextCandidate();
+                return;
+            }
+            if (requestId !== activeModalRequestId) return;
+            setActionUrl(loaded.url, loaded.type);
+            img.src = loaded.url;
         }
 
-        img.onload = function() {
-            console.log('[PRC] Document image loaded:', {
-                pediatricianId: pedia?._id,
-                candidate: candidates[currentIndex],
-                naturalWidth: img.naturalWidth,
-                naturalHeight: img.naturalHeight,
-            });
-        };
-
         img.onerror = function() {
-            console.warn('[PRC] Document image candidate failed:', {
-                pediatricianId: pedia?._id,
-                candidate: candidates[currentIndex],
-            });
-            currentIndex += 1;
-            tryCandidate();
+            if (requestId !== activeModalRequestId) return;
+            nextCandidate();
         };
 
         tryCandidate();
@@ -356,7 +377,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const requestId = ++activeModalRequestId;
-        console.log('[PRC] Opening verification modal for pediatrician ID:', pediatricianId, 'request:', requestId);
+        releaseDocumentBlob();
 
         if (modalBody) {
             modalBody.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary" role="status"></div><p>Loading pediatrician details...</p></div>';
@@ -366,23 +387,13 @@ document.addEventListener('DOMContentLoaded', function() {
         bsModal.show();
 
         try {
-            const url = `/admin/pediatricians/${pediatricianId}/prc-details`;
-            console.log('[PRC] Fetching from:', url);
-
+            const url = `/admin/pediatricians/${encodeURIComponent(pediatricianId)}/prc-details`;
             const data = await apiFetch(url);
-            console.log('[PRC] API response:', data);
 
-            if (requestId !== activeModalRequestId) {
-                console.log('[PRC] Ignoring stale modal response:', {
-                    pediatricianId,
-                    requestId,
-                    activeModalRequestId,
-                });
-                return;
-            }
+            // A newer pediatrician was opened while this one loaded.
+            if (requestId !== activeModalRequestId) return;
 
             if (data.success && data.pediatrician) {
-                console.log('[PRC] Pediatrician data received:', data.pediatrician);
                 renderModalContent(data.pediatrician);
             } else {
                 throw new Error(data.message || 'Pediatrician data not found');
@@ -394,7 +405,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (modalBody) {
                 modalBody.innerHTML = `
                     <div class="alert alert-danger">
-                        <strong>Error loading data:</strong> ${error.message}
+                        <strong>Error loading data:</strong> ${esc(error.message)}
                     </div>
                 `;
             }
@@ -402,25 +413,8 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     function renderModalContent(pedia) {
-        const val = (v) => (v && v !== '' && v !== null && v !== undefined) ? v : '—';
-
-        let prcImageSrc = '';
-        if (pedia.prcIdDocumentPath) {
-            console.log('[PRC] Document path from backend:', pedia.prcIdDocumentPath);
-            if (pedia.prcIdDocumentPath.startsWith('http')) {
-                prcImageSrc = pedia.prcIdDocumentPath;
-            } else if (pedia.prcIdDocumentPath.startsWith('/')) {
-                prcImageSrc = pedia.prcIdDocumentPath;
-            } else if (pedia.prcIdDocumentPath.startsWith('uploads/')) {
-                prcImageSrc = '/' + pedia.prcIdDocumentPath;
-            } else {
-                // Filename only — use the secure document serving endpoint
-                // Pass token as query param since <img>/<a> tags can't set Authorization headers
-                const token = typeof KC !== 'undefined' && KC.token ? KC.token() : '';
-                prcImageSrc = '/api/prc/document/' + pedia._id + '?token=' + encodeURIComponent(token);
-            }
-            console.log('[PRC] Resolved image URL:', prcImageSrc);
-        }
+        // Every value here was typed by the pediatrician, so it is escaped.
+        const val = (v) => (v !== undefined && v !== null && v !== '') ? esc(v) : '—';
 
         const documentCandidates = buildPrcDocumentCandidates(pedia);
         const hasUploadedDocument = Boolean(
@@ -511,8 +505,8 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="prc-action-buttons" style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--border);">
                 <button type="button" class="prc-btn prc-btn--cancel" data-bs-dismiss="modal">Close</button>
                 <div style="display:flex;gap:0.5rem;">
-                    <button class="prc-btn prc-btn--reject" onclick="handlePrcAction('${pedia._id}', 'rejected')">Reject</button>
-                    <button class="prc-btn prc-btn--approve" onclick="handlePrcAction('${pedia._id}', 'verified')">Approve</button>
+                    <button class="prc-btn prc-btn--reject" onclick="handlePrcAction('${esc(pedia._id)}', 'rejected')">Reject</button>
+                    <button class="prc-btn prc-btn--approve" onclick="handlePrcAction('${esc(pedia._id)}', 'verified')">Approve</button>
                 </div>
             </div>
         `;
@@ -523,26 +517,39 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Approve / Reject go through the PRC routes (routes/prc-verification.js),
+    // which only accept pediatrician accounts, record the decision, and notify
+    // the pediatrician. A rejection needs a reason the pediatrician will see.
+    let prcActionInFlight = false;
     window.handlePrcAction = async function(id, action) {
-        if (!confirm(`Are you sure you want to ${action} this pediatrician?`)) return;
-
-        try {
-            console.log('[PRC] Sending action:', action, 'for ID:', id);
-            const result = await apiFetch('/admin/pediatricians/prc-verify', {
-                method: 'POST',
-                body: JSON.stringify({ id, action })
-            });
-            console.log('[PRC] Action response:', result);
-            if (result.success) {
-                alert(`Pediatrician ${action} successfully!`);
-                bootstrap.Modal.getInstance(document.getElementById('prcVerificationModal')).hide();
-                location.reload();
-            } else {
-                alert('Error: ' + result.message);
+        if (prcActionInFlight) return;
+        let url;
+        let body = {};
+        if (action === 'verified') {
+            if (!confirm('Approve this pediatrician\'s PRC license?')) return;
+            url = `/prc/verifications/${encodeURIComponent(id)}/approve`;
+        } else {
+            const reason = prompt('Reason for rejecting this PRC verification (the pediatrician will see this):');
+            if (reason === null) return;
+            if (!reason.trim()) {
+                alert('Please enter a reason to reject.');
+                return;
             }
+            url = `/prc/verifications/${encodeURIComponent(id)}/reject`;
+            body = { reason: reason.trim() };
+        }
+
+        prcActionInFlight = true;
+        try {
+            const result = await apiFetch(url, { method: 'PUT', body: JSON.stringify(body) });
+            alert(result.message || (action === 'verified' ? 'Verification approved.' : 'Verification rejected.'));
+            const instance = bootstrap.Modal.getInstance(document.getElementById('prcVerificationModal'));
+            if (instance) instance.hide();
+            location.reload();
         } catch (e) {
-            console.error('[PRC] Action error:', e);
-            alert('An error occurred while updating status: ' + e.message);
+            alert('Could not update the verification: ' + e.message);
+        } finally {
+            prcActionInFlight = false;
         }
     };
 

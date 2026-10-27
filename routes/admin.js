@@ -2476,16 +2476,6 @@ function buildPrcDocumentInfo(user) {
     hasDocument: Boolean(storedPath),
   };
 
-  console.log('[PRC Admin] Document integrity:', {
-    userId,
-    rawDbPath,
-    storedPath: info.storedPath,
-    source: info.source,
-    existsOnDisk: info.existsOnDisk,
-    staticUrl: info.staticUrl,
-    secureEndpoint: info.secureEndpoint,
-  });
-
   return info;
 }
 // ── PRC Verification admin endpoints (mounted at /api/admin) ──────
@@ -2534,27 +2524,19 @@ router.get('/pediatricians/prc-verification', authMiddleware, adminOnly, async (
 // Returns specific pediatrician details for the verification modal
 router.get('/pediatricians/:id/prc-details', authMiddleware, adminOnly, async (req, res) => {
   try {
-    console.log('[PRC Admin] Fetching details for ID:', req.params.id);
-    console.log('[PRC Admin] Authenticated user:', req.user?.userId, 'role:', req.user?.role);
-
-    const user = await User.findById(req.params.id).lean();
-    console.log('[PRC Admin] User found in DB:', user ? 'yes' : 'no');
-
-    if (!user) {
-      console.log('[PRC Admin] User not found');
+    if (!mongoose.Types.ObjectId.isValid(String(req.params.id))) {
       return res.status(404).json({ error: 'Pediatrician not found' });
     }
-    console.log('[PRC Admin] User role:', user.role);
+    const user = await User.findById(req.params.id).lean();
+
+    if (!user) {
+      return res.status(404).json({ error: 'Pediatrician not found' });
+    }
     if (user.role !== 'pediatrician') {
-      console.log('[PRC Admin] Not a pediatrician account, role is:', user.role);
       return res.status(403).json({ error: 'Not a pediatrician account' });
     }
 
-    console.log('[PRC Admin] Document path from DB (user.prcIdDocumentPath):', user.prcIdDocumentPath);
-    console.log('[PRC Admin] Document path from DB (user.idDocumentPath):', user.idDocumentPath);
-
     const docInfo = buildPrcDocumentInfo(user);
-    console.log('[PRC Admin] Resolved document path (after orphan search):', docInfo.storedPath);
 
     const data = {
       _id: String(user._id),
@@ -2576,41 +2558,19 @@ router.get('/pediatricians/:id/prc-details', authMiddleware, adminOnly, async (r
       prcDocumentSource: docInfo.source,
     };
 
-    console.log('[PRC Admin] Returning data:', data);
     res.json({ success: true, pediatrician: data });
   } catch (error) {
     console.error('[PRC Admin] Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Could not load the pediatrician details.' });
   }
 });
 
-// POST /api/admin/pediatricians/prc-verify
-// Handle Approve/Reject actions for PRC verification
-router.post('/pediatricians/prc-verify', authMiddleware, adminOnly, async (req, res) => {
-  try {
-    const { id, action } = req.body;
-
-    if (!['verified', 'rejected'].includes(action)) {
-      return res.status(400).json({ error: 'Invalid action' });
-    }
-
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    user.prcVerificationStatus = action;
-    user.prcVerifiedAt = new Date();
-    user.prcVerifiedBy = req.user.userId;
-    user.status = action === 'verified' ? 'active' : 'pending';
-    await user.save();
-
-    const label = action === 'verified' ? 'approved' : 'rejected';
-    res.json({ success: true, message: `Account ${label}` });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+// PRC Approve / Reject live in routes/prc-verification.js
+// (PUT /api/prc/verifications/:userId/approve|reject). The old
+// POST /api/admin/pediatricians/prc-verify was removed: it accepted any
+// account (it could lock out or activate a parent or admin), never notified
+// the pediatrician, kept a stale rejection note after approval and
+// re-activated suspended accounts.
 
 /* ------------------------------------------------------------------ *
  * Data origin reporting

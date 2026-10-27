@@ -29,7 +29,6 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const mongoose = require('mongoose');
-const jwt = require('jsonwebtoken');
 
 const User = require('../models/User');
 const Notification = require('../models/Notification');
@@ -142,6 +141,14 @@ function buildDocumentResponseFields(user) {
     prcDocumentStaticUrl: storedPath && storedPath.startsWith('/uploads/') && !PRIVATE_UPLOAD_PATH.test(storedPath) ? storedPath : null,
     hasPrcDocument: Boolean(storedPath),
   };
+}
+
+// Account status after a PRC decision: approving lets the pediatrician log in
+// (active), rejecting keeps them blocked (pending). A suspended account stays
+// suspended either way — the PRC check is not a way to undo a suspension.
+function statusAfterPrcDecision(currentStatus, approved) {
+  if (currentStatus === 'suspended') return 'suspended';
+  return approved ? 'active' : 'pending';
 }
 
 // ── Helper: create a notification (best-effort, never blocks) ────
@@ -350,32 +357,12 @@ router.get('/pending', authMiddleware, adminOnly, async (req, res) => {
 // GET /api/prc/document/:userId
 // Admin-only: securely serve the PRC ID document for preview
 // ──────────────────────────────────────────────────────────────────
-router.get('/document/:userId', async (req, res) => {
-  // Accept token from Authorization header OR query parameter
-  // (query param fallback is needed because <img>/<a> tags can't set custom headers)
-  let token = null;
-  const header = req.headers.authorization || '';
-  if (header.startsWith('Bearer ')) {
-    token = header.slice(7);
-  } else if (req.query.token) {
-    token = req.query.token;
-  }
-
-  if (!token) {
-    return res.status(401).json({ error: 'No token. Please log in.' });
-  }
-
-  let decoded;
-  try {
-    decoded = jwt.verify(token, process.env.JWT_SECRET);
-  } catch (err) {
-    return res.status(403).json({ error: 'Token invalid or expired. Please log in again.' });
-  }
-
-  if (decoded.role !== 'admin') {
-    return res.status(403).json({ error: 'Admins only.' });
-  }
-
+// The token travels only in the Authorization header (the admin page fetches
+// the file and shows it from a blob: URL). A ?token= query parameter is no
+// longer accepted: it put the admin's login token into server and proxy logs,
+// browser history and Referer headers. authMiddleware also re-checks that the
+// admin account is still active.
+router.get('/document/:userId', authMiddleware, adminOnly, async (req, res) => {
   try {
     const user = await User.findById(req.params.userId).lean();
     if (!user) return res.status(404).json({ error: 'User not found.' });
@@ -506,11 +493,8 @@ router.put('/verify/:userId', authMiddleware, adminOnly, async (req, res) => {
     // ── Critical: toggle the account status so login is allowed/blocked ──
     // Approving PRC = set user.status to 'active' (pediatrician can now log in)
     // Rejecting PRC = keep user.status as 'pending' (pediatrician still blocked)
-    if (action === 'approve') {
-      user.status = 'active';
-    } else {
-      user.status = 'pending';
-    }
+    // A suspended account stays suspended: a PRC decision is not a reactivation.
+    user.status = statusAfterPrcDecision(user.status, action === 'approve');
     await user.save();
 
     // Notify the pediatrician about the verification result
@@ -639,7 +623,7 @@ router.put('/verifications/:userId/approve', authMiddleware, adminOnly, async (r
     user.prcAdminNotes = null;
     user.prcVerifiedAt = new Date();
     user.prcVerifiedBy = req.user.userId;
-    user.status = 'active';
+    user.status = statusAfterPrcDecision(user.status, true);
     await user.save();
 
     const notifTitle = 'PRC License Verified ✅';
@@ -684,7 +668,7 @@ router.put('/verifications/:userId/reject', authMiddleware, adminOnly, async (re
     user.prcAdminNotes = String(reason).trim();
     user.prcVerifiedAt = new Date();
     user.prcVerifiedBy = req.user.userId;
-    user.status = 'pending';
+    user.status = statusAfterPrcDecision(user.status, false);
     await user.save();
 
     const notifTitle = 'PRC Verification Rejected';
@@ -709,3 +693,6 @@ router.put('/verifications/:userId/reject', authMiddleware, adminOnly, async (re
 });
 
 module.exports = router;
+
+// Exposed for tests only (tests/unit/prc-admin-actions.test.js).
+router.__testables = { statusAfterPrcDecision };
