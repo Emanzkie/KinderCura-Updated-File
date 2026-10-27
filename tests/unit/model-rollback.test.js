@@ -44,6 +44,7 @@ function installFakeStore(docs) {
     updateMany: TrainedModel.updateMany,
     countDocuments: TrainedModel.countDocuments,
     find: TrainedModel.find,
+    findOne: TrainedModel.findOne,
     findById: TrainedModel.findById,
     deleteOne: TrainedModel.deleteOne,
     deleteMany: TrainedModel.deleteMany,
@@ -81,6 +82,20 @@ function installFakeStore(docs) {
   TrainedModel.find = (filter = {}) => {
     const result = store.filter((d) => matches(d, filter));
     const chain = { select: () => chain, lean: async () => result.map((d) => ({ ...d })), then: (r) => r(result) };
+    return chain;
+  };
+  // performModelActivation keeps the most recently activated model active:
+  // findOne({ isActive: true }).sort({ activatedAt: -1, _id: -1 }).
+  TrainedModel.findOne = (filter = {}) => {
+    const chain = {
+      sort: () => chain,
+      select: () => chain,
+      lean: async () => {
+        const rows = store.filter((d) => matches(d, filter)).sort((a, b) =>
+          (new Date(b.activatedAt || 0) - new Date(a.activatedAt || 0)) || String(b._id).localeCompare(String(a._id)));
+        return rows[0] ? { ...rows[0] } : null;
+      },
+    };
     return chain;
   };
   TrainedModel.findById = async (id) => {
@@ -288,8 +303,10 @@ async function run() {
   {
     const origUpdateMany = TrainedModel.updateMany;
     const origCount = TrainedModel.countDocuments;
+    const origFindOne = TrainedModel.findOne;
     TrainedModel.updateMany = async () => ({ modifiedCount: 0 }); // a broken deactivation
     TrainedModel.countDocuments = async () => 2;                  // two models stay active
+    TrainedModel.findOne = () => { const q = { sort: () => q, select: () => q, lean: async () => ({ _id: 'x', version: 9 }) }; return q; };
 
     const doc = { _id: 'x', status: 'completed', modelPath: '/fake/x.joblib', featuresUsed: CLEAN_FEATURES, isActive: false, save: async () => {} };
     await assert.rejects(
@@ -300,6 +317,7 @@ async function run() {
 
     TrainedModel.updateMany = origUpdateMany;
     TrainedModel.countDocuments = origCount;
+    TrainedModel.findOne = origFindOne;
   }
 
   // ── Probe construction ───────────────────────────────────────────────────
