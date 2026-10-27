@@ -207,6 +207,13 @@ const quiet = async (fn) => {
     const leftovers = fs.existsSync(datasetDir) ? fs.readdirSync(datasetDir).filter((f) => /_(labels\.csv|broken\.json|big\.csv)$/.test(f)) : [];
     assert.deepStrictEqual(leftovers, [], 'a refused upload leaves no file behind');
     ok('uploads over 4 MB get a clear 413, and untrainable or unreadable files are refused at upload');
+
+    // ── Normalized pipeline datasets (C30) ────────────────────────────────
+    // 0-1 scores would train a model that live 0-100 predictions mis-feed.
+    r = await call('POST', '/api/admin/dataset-pipeline/generate', { rows: 100, normalize: true });
+    assert.strictEqual(r.status, 400);
+    assert.match(r.body.error, /0-100/);
+    ok('the dataset pipeline refuses to register normalized (0-1) scores for training');
   } finally {
     server.closeAllConnections();
     server.close();

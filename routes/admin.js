@@ -2092,17 +2092,25 @@ router.get('/dataset-pipeline/status', authMiddleware, adminOnly, async (req, re
 });
 
 // POST /api/admin/dataset-pipeline/generate
-// Body: { rows, seed, defectRate, normalize }
+// Body: { rows, seed, defectRate }
 // Runs ml/pipeline.py's generate + clean stages and registers the CLEANED file
 // as a TrainingDataset. Deliberately does not train — the response carries the
 // new datasetId so the caller can hand it to POST /training/:id/train.
+//
+// normalize is refused here: it min-max scales the score columns to 0-1, but
+// live predictions send 0-100 scores, so a model trained on the registered
+// file would be fed values on the wrong scale. ml/pipeline.py --normalize
+// remains available for offline experiments.
 router.post('/dataset-pipeline/generate', authMiddleware, adminOnly, async (req, res) => {
   try {
+    if (req.body?.normalize) {
+      return res.status(400).json({ error: 'Normalized scores cannot be registered for training: live predictions use 0-100 scores, so the model would see values on the wrong scale.' });
+    }
     const { dataset, report } = await datasetPipeline.generateDataset({
       rows: req.body?.rows,
       seed: req.body?.seed,
       defectRate: req.body?.defectRate,
-      normalize: Boolean(req.body?.normalize),
+      normalize: false,
       userId: req.user.userId,
     });
 
