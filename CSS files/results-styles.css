@@ -978,6 +978,24 @@ body {
     overflow-wrap: anywhere;
 }
 
+/* Developmental-area head icons. The images carry an inline 1.1em size from
+   results.js, so !important is needed to size them here. */
+.results-domain-grid img {
+    width: 6rem !important;
+    height: 6rem !important;
+}
+
+.domain-card-title img {
+    width: 4.5rem !important;
+    height: 4.5rem !important;
+    vertical-align: middle !important;
+}
+
+/* Summary area percentages (67%, 90% ...): 4px larger than the tile text. */
+.results-domain-grid > div > div:first-of-type {
+    font-size: calc(1em + 4px);
+}
+
 /* Soft-tint status chip, matching .kc-badge and the pediatrician/secretary
    screens. The band colour is still used for this card's left border and
    view dot; a solid fill with white text was both off-system and low
