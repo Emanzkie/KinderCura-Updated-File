@@ -104,15 +104,22 @@ const bearer = (token) => ({ authorization: `Bearer ${token}` });
   assert.strictEqual(r.reachedEnd, false, 'a failed lookup never lets the request through');
   ok('a deleted secretary gets 401 and a failed lookup gets 503, never a pass');
 
-  // Other roles stay on the no-lookup path.
+  // Every role is re-checked now (ADMIN bug scan C3): a suspended parent,
+  // admin or guardian is refused like a secretary, and only a secretary's
+  // link is refreshed onto req.user.
   for (const role of ['parent', 'admin', 'legal_guardian']) {
     lookups = 0;
-    account = { status: 'suspended' };
+    account = { role, status: 'suspended' };
     r = await viaAuth(bearer(tokenFor({ userId: String(oid()), role })));
-    assert.strictEqual(r.reachedEnd, true, role);
-    assert.strictEqual(lookups, 0, `${role}: no extra database read`);
+    assert.strictEqual(r.status, 403, `suspended ${role} is refused`);
+    assert.strictEqual(r.reachedEnd, false, role);
+    assert.strictEqual(lookups, 1, `${role}: one account read`);
+    account = { role, status: 'active', linkedPediatricianId: pediaA };
+    r = await viaAuth(bearer(tokenFor({ userId: String(oid()), role })));
+    assert.strictEqual(r.reachedEnd, true, `active ${role} passes`);
+    assert.strictEqual(r.req.user.linkedPediatricianId, undefined, `${role} never gets a secretary link`);
   }
-  ok('parents, admins and guardians still make no extra database read');
+  ok('parents, admins and guardians are re-checked too: suspended refused, active pass, no secretary link added');
 
   // ── The real appointment route sees the refreshed link ──────────────────
   const layer = appointmentsRouter.stack.find((l) => l.route && l.route.path === '/pedia' && l.route.methods.get);

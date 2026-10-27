@@ -60,7 +60,18 @@ const chain = (value) => {
   return q;
 };
 Child.findById = (id) => chain(String(id) === String(kidId) ? { _id: kidId, parentId, profileIcon: null, save: async () => {} } : null);
-User.findById = () => chain(pediaDoc);
+// authMiddleware re-reads the signed-in account, so every role used below has
+// its own account: the pediatrician token gets pediaDoc, the rest get an
+// active account of their own role.
+const otherAccountIds = {
+  parent: parentId,
+  secretary: new mongoose.Types.ObjectId(),
+  admin: new mongoose.Types.ObjectId(),
+};
+User.findById = (id) => {
+  const role = Object.keys(otherAccountIds).find((r) => String(otherAccountIds[r]) === String(id));
+  return chain(role ? { _id: id, role, status: 'active' } : pediaDoc);
+};
 User.find = () => chain([]);
 Notification.create = async (n) => n;
 
@@ -74,7 +85,7 @@ const sendFile = async (server, route, field, filename, type, role, extraFields 
   const form = new FormData();
   for (const [k, v] of Object.entries(extraFields)) form.append(k, v);
   form.append(field, new Blob([Buffer.from('not really a file')], { type }), filename);
-  const userId = role === 'pediatrician' ? pediaId : parentId;
+  const userId = role === 'pediatrician' ? pediaId : otherAccountIds[role];
   const res = await fetch(`http://127.0.0.1:${server.address().port}${route}`, {
     method: 'POST', headers: { Authorization: `Bearer ${tokenFor(userId, role)}` }, body: form,
   });

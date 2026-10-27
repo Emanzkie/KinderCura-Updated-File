@@ -181,12 +181,14 @@ async function routeTests() {
 
   const orig = {
     log: console.log, warn: console.warn,
-    uFindOne: User.findOne, uCreate: User.create, oFindOne: OtpCode.findOne, cCreate: Child.create, cFindOne: Child.findOne,
+    uFindOne: User.findOne, uFindById: User.findById, uCreate: User.create, oFindOne: OtpCode.findOne, cCreate: Child.create, cFindOne: Child.findOne,
   };
   console.log = () => {}; console.warn = () => {};
 
   const calls = { userFind: 0, userCreate: [], childCreate: [] };
   User.findOne = () => { calls.userFind += 1; return chain(null); };
+  // The signed-in parent's account, read by authMiddleware on every request.
+  User.findById = () => chain({ _id: '64b000000000000000000001', role: 'parent', status: 'active' });
   OtpCode.findOne = () => chain({ email: 'x', used: true });
   User.create = async (doc) => { calls.userCreate.push(doc); return { ...doc, save: async () => {} }; };
   Child.findOne = () => chain(null);
@@ -274,7 +276,7 @@ async function routeTests() {
   } finally {
     srv.close();
     console.log = orig.log; console.warn = orig.warn;
-    User.findOne = orig.uFindOne; User.create = orig.uCreate; OtpCode.findOne = orig.oFindOne;
+    User.findOne = orig.uFindOne; User.findById = orig.uFindById; User.create = orig.uCreate; OtpCode.findOne = orig.oFindOne;
     Child.create = orig.cCreate; Child.findOne = orig.cFindOne;
   }
 }

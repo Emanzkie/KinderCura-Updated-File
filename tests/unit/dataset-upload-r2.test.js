@@ -54,7 +54,12 @@ async function run() {
   const app = require('../../server.js');
   const server = app.listen(0, '127.0.0.1');
   await new Promise((r) => server.once('listening', r));
-  const token = jwt.sign({ userId: String(new mongoose.Types.ObjectId()), role: 'admin' }, process.env.JWT_SECRET);
+  const adminId = String(new mongoose.Types.ObjectId());
+  const token = jwt.sign({ userId: adminId, role: 'admin' }, process.env.JWT_SECRET);
+  // authMiddleware re-reads the signed-in account on every request.
+  const User = require('../../models/User');
+  const account = { _id: adminId, role: 'admin', status: 'active' };
+  User.findById = () => { const q = { select: () => q, lean: () => q, then: (a, b) => Promise.resolve(account).then(a, b) }; return q; };
 
   const csv = 'assessment_ref,age_months,communication_score,social_score,cognitive_score,motor_score,overall_score,risk_category\r\n'
     + 'TEST-00001,60,80,70,60,75,71,Low\r\nTEST-00002,48,30,25,35,28,30,High\r\n';

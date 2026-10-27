@@ -80,12 +80,24 @@ async function runMiddleware(role, lookup) {
   assert.strictEqual(r.nextCalled, false, 'a failed status lookup must not let the request through');
   ok('a failed status lookup refuses the request instead of letting it through');
 
+  // Every role is re-checked (ADMIN bug scan C3): suspending or deleting a
+  // parent, guardian or admin used to leave their 48h token working, which
+  // for an admin meant admin access after removal.
   for (const role of ['parent', 'admin', 'legal_guardian']) {
-    r = await runMiddleware(role, () => ({ status: 'pending' }));
-    assert.strictEqual(r.nextCalled, true, `${role} must be unaffected`);
-    assert.strictEqual(r.lookups, 0, `${role}: no extra database read`);
+    r = await runMiddleware(role, () => ({ role, status: 'suspended' }));
+    assert.strictEqual(r.status, 403, `suspended ${role} must be refused`);
+    assert.strictEqual(r.nextCalled, false);
+    r = await runMiddleware(role, () => null);
+    assert.strictEqual(r.status, 401, `deleted ${role} must be refused`);
+    r = await runMiddleware(role, () => ({ role, status: 'active' }));
+    assert.strictEqual(r.nextCalled, true, `active ${role} must pass`);
+    r = await runMiddleware(role, () => ({ role }));
+    assert.strictEqual(r.nextCalled, true, `${role} with no stored status must pass, as at login`);
   }
-  ok('other roles are unchanged and make no extra database read');
+  r = await runMiddleware('admin', () => ({ role: 'parent', status: 'active' }));
+  assert.strictEqual(r.status, 401, 'a token whose role no longer matches the account is refused');
+  assert.strictEqual(r.nextCalled, false);
+  ok('parents, guardians and admins: suspended or deleted accounts are refused, active ones pass, a changed role is refused');
 
   // ── POST /api/auth/register ─────────────────────────────────────────────
   const layer = router.stack.find((l) => l.route && l.route.path === '/register' && l.route.methods.post);
