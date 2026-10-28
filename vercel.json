@@ -10,6 +10,12 @@
       "maxDuration": 60
     }
   },
+  "crons": [
+    {
+      "path": "/api/reminders/run",
+      "schedule": "0 0 * * *"
+    }
+  ],
   "routes": [
     {
       "src": "/api/py/train",

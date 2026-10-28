@@ -301,6 +301,9 @@ app.use('/api/recommendations', require('./routes/recommendations'));
 app.use('/api/appointments', require('./routes/appointments'));
 app.use('/api/payments', require('./routes/payments'));
 app.use('/api/notifications', require('./routes/notifications'));
+// Daily parent reminders (appointment tomorrow, next assessment due), run by
+// the Vercel cron in vercel.json.
+app.use('/api/reminders', require('./routes/reminders'));
 app.use('/api/videos', require('./routes/videos'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/questions', require('./routes/custom-questions'));

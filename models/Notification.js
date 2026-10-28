@@ -22,11 +22,20 @@ const notificationSchema = new mongoose.Schema(
     relatedPage: { type: String, default: null, trim: true },
     relatedId: { type: String, default: null, trim: true }, // Store questionSetId, appointmentId, etc. for context
     isRead: { type: Boolean, default: false, index: true },
+    // Set only on scheduled reminders (services/reminders.js): one key per
+    // thing being reminded about, so a reminder is never sent twice even when
+    // the daily job runs again or twice at once.
+    reminderKey: { type: String, default: undefined },
   },
   {
     timestamps: true,
     collection: 'notifications',
   }
+);
+
+notificationSchema.index(
+  { reminderKey: 1 },
+  { unique: true, partialFilterExpression: { reminderKey: { $type: 'string' } } }
 );
 
 notificationSchema.pre('validate', async function assignNumericId(next) {
