@@ -32,6 +32,8 @@ const { CLINIC_TIME_ZONE } = require('../js/shared/child-age');
 const Assessment = require('../models/Assessment');
 const AssessmentResult = require('../models/AssessmentResult');
 const Appointment = require('../models/Appointment');
+const Payment = require('../models/Payment');
+const { PAYMENT_STATUS_GROUPS } = require('../services/adminOperationsAnalytics');
 const Child = require('../models/Child');
 const PatientProgressNote = require('../models/PatientProgressNote');
 const PediatricianCheckup = require('../models/PediatricianCheckup');
@@ -910,6 +912,121 @@ router.get('/clinical-status', authMiddleware, pediatriciansOnly, async (req, re
   }
 });
 
-router._internals = { csvCell, csvRow, parseRange, assessmentsByMonth };
+// ── Income summary ──────────────────────────────────────────────────────────
+// Money this pediatrician received, per week and per month, added up from the
+// Payment records on every request (nothing stored, nothing estimated).
+// "Collected" is the same rule as the admin Payments, Analytics and Reports
+// pages (services/adminOperationsAnalytics.js PAYMENT_STATUS_GROUPS): Paid,
+// Down Payment and Partially Paid, each record holding the amount actually
+// paid in that transaction. Pending, failed, refunded and cancelled payments
+// never count. Days are Manila days, like the admin date filters.
+const INCOME_WEEKS = 8;
+const INCOME_MONTHS = 12;
+const COLLECTED_STATUSES = PAYMENT_STATUS_GROUPS.find((g) => g.key === 'collected').statuses;
+
+const manilaYmd = (date) => new Date(date).toLocaleDateString('en-CA', { timeZone: CLINIC_TIME_ZONE });
+const ymdToUtc = (ymd) => new Date(`${ymd}T00:00:00Z`);
+const utcToYmd = (d) => d.toISOString().slice(0, 10);
+function addDays(ymd, days) {
+  const d = ymdToUtc(ymd);
+  d.setUTCDate(d.getUTCDate() + days);
+  return utcToYmd(d);
+}
+/** Monday of the Monday–Sunday week that holds this date. */
+function weekStartOf(ymd) {
+  return addDays(ymd, -((ymdToUtc(ymd).getUTCDay() + 6) % 7));
+}
+const roundMoney = (n) => Math.round(Number(n || 0) * 100) / 100;
+
+// Mode of payment, from Payment.paymentMethod (models/Payment.js enum):
+// 'online' = paid through PayMongo or another online method, 'clinic' = paid
+// in person at the clinic counter (Pay at Clinic, walk-in cash, cheque).
+const CLINIC_PAYMENT_METHODS = ['pay_at_clinic', 'cash', 'check'];
+const ONLINE_PAYMENT_METHODS = ['paymongo', 'ewallet', 'gcash', 'maya', 'card', 'bank_transfer', 'simulated_gateway'];
+function paymentModeFor(method) {
+  if (CLINIC_PAYMENT_METHODS.includes(method)) return 'clinic';
+  if (ONLINE_PAYMENT_METHODS.includes(method)) return 'online';
+  return 'other';
+}
+const emptyModes = () => ({ online: { total: 0, count: 0 }, clinic: { total: 0, count: 0 }, other: { total: 0, count: 0 } });
+
+/**
+ * payments: Payment documents (already scoped to one pediatrician).
+ * Returns the last INCOME_WEEKS weeks and INCOME_MONTHS months, newest first,
+ * with periods that took no money listed at 0 so the ranges stay continuous.
+ */
+function buildIncomeSummary(payments, now = new Date()) {
+  const today = manilaYmd(now);
+  const thisWeekStart = weekStartOf(today);
+  const weekly = Array.from({ length: INCOME_WEEKS }, (_, i) => {
+    const start = addDays(thisWeekStart, -7 * i);
+    return { start, end: addDays(start, 6), total: 0, count: 0, byMode: emptyModes(), current: i === 0 };
+  });
+  const [y, m] = today.split('-').map(Number);
+  const monthly = Array.from({ length: INCOME_MONTHS }, (_, i) => {
+    const first = new Date(Date.UTC(y, m - 1 - i, 1));
+    const last = new Date(Date.UTC(y, m - i, 0));
+    return { month: utcToYmd(first).slice(0, 7), start: utcToYmd(first), end: utcToYmd(last), total: 0, count: 0, byMode: emptyModes(), current: i === 0 };
+  });
+  const weekByStart = new Map(weekly.map((w) => [w.start, w]));
+  const monthByKey = new Map(monthly.map((mo) => [mo.month, mo]));
+
+  for (const p of Array.isArray(payments) ? payments : []) {
+    if (!COLLECTED_STATUSES.includes(p.status)) continue;
+    // When the money came in. Older records have no paidAt.
+    const when = p.paidAt || p.transactionDate || p.createdAt;
+    if (!when || Number.isNaN(new Date(when).getTime())) continue;
+    const ymd = manilaYmd(when);
+    const amount = Number(p.amount || 0);
+    const mode = paymentModeFor(p.paymentMethod);
+    for (const row of [weekByStart.get(weekStartOf(ymd)), monthByKey.get(ymd.slice(0, 7))]) {
+      if (!row) continue;
+      row.total += amount;
+      row.count += 1;
+      row.byMode[mode].total += amount;
+      row.byMode[mode].count += 1;
+    }
+  }
+  for (const row of [...weekly, ...monthly]) {
+    row.total = roundMoney(row.total);
+    for (const m of Object.values(row.byMode)) m.total = roundMoney(m.total);
+  }
+
+  return {
+    currency: 'PHP',
+    timezone: CLINIC_TIME_ZONE,
+    collectedStatuses: COLLECTED_STATUSES.slice(),
+    thisWeek: weekly[0],
+    thisMonth: monthly[0],
+    weekly,
+    monthly,
+  };
+}
+
+// GET /api/pedia-reports/income
+// Scope is the signed-in pediatrician only. Older payments were saved without
+// pediatricianId; they are reached through the appointment they paid for.
+// Each payment document is read once, so nothing is counted twice.
+router.get('/income', authMiddleware, pediatriciansOnly, async (req, res) => {
+  try {
+    const pediatricianId = req.user.userId;
+    const appointmentIds = await Appointment.find({ pediatricianId }).distinct('_id');
+    const payments = await Payment.find({
+      status: { $in: COLLECTED_STATUSES },
+      $or: [
+        { pediatricianId },
+        { pediatricianId: null, appointmentId: { $in: appointmentIds } },
+      ],
+    })
+      .select('amount status paymentMethod paidAt transactionDate createdAt')
+      .lean();
+    res.json({ success: true, ...buildIncomeSummary(payments) });
+  } catch (err) {
+    console.error('pedia-reports income error:', err && err.message);
+    res.status(500).json({ error: 'Could not load the income summary.' });
+  }
+});
+
+router._internals = { csvCell, csvRow, parseRange, assessmentsByMonth, buildIncomeSummary, weekStartOf, paymentModeFor };
 
 module.exports = router;

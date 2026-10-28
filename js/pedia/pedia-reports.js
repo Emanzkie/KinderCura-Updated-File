@@ -1960,8 +1960,107 @@ async function exportScreeningsCsv() {
     }
 }
 
+// ── Section D: Income Summary ───────────────────────────────────────────────
+// Money received per week and per month, from GET /pedia-reports/income (added
+// up from the Payment records on every request). Independent of the screening
+// filters above, and loaded and refreshed on its own so it can neither block
+// nor be blocked by the other sections.
+
+/** "YYYY-MM-DD" as a calendar date, never shifted by the viewer's time zone. */
+function ymdDate(ymd, opts) {
+    return new Date(`${ymd}T00:00:00Z`).toLocaleDateString('en-US', { ...opts, timeZone: 'UTC' });
+}
+
+function incomeRange(start, end) {
+    const sameYear = start.slice(0, 4) === end.slice(0, 4);
+    return `${ymdDate(start, sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' })} – ${
+        ymdDate(end, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+}
+
+function peso(amount) {
+    return `₱${Number(amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function renderIncome(data) {
+    const week = data.thisWeek || {};
+    const month = data.thisMonth || {};
+    // Mode of payment: online (PayMongo / e-wallet) or paid at the clinic.
+    const mode = (period, key) => (period.byMode && period.byMode[key]) || { total: 0, count: 0 };
+    const rows = [...(data.weekly || []), ...(data.monthly || [])];
+    const showOther = rows.some((r) => mode(r, 'other').count > 0);
+    const modeCells = (period) => `
+            <td class="num">${escapeHtml(peso(mode(period, 'online').total))}</td>
+            <td class="num">${escapeHtml(peso(mode(period, 'clinic').total))}</td>
+            ${showOther ? `<td class="num">${escapeHtml(peso(mode(period, 'other').total))}</td>` : ''}`;
+    const modeHeads = `<th class="num">Online</th><th class="num">At clinic</th>${showOther ? '<th class="num">Other</th>' : ''}`;
+    const tile = (label, period, range) => `
+        <div class="report-tile">
+            <p class="tile-label">${escapeHtml(label)}</p>
+            <p class="tile-value">${escapeHtml(peso(period.total))}</p>
+            <p class="tile-sub">${escapeHtml(range)} · ${count(period.count)} ${plural(period.count, 'payment')}</p>
+            <p class="tile-sub">Online ${escapeHtml(peso(mode(period, 'online').total))} · At clinic ${escapeHtml(peso(mode(period, 'clinic').total))}</p>
+        </div>`;
+    const marker = (row, text) => (row.current ? ` <span class="card-sub">(${text})</span>` : '');
+    const weekRows = (data.weekly || []).map((w) => `
+        <tr>
+            <td>${escapeHtml(incomeRange(w.start, w.end))}${marker(w, 'this week')}</td>
+            <td class="num">${count(w.count)}</td>
+            ${modeCells(w)}
+            <td class="num">${escapeHtml(peso(w.total))}</td>
+        </tr>`).join('');
+    const monthRows = (data.monthly || []).map((m) => `
+        <tr>
+            <td>${escapeHtml(ymdDate(m.start, { month: 'long', year: 'numeric' }))}${marker(m, 'this month')}</td>
+            <td>${escapeHtml(incomeRange(m.start, m.end))}</td>
+            <td class="num">${count(m.count)}</td>
+            ${modeCells(m)}
+            <td class="num">${escapeHtml(peso(m.total))}</td>
+        </tr>`).join('');
+
+    document.getElementById('incomeSection').innerHTML = `
+        <div class="report-tiles">
+            ${tile('This week', week, week.start ? incomeRange(week.start, week.end) : '—')}
+            ${tile('This month', month, month.start ? ymdDate(month.start, { month: 'long', year: 'numeric' }) : '—')}
+        </div>
+        <div class="report-card">
+            <h2>Weekly Income</h2>
+            <p class="card-sub">The last ${count((data.weekly || []).length)} weeks, Monday to Sunday.</p>
+            <div class="report-table-wrap">
+                <table class="report-table">
+                    <thead><tr><th>Week</th><th class="num">Payments</th>${modeHeads}<th class="num">Total income</th></tr></thead>
+                    <tbody>${weekRows}</tbody>
+                </table>
+            </div>
+        </div>
+        <div class="report-card">
+            <h2>Monthly Income</h2>
+            <p class="card-sub">The last ${count((data.monthly || []).length)} calendar months.</p>
+            <div class="report-table-wrap">
+                <table class="report-table">
+                    <thead><tr><th>Month</th><th>Date range</th><th class="num">Payments</th>${modeHeads}<th class="num">Total income</th></tr></thead>
+                    <tbody>${monthRows}</tbody>
+                </table>
+            </div>
+            <p class="card-footnote">Money received from your patients' payments (Paid, Down Payment or Partially Paid), counted on the day
+                it was received, in Philippine time. Pending, failed and refunded payments are not counted.
+                <strong>Online</strong> = paid through the online checkout (GCash / e-wallet); <strong>At clinic</strong> = paid at your
+                clinic counter (Pay at Clinic or cash).</p>
+        </div>`;
+}
+
+async function loadIncome() {
+    try {
+        renderIncome(await apiFetch('/pedia-reports/income'));
+    } catch (err) {
+        document.getElementById('incomeSection').innerHTML = errorCard('We could not load the income summary', err.message);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     if (typeof initNav === 'function') initNav();
     initClassificationFilter();
     loadReports();
+    loadIncome();
+    // New, completed or refunded payments show up without a reload.
+    KC.poll(loadIncome, 60000);
 });
