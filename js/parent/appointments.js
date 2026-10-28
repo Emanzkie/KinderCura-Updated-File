@@ -283,14 +283,14 @@ function renderChildSwitcher() {
     }
     wrap.innerHTML = `
         <select class="child-select" onchange="switchChild(this.value)">
-            ${allChildren.map((c) => `<option value="${c.id}" ${c.id === activeChild?.id ? 'selected' : ''}>${c.firstName} ${c.lastName}</option>`).join('')}
+            ${allChildren.map((c) => `<option value="${c.id}" ${c.id === activeChild?.id ? 'selected' : ''}>${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</option>`).join('')}
         </select>`;
 }
 
 function fillChildSelect() {
     const sel = document.getElementById('childSelect');
     sel.innerHTML = allChildren.length
-        ? allChildren.map((c) => `<option value="${c.id}" ${c.id === activeChild?.id ? 'selected' : ''}>${c.firstName} ${c.lastName}</option>`).join('')
+        ? allChildren.map((c) => `<option value="${c.id}" ${c.id === activeChild?.id ? 'selected' : ''}>${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</option>`).join('')
         : '<option value="">No children registered yet</option>';
     sel.onchange = async () => {
         const picked = allChildren.find((c) => c.id === sel.value);

@@ -54,11 +54,14 @@ async function loadThreads() {
 
     tl.innerHTML = threads.map(t => {
       const d = new Date(t.appointmentDate);
-      const initials = `Dr. ${(t.pediatricianName || '').split(' ').map(w => w[0] || '').join('').substring(0,2).toUpperCase()}`;
+      // Every value from the server is escaped before it goes into innerHTML:
+      // names, photos and messages are typed by other people (the
+      // pediatrician), and unescaped they could run script in this session.
+      const initials = `Dr. ${escapeHtml((t.pediatricianName || '').split(' ').map(w => w[0] || '').join('').substring(0,2).toUpperCase())}`;
 
       /* Use doctor photo if available, otherwise initials */
       const avatar = t.pedPhoto && t.pedPhoto.startsWith('/uploads/')
-        ? `<img src="${t.pedPhoto}" style="width:100%;height:100%;object-fit:cover;">`
+        ? `<img src="${escapeHtml(t.pedPhoto)}" style="width:100%;height:100%;object-fit:cover;">`
         : initials;
 
       return `
@@ -66,7 +69,7 @@ async function loadThreads() {
           <div class="thread-avatar">${avatar}</div>
           <div class="thread-info">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <p class="thread-name">${t.childName || 'Child'} – Dr. ${t.pediatricianName || 'Pediatrician'}</p>
+              <p class="thread-name">${escapeHtml(t.childName || 'Child')} – Dr. ${escapeHtml(t.pediatricianName || 'Pediatrician')}</p>
               ${t.unread > 0 ? `<span class="thread-badge">${t.unread}</span>` : ''}
             </div>
             <p class="thread-sub"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Latest: ${M[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}</p>
@@ -79,7 +82,7 @@ async function loadThreads() {
     if (urlAppt && !activeApptId) openThread(parseInt(urlAppt, 10));
     else if (!activeApptId && threads.length) openThread(threads[0].appointmentId);
   } catch (e) {
-    document.getElementById('threadsList').innerHTML = `<div style="padding:1rem;color:var(--status-attention-fg);font-size:.82rem;">${e.message}</div>`;
+    document.getElementById('threadsList').innerHTML = `<div style="padding:1rem;color:var(--status-attention-fg);font-size:.82rem;">${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -118,7 +121,7 @@ async function loadMessages() {
 
     const av = document.getElementById('docAvatar');
     if (info.pedPhoto && info.pedPhoto.startsWith('/uploads/')) {
-      av.innerHTML = `<img src="${info.pedPhoto}" style="width:100%;height:100%;object-fit:cover;">`;
+      av.innerHTML = `<img src="${escapeHtml(info.pedPhoto)}" style="width:100%;height:100%;object-fit:cover;">`;
     } else {
       av.textContent = `${(info.pedFirst || 'D')[0]}${(info.pedLast || 'R')[0]}`.toUpperCase();
     }
@@ -136,7 +139,7 @@ async function loadMessages() {
       document.getElementById('chatInputArea').style.display = 'none';
       document.getElementById('parentChatHeader').style.display = 'none';
     } else {
-      document.getElementById('chatMessages').innerHTML = `<div class="empty-chat">${e.message}</div>`;
+      document.getElementById('chatMessages').innerHTML = `<div class="empty-chat">${escapeHtml(e.message)}</div>`;
     }
   }
 }
@@ -176,11 +179,11 @@ function renderMessages(msgs) {
     const mine = m.senderId === myId;
     const cls = mine ? 'mine' : 'theirs';
     const timeStr = new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const ini = (m.senderName || '?').split(' ').map(w => w[0] || '').join('').substring(0,2).toUpperCase();
+    const ini = escapeHtml((m.senderName || '?').split(' ').map(w => w[0] || '').join('').substring(0,2).toUpperCase());
 
     let avInner;
     if (m.senderPhoto && m.senderPhoto.startsWith('/uploads/')) {
-      avInner = `<img src="${m.senderPhoto}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">`;
+      avInner = `<img src="${escapeHtml(m.senderPhoto)}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">`;
     } else {
       avInner = `<span style="display:flex;width:32px;height:32px;border-radius:50%;background:var(--primary);color:#FAFAF6;font-weight:700;font-size:.7rem;align-items:center;justify-content:center;">${ini}</span>`;
     }
@@ -188,15 +191,15 @@ function renderMessages(msgs) {
     /* Show attached video if message has one */
     const videoHtml = m.videoPath ? `
       <div class="msg-video-wrap">
-        <video src="${m.videoPath}" controls playsinline></video>
-        <div class="msg-video-label"><img src="/icons/change_photo.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${m.videoName || 'Video'}</div>
+        <video src="${escapeHtml(m.videoPath)}" controls playsinline></video>
+        <div class="msg-video-label"><img src="/icons/change_photo.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(m.videoName || 'Video')}</div>
       </div>` : '';
 
     return `
       <div class="msg-row ${cls}">
         <div class="msg-av">${avInner}</div>
         <div class="msg-body">
-          <div class="msg-bubble">${m.message ? `<span>${m.message}</span>` : ''}${videoHtml}</div>
+          <div class="msg-bubble">${m.message ? `<span>${escapeHtml(m.message)}</span>` : ''}${videoHtml}</div>
           <div class="msg-time">${timeStr}${mine && m.isRead ? ' ✓✓' : ''}</div>
         </div>
       </div>`;

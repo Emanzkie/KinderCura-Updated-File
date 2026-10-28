@@ -177,7 +177,7 @@
             }
             wrap.innerHTML = `
                 <select id="childSwitch" class="child-select" onchange="switchChild(this.value)">
-                    ${allChildren.map((c) => `<option value="${c.id}" ${c.id === activeChild?.id ? 'selected' : ''}>${c.firstName} ${c.lastName}</option>`).join('')}
+                    ${allChildren.map((c) => `<option value="${c.id}" ${c.id === activeChild?.id ? 'selected' : ''}>${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</option>`).join('')}
                 </select>`;
         }
 

@@ -183,7 +183,7 @@ async function loadProfile() {
                     </div>
                     <div class="child-card-right">
                         <div class="fields-grid">
-                            ${field('Name', [c.firstName, c.middleName, c.lastName].filter(Boolean).join(' '))}
+                            ${field('Name', escapeHtml([c.firstName, c.middleName, c.lastName].filter(Boolean).join(' ')))}
                             ${field('Date of Birth', dob.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}))}
                             ${field('Age', calcAge(c.dateOfBirth))}
                             ${field('Gender', c.gender ? c.gender.charAt(0).toUpperCase()+c.gender.slice(1) : '—')}
