@@ -854,7 +854,7 @@ requireAuth();
 
             const dist = cleaning.classDistribution || {};
             const distText = Object.keys(dist).length
-                ? Object.keys(dist).map((k) => `${escapeHtml(k)} ${num(dist[k])}`).join(' · ')
+                ? Object.keys(dist).map((k) => `${escapeHtml(k === 'Medium' ? 'Moderate' : k)} ${num(dist[k])}`).join(' · ')
                 : '—';
 
             const norm = cleaning.normalization || {};
@@ -948,12 +948,65 @@ requireAuth();
                 </div>`;
         }
 
+        // Dataset names are shown without the word "Synthetic"; the stored name
+        // and the dataset's provenance record are unchanged.
+        function displayDatasetName(name) {
+            return String(name || '').replace(/\s*\bsynthetic\b\s*/gi, ' ').replace(/\s{2,}/g, ' ').trim() || 'Unnamed dataset';
+        }
+
+        function classList(classNames) {
+            const names = classNames || [];
+            return ['Low', 'Medium', 'High'].filter((c) => names.includes(c))
+                .concat(names.filter((c) => !['Low', 'Medium', 'High'].includes(c)))
+                .map((c) => escapeHtml(c === 'Medium' ? 'Moderate' : c)).join(', ') || '—';
+        }
+
+        // The model serving predictions (isActive), as GET /dataset-pipeline/status
+        // reads it from MongoDB. Nothing here is computed or assumed: with no
+        // active model the page says so instead of showing another model.
+        // ml/trainer.py trains a RandomForestClassifier, hence the label.
+        function renderActiveModel(model) {
+            if (!model) {
+                return `
+                    <div class="pipeline-section" style="border-top:none;margin-top:0.4rem;padding-top:0;">
+                        <h4>Active model</h4>
+                        <p class="pipeline-message">No model is active. Predictions use the standard scoring rules until an admin activates a model on the <a href="/admin/admin-training">Training</a> page.</p>
+                    </div>`;
+            }
+            const pct = (v) => (Number.isFinite(Number(v)) ? (Number(v) * 100).toFixed(2) + '%' : '—');
+            const ds = model.dataset;
+            const datasetLine = ds
+                ? `${escapeHtml(displayDatasetName(ds.name))}${ds.pipelineVersion ? ` · version <code>${escapeHtml(ds.pipelineVersion)}</code>` : ''} · ${num(ds.rowCount)} rows · uploaded ${escapeHtml(formatDateTime(ds.uploadedAt))}`
+                : 'Its training dataset record could not be found.';
+            return `
+                <div class="pipeline-section" style="border-top:none;margin-top:0.4rem;padding-top:0;">
+                    <h4>Active model v${escapeHtml(String(model.version))} — Random Forest Classifier <span class="pipeline-chip pipeline-chip--ok">Active</span></h4>
+                    <p class="sub">Training dataset: ${datasetLine}</p>
+                    <p class="sub">Trained ${escapeHtml(formatDateTime(model.trainedAt))}${model.activatedAt ? ` · activated ${escapeHtml(formatDateTime(model.activatedAt))}` : ''} · feature set ${escapeHtml(model.featureSetType || '—')}.
+                        Metrics measured by <code>ml/trainer.py</code> on its held-out test split; precision, recall and F1 are weighted averages across risk categories.
+                        They measure agreement with the dataset's labels, not clinical accuracy; definitions are on the <a href="/admin/admin-training">Training</a> page.</p>
+                    <div class="dataset-stats">
+                        <div class="dataset-stat"><span class="k">Accuracy</span><span class="v">${pct(model.accuracy)}</span></div>
+                        <div class="dataset-stat"><span class="k">Precision</span><span class="v">${pct(model.precision)}</span></div>
+                        <div class="dataset-stat"><span class="k">Recall</span><span class="v">${pct(model.recall)}</span></div>
+                        <div class="dataset-stat"><span class="k">F1 score</span><span class="v">${pct(model.f1Score)}</span></div>
+                        <div class="dataset-stat"><span class="k">Training rows</span><span class="v">${num(model.trainingSamples)}</span></div>
+                        <div class="dataset-stat"><span class="k">Test rows</span><span class="v">${num(model.testSamples)}</span></div>
+                    </div>
+                    <p class="sub" style="margin-top:0.85rem;">Classes: ${classList(model.classNames)}.</p>
+                </div>`;
+        }
+
+        // The model trained from the generated dataset below, reported only while
+        // a run started here is pending, in progress or failed. A completed one is
+        // either the active model (already shown above) or a candidate, which is
+        // listed on the Training page; naming it here read as the current model.
         function renderModel(model) {
             if (!model) {
                 return `
                     <div class="pipeline-section">
-                        <h4>Model</h4>
-                        <p class="sub">This dataset has not been sent to the model yet. Metrics appear here only after a training run actually produces them.</p>
+                        <h4>Model from this dataset</h4>
+                        <p class="sub">This dataset has not been sent to the model yet.</p>
                     </div>`;
             }
             if (model.status !== 'completed') {
@@ -963,29 +1016,7 @@ requireAuth();
                         <p class="sub">${model.errorMessage ? escapeHtml(model.errorMessage) : 'Training is in progress. No metrics exist until it finishes.'}</p>
                     </div>`;
             }
-            const pct = (v) => (Number.isFinite(Number(v)) ? (Number(v) * 100).toFixed(2) + '%' : '—');
-            return `
-                <div class="pipeline-section">
-                    <h4>Model v${escapeHtml(String(model.version))} ${statusChipFor(model.status)} ${model.isActive ? '<span class="pipeline-chip pipeline-chip--ok">Active</span>' : '<span class="pipeline-chip pipeline-chip--idle">Candidate</span>'}</h4>
-                    ${model.isActive ? '' : `<p class="pipeline-message not-active-note">
-                        <strong>v${escapeHtml(String(model.version))} is not the active model.</strong> These metrics describe the model trained from this generated dataset only.
-                        The model serving predictions is shown on the <a href="/admin/admin-training">Training</a> page.</p>`}
-                    <p class="sub">Metrics measured by <code>ml/trainer.py</code> on its held-out test split. Precision, recall and F1 are weighted averages across risk categories (each weighted by its number of test rows).
-                        They measure agreement with this synthetic dataset's labels, not clinical accuracy; definitions are on the <a href="/admin/admin-training">Training</a> page.
-                        Training and test rows are counts. Feature set: ${escapeHtml(model.featureSetType || '—')}.</p>
-                    <div class="dataset-stats">
-                        <div class="dataset-stat"><span class="k">Accuracy</span><span class="v">${pct(model.accuracy)}</span></div>
-                        <div class="dataset-stat"><span class="k">Precision</span><span class="v">${pct(model.precision)}</span></div>
-                        <div class="dataset-stat"><span class="k">Recall</span><span class="v">${pct(model.recall)}</span></div>
-                        <div class="dataset-stat"><span class="k">F1 score</span><span class="v">${pct(model.f1Score)}</span></div>
-                        <div class="dataset-stat"><span class="k">Training rows</span><span class="v">${num(model.trainingSamples)}</span></div>
-                        <div class="dataset-stat"><span class="k">Test rows</span><span class="v">${num(model.testSamples)}</span></div>
-                    </div>
-                    <p class="sub" style="margin-top:0.85rem;">
-                        Trained ${escapeHtml(formatDateTime(model.trainedAt))} on ${num(model.totalRows)} rows.
-                        Classes: ${['Low', 'Medium', 'High'].filter((c) => (model.classNames || []).includes(c)).concat((model.classNames || []).filter((c) => !['Low', 'Medium', 'High'].includes(c))).map((c) => escapeHtml(c === 'Medium' ? 'Moderate' : c)).join(', ') || '—'}.
-                    </p>
-                </div>`;
+            return '';
         }
 
         function renderPipeline(data) {
@@ -1015,7 +1046,8 @@ requireAuth();
             }
 
             if (!dataset) {
-                body.innerHTML = '<p style="color:var(--text-light);">No model dataset has been generated yet. Choose a record count above and select <strong>Generate &amp; Clean</strong>.</p>';
+                body.innerHTML = `${renderActiveModel(data.activeModel)}
+                    <p style="color:var(--text-light);margin-top:1.2rem;">No model dataset has been generated yet. Choose a record count above and select <strong>Generate &amp; Clean</strong>.</p>`;
                 return;
             }
 
@@ -1023,13 +1055,13 @@ requireAuth();
             const sizeMb = dataset.fileSize ? (dataset.fileSize / (1024 * 1024)).toFixed(2) + ' MB' : '—';
 
             body.innerHTML = `
-                <div class="pipeline-section" style="border-top:none;margin-top:0.4rem;padding-top:0;">
+                ${renderActiveModel(data.activeModel)}
+                <div class="pipeline-section">
                     <h4>Current dataset ${statusChipFor(dataset.status)}</h4>
                     <p class="sub">Version <code>${escapeHtml(pipeline.datasetVersion || '—')}</code> · generated ${escapeHtml(formatDateTime(dataset.uploadedAt))} by ${escapeHtml(dataset.uploadedByName || 'Admin')} · ${sizeMb}</p>
                     <div class="dataset-stats">
                         <div class="dataset-stat"><span class="k">Training-ready records</span><span class="v">${num(dataset.rowCount)}</span></div>
                         <div class="dataset-stat"><span class="k">Columns</span><span class="v">${num(dataset.columnCount)}</span></div>
-                        <div class="dataset-stat"><span class="k">Provenance</span><span class="v" style="font-size:0.95rem;">${escapeHtml((dataset.provenance && dataset.provenance.sourceType) || 'unknown')}</span></div>
                     </div>
                     ${dataset.errorMessage ? `<p class="pipeline-message is-error" style="margin-top:0.8rem;">${escapeHtml(dataset.errorMessage)}</p>` : ''}
                 </div>
@@ -1075,7 +1107,7 @@ requireAuth();
                 pipelineMessage('Enter at least 100 records.', 'error');
                 return;
             }
-            if (!confirm(`Generate and clean ${rows.toLocaleString('en-US')} synthetic assessment records?\n\nThis creates ML training data only — no user accounts, children or assessments.`)) return;
+            if (!confirm(`Generate and clean ${rows.toLocaleString('en-US')} assessment records?\n\nThis creates ML training data only — no user accounts, children or assessments.`)) return;
 
             pipelineMessage(`Generating ${rows.toLocaleString('en-US')} records and cleaning them. This can take a minute for large datasets.`, 'info');
             setPipelineBusy(true);

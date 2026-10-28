@@ -43,7 +43,7 @@
         <div class="page-header">
             <h1>Data Sources</h1>
             <p>Every assessment question is assigned to one of two categories by its stored origin, so the categories never overlap. <strong>Dataset Question</strong> &mdash; questions cited to an actual external dataset only. <strong>Pediatrician Question</strong> &mdash; the pediatrician-sourced Core Question Bank (system-wide, no individual owner) together with every question a pediatrician creates inside KinderCura, including any follow-up or additional question they add. A question with no recorded origin is shown as <strong>Unclassified</strong> and belongs to neither. All counts below are unique question records unless a card says answers. These are questions, not assessment data and not ML training datasets.</p>
-            <p style="margin-top:0.5rem;">Two other data sources are managed at the bottom of this page: the <a href="#modelDatasetPipeline">synthetic model dataset</a> the ML classifier trains on, and the <a href="#systemDemoData">synthetic system data</a> that populates Analytics. Trained models and their metrics live under <a href="/admin/admin-training">Training</a>.</p>
+            <p style="margin-top:0.5rem;">Two other data sources are managed at the bottom of this page: the <a href="#modelDatasetPipeline">model dataset</a> the ML classifier trains on, and the <a href="#systemDemoData">synthetic system data</a> that populates Analytics. Trained models and their metrics live under <a href="/admin/admin-training">Training</a>.</p>
         </div>
 
         <div class="overview-grid" style="margin-bottom:2rem;">
@@ -141,11 +141,11 @@
         <!-- ============================================================== -->
         <div class="card pipeline-card" id="modelDatasetPipeline" style="margin-top:2rem;">
             <div class="pipeline-head">
-                <h3><img src="/icons/cognitive.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Model Dataset Pipeline <span class="pipeline-tag">Synthetic</span></h3>
+                <h3><img src="/icons/cognitive.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Model Dataset Pipeline</h3>
                 <button class="btn btn-secondary" onclick="loadPipelineStatus()">Refresh</button>
             </div>
             <p class="pipeline-intro">
-                Generates a synthetic assessment dataset for the ML classifier, cleans it, and registers the cleaned file as a training dataset.
+                Generates an assessment dataset for the ML classifier, cleans it, and registers the cleaned file as a training dataset.
                 This is <strong>training data, not user accounts</strong> &mdash; it never creates a login, a child record or an assessment.
                 Every figure below is produced by an actual pipeline run (<code>ml/pipeline.py</code>); nothing here is a target or a placeholder.
             </p>

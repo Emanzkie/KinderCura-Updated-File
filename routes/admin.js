@@ -2029,9 +2029,15 @@ router.get('/dataset-pipeline/status', authMiddleware, adminOnly, async (req, re
         .lean();
     }
 
-    const [pipelineDatasetCount, environment] = await Promise.all([
+    // The model actually serving predictions. The model above is only the one
+    // trained from this page's latest generated dataset, which is often a
+    // candidate (the page showed that one as if it were current).
+    const [pipelineDatasetCount, environment, activeModel] = await Promise.all([
       TrainingDataset.countDocuments({ syntheticPipeline: { $ne: null } }),
       datasetPipeline.checkPipelineEnvironment(),
+      TrainedModelRef.findOne({ isActive: true })
+        .populate('datasetId', 'name rowCount createdAt syntheticPipeline.datasetVersion')
+        .lean(),
     ]);
 
     res.json({
@@ -2085,6 +2091,33 @@ router.get('/dataset-pipeline/status', authMiddleware, adminOnly, async (req, re
             classDistribution: model.classDistribution || null,
             featuresUsed: model.featuresUsed || [],
             errorMessage: model.errorMessage || null,
+          }
+        : null,
+      // Read as stored; null when no model is active.
+      activeModel: activeModel
+        ? {
+            id: String(activeModel._id),
+            version: activeModel.version,
+            status: activeModel.status,
+            featureSetType: activeModel.featureSetType,
+            trainedAt: activeModel.trainedAt,
+            activatedAt: activeModel.activatedAt || null,
+            accuracy: activeModel.accuracy,
+            precision: activeModel.precision,
+            recall: activeModel.recall,
+            f1Score: activeModel.f1Score,
+            trainingSamples: activeModel.trainingSamples,
+            testSamples: activeModel.testSamples,
+            classNames: activeModel.classNames || [],
+            dataset: activeModel.datasetId
+              ? {
+                  id: String(activeModel.datasetId._id),
+                  name: activeModel.datasetId.name,
+                  rowCount: activeModel.datasetId.rowCount,
+                  uploadedAt: activeModel.datasetId.createdAt,
+                  pipelineVersion: activeModel.datasetId.syntheticPipeline?.datasetVersion || null,
+                }
+              : null,
           }
         : null,
     });
