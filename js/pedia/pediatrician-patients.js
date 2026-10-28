@@ -456,7 +456,7 @@ const API = window.location.origin + '/api';
                 <div class="empty-state">
                     <p style="font-size:2rem;margin-bottom:1rem;"><img src="/icons/smart_notif.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">️</p>
                     <p style="font-weight:600;color:var(--text-dark);">Could not load patients</p>
-                    <p style="font-size:0.85rem;color:var(--text-light);">${err.message}</p>
+                    <p style="font-size:0.85rem;color:var(--text-light);">${escapeHtml(err.message)}</p>
                     <button class="btn btn-primary" onclick="loadPatients()" style="margin-top:1rem;padding:0.7rem 1.5rem;">Retry</button>
                 </div>`;
         }
@@ -1217,9 +1217,9 @@ const API = window.location.origin + '/api';
         document.getElementById('progressTimeline').innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1rem;">Loading progress notes...</p>';
         document.getElementById('assessmentHistoryList').innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1rem;">Loading assessment history...</p>';
         loadProgressData(childId).catch((err) => {
-            document.getElementById('checkupHistoryList').innerHTML = `<p style="text-align:center;color:var(--status-attention-fg);padding:1rem;">${err.message}</p>`;
-            document.getElementById('progressTimeline').innerHTML = `<p style="text-align:center;color:var(--status-attention-fg);padding:1rem;">${err.message}</p>`;
-            document.getElementById('assessmentHistoryList').innerHTML = `<p style="text-align:center;color:var(--status-attention-fg);padding:1rem;">${err.message}</p>`;
+            document.getElementById('checkupHistoryList').innerHTML = `<p style="text-align:center;color:var(--status-attention-fg);padding:1rem;">${escapeHtml(err.message)}</p>`;
+            document.getElementById('progressTimeline').innerHTML = `<p style="text-align:center;color:var(--status-attention-fg);padding:1rem;">${escapeHtml(err.message)}</p>`;
+            document.getElementById('assessmentHistoryList').innerHTML = `<p style="text-align:center;color:var(--status-attention-fg);padding:1rem;">${escapeHtml(err.message)}</p>`;
         });
     }
 

@@ -288,7 +288,7 @@
 
             select.innerHTML = `
             <option value="all">All patients</option>
-            ${patientList.map(p => `<option value="${p.childId}">${p.childName}</option>`).join('')}
+            ${patientList.map(p => `<option value="${escapeHtml(p.childId)}">${escapeHtml(p.childName)}</option>`).join('')}
         `;
 
             if ([...select.options].some(opt => opt.value === currentValue)) {
@@ -346,8 +346,8 @@
                 renderAssignmentTracker();
                 renderQuestions();
             } catch (err) {
-                document.getElementById('pendingAssignmentsList').innerHTML = `<div class="empty-small" style="color:var(--status-attention-fg);">${err.message}</div>`;
-                document.getElementById('answeredAssignmentsList').innerHTML = `<div class="empty-small" style="color:var(--status-attention-fg);">${err.message}</div>`;
+                document.getElementById('pendingAssignmentsList').innerHTML = `<div class="empty-small" style="color:var(--status-attention-fg);">${escapeHtml(err.message)}</div>`;
+                document.getElementById('answeredAssignmentsList').innerHTML = `<div class="empty-small" style="color:var(--status-attention-fg);">${escapeHtml(err.message)}</div>`;
             }
         }
 
