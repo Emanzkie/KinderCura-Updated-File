@@ -199,7 +199,10 @@ const LAST_NAMES = ['Santos', 'Reyes', 'Cruz', 'Bautista', 'Ocampo', 'Garcia', '
 
 const SPECIALIZATIONS = ['General Pediatrics', 'Developmental Pediatrics', 'Neonatology', 'Pediatric Neurology', 'Adolescent Medicine'];
 const CLINIC_SUFFIX = ['Children\'s Clinic', 'Pediatric Center', 'Family Health Clinic', 'Wellness Center', 'Medical Clinic'];
-const CITIES = ['Iloilo City', 'Bacolod City', 'Cebu City', 'Davao City', 'Quezon City', 'Cagayan de Oro', 'Baguio City', 'Legazpi City'];
+// Demo clinics are in General Santos City barangays (constants/genSanLocations.js).
+// pick() takes one draw whatever the list length, so this list can change
+// without moving the stream (see STREAM COMPATIBILITY).
+const { GENSAN_CITY, GENSAN_BARANGAYS, GENSAN_INSTITUTION } = require('../constants/genSanLocations');
 
 const APPOINTMENT_REASONS = [
   'Developmental assessment follow-up',
@@ -584,13 +587,13 @@ function buildPlan({ seed, users: userCount, months, batch, questionBank, passwo
     reserveLegacyPhoneDraw(rng);
 
     if (role === 'pediatrician') {
-      const city = rng.pick(CITIES);
+      const barangay = rng.pick(GENSAN_BARANGAYS);
       doc.licenseNumber = `PRC-${rng.int(1000000, 9999999)}`;
       doc.prcLicenseNumber = doc.licenseNumber;
       doc.specialization = rng.pick(SPECIALIZATIONS);
       doc.clinicName = `${identity.lastName} ${rng.pick(CLINIC_SUFFIX)}`;
-      doc.clinicAddress = `${rng.int(1, 400)} ${rng.pick(LAST_NAMES)} St., ${city}`;
-      doc.institution = `${city} Medical Center`;
+      doc.clinicAddress = `${rng.int(1, 400)} ${rng.pick(LAST_NAMES)} St., Brgy. ${barangay}, ${GENSAN_CITY}`;
+      doc.institution = GENSAN_INSTITUTION;
       doc.consultationFee = rng.int(6, 30) * 50; // PHP 300 - 1500
       // A natural short practice description, or null (the real pediatrician
       // record leaves this blank). Never dummy text: this field is shown to
