@@ -61,6 +61,23 @@ function field(label, value) {
     </div>`;
 }
 
+// Relationships are stored lowercase ("father"); show "Father". Plain text:
+// callers escape it, since Add Child accepts free text.
+function capitalizeFirst(value) {
+    const s = String(value || '').trim();
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+}
+
+// The parent's relationship, read from the children they registered (linked
+// children carry the registering parent's relationship, not this user's).
+function parentRelationshipText(children, me) {
+    const own = (children || []).filter((c) => me && String(c.parentId) === me && c.relationship);
+    const values = [...new Set(own.map((c) => capitalizeFirst(c.relationship)))];
+    if (!values.length) return '—';
+    if (values.length === 1) return values[0];
+    return own.map((c) => `${capitalizeFirst(c.relationship)} (${c.firstName || 'Child'})`).join(', ');
+}
+
 function calcAge(dob) {
     const d = new Date(dob), now = new Date();
     let y = now.getFullYear() - d.getFullYear(), m = now.getMonth() - d.getMonth();
@@ -124,7 +141,9 @@ async function loadProfile() {
             field('Name', [user.firstName, user.middleName, user.lastName].filter(Boolean).join(' ')) +
             field('Email', user.email) +
             field('Username', user.username) +
-            field('Account Type', user.role.charAt(0).toUpperCase()+user.role.slice(1));
+            field('Account Type', user.role.charAt(0).toUpperCase()+user.role.slice(1)) +
+            // Filled in once the children load below.
+            `<div class="field-row"><p class="field-label">Relationship to the Child</p><p class="field-value" id="parentRelationshipValue">—</p></div>`;
         document.getElementById('editFirst').value = user.firstName || '';
         document.getElementById('editLast').value  = user.lastName || '';
     } else {
@@ -145,6 +164,8 @@ async function loadProfile() {
             }
             let html = '';
             const me = String((KC.user() || {}).id || '');
+            const relationshipEl = document.getElementById('parentRelationshipValue');
+            if (relationshipEl) relationshipEl.textContent = parentRelationshipText(children, me);
             children.forEach((c) => {
                 // Only the registering parent may edit; linked children are read-only here.
                 const canEdit = me && String(c.parentId) === me;
@@ -166,7 +187,6 @@ async function loadProfile() {
                             ${field('Date of Birth', dob.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}))}
                             ${field('Age', calcAge(c.dateOfBirth))}
                             ${field('Gender', c.gender ? c.gender.charAt(0).toUpperCase()+c.gender.slice(1) : '—')}
-                            ${field('Relationship', c.relationship || '—')}
                         </div>
                         <button class="btn btn-primary btn-full-small" onclick="localStorage.setItem('kc_childId','${c.id}');window.location.href='/parent/screening'">Start Assessment</button>
                         ${canEdit ? `<button type="button" class="btn btn-secondary btn-full-small" style="margin-top:.5rem;" onclick="toggleEditChild('${c.id}')">Edit Details</button>
