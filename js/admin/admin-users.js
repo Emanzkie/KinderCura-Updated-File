@@ -6,9 +6,27 @@
         const _u = KC.user();
         if (_u && _u.role !== 'admin') window.location.href = '/parent/dashboard.html';
 
-        // Small debounce so search does not fire every keystroke instantly
-        let searchTimer;
-        function debounceFilter() { clearTimeout(searchTimer); searchTimer = setTimeout(loadUsers, 400); }
+        // Filters apply when Search is clicked (or Enter in the search box), not
+        // while typing. loadUsers() and the 30-second refresh use the last
+        // applied values, never something half-typed.
+        let appliedFilters = { search: '', role: '', status: '' };
+
+        function applyFilters() {
+            appliedFilters = {
+                search: document.getElementById('searchInput').value.trim(),
+                role: document.getElementById('roleFilter').value,
+                status: document.getElementById('statusFilter').value,
+            };
+            loadUsers();
+        }
+
+        function resetFilters() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('roleFilter').value = '';
+            document.getElementById('statusFilter').value = '';
+            appliedFilters = { search: '', role: '', status: '' };
+            loadUsers();
+        }
 
         function formatDateTime(ts) {
             if (!ts) return '—';
@@ -28,12 +46,10 @@
         }
 
         // ── loadUsers ────────────────────────────────────────────────────────────
-        // Fetches all users from the backend using the current search/filter values
+        // Fetches all users from the backend using the applied search/filter values
         // and re-renders both the main table and the pending approvals section.
         async function loadUsers() {
-            const search = document.getElementById('searchInput').value.trim();
-            const role   = document.getElementById('roleFilter').value;
-            const status = document.getElementById('statusFilter').value;
+            const { search, role, status } = appliedFilters;
             const params = new URLSearchParams();
             if (search) params.append('search', search);
             if (role)   params.append('role', role);
@@ -123,15 +139,6 @@
             if (!confirm('Reject this pending sign-up? The account will be deleted.')) return;
             try { await apiFetch(`/admin/users/${encodeURIComponent(userId)}`, { method:'DELETE' }); loadUsers(); }
             catch (e) { alert(e.message); }
-        }
-
-        // Export current admin data using authenticated download helper
-        async function exportUsers() {
-            try {
-                await downloadWithAuth('/admin/export-data', 'users-export.json');
-            } catch (e) {
-                alert('Export failed: ' + e.message);
-            }
         }
 
         // ── Secretary Audit View (read-only) ────────────────────────────────────

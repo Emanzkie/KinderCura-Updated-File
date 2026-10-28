@@ -10,6 +10,27 @@
     <link rel="stylesheet" href="/css/mobile-nav.css">
     <link rel="stylesheet" href="/css/nav-drawer.css">
     <link rel="stylesheet" href="/css/admin-responsive.css">
+    <style>
+        /* All Users scrolls inside its card; the column headers stay in view. */
+        #usersScroll thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: var(--bg-primary);
+            box-shadow: inset 0 -2px 0 var(--border);
+        }
+        /* Filters and the Search / Reset buttons on one row; stacked on phones. */
+        .users-filter-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr auto auto;
+            gap: 1rem;
+            align-items: end;
+        }
+        @media (max-width: 760px) {
+            .users-filter-row { grid-template-columns: 1fr 1fr; }
+            .users-filter-row .form-group:first-child { grid-column: 1 / -1; }
+        }
+    </style>
 </head>
 <body>
     <header class="top-nav has-mobile-nav nav-drawer">
@@ -43,17 +64,18 @@
 
         <div class="card">
             <h3><img src="/icons/data.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Search & Filter</h3>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:1rem;align-items:end;">
-                <div class="form-group" style="margin-bottom:0;"><label>Search</label><input type="text" id="searchInput" placeholder="Name, email, username…" oninput="debounceFilter()"></div>
-                <div class="form-group" style="margin-bottom:0;"><label>Role</label><select id="roleFilter" onchange="loadUsers()"><option value="">All Roles</option><option value="parent">Parent</option><option value="pediatrician">Pediatrician</option><option value="admin">Admin</option><option value="secretary">Assistant/Secretary</option></select></div>
-                <div class="form-group" style="margin-bottom:0;"><label>Status</label><select id="statusFilter" onchange="loadUsers()"><option value="">All Status</option><option value="active">Active</option><option value="pending">Pending</option><option value="suspended">Suspended</option></select></div>
-                <button class="btn btn-primary" onclick="exportUsers()">Export</button>
+            <div class="users-filter-row">
+                <div class="form-group" style="margin-bottom:0;"><label>Search</label><input type="text" id="searchInput" placeholder="Name, email, username…" onkeydown="if (event.key === 'Enter') applyFilters()"></div>
+                <div class="form-group" style="margin-bottom:0;"><label>Role</label><select id="roleFilter"><option value="">All Roles</option><option value="parent">Parent</option><option value="pediatrician">Pediatrician</option><option value="admin">Admin</option><option value="secretary">Assistant/Secretary</option></select></div>
+                <div class="form-group" style="margin-bottom:0;"><label>Status</label><select id="statusFilter"><option value="">All Status</option><option value="active">Active</option><option value="pending">Pending</option><option value="suspended">Suspended</option></select></div>
+                <button type="button" class="btn btn-primary" onclick="applyFilters()">Search</button>
+                <button type="button" class="btn btn-secondary" onclick="resetFilters()">Reset</button>
             </div>
         </div>
 
         <div class="card">
             <h3><img src="/icons/parent.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> All Users <span id="userCount" style="font-size:0.9rem;font-weight:400;color:var(--text-light);"></span></h3>
-            <div style="overflow-x:auto;">
+            <div id="usersScroll" style="overflow:auto;max-height:450px;">
                 <table style="width:100%;border-collapse:collapse;">
                     <thead>
                         <tr style="background:var(--bg-primary);border-bottom:2px solid var(--border);">
@@ -72,7 +94,7 @@
 
         <div class="card">
             <h3><img src="/icons/pending_request.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Pending Approvals <span id="pendingCount" style="background:var(--accent-red);color:var(--text-dark);padding:0.2rem 0.6rem;border-radius:20px;font-size:0.8rem;margin-left:0.5rem;"></span></h3>
-            <div id="pendingList" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem;"><p style="color:var(--text-light);grid-column:1/-1;text-align:center;">Loading…</p></div>
+            <div id="pendingList" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem;max-height:450px;overflow-y:auto;padding-right:0.5rem;"><p style="color:var(--text-light);grid-column:1/-1;text-align:center;">Loading…</p></div>
         </div>
 
         <!-- Important: Secretary accounts are now created and managed by each Pediatrician
