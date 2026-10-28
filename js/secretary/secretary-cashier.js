@@ -20,10 +20,13 @@ if (!KC.token()) window.location.href = loginUrlForThisPage();
 const _u = KC.user();
 if (KC.token() && _u && !['secretary', 'admin'].includes(_u.role)) {
     const roleMap = {
-        pediatrician: '/pedia/pediatrician-dashboard.html',
-        parent: '/parent/dashboard.html',
+        pediatrician: '/pedia/pediatrician-dashboard',
+        parent: '/parent/dashboard',
+        legal_guardian: '/parent/dashboard',
+        foster_parent: '/parent/dashboard',
+        court_appointed: '/parent/dashboard',
     };
-    window.location.href = roleMap[_u.role] || '/login.html';
+    window.location.href = roleMap[_u.role] || '/login';
 }
 
 let currentLookup = null;   // last successful lookup payload
@@ -262,9 +265,11 @@ async function loadToday() {
             const payText = paid
                 ? `Paid${a.receiptNumber ? ` · ${escapeHtml(a.receiptNumber)}` : ''}`
                 : escapeHtml(a.paymentStatus || 'Unpaid');
+            // The reference travels in a data attribute: escapeHtml does not make a
+            // value safe inside onclick JavaScript.
             const action = (!paid && a.paymentRef)
                 ? `<button class="btn btn-primary" style="padding:0.35rem 0.7rem;font-size:0.82rem;"
-                     onclick="lookupPayment('${escapeHtml(a.paymentRef)}')">Collect</button>`
+                     data-ref="${escapeHtml(a.paymentRef)}" onclick="lookupPayment(this.dataset.ref)">Collect</button>`
                 : '';
             return `<tr style="border-bottom:1px solid var(--border,#DDD9CC);">
                 <td style="padding:0.6rem 0.5rem;white-space:nowrap;font-weight:600;">${fmtTime(a.time)}</td>
@@ -346,6 +351,8 @@ document.addEventListener('DOMContentLoaded', () => {
     input.focus();
 
     loadToday();
+    // Today's list keeps up with new bookings and payments without a reload.
+    KC.poll(loadToday, 30000);
 
     // Opened from a scanned Pay at Clinic QR (…/secretary-cashier.html?ref=KC-PAY-…):
     // look that payment up straight away. Looking up never marks anything paid;

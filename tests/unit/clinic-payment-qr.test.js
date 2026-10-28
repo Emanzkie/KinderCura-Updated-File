@@ -211,7 +211,7 @@ function makeCashierEnv({ search = '', token = 'tok', role = 'secretary' } = {})
   const ctx = vm.createContext({
     document: { getElementById: el, querySelectorAll: () => [], addEventListener: (t, cb) => { if (t === 'DOMContentLoaded') domReady = cb; } },
     window: { location, addEventListener() {}, setTimeout: () => 0, clearTimeout() {} },
-    KC: { token: () => token, user: () => (role ? { role } : null) },
+    KC: { token: () => token, user: () => (role ? { role } : null), poll: () => ({ stop() {} }) },
     apiFetch: async (url) => {
       fetches.push(url);
       if (url.startsWith('/payments/clinic/lookup/')) {
@@ -273,7 +273,9 @@ async function pageTests() {
 
   // Non-staff role keeps the existing redirect to their own dashboard.
   const parentEnv = makeCashierEnv({ search: `?ref=${REF}`, role: 'parent' });
-  assert.strictEqual(parentEnv.location.href, '/parent/dashboard.html');
+  assert.strictEqual(parentEnv.location.href, '/parent/dashboard');
+  const guardianEnv = makeCashierEnv({ search: `?ref=${REF}`, role: 'legal_guardian' });
+  assert.strictEqual(guardianEnv.location.href, '/parent/dashboard', 'guardian roles go to the parent dashboard too, not the login page');
   ok('Cashier page: signed-out or expired sessions go to login with ?next= back to the payment; parents still go to their own dashboard');
 
   // login.js really honours that ?next= (same-site path only).

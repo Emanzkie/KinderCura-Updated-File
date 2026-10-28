@@ -1309,7 +1309,40 @@ async function hydrateAppointment(appointmentDoc) {
     appointmentDoc.pediatricianId ? User.findById(appointmentDoc.pediatricianId).lean() : null,
     findRelevantPayment(appointmentDoc),
   ]);
+  return buildHydratedAppointment(appointmentDoc, { child, parent, pediatrician, payment });
+}
 
+// The same output as hydrateAppointment for a whole list, from four queries in
+// total instead of four per appointment. The clinic lists (GET /pedia and
+// /pedia-notifications) hydrated every appointment ever booked one after
+// another, which grows past Vercel's request time limit as bookings pile up.
+async function hydrateAppointments(appointmentDocs) {
+  if (!appointmentDocs.length) return [];
+  const ids = (key) => [...new Set(appointmentDocs.map((d) => d[key]).filter(Boolean).map(String))];
+  const [children, users, payments] = await Promise.all([
+    Child.find({ _id: { $in: ids('childId') } }).lean(),
+    User.find({ _id: { $in: [...ids('parentId'), ...ids('pediatricianId')] } }).lean(),
+    // Same choice as findRelevantPayment: the Paid row, else the newest one.
+    Payment.find({ appointmentId: { $in: appointmentDocs.map((d) => d._id) } }).sort({ createdAt: -1 }).lean()
+      .catch(() => []),
+  ]);
+  const childById = new Map(children.map((c) => [String(c._id), c]));
+  const userById = new Map(users.map((u) => [String(u._id), u]));
+  const paymentByAppointment = new Map();
+  for (const p of payments) {
+    const key = String(p.appointmentId);
+    const current = paymentByAppointment.get(key);
+    if (!current || (p.status === 'Paid' && current.status !== 'Paid')) paymentByAppointment.set(key, p);
+  }
+  return appointmentDocs.map((doc) => buildHydratedAppointment(doc, {
+    child: childById.get(String(doc.childId)) || null,
+    parent: userById.get(String(doc.parentId)) || null,
+    pediatrician: doc.pediatricianId ? userById.get(String(doc.pediatricianId)) || null : null,
+    payment: paymentByAppointment.get(String(doc._id)) || null,
+  }));
+}
+
+function buildHydratedAppointment(appointmentDoc, { child, parent, pediatrician, payment }) {
   const paymentDisplayStatus = derivePaymentDisplayStatus(appointmentDoc, payment);
   const isPaid = paymentDisplayStatus === 'Paid';
   // The exact wallet PayMongo reported ('GCash' / 'Maya'); 'Pay at Clinic' for
@@ -1521,8 +1554,7 @@ router.get('/pedia', authMiddleware, secretaryOrPediatrician, async (req, res) =
     }
 
     const docs = await Appointment.find({ pediatricianId: pedId }).sort({ appointmentDate: -1, createdAt: -1 }).lean();
-    const appointments = [];
-    for (const doc of docs) appointments.push(await hydrateAppointment(doc));
+    const appointments = await hydrateAppointments(docs);
 
     res.json({ success: true, appointments });
   } catch (err) {
@@ -1547,9 +1579,10 @@ router.get('/pedia-notifications', authMiddleware, secretaryOrPediatrician, asyn
       return res.status(403).json({ error: 'You do not have permission to view appointments.' });
     }
     const docs = await Appointment.find({ pediatricianId: pedId }).sort({ createdAt: -1 }).lean();
+    const hydratedList = await hydrateAppointments(docs);
     const notifications = [];
-    for (const doc of docs) {
-      const appt = await hydrateAppointment(doc);
+    for (const [i, doc] of docs.entries()) {
+      const appt = hydratedList[i];
       notifications.push({
         id: appt.id,
         appointmentId: appt.id,
@@ -1856,13 +1889,19 @@ router.put('/:appointmentId/status', authMiddleware, clinicStaffOrAdmin, async (
       return res.status(403).json({ error: 'Assistant/Secretary account is not linked to a pediatrician yet.' });
     }
 
-    // Important: check that the secretary has permission to manage bookings or approve schedules.
-    // The pediatrician controls these permissions from their Settings > Staff Access tab.
+    // Important: check the secretary's permission for this action. The
+    // pediatrician controls these from Settings > Staff Access. Approving is
+    // allowed by either "Manage Booking Requests" or "Approve Schedules";
+    // rejecting or cancelling a booking needs "Manage Booking Requests", so
+    // turning that off really stops it. Missing flags fall back to the defaults.
     let secretaryFullName = null;
     if (req.user.role === 'secretary') {
-      const secUser = await User.findById(req.user.userId).select('secretaryPermissions firstName lastName').lean();
-      const perms = secUser?.secretaryPermissions || {};
-      if (!perms.manageBookings && !perms.approveSchedules) {
+      const secUser = await User.findById(req.user.userId).select('firstName lastName').lean();
+      const perms = await getSecretaryPermissions(req.user.userId);
+      const allowed = ['rejected', 'cancelled'].includes(status)
+        ? perms.manageBookings
+        : (perms.manageBookings || perms.approveSchedules);
+      if (!allowed) {
         return res.status(403).json({ error: 'You do not have permission to update appointment status.' });
       }
       // Build the secretary name so the pedia notification is readable.

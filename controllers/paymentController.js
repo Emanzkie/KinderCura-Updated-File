@@ -13,6 +13,8 @@ const SystemSetting = require('../models/SystemSetting');
 const paymongoService = require('../services/paymongoService');
 const receiptService = require('../services/receiptService');
 const adminOps = require('../services/adminOperationsAnalytics');
+const { SECRETARY_DEFAULT_PERMISSIONS } = require('../services/secretaryPermissions');
+const { CLINIC_TIMEZONE, clinicDayStart, clinicDayEnd } = require('../constants/clinicTime');
 
 const fileStorage = require('../services/fileStorage');
 
@@ -40,6 +42,15 @@ async function canAccessAppointment(req, appointment) {
   return hasPermission(req.user.userId, appointment.childId, 'manageAppointments');
 }
 
+// managePayments is off unless the pediatrician turned it on, the same default
+// services/secretaryPermissions.js and the Staff Access settings show. It used
+// to fall back to manageBookings/approveSchedules when unset, so a secretary
+// could take payments while their settings said they could not.
+function canSecretaryManagePayments(secretary) {
+  const perms = { ...SECRETARY_DEFAULT_PERMISSIONS, ...((secretary && secretary.secretaryPermissions) || {}) };
+  return perms.managePayments === true;
+}
+
 async function resolveClinicPediatricianId(req) {
   if (req.user.role === 'admin') return null;
   if (req.user.role === 'pediatrician') return req.user.userId;
@@ -48,15 +59,7 @@ async function resolveClinicPediatricianId(req) {
       throw new Error('Assistant/Secretary account is not linked to a pediatrician yet.');
     }
     const secretary = await User.findById(req.user.userId).select('secretaryPermissions').lean();
-    const perms = secretary?.secretaryPermissions || {};
-    // managePayments is the single source of truth for payment actions.
-    // Fallback only applies to documents that predate this field and haven't
-    // been backfilled yet (see scripts/migrate-add-managePayments.js) — once
-    // the field is explicitly true/false it is used as-is, never overridden.
-    const canManagePayments = perms.managePayments === undefined
-      ? Boolean(perms.manageBookings || perms.approveSchedules)
-      : Boolean(perms.managePayments);
-    if (!canManagePayments) {
+    if (!canSecretaryManagePayments(secretary)) {
       throw new Error('You do not have permission to manage payments.');
     }
     return req.user.linkedPediatricianId;
@@ -462,13 +465,7 @@ async function resolveCashierScope(req) {
         { statusCode: 403 }
       );
     }
-    const perms = secretary.secretaryPermissions || {};
-    // managePayments is authoritative once set; the fallback only covers
-    // documents written before that field existed.
-    const canManagePayments = perms.managePayments === undefined
-      ? Boolean(perms.manageBookings || perms.approveSchedules)
-      : Boolean(perms.managePayments);
-    if (!canManagePayments) {
+    if (!canSecretaryManagePayments(secretary)) {
       throw Object.assign(new Error('You do not have permission to manage payments.'), { statusCode: 403 });
     }
     return { pediatricianId: String(secretary.linkedPediatricianId), isAdmin: false };
@@ -1209,10 +1206,14 @@ async function getClinicToday(req, res) {
   try {
     const scope = await resolveCashierScope(req);
 
-    const start = new Date(); start.setHours(0, 0, 0, 0);
-    const end = new Date(); end.setHours(23, 59, 59, 999);
+    // Today in the clinic's time zone, not the server's: on Vercel (UTC) the
+    // server's "today" was still yesterday until 8 AM in Manila. Cancelled
+    // bookings are left out as well; their payment can no longer be taken.
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: CLINIC_TIMEZONE });
+    const start = clinicDayStart(today);
+    const end = clinicDayEnd(today);
 
-    const query = { appointmentDate: { $gte: start, $lte: end }, status: { $nin: ['rejected'] } };
+    const query = { appointmentDate: { $gte: start, $lte: end }, status: { $nin: ['rejected', 'cancelled'] } };
     if (!scope.isAdmin) query.pediatricianId = new mongoose.Types.ObjectId(String(scope.pediatricianId));
 
     const appointments = await Appointment.find(query).sort({ appointmentTime: 1 }).lean();
@@ -1238,7 +1239,7 @@ async function getClinicToday(req, res) {
 
     res.json({
       success: true,
-      date: start.toISOString().slice(0, 10),
+      date: today,
       appointments: appointments.map((a) => {
         const pay = paymentMap.get(String(a._id)) || null;
         return {

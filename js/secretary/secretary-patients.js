@@ -6,11 +6,14 @@ requireAuth();
             window.location.href = '/login.html';
         } else if (currentUser.role !== 'secretary') {
             const roleMap = {
-                admin: '/admin/admin-dashboard.html',
-                pediatrician: '/pedia/pediatrician-dashboard.html',
-                parent: '/parent/dashboard.html'
+                admin: '/admin/admin-dashboard',
+                pediatrician: '/pedia/pediatrician-dashboard',
+                parent: '/parent/dashboard',
+                legal_guardian: '/parent/dashboard',
+                foster_parent: '/parent/dashboard',
+                court_appointed: '/parent/dashboard'
             };
-            window.location.href = roleMap[currentUser.role] || '/login.html';
+            window.location.href = roleMap[currentUser.role] || '/login';
         }
 
         let patients = [];
@@ -182,4 +185,6 @@ requireAuth();
             await loadProfile();
             await loadPatients();
             loadNotificationCount();
+            // New patients and status changes appear without a reload.
+            KC.poll(loadPatients, 30000);
         })();

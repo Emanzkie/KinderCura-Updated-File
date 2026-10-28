@@ -6,16 +6,26 @@
         const _u = KC.user();
         if (_u && _u.role !== 'secretary') {
             const roleMap = {
-                admin: '/admin/admin-dashboard.html',
-                pediatrician: '/pedia/pediatrician-dashboard.html',
-                parent: '/parent/dashboard.html',
+                admin: '/admin/admin-dashboard',
+                pediatrician: '/pedia/pediatrician-dashboard',
+                parent: '/parent/dashboard',
+                legal_guardian: '/parent/dashboard',
+                foster_parent: '/parent/dashboard',
+                court_appointed: '/parent/dashboard',
             };
-            window.location.href = roleMap[_u.role] || '/sign-up,login/login.html';
+            window.location.href = roleMap[_u.role] || '/login';
         }
 
         // Module-level state
         let secretaryProfile = null;   // filled in by loadProfile()
         let allAppointments  = [];     // all appointment records from the API
+
+        // Same rules as PUT /api/appointments/:id/status: approving is allowed
+        // by either "Manage Booking Requests" or "Approve Schedules"; rejecting
+        // needs "Manage Booking Requests". Defaults until the profile loads.
+        function secretaryPerms() {
+            return (secretaryProfile && secretaryProfile.permissions) || { manageBookings: true, approveSchedules: true };
+        }
 
         // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -123,8 +133,8 @@
                     </div>
                     <div class="req-actions">
                         <span class="pill pill-pending">Pending</span>
-                        <button class="btn-approve" onclick="updateStatus(${a.id}, 'approved')">&#10003; Approve</button>
-                        <button class="btn-reject"  onclick="updateStatus(${a.id}, 'rejected')"><img src="/icons/reject_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reject</button>
+                        ${secretaryPerms().manageBookings || secretaryPerms().approveSchedules ? `<button class="btn-approve" onclick="updateStatus(${a.id}, 'approved')">&#10003; Approve</button>` : ''}
+                        ${secretaryPerms().manageBookings ? `<button class="btn-reject"  onclick="updateStatus(${a.id}, 'rejected')"><img src="/icons/reject_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reject</button>` : ''}
                         <!-- Link to full Appointments page for more detail -->
                         <a href="/secretary/secretary-approval.html">View queue</a>
                     </div>
@@ -191,4 +201,6 @@
             await loadProfile();
             await loadAppointments();
             loadNotificationCount();
+            // New bookings and the pediatrician's own changes appear without a reload.
+            KC.poll(loadAppointments, 30000);
         })();

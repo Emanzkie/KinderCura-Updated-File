@@ -33,6 +33,7 @@ const User = require('../models/User');
 const Appointment = require('../models/Appointment');
 const Child = require('../models/Child');
 const sse = require('../sse');
+const { sendServerError } = require('../middleware/serverError');
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -54,8 +55,9 @@ function publicSecretaryProfile(secretary, linkedPediatricianDoc = null) {
     role: secretary.role,           // always 'secretary'
     status: secretary.status,
     profileIcon: secretary.profileIcon || 'avatar1',
-    // Permissions granted by the pediatrician (stored in the User document).
-    permissions: secretary.secretaryPermissions || defaultPermissions(),
+    // Permissions granted by the pediatrician (stored in the User document),
+    // with missing flags filled from the defaults the server checks against.
+    permissions: effectivePermissions(secretary),
     linkedPediatricianId: secretary.linkedPediatricianId
       ? String(secretary.linkedPediatricianId)
       : null,
@@ -76,6 +78,12 @@ function publicSecretaryProfile(secretary, linkedPediatricianDoc = null) {
 // The pediatrician can turn individual permissions on/off from Settings.
 function defaultPermissions() {
   return { ...SECRETARY_DEFAULT_PERMISSIONS };
+}
+
+// Stored flags win; a flag saved before it existed falls back to its default,
+// exactly as the server's permission checks read it.
+function effectivePermissions(secretary) {
+  return { ...defaultPermissions(), ...((secretary && secretary.secretaryPermissions) || {}) };
 }
 
 function fullName(firstName, lastName, fallback = '') {
@@ -104,6 +112,9 @@ function publicAppointmentForSecretary(appt, child = null, parent = null) {
     notes: appt.notes || null,
     statusNote: appt.statusNote || null,
     location: appt.location || null,
+    // Approval needs the minimum payment first, so the approvals list shows it.
+    paymentStatus: appt.paymentStatus || 'Unpaid',
+    pendingPaymentMode: appt.pendingPaymentMode || null,
     createdAt: appt.createdAt,
     updatedAt: appt.updatedAt,
     childId: child ? String(child._id) : (appt.childId ? String(appt.childId) : null),
@@ -145,10 +156,7 @@ async function getSecretaryContext(req, res, requiredPermission = 'viewAppointme
     return null;
   }
 
-  const permissions = {
-    ...defaultPermissions(),
-    ...(secretary.secretaryPermissions || {}),
-  };
+  const permissions = effectivePermissions(secretary);
   if (requiredPermission && !permissions[requiredPermission]) {
     res.status(403).json({ error: 'You do not have permission to view this scheduling area.' });
     return null;
@@ -189,8 +197,7 @@ router.get('/me', authMiddleware, async (req, res) => {
       secretary: publicSecretaryProfile(secretary, linkedPediatrician),
     });
   } catch (err) {
-    console.error('secretary /me error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err, 'Could not load your account. Please try again.');
   }
 });
 
@@ -276,8 +283,7 @@ router.get('/patients', authMiddleware, async (req, res) => {
       permissions: context.permissions,
     });
   } catch (err) {
-    console.error('secretary /patients error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err, 'Could not load patients. Please try again.');
   }
 });
 
@@ -320,8 +326,7 @@ router.get('/approvals', authMiddleware, async (req, res) => {
       permissions: context.permissions,
     });
   } catch (err) {
-    console.error('secretary /approvals error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err, 'Could not load approval requests. Please try again.');
   }
 });
 
@@ -352,7 +357,7 @@ router.get('/my-staff', authMiddleware, async (req, res) => {
         email:       s.email,
         username:    s.username,
         status:      s.status,
-        permissions: s.secretaryPermissions || defaultPermissions(),
+        permissions: effectivePermissions(s),
         createdAt:   s.createdAt,
       })),
     });

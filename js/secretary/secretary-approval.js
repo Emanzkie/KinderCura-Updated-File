@@ -6,19 +6,35 @@ requireAuth();
             window.location.href = '/login.html';
         } else if (currentUser.role !== 'secretary') {
             const roleMap = {
-                admin: '/admin/admin-dashboard.html',
-                pediatrician: '/pedia/pediatrician-dashboard.html',
-                parent: '/parent/dashboard.html'
+                admin: '/admin/admin-dashboard',
+                pediatrician: '/pedia/pediatrician-dashboard',
+                parent: '/parent/dashboard',
+                legal_guardian: '/parent/dashboard',
+                foster_parent: '/parent/dashboard',
+                court_appointed: '/parent/dashboard'
             };
-            window.location.href = roleMap[currentUser.role] || '/login.html';
+            window.location.href = roleMap[currentUser.role] || '/login';
         }
 
         let approvals = [];
         let permissions = {};
         const selectedIds = new Set();
 
+        // Same rules as PUT /api/appointments/:id/status: approving is allowed
+        // by either flag, rejecting needs "Manage Booking Requests".
         function canManageBookings() {
             return Boolean(permissions.manageBookings || permissions.approveSchedules);
+        }
+
+        function canReject() {
+            return Boolean(permissions.manageBookings);
+        }
+
+        // Approval is refused until the minimum payment is in, so show it here.
+        function paymentLine(item) {
+            const mode = item.pendingPaymentMode === 'walk_in' ? ' — Walk-in'
+                : item.pendingPaymentMode === 'ewallet' ? ' — E-Wallet' : '';
+            return `<p class="sub-line">&#8369; Payment: <strong>${escapeHtml(item.paymentStatus || 'Unpaid')}</strong>${mode}</p>`;
         }
 
         function shortDate(value) {
@@ -106,6 +122,7 @@ requireAuth();
                     <td>
                         <p class="primary-line">${shortDateTime(item.appointmentDate, item.appointmentTime)}</p>
                         <span class="status-chip status-pending">Pending</span>
+                        ${paymentLine(item)}
                     </td>
                     <td>
                         <p class="sub-line">${escapeHtml(item.reason || 'General checkup')}</p>
@@ -117,7 +134,7 @@ requireAuth();
                             <button class="action-btn primary" onclick="updateStatus(${item.id}, 'approved')" ${manage ? '' : 'disabled'}>
                                 <img src="/icons/appointment.png" alt="" aria-hidden="true"> Approve
                             </button>
-                            <button class="action-btn danger" onclick="rejectAppointment(${item.id})" ${manage ? '' : 'disabled'}>
+                            <button class="action-btn danger" onclick="rejectAppointment(${item.id})" ${canReject() ? '' : 'disabled'}>
                                 X Reject
                             </button>
                         </div>
@@ -144,7 +161,7 @@ requireAuth();
         }
 
         async function updateStatus(appointmentId, status, notes = null) {
-            if (!canManageBookings()) return;
+            if (!(status === 'rejected' ? canReject() : canManageBookings())) return;
             const verb = status === 'approved' ? 'Approve' : 'Reject';
             if (!confirm(`${verb} this appointment?`)) return;
 
@@ -157,7 +174,7 @@ requireAuth();
         }
 
         async function rejectAppointment(appointmentId) {
-            if (!canManageBookings()) return;
+            if (!canReject()) return;
             const note = prompt('Reason for rejection (optional):', '');
             if (note === null) return;
             await updateStatus(appointmentId, 'rejected', note.trim());
@@ -217,13 +234,18 @@ requireAuth();
             }
         }
 
-        async function loadApprovals() {
+        // quiet: a background refresh (KC.poll below) keeps the table as it is
+        // while loading, and keeps the ticks on requests that are still pending.
+        async function loadApprovals({ quiet = false } = {}) {
             try {
-                document.getElementById('tableMeta').textContent = 'Loading...';
+                if (!quiet) document.getElementById('tableMeta').textContent = 'Loading...';
                 const data = await apiFetch('/secretary/approvals');
                 approvals = Array.isArray(data.approvals) ? data.approvals : [];
                 permissions = data.permissions || {};
-                selectedIds.clear();
+                const stillPending = new Set(approvals.map((item) => item.id));
+                for (const id of [...selectedIds]) {
+                    if (!stillPending.has(id)) selectedIds.delete(id);
+                }
                 renderRows();
             } catch (err) {
                 document.getElementById('approvalsBody').innerHTML =
@@ -249,4 +271,7 @@ requireAuth();
             await loadProfile();
             await loadApprovals();
             loadNotificationCount();
+            // New requests appear without a reload, and a request the
+            // pediatrician already handled drops off the list.
+            KC.poll(() => loadApprovals({ quiet: true }), 30000);
         })();

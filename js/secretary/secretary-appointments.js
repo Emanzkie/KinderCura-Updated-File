@@ -5,11 +5,14 @@
         const _u = KC.user();
         if (_u && _u.role !== 'secretary') {
             const roleMap = {
-                admin: '/admin/admin-dashboard.html',
-                pediatrician: '/pedia/pediatrician-dashboard.html',
-                parent: '/parent/dashboard.html',
+                admin: '/admin/admin-dashboard',
+                pediatrician: '/pedia/pediatrician-dashboard',
+                parent: '/parent/dashboard',
+                legal_guardian: '/parent/dashboard',
+                foster_parent: '/parent/dashboard',
+                court_appointed: '/parent/dashboard',
             };
-            window.location.href = roleMap[_u.role] || '/sign-up,login/login.html';
+            window.location.href = roleMap[_u.role] || '/login';
         }
 
         // Module-level state
@@ -17,6 +20,11 @@
         let currentFilter   = 'all';
         let canManagePayments = false;
         let canReschedule = true; // the pediatrician can switch this off in Staff Access
+        // Same rules as PUT /api/appointments/:id/status: approving is allowed by
+        // either "Manage Booking Requests" or "Approve Schedules"; rejecting and
+        // cancelling need "Manage Booking Requests".
+        let canApprove = true;
+        let canRejectOrCancel = true;
 
         // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -49,6 +57,10 @@
                 const sec  = data.secretary;
                 canManagePayments = Boolean(sec.permissions && sec.permissions.managePayments);
                 canReschedule = !(sec.permissions && sec.permissions.rescheduleRequests === false);
+                if (sec.permissions) {
+                    canApprove = Boolean(sec.permissions.manageBookings || sec.permissions.approveSchedules);
+                    canRejectOrCancel = Boolean(sec.permissions.manageBookings);
+                }
                 document.getElementById('profileMenuName').textContent =
                     `${sec.firstName} ${sec.lastName}`;
 
@@ -118,14 +130,15 @@
                         : '';
                     actions = `
                         ${walkInBtn}
-                        <button class="btn-approve"    onclick="updateStatus(${a.id},'approved')">&#10003; Approve</button>
+                        ${canApprove ? `<button class="btn-approve"    onclick="updateStatus(${a.id},'approved')">&#10003; Approve</button>` : ''}
                         ${rescheduleBtn}
-                        <button class="btn-reject"     onclick="updateStatus(${a.id},'rejected')"><img src="/icons/reject_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reject</button>`;
+                        ${canRejectOrCancel ? `<button class="btn-reject"     onclick="updateStatus(${a.id},'rejected')"><img src="/icons/reject_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reject</button>` : ''}`;
                 } else if (a.status === 'approved') {
                     actions = `
                         ${rescheduleBtn}
-                        <button class="btn-reject"     onclick="updateStatus(${a.id},'cancelled')">Cancel</button>`;
+                        ${canRejectOrCancel ? `<button class="btn-reject"     onclick="updateStatus(${a.id},'cancelled')">Cancel</button>` : ''}`;
                 }
+                if (!actions.trim()) actions = '';
 
                 return `
                     <div class="appt-card ${a.status}">
@@ -181,8 +194,9 @@
         // Open the reschedule modal for a specific appointment
         function openReschedule(id) {
             document.getElementById('rescheduleApptId').value = id;
-            // Prevent selecting dates in the past
-            document.getElementById('rNewDate').min = new Date().toISOString().split('T')[0];
+            // Prevent selecting dates in the past. Local date, not toISOString():
+            // that is the UTC date, still yesterday before 8 AM in Manila.
+            document.getElementById('rNewDate').min = new Date().toLocaleDateString('en-CA');
             document.getElementById('rNewDate').value = '';
             document.getElementById('rNewTime').value = '';
             document.getElementById('rNote').value = '';
@@ -246,4 +260,6 @@
             await loadProfile();
             await loadAppointments();
             loadNotificationCount();
+            // New bookings and the pediatrician's own changes appear without a reload.
+            KC.poll(loadAppointments, 30000);
         })();
