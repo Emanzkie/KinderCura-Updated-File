@@ -71,7 +71,7 @@ if (localStorage.getItem('kc_remember') === '0' && !/(?:^|;\s*)kc_session=1(?:;|
     const staffHome = {
         admin: '/admin/admin-dashboard',
         pediatrician: '/pedia/pediatrician-dashboard',
-        secretary: '/secretary/secretary-dashboard.html',
+        secretary: '/secretary/secretary-dashboard',
     }[user.role];
     if (staffHome) window.location.replace(staffHome);
 })();
@@ -320,9 +320,9 @@ function notificationDestination(n) {
 
     if (role === 'secretary') {
         if (type === 'appointment' || says('appointment')) {
-            return says('request') ? '/secretary/secretary-approval.html' : '/secretary/secretary-appointments.html';
+            return says('request') ? '/secretary/secretary-approval' : '/secretary/secretary-appointments';
         }
-        if (says('patient')) return '/secretary/secretary-patients.html';
+        if (says('patient')) return '/secretary/secretary-patients';
         return null;
     }
 

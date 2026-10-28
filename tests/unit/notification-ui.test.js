@@ -145,7 +145,7 @@ function destinationTests() {
   ok('parent and guardian roles: stored relatedPage wins, payment/appointment notices open Appointments');
 
   const secretary = loadApi('secretary');
-  assert.strictEqual(secretary.notificationDestination({ title: 'New Appointment Request', type: 'appointment', message: 'requested' }), '/secretary/secretary-approval.html');
+  assert.strictEqual(secretary.notificationDestination({ title: 'New Appointment Request', type: 'appointment', message: 'requested' }), '/secretary/secretary-approval');
   assert.strictEqual(secretary.notificationDestination({ title: 'Notice', type: 'system', message: 'x' }), null);
   ok('secretary: appointment requests open Approvals; unknown ones have no link');
 

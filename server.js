@@ -175,11 +175,11 @@ function rootStaticTarget(urlPath) {
     }
 }
 
-// Parent, pediatrician and admin pages are left to their /:page routes, which
-// serve clean addresses and redirect ".html" ones. Root static would otherwise
-// answer /PARENT/x.html directly, and on Windows /parent/x.html too
-// (case-insensitive file system).
-const CLEAN_PAGE_DIRS = /^\/(parent|pedia|admin)(\/|$)/i;
+// Every role's pages are left to their /:page routes, which serve clean
+// addresses and redirect ".html" ones. Root static would otherwise answer
+// /PARENT/x.html directly, and on Windows /parent/x.html too (case-insensitive
+// file system).
+const CLEAN_PAGE_DIRS = /^\/(parent|pedia|admin|secretary)(\/|$)/i;
 
 const rootStatic = cachedStatic(__dirname, { index: false });
 app.use((req, res, next) => {
@@ -286,7 +286,7 @@ app.get('/admin/prc-verification', (req, res) => {
 
 app.get('/admin/:page', servePage('ADMIN', '/admin'));
 // Important: serves the new SECRETARY HTML pages under /secretary/
-app.get('/secretary/:page', servePage('SECRETARY'));
+app.get('/secretary/:page', servePage('SECRETARY', '/secretary'));
 
 // Step 1 routes already converted to MongoDB
 app.use('/api/auth', require('./routes/auth'));

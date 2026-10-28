@@ -1,10 +1,10 @@
-// Clean addresses for sign-in, sign-up, the parent, pediatrician and admin pages.
+// Clean addresses for sign-in, sign-up and every role's pages.
 //
-// /login, /signup, /parent/<page>, /pedia/<page> and /admin/<page> serve the
-// page directly. The old ".html" address answers a 302 to the clean one and
-// keeps its query string, so bookmarks, emails, stored notification links and
-// the pages that still link to ".html" keep working. Secretary pages are not
-// part of this change and still use ".html".
+// /login, /signup, /parent/<page>, /pedia/<page>, /admin/<page> and
+// /secretary/<page> serve the page directly. The old ".html" address answers a
+// 302 to the clean one and keeps its query string, so bookmarks, emails,
+// stored notification links, printed Pay at Clinic QR codes and the pages that
+// still link to ".html" keep working.
 //
 // No DB: server.js exports the Express app when it is required rather than
 // run, and none of these requests touch Mongo.
@@ -125,11 +125,30 @@ async function run() {
     }
     ok(`5: all ${adminPages.length} admin pages load without .html; .html redirects keep the query`);
 
-    // 6. Secretary pages are unchanged: .html still serves directly, no clean form.
-    const secFile = fs.readdirSync(path.join(ROOT, 'SECRETARY')).find((f) => f.endsWith('.html'));
-    assert.strictEqual((await get(`/secretary/${secFile}`)).status, 200, `/secretary/${secFile} still loads`);
-    assert.strictEqual((await get(`/secretary/${secFile.slice(0, -'.html'.length)}`)).status, 404);
-    ok('6: secretary pages still use .html');
+    // 6. Secretary pages: clean addresses serve, .html redirects. Pay at Clinic
+    //    QR codes already handed out encode the .html Cashier URL with ?ref=.
+    const secretaryPages = fs.readdirSync(path.join(ROOT, 'SECRETARY')).filter((f) => f.endsWith('.html'));
+    for (const file of secretaryPages) {
+      const name = file.slice(0, -'.html'.length);
+      const r = await get(`/secretary/${name}`);
+      assert.strictEqual(r.status, 200, `/secretary/${name} should load (got ${r.status})`);
+      assert.strictEqual(r.body, read('SECRETARY', file), `/secretary/${name} serves ${file}`);
+      const old = await get(`/secretary/${file}`);
+      assert.strictEqual(old.status, 302, `/secretary/${file} should redirect (got ${old.status})`);
+      assert.strictEqual(old.location, `/secretary/${name}`);
+    }
+    for (const [from, to] of [
+      ['/secretary/secretary-cashier.html?ref=KC-PAY-ABC123', '/secretary/secretary-cashier?ref=KC-PAY-ABC123'],
+      ['/SECRETARY/secretary-dashboard.html', '/secretary/secretary-dashboard'],
+    ]) {
+      const r = await get(from);
+      assert.strictEqual(r.status, 302, `${from} should redirect (got ${r.status})`);
+      assert.strictEqual(r.location, to, `${from} redirects to ${to}`);
+    }
+    for (const url of ['/secretary/secretary-cashier.js', '/secretary/..%2Fserver', '/secretary/.env', '/secretary/does-not-exist']) {
+      assert.strictEqual((await get(url)).status, 404, `${url} should be 404`);
+    }
+    ok(`6: all ${secretaryPages.length} secretary pages load without .html; old QR links keep ?ref=`);
   } finally {
     server.closeAllConnections();
     server.close();

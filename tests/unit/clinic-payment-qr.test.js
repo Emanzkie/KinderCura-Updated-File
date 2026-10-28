@@ -62,13 +62,13 @@ function withEnv(vars, fn) {
 {
   const req = fakeReq(null, {}, { host: '192.168.1.20:3001' });
   withEnv({ APP_URL: 'https://kindercura.com/' }, () => {
-    assert.strictEqual(controller.clinicCounterUrl(req, REF), `https://kindercura.com/secretary/secretary-cashier.html?ref=${REF}`, 'APP_URL wins, trailing slash trimmed');
+    assert.strictEqual(controller.clinicCounterUrl(req, REF), `https://kindercura.com/secretary/secretary-cashier?ref=${REF}`, 'APP_URL wins, trailing slash trimmed');
   });
   withEnv({ VERCEL_PROJECT_PRODUCTION_URL: 'kindercura.com', VERCEL_URL: 'kindercura-abc123.vercel.app' }, () => {
-    assert.strictEqual(controller.clinicCounterUrl(req, REF), `https://kindercura.com/secretary/secretary-cashier.html?ref=${REF}`, 'Vercel production host, https');
+    assert.strictEqual(controller.clinicCounterUrl(req, REF), `https://kindercura.com/secretary/secretary-cashier?ref=${REF}`, 'Vercel production host, https');
   });
   withEnv({}, () => {
-    assert.strictEqual(controller.clinicCounterUrl(req, REF), `http://192.168.1.20:3001/secretary/secretary-cashier.html?ref=${REF}`, 'local development: the host the parent used');
+    assert.strictEqual(controller.clinicCounterUrl(req, REF), `http://192.168.1.20:3001/secretary/secretary-cashier?ref=${REF}`, 'local development: the host the parent used');
   });
   ok('QR URL: APP_URL, then Vercel production host (https), then the request host; points at the Cashier page with ?ref=');
 }
@@ -129,7 +129,7 @@ async function handlerTests() {
     let res = fakeRes();
     await withEnv({ APP_URL: 'https://kindercura.com' }, () => controller.startPayAtClinic(fakeReq(parentUser, { appointmentId: '107' }), res));
     assert.strictEqual(res.statusCode, 201, JSON.stringify(res.body));
-    assert.deepStrictEqual(state.qrPayloads, [`https://kindercura.com/secretary/secretary-cashier.html?ref=${REF}`], 'QR payload is the Cashier page URL');
+    assert.deepStrictEqual(state.qrPayloads, [`https://kindercura.com/secretary/secretary-cashier?ref=${REF}`], 'QR payload is the Cashier page URL');
     assert.ok(!/Ana|Reyes|Luz|400|Deluna|ana@/.test(state.qrPayloads[0]), 'no names, email or amount in the QR');
     assert.match(res.body.qrDataUrl, /^data:image\/png;base64,/, 'a real QR image is returned');
     assert.strictEqual(res.body.paymentRef, REF, 'the reference shown under the QR is unchanged');
@@ -207,7 +207,7 @@ function makeCashierEnv({ search = '', token = 'tok', role = 'secretary' } = {})
     addEventListener(t, cb) { this.listeners[t] = cb; }, focus() {}, setAttribute() {}, removeAttribute() {},
   });
   let domReady = null;
-  const location = { pathname: '/secretary/secretary-cashier.html', search, href: '' };
+  const location = { pathname: '/secretary/secretary-cashier', search, href: '' };
   const ctx = vm.createContext({
     document: { getElementById: el, querySelectorAll: () => [], addEventListener: (t, cb) => { if (t === 'DOMContentLoaded') domReady = cb; } },
     window: { location, addEventListener() {}, setTimeout: () => 0, clearTimeout() {} },
@@ -236,7 +236,8 @@ async function pageTests() {
   const parse = (v) => env.run(`refFromScan(${JSON.stringify(v)})`);
   assert.strictEqual(parse(REF), REF, 'bare reference (older QR / typed)');
   assert.strictEqual(parse(` ${REF.toLowerCase()} `), REF, 'typed lowercase with spaces');
-  assert.strictEqual(parse(`https://kindercura.com/secretary/secretary-cashier.html?ref=${REF}`), REF, 'new QR URL (USB scanner types the whole URL)');
+  assert.strictEqual(parse(`https://kindercura.com/secretary/secretary-cashier.html?ref=${REF}`), REF, 'older .html QR URL (codes already handed out)');
+  assert.strictEqual(parse(`https://kindercura.com/secretary/secretary-cashier?ref=${REF}`), REF, 'new QR URL (USB scanner types the whole URL)');
   assert.strictEqual(parse(`http://192.168.1.20:3001/secretary/secretary-cashier.html?ref=${REF.toLowerCase()}`), REF, 'local-network URL');
   assert.strictEqual(parse('https://kindercura.com/secretary/secretary-cashier.html'), 'HTTPS://KINDERCURA.COM/SECRETARY/SECRETARY-CASHIER.HTML', 'URL without ref is passed on for the server to reject');
   assert.strictEqual(env.run(`PAYMENT_REF_RE.test(refFromScan(${JSON.stringify(`https://kindercura.com/secretary/secretary-cashier.html?ref=${REF}`)}))`), true, 'camera scanner accepts the new QR');
@@ -258,18 +259,18 @@ async function pageTests() {
 
   // Signed out on the scanning phone: login, then back to this exact payment.
   const out = makeCashierEnv({ search: `?ref=${REF}`, token: null, role: null });
-  assert.strictEqual(out.location.href, `/login.html?next=${encodeURIComponent(`/secretary/secretary-cashier.html?ref=${REF}`)}`);
+  assert.strictEqual(out.location.href, `/login?next=${encodeURIComponent(`/secretary/secretary-cashier?ref=${REF}`)}`);
   await out.ready();
   assert.ok(!out.fetches.some((u) => u.startsWith('/payments/clinic/lookup/')), 'no lookup without a session');
   // A stale stored user (any role) with no token still goes to login, not to a dashboard.
   const stale = makeCashierEnv({ search: `?ref=${REF}`, token: null, role: 'parent' });
-  assert.strictEqual(stale.location.href, `/login.html?next=${encodeURIComponent(`/secretary/secretary-cashier.html?ref=${REF}`)}`);
+  assert.strictEqual(stale.location.href, `/login?next=${encodeURIComponent(`/secretary/secretary-cashier?ref=${REF}`)}`);
 
   // Expired session: the 401 message sends the secretary to log in and come back.
   const expired = makeCashierEnv({ search: `?ref=${REF}` });
   expired.ctx.apiFetch = async (url) => { expired.fetches.push(url); if (url.includes('/lookup/')) throw new Error('Token expired. Please log in again.'); return { appointments: [] }; };
   await expired.ready();
-  assert.strictEqual(expired.location.href, `/login.html?next=${encodeURIComponent(`/secretary/secretary-cashier.html?ref=${REF}`)}`);
+  assert.strictEqual(expired.location.href, `/login?next=${encodeURIComponent(`/secretary/secretary-cashier?ref=${REF}`)}`);
 
   // Non-staff role keeps the existing redirect to their own dashboard.
   const parentEnv = makeCashierEnv({ search: `?ref=${REF}`, role: 'parent' });

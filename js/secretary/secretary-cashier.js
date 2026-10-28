@@ -9,7 +9,7 @@
 // Login, then straight back to this page — including the ?ref= of a scanned
 // Pay at Clinic QR. login.js already honours ?next= for same-site paths.
 function loginUrlForThisPage() {
-    return `/login.html?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+    return `/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
 }
 
 if (!KC.token()) window.location.href = loginUrlForThisPage();

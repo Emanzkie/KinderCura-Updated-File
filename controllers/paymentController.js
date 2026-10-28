@@ -994,7 +994,7 @@ function clinicCounterUrl(req, paymentRef) {
   const origin = process.env.APP_URL
     ? String(process.env.APP_URL).replace(/\/$/, '')
     : (vercelHost ? `https://${vercelHost}` : `${req.protocol}://${req.get('host')}`);
-  return `${origin}/secretary/secretary-cashier.html?ref=${encodeURIComponent(paymentRef)}`;
+  return `${origin}/secretary/secretary-cashier?ref=${encodeURIComponent(paymentRef)}`;
 }
 
 // POST /api/payments/appointments/:appointmentId/pay-at-clinic

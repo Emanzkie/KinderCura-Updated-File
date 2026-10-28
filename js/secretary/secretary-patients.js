@@ -3,7 +3,7 @@ requireAuth();
 
         const currentUser = KC.user();
         if (!currentUser) {
-            window.location.href = '/login.html';
+            window.location.href = '/login';
         } else if (currentUser.role !== 'secretary') {
             const roleMap = {
                 admin: '/admin/admin-dashboard',
@@ -119,7 +119,7 @@ requireAuth();
                             <p class="sub-line">Appointment record${Number(patient.appointmentCount || 0) === 1 ? '' : 's'}</p>
                         </td>
                         <td>
-                            <button class="action-btn secondary" onclick="window.location.href='/secretary/secretary-appointments.html'">
+                            <button class="action-btn secondary" onclick="window.location.href='/secretary/secretary-appointments'">
                                 <img src="/icons/appointment.png" alt="" aria-hidden="true"> Appointments
                             </button>
                         </td>

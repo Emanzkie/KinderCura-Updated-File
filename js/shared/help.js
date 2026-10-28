@@ -5,7 +5,7 @@
     const DASHBOARDS = {
         admin: '/admin/admin-dashboard',
         pediatrician: '/pedia/pediatrician-dashboard',
-        secretary: '/secretary/secretary-dashboard.html',
+        secretary: '/secretary/secretary-dashboard',
     };
 
     const user = KC.user();

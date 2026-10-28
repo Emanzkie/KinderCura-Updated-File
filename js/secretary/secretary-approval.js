@@ -3,7 +3,7 @@ requireAuth();
 
         const currentUser = KC.user();
         if (!currentUser) {
-            window.location.href = '/login.html';
+            window.location.href = '/login';
         } else if (currentUser.role !== 'secretary') {
             const roleMap = {
                 admin: '/admin/admin-dashboard',

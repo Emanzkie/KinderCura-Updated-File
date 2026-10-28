@@ -136,7 +136,7 @@
                         ${secretaryPerms().manageBookings || secretaryPerms().approveSchedules ? `<button class="btn-approve" onclick="updateStatus(${a.id}, 'approved')">&#10003; Approve</button>` : ''}
                         ${secretaryPerms().manageBookings ? `<button class="btn-reject"  onclick="updateStatus(${a.id}, 'rejected')"><img src="/icons/reject_mark.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Reject</button>` : ''}
                         <!-- Link to full Appointments page for more detail -->
-                        <a href="/secretary/secretary-approval.html">View queue</a>
+                        <a href="/secretary/secretary-approval">View queue</a>
                     </div>
                 </div>`).join('');
         }
