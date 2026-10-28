@@ -208,9 +208,6 @@ requireAuth();
             const mark = (key) => (unsaved.has(key) ? ' (built-in default, not saved)' : '');
             byId('clinicProfile').innerHTML = clinic.profileSaved
                 ? `<table class="simple-table ops-table"><tbody>
-                        <tr><td>Clinic name</td><td>${clinic.name
-                            ? escapeHtml(clinic.name)
-                            : 'Not configured. Receipts and payment pages use the built-in default name.'}</td></tr>
                         <tr><td>Profile status</td><td>${clinic.active ? 'Active' : 'Inactive'}${mark('active')}</td></tr>
                         <tr><td>Online payment (PayMongo)</td><td>${yesNo(clinic.onlinePaymentEnabled)}${mark('onlinePaymentEnabled')}</td></tr>
                         <tr><td>Pay at clinic</td><td>${yesNo(clinic.payAtClinicEnabled)}${mark('payAtClinicEnabled')}</td></tr>
