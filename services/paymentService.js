@@ -2,7 +2,10 @@ const mongoose = require('mongoose');
 const Appointment = require('../models/Appointment');
 const Payment = require('../models/Payment');
 
-const DOWN_PAYMENT_RATE = 0.3;
+// Parents pay this share of the fee online to secure a booking; the rest is
+// paid at the clinic on the appointment day. The same rate is the minimum a
+// staff-recorded down payment needs and what approval requires.
+const DOWN_PAYMENT_RATE = 0.5;
 const PAYMENT_TYPES = new Set(['full_payment', 'down_payment', 'partial_installment', 'balance_payment']);
 const PAYMENT_METHODS = new Set(['simulated_gateway', 'card', 'gcash', 'maya', 'bank_transfer', 'cash', 'check']);
 const APPOINTMENT_PAYMENT_TYPE = {
@@ -198,7 +201,7 @@ function buildInitialPaymentPlan({
   }
 
   if (amountPaid < requiredDownPayment && !(actorRole === 'admin' && allowAdminOverride)) {
-    throw new Error(`Minimum down payment is ${requiredDownPayment} (30% of the consultation fee).`);
+    throw new Error(`Minimum down payment is ${requiredDownPayment} (${Math.round(DOWN_PAYMENT_RATE * 100)}% of the consultation fee).`);
   }
 
   const summary = buildPaymentSummary({
@@ -428,6 +431,58 @@ function serializePayment(payment) {
   };
 }
 
+/**
+ * What one automated (PayMongo / Pay at Clinic) payment row is for:
+ * a down payment is the required deposit, a balance payment whatever is still
+ * owed on the appointment, and anything else (full_payment) the whole fee.
+ */
+function amountDueFor(payment, appointment) {
+  const total = asAmount(appointment?.totalAmount ?? payment?.totalAmount);
+  if (!(total > 0)) return 0;
+  const type = normalizePaymentType(payment?.paymentType);
+  if (type === 'down_payment') return calculateRequiredDownPayment(total);
+  if (type === 'balance_payment') return Math.max(roundCurrency(total - asAmount(appointment?.amountPaid || 0)), 0);
+  return total;
+}
+
+/**
+ * The pending Pay at Clinic row for the balance left after the online deposit,
+ * created once with its own KC-PAY reference so the Cashier can collect it.
+ * Returns null when nothing is owed.
+ */
+async function ensureBalancePayment(appointment) {
+  const total = asAmount(appointment.totalAmount);
+  const balance = Math.max(roundCurrency(total - asAmount(appointment.amountPaid || 0)), 0);
+  if (!(total > 0) || !(balance > 0)) return null;
+
+  const existing = await Payment.findOne({
+    appointmentId: appointment._id,
+    paymentType: 'balance_payment',
+    paymentMethod: 'pay_at_clinic',
+    status: { $in: ['Pending', 'Verification Pending'] },
+  });
+  if (existing) return existing;
+
+  const paymentRef = await Payment.nextPaymentRef();
+  return Payment.create({
+    appointmentId: appointment._id,
+    appointmentNumericId: appointment.id,
+    parentId: appointment.parentId || null,
+    childId: appointment.childId || null,
+    pediatricianId: appointment.pediatricianId || null,
+    amount: 0,
+    totalAmount: total,
+    balanceDue: balance,
+    paymentType: 'balance_payment',
+    status: 'Pending',
+    paymentMethod: 'pay_at_clinic',
+    currency: 'PHP',
+    paymentRef,
+    referenceNumber: paymentRef,
+    transactionDate: new Date(),
+  });
+}
+
 function buildDeferredPaymentPlan({ totalAmount } = {}) {
   const total = asAmount(totalAmount);
   return {
@@ -448,6 +503,8 @@ function buildDeferredPaymentPlan({ totalAmount } = {}) {
 
 module.exports = {
   DOWN_PAYMENT_RATE,
+  amountDueFor,
+  ensureBalancePayment,
   buildDeferredPaymentPlan,
   buildInitialPaymentPlan,
   buildPaymentSummary,

@@ -134,9 +134,20 @@ async function handlerTests() {
     assert.match(res.body.qrDataUrl, /^data:image\/png;base64,/, 'a real QR image is returned');
     assert.strictEqual(res.body.paymentRef, REF, 'the reference shown under the QR is unchanged');
     assert.strictEqual(res.body.amount, 400, 'amount comes from the appointment');
+    assert.strictEqual(res.body.isBalance, false, 'the full fee, for parents paying everything at the clinic');
     assert.strictEqual(state.created, 0, 'the existing pending payment is reused (no duplicate on refresh)');
     assert.notStrictEqual(state.payment.status, 'Paid', 'generating the QR never marks the payment paid');
-    ok('startPayAtClinic: QR = https Cashier URL for the existing reference; no personal data; existing payment reused; not paid');
+
+    // After the 50% online deposit, the same button gives the balance QR.
+    resetState();
+    Object.assign(state.appointment, { amountPaid: 200, balanceDue: 200, paymentStatus: 'Down Payment' });
+    state.payment.paymentType = 'balance_payment';
+    res = fakeRes();
+    await controller.startPayAtClinic(fakeReq(parentUser, { appointmentId: '107' }), res);
+    assert.strictEqual(res.statusCode, 201, JSON.stringify(res.body));
+    assert.deepStrictEqual([res.body.amount, res.body.isBalance, res.body.paymentRef], [200, true, REF], 'the balance, on its own reference');
+    assert.strictEqual(state.created, 0);
+    ok('startPayAtClinic: QR = https Cashier URL for the existing reference; no personal data; full fee, or the balance after a deposit; reused; not paid');
 
     // ── 3. lookup: staff only, read-only ─────────────────────────────────────
     resetState();

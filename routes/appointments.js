@@ -1350,8 +1350,8 @@ function buildHydratedAppointment(appointmentDoc, { child, parent, pediatrician,
   // The exact wallet PayMongo reported ('GCash' / 'Maya'); 'Pay at Clinic' for
   // counter payments; 'E-Wallet' only when the money is in but the wallet is
   // genuinely unknown (legacy record). Never a "GCash / Maya" guess. '—' while
-  // still unpaid.
-  const paymentMethodLabel = isPaid
+  // still unpaid. A 50% online deposit is money in too, so its wallet shows.
+  const paymentMethodLabel = isPaid || paymentDisplayStatus === 'Down Payment'
     ? ewalletBrandLabel(
       payment?.paymongoSourceType,
       payment?.paymentMethod === 'pay_at_clinic' ? 'Pay at Clinic' : 'E-Wallet'

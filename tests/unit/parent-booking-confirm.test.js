@@ -28,7 +28,8 @@ function makePage({ failCreate = false, holdCreate = false } = {}) {
   const el = (id) => (els[id] ||= { id, value: '', innerHTML: '', textContent: '', disabled: false, style: {}, focus() {} });
   let release;
   const apiFetch = async (url, opts = {}) => {
-    calls.push({ url, method: opts.method || 'GET', body: opts.body ? JSON.parse(opts.body) : null });
+    // Only booking requests are recorded; the modal also reads GET /payments/quote.
+    if (url === '/appointments/create') calls.push({ url, method: opts.method || 'GET', body: opts.body ? JSON.parse(opts.body) : null });
     if (url === '/appointments/create') {
       if (holdCreate) await new Promise((r) => { release = r; });
       if (failCreate) throw new Error('That time was just booked.');

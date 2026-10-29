@@ -14,7 +14,7 @@ const REFUND_POLICY = Object.freeze({
   title: 'Refund Policy',
   points: Object.freeze([
     'Refunds are available for appointments paid online through GCash or Maya that were cancelled, or rejected by the clinic. Completed appointments are not eligible.',
-    `Request a refund within ${REFUND_WINDOW_DAYS} days of payment. The full amount paid goes back to the same GCash or Maya account.`,
+    `Request a refund within ${REFUND_WINDOW_DAYS} days of payment. The amount you paid online goes back to the same GCash or Maya account.`,
     'The pediatrician or clinic staff review each request. You will be notified of the decision and the reason.',
     'Approved refunds are processed by PayMongo and usually arrive within 24 hours. A refund shows as Refunded only after PayMongo confirms it.',
     'Payments made at the clinic are refunded at the clinic counter, not online.',

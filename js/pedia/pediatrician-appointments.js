@@ -245,11 +245,20 @@ function paymentSection(a) {
     if (isPaid && ref) {
         rows.push(`<div><p class="info-label">${a.receiptNumber ? 'Receipt No.' : 'Payment Ref'}</p><p class="info-val">${escapeHtml(ref)}</p></div>`);
     }
+    // 50% deposit paid online; the rest is collected at the clinic.
+    const owesBalance = status === 'Down Payment' && Number(a.balanceDue) > 0;
+    if (owesBalance) {
+        rows.push(`<div><p class="info-label">Balance (at clinic)</p><p class="info-val" style="font-weight:700;">${peso(a.balanceDue)}</p></div>`);
+    }
+    const collect = owesBalance && ['pending', 'approved'].includes(a.status)
+        ? `<button class="btn btn-primary" style="margin-top:0.6rem;padding:0.45rem 1rem;font-size:0.82rem;" data-appt-act="collect-balance" data-appt-id="${escapeHtml(a.id)}" data-amount="${escapeHtml(peso(a.balanceDue))}">Record balance received</button>`
+        : '';
 
     return `
         <div class="payment-section" style="margin:0.25rem 0 1rem;padding:0.75rem 0.9rem;background:var(--surface-muted,#FAFAF6);border-radius:10px;">
             <p style="font-weight:700;font-size:0.8rem;color:var(--text-dark);margin:0 0 0.5rem;text-transform:uppercase;letter-spacing:0.03em;">Payment</p>
             <div class="info-grid">${rows.join('')}</div>
+            ${collect}
         </div>`;
 }
 
@@ -520,7 +529,26 @@ document.addEventListener('click', e => {
     else if (act === 'chat') window.location.href = `/pedia/pedia-chat?appointmentId=${encodeURIComponent(id)}`;
     else if (act === 'reschedule') openReschedule(id, encodeURIComponent(child), encodeURIComponent(parent));
     else if (act === 'cancel') cancelConfirm(id, encodeURIComponent(child));
+    else if (act === 'collect-balance') collectBalance(btn, id, btn.dataset.amount || 'the balance');
 });
+
+// The parent paid 50% online; the pediatrician records the rest received at
+// the clinic. The server settles it exactly like the Cashier's Confirm.
+async function collectBalance(btn, id, amount) {
+    if (btn.disabled) return;
+    if (!confirm(`Confirm that the parent paid the remaining ${amount} at the clinic for Appointment #${id}?`)) return;
+    btn.disabled = true;
+    btn.textContent = 'Recording…';
+    try {
+        const r = await apiFetch(`/payments/appointments/${encodeURIComponent(id)}/collect-balance`, { method: 'POST' });
+        alert(r.receiptNumber ? `Balance recorded. Receipt ${r.receiptNumber} was sent to the parent.` : 'Balance recorded.');
+        await loadAppointments();
+    } catch (err) {
+        alert(err.message || 'Could not record the balance.');
+        btn.disabled = false;
+        btn.textContent = 'Record balance received';
+    }
+}
 
 document.getElementById('rDate').addEventListener('change', loadRescheduleAvailability);
 

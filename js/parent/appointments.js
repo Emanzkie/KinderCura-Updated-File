@@ -645,9 +645,29 @@ function openBookConfirm(ped) {
     document.getElementById('bookConfirmSummary').innerHTML = rows.map(([label, value]) => `
         <div class="confirm-summary__row"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('');
     document.getElementById('bookConfirmFee').innerHTML = consultationFeeHtml(ped, 'Total Consultation Fee');
+    renderBookingSplit(getConsultationFee(ped));
     setBookConfirmBusy(false);
     document.getElementById('bookConfirmModal').style.display = 'flex';
     document.getElementById('bookConfirmBtn').focus();
+}
+
+// 50% online now, 50% at the clinic. The server states the deposit for this
+// fee (GET /payments/quote), so the page never carries its own rate.
+async function renderBookingSplit(fee) {
+    const el = document.getElementById('bookConfirmSplit');
+    if (!el) return;
+    el.innerHTML = '';
+    if (!(fee > 0)) return;
+    try {
+        const quote = await apiFetch(`/payments/quote?totalAmount=${encodeURIComponent(fee)}`);
+        const deposit = roundMoney(quote.requiredDownPayment);
+        el.innerHTML = `
+            <div class="confirm-summary__row"><dt>Pay online now (${Math.round(Number(quote.downPaymentRate || 0) * 100)}%)</dt><dd>${formatMoney(deposit)}</dd></div>
+            <div class="confirm-summary__row"><dt>Pay at the clinic on the appointment day</dt><dd>${formatMoney(roundMoney(fee - deposit))}</dd></div>
+            <div class="confirm-summary__row"><dt>Or, without GCash or Maya: pay the full fee at the clinic</dt><dd>${formatMoney(fee)}</dd></div>`;
+    } catch {
+        el.innerHTML = '<p class="mini" style="margin:.5rem 0 0;">Pay half online after booking and the rest at the clinic, or pay the full fee at the clinic.</p>';
+    }
 }
 
 function setBookConfirmBusy(busy) {
@@ -724,7 +744,10 @@ function renderPaymentSummary(a) {
             <span class="mini">Paid ${formatMoney(paid)} of ${formatMoney(total)}</span>
             <span class="mini">Balance ${formatMoney(balance)}</span>
             <button type="button" class="payment-link-btn" onclick="viewReceipt(${a.id})">Receipt</button>
-        </div>`;
+        </div>
+        ${paymentStatus === 'Down Payment' && balance > 0 && ['pending', 'approved'].includes(a.status) ? `
+        <p class="mini" style="margin:.45rem 0 0;">Deposit paid online. Pay the remaining ${formatMoney(balance)} at the clinic on ${fmtDate(a.appointmentDate)}.
+            <a href="/parent/payment?appointmentId=${Number(a.id)}">Show clinic QR</a></p>` : ''}`;
 }
 
 async function viewReceipt(appointmentId) {

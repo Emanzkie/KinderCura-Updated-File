@@ -115,7 +115,7 @@
                     <textarea id="apptNotes" class="form-input" style="resize:vertical;min-height:90px;line-height:1.4;" placeholder="Any specific concerns or questions…"></textarea>
                 </div>
                 <div class="payment-notice" style="background:var(--surface-tint);border-left:4px solid #6B8E6F;border-radius:6px;padding:0.85rem 1rem;margin-bottom:0.5rem;">
-                    After booking, you will be redirected to choose your payment method (pay online or pay at clinic).
+                    After booking, pay 50% of the consultation fee online (GCash or Maya) and the other 50% at the clinic on your appointment day, or pay the full fee at the clinic.
                 </div>
                 <button class="btn btn-primary" style="width:100%;padding:0.9rem;" id="bookBtn" onclick="bookAppointment()">Book Appointment</button>
             </div>
@@ -160,6 +160,7 @@
             <p class="mini" style="margin:0 0 .75rem;">Please check these details. You will choose how to pay on the next page.</p>
             <dl class="confirm-summary" id="bookConfirmSummary"></dl>
             <div id="bookConfirmFee"></div>
+            <dl class="confirm-summary" id="bookConfirmSplit" style="margin-top:.5rem;"></dl>
             <div class="modal-actions" style="margin-top:1rem;">
                 <button type="button" class="btn btn-primary" style="flex:1;padding:.8rem;" id="bookConfirmBtn" onclick="confirmBooking()">Confirm and Continue</button>
                 <button type="button" class="btn btn-secondary" style="flex:1;padding:.8rem;" id="bookBackBtn" onclick="closeBookConfirm()">Go Back</button>

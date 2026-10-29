@@ -45,6 +45,8 @@ router.post('/appointments/:appointmentId/pay-at-clinic', authMiddleware, paymen
 router.get('/clinic/today', authMiddleware, paymentController.getClinicToday);
 router.get('/clinic/lookup/:paymentRef', authMiddleware, paymentController.lookupClinicPayment);
 router.post('/clinic/:paymentRef/confirm', authMiddleware, paymentController.confirmClinicPayment);
+// The balance left after the 50% online deposit, recorded from an appointment.
+router.post('/appointments/:appointmentId/collect-balance', authMiddleware, paymentController.collectBalance);
 
 // Admin — monitoring and clinic configuration
 router.get('/admin/monitor', authMiddleware, paymentController.getAdminPaymentMonitor);

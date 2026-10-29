@@ -147,7 +147,10 @@ function renderLookup(data) {
     document.getElementById('rPedia').textContent = appointment.pediatricianName;
     document.getElementById('rService').textContent = appointment.service;
     document.getElementById('rMethod').textContent = methodLabel(payment.paymentMethod);
-    document.getElementById('rAmount').textContent = formatMoney(payment.amountDue);
+    // The balance after the 50% online deposit: say what was already paid.
+    document.getElementById('rAmount').textContent = payment.isBalance
+        ? `${formatMoney(payment.amountDue)} balance (${formatMoney(payment.paidSoFar)} of ${formatMoney(payment.totalAmount)} paid online)`
+        : formatMoney(payment.amountDue);
 
     const statusEl = document.getElementById('rStatus');
     if (payment.status === 'Paid') {
@@ -264,7 +267,9 @@ async function loadToday() {
             const payColor = paid ? '#5A7560' : '#3D4738';
             const payText = paid
                 ? `Paid${a.receiptNumber ? ` · ${escapeHtml(a.receiptNumber)}` : ''}`
-                : escapeHtml(a.paymentStatus || 'Unpaid');
+                : a.paymentStatus === 'Down Payment' && Number(a.balanceDue) > 0
+                    ? `Down Payment · ${formatMoney(a.balanceDue)} due`
+                    : escapeHtml(a.paymentStatus || 'Unpaid');
             // The reference travels in a data attribute: escapeHtml does not make a
             // value safe inside onclick JavaScript.
             const action = (!paid && a.paymentRef)

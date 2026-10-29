@@ -174,6 +174,15 @@ async function loadAppointmentSummary() {
             return;
         }
 
+        // Deposit paid online: the rest is paid at the clinic. Show the split
+        // and the QR the secretary scans for the balance.
+        if (owesClinicBalance(appt)) {
+            summaryEl.innerHTML = buildSummaryHtml(appt);
+            document.getElementById('optionCards').style.display = 'none';
+            await payAtClinic();
+            return;
+        }
+
         if (appt.pendingPaymentMode === 'walk_in') {
             summaryEl.innerHTML = buildSummaryHtml(appt);
             document.getElementById('optionCards').style.display = 'none';
@@ -182,19 +191,74 @@ async function loadAppointmentSummary() {
         }
 
         summaryEl.innerHTML = buildSummaryHtml(appt);
+        renderFeeSplit(appt);
     } catch (err) {
         summaryEl.innerHTML = `<p style="color:#3d4738;">Could not load appointment: ${escapeHtml(err.message)}</p>`;
     }
 }
 
+// ── 50% deposit online, 50% at the clinic ─────────────────────────────────
+// The amounts come from the appointment the server returns (totalAmount is the
+// pediatrician's fee at booking; requiredDownPayment is the server's 50%).
+function feeSplit(appt) {
+    const total = Number(appt.totalAmount || 0);
+    const deposit = Math.min(Number(appt.requiredDownPayment || 0), total);
+    const paid = Number(appt.amountPaid || 0);
+    return { total, deposit, paid, atClinic: Math.max(total - Math.max(paid, deposit), 0) };
+}
+
+function owesClinicBalance(appt) {
+    return appt.paymentStatus !== 'Paid' && Number(appt.amountPaid || 0) > 0 && Number(appt.balanceDue || 0) > 0;
+}
+
+function renderFeeSplit(appt) {
+    const s = feeSplit(appt);
+    const el = document.getElementById('feeSplit');
+    if (el) {
+        el.innerHTML = `
+            <div><dt>Total consultation fee</dt><dd>${formatMoney(s.total)}</dd></div>
+            <div class="now"><dt>Pay now online (50%)</dt><dd>${formatMoney(s.deposit)}</dd></div>
+            <div><dt>Pay at the clinic on your appointment day</dt><dd>${formatMoney(s.atClinic)}</dd></div>`;
+    }
+    const btn = document.getElementById('payOnlineBtn');
+    if (btn && s.deposit > 0) btn.textContent = `Pay ${formatMoney(s.deposit)} Online`;
+    const clinicEl = document.getElementById('clinicFeeSplit');
+    if (clinicEl) {
+        clinicEl.innerHTML = `<div class="now"><dt>Pay at the clinic (full fee)</dt><dd>${formatMoney(s.total)}</dd></div>`;
+    }
+}
+
 function buildSummaryHtml(appt) {
+    const s = feeSplit(appt);
+    const paidLines = s.paid > 0 ? `
+        <p>Paid online: <strong>${formatMoney(s.paid)}</strong></p>
+        <p>Remaining balance, due at the clinic on ${fmtDate(appt.appointmentDate)}: <strong>${formatMoney(appt.balanceDue)}</strong></p>` : '';
     return `
         <p><strong>Appointment #${appt.id}</strong></p>
         <p>Patient: ${escapeHtml(appt.childName || '—')}</p>
         <p>Pediatrician: Dr. ${escapeHtml(appt.pediatricianName || '—')}</p>
         <p>Date: ${fmtDate(appt.appointmentDate)} at ${fmtTime(appt.appointmentTime)}</p>
         <p>Reason: ${escapeHtml(appt.reason || 'General checkup')}</p>
-        <p class="fee">${formatMoney(appt.totalAmount || 0)} <span style="font-size:0.8rem;font-weight:400;color:var(--text-light);">consultation fee</span></p>`;
+        <p class="fee">${formatMoney(appt.totalAmount || 0)} <span style="font-size:0.8rem;font-weight:400;color:var(--text-light);">consultation fee</span></p>
+        ${paidLines}`;
+}
+
+// After the deposit settles, say so (not "Payment Successful / Paid") and
+// offer the clinic QR for the balance.
+async function showDepositOutcome() {
+    try {
+        const user = KC.user();
+        const data = await apiFetch(`/appointments/${user.id}`);
+        const appt = (data.appointments || []).find((a) => String(a.id) === String(appointmentId));
+        if (!appt || !owesClinicBalance(appt)) return;
+        appointmentData = appt;
+        document.getElementById('apptSummary').innerHTML = buildSummaryHtml(appt);
+        document.getElementById('successTitle').textContent = '✓ Deposit Paid';
+        document.getElementById('successText').textContent =
+            `Your 50% deposit was received and your appointment is confirmed. Please pay the remaining ${formatMoney(appt.balanceDue)} at the clinic on ${fmtDate(appt.appointmentDate)}.`;
+        document.getElementById('successBadge').textContent = 'Down Payment';
+        document.getElementById('balanceQrBtn').style.display = 'inline-block';
+    } catch { /* the receipt is already shown; the appointments page has the balance too */ }
 }
 
 async function selectWalkIn() {
@@ -235,8 +299,9 @@ async function payOnline() {
         sessionStorage.setItem(`kc_pay_ref_${appointmentId}`, data.paymentRef);
         window.location.href = data.checkoutUrl;
     } catch (err) {
-        showError(err.message || 'Could not start the online payment. Please try again or choose Pay at Clinic.');
-        if (btn) { btn.disabled = false; btn.textContent = 'Pay Online'; }
+        showError(err.message || 'Could not start the online payment. Please try again.');
+        if (btn) btn.disabled = false;
+        if (appointmentData) renderFeeSplit(appointmentData);
     }
 }
 
@@ -266,6 +331,17 @@ function renderClinicQr(data) {
 
     const amountEl = document.getElementById('clinicQrAmount');
     if (amountEl) amountEl.textContent = formatMoney(data.amount);
+
+    // A balance QR follows the 50% online deposit, so there is no other method
+    // to switch to; a full-fee QR can still be swapped for paying online.
+    const introEl = document.getElementById('clinicQrIntro');
+    if (introEl) {
+        introEl.textContent = data.isBalance
+            ? 'Your online deposit is paid. On your appointment day, the secretary will scan this code and accept the remaining balance.'
+            : `Pay the full ${formatMoney(data.amount)} in cash at the counter on your appointment day. The secretary will scan this code and confirm your payment; your appointment is confirmed then.`;
+    }
+    const backBtn = document.getElementById('clinicQrBackBtn');
+    if (backBtn) backBtn.style.display = data.isBalance ? 'none' : '';
 
     // Clinic contact comes from server configuration, never hard-coded here.
     const contactEl = document.getElementById('clinicContactLine');
@@ -305,6 +381,7 @@ async function resolveOnlineResult(result, paymentRef) {
                 // Load the actual confirmed receipt — the same database record
                 // the email receipt was built from — rather than just a number.
                 await loadReceiptInto('receiptCardContainer', paymentRef);
+                await showDepositOutcome();
                 return;
             }
             if (['Failed', 'Expired', 'Cancelled'].includes(status.status)) {

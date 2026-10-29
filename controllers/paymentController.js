@@ -505,17 +505,21 @@ function assertPayable(appointment) {
  * Reusing the row keeps a single KC-PAY reference per appointment attempt
  * instead of minting a new record every time the parent revisits the page.
  */
-async function ensureAutomatedPayment({ appointment, method, actor, parentEmail, receiptPhone = null }) {
+async function ensureAutomatedPayment({ appointment, method, actor, parentEmail, receiptPhone = null, paymentType = 'full_payment' }) {
   const total = Number(appointment.totalAmount || 0);
 
+  // The clinic balance row (paymentService.ensureBalancePayment) is never
+  // reused for a new attempt.
   const existing = await Payment.findOne({
     appointmentId: appointment._id,
     paymentMethod: { $in: ['paymongo', 'pay_at_clinic'] },
+    paymentType: { $ne: 'balance_payment' },
     status: { $in: ['Pending', 'Failed', 'Expired'] },
   }).sort({ createdAt: -1 });
 
   if (existing) {
     existing.paymentMethod = method;
+    existing.paymentType = paymentType;
     existing.status = 'Pending';
     existing.totalAmount = total;
     existing.balanceDue = total;
@@ -537,7 +541,7 @@ async function ensureAutomatedPayment({ appointment, method, actor, parentEmail,
     amount: 0,
     totalAmount: total,
     balanceDue: total,
-    paymentType: 'full_payment',
+    paymentType,
     status: 'Pending',
     paymentMethod: method,
     currency: 'PHP',
@@ -569,8 +573,16 @@ async function startOnlineCheckout(req, res) {
       return res.status(403).json({ error: 'Access denied.' });
     }
 
-    // Authoritative amount — never req.body.
+    // Authoritative amount — never req.body. Online is always the 50% deposit;
+    // the rest is paid at the clinic on the appointment day.
     const total = assertPayable(appointment);
+    if (Number(appointment.amountPaid || 0) > 0) {
+      return res.status(400).json({
+        error: 'Your deposit is already paid. The remaining balance is paid at the clinic.',
+        code: 'DEPOSIT_ALREADY_PAID',
+      });
+    }
+    const deposit = paymentService.calculateRequiredDownPayment(total);
 
     const clinic = await SystemSetting.getClinic();
     if (!clinic.onlinePaymentEnabled) {
@@ -592,6 +604,7 @@ async function startOnlineCheckout(req, res) {
       actor: req.user,
       parentEmail: parent?.email || null,
       receiptPhone: parent?.phoneNumber || null,
+      paymentType: 'down_payment',
     });
 
     // Where PayMongo sends the parent back to. Behind Vercel's proxy
@@ -606,9 +619,9 @@ async function startOnlineCheckout(req, res) {
 
     const session = await paymongoService.createCheckoutSession({
       referenceNumber: payment.paymentRef,
-      amount: total,
+      amount: deposit,
       currency: payment.currency || 'PHP',
-      lineName: `${clinic.clinicName || 'KinderCura'} — Consultation`,
+      lineName: `${clinic.clinicName || 'KinderCura'} — Consultation (${Math.round(paymentService.DOWN_PAYMENT_RATE * 100)}% deposit)`,
       lineDescription: `Appointment #${appointment.id} for ${childName}`,
       successUrl: `${origin}/parent/payment?appointmentId=${appointment.id}&ref=${encodeURIComponent(payment.paymentRef)}&result=success`,
       cancelUrl: `${origin}/parent/payment?appointmentId=${appointment.id}&ref=${encodeURIComponent(payment.paymentRef)}&result=cancelled`,
@@ -637,7 +650,9 @@ async function startOnlineCheckout(req, res) {
       success: true,
       paymentRef: payment.paymentRef,
       checkoutUrl: session.checkoutUrl,
-      amount: total,
+      amount: deposit,
+      totalAmount: total,
+      balanceAtClinic: paymentService.roundCurrency(total - deposit),
       testMode: paymongoService.isTestMode(),
     });
   } catch (err) {
@@ -764,13 +779,19 @@ async function notifyPaymentSettled(payment) {
       payment.paymongoSourceType,
       payment.paymentMethod === 'pay_at_clinic' ? 'Pay at Clinic' : 'E-Wallet'
     );
+    // After the 50% online deposit the rest is still owed at the clinic.
+    const balance = Number(appointment.balanceDue || 0);
+    const balanceText = appointment.paymentStatus !== 'Paid' && balance > 0
+      ? `₱${balance.toFixed(2)} is due at the clinic on the appointment day.`
+      : null;
 
-    // Parent — unchanged behaviour.
+    // Parent — unchanged behaviour, plus the balance still due.
     await pushNotification(
       appointment.parentId,
       'Payment Received — Appointment Confirmed',
       `We received ${amount} for Appointment #${appointment.id}. `
-        + `Receipt ${payment.receiptNumber} has been emailed to you.`,
+        + `Receipt ${payment.receiptNumber} has been emailed to you.`
+        + (balanceText ? ` The remaining ${balanceText}` : ''),
       'payment',
       { relatedPage: '/parent/appointments.html', relatedId: String(appointment.id) }
     );
@@ -784,10 +805,11 @@ async function notifyPaymentSettled(payment) {
       } catch { /* name is best-effort */ }
 
       const parts = [
-        `Appointment #${appointment.id}${childName ? ` for ${childName}` : ''} has been paid.`,
+        `Appointment #${appointment.id}${childName ? ` for ${childName}` : ''} has been ${balanceText ? 'partly paid (deposit)' : 'paid'}.`,
         `Amount: ${amount} via ${methodLabel}.`,
       ];
       if (payment.receiptNumber) parts.push(`Receipt: ${payment.receiptNumber}.`);
+      if (balanceText) parts.push(`Balance: ${balanceText}`);
 
       await pushNotification(
         appointment.pediatricianId,
@@ -1017,25 +1039,38 @@ async function startPayAtClinic(req, res) {
     }
 
     const total = assertPayable(appointment);
-
     const clinic = await SystemSetting.getClinic();
-    if (!clinic.payAtClinicEnabled) {
-      return res.status(503).json({ error: 'Pay at Clinic is currently disabled by the clinic.' });
-    }
 
-    const parent = await User.findById(appointment.parentId).select('email').lean();
-    const payment = await ensureAutomatedPayment({
-      appointment,
-      method: 'pay_at_clinic',
-      actor: req.user,
-      parentEmail: parent?.email || null,
-    });
+    // Two QRs come from here. With the 50% online deposit paid, it is the
+    // balance (always payable at the clinic). With nothing paid, it is the
+    // whole fee in cash — for parents without GCash or Maya.
+    const isBalance = Number(appointment.amountPaid || 0) > 0;
+    let payment;
+    let amount;
+    if (isBalance) {
+      payment = await paymentService.ensureBalancePayment(appointment);
+      if (!payment) return res.status(400).json({ error: 'This appointment is already paid.' });
+      amount = paymentService.amountDueFor(payment, appointment);
+    } else {
+      if (!clinic.payAtClinicEnabled) {
+        return res.status(503).json({ error: 'Pay at Clinic is currently disabled by the clinic.' });
+      }
+      const parent = await User.findById(appointment.parentId).select('email').lean();
+      payment = await ensureAutomatedPayment({
+        appointment,
+        method: 'pay_at_clinic',
+        actor: req.user,
+        parentEmail: parent?.email || null,
+        paymentType: 'full_payment',
+      });
+      amount = total;
 
-    appointment.pendingPaymentMode = 'pay_at_clinic';
-    if (appointment.paymentStatus !== 'Payment Verification Pending') {
-      appointment.paymentStatus = 'Pending Payment';
+      appointment.pendingPaymentMode = 'pay_at_clinic';
+      if (appointment.paymentStatus !== 'Payment Verification Pending') {
+        appointment.paymentStatus = 'Pending Payment';
+      }
+      await appointment.save();
     }
-    await appointment.save();
 
     // The QR payload is the Cashier page URL for this reference — nothing else.
     // Anyone who scans it outside the clinic reaches a staff-only page.
@@ -1050,7 +1085,10 @@ async function startPayAtClinic(req, res) {
       success: true,
       paymentRef: payment.paymentRef,
       qrDataUrl,
-      amount: total,
+      amount,
+      isBalance,
+      totalAmount: Number(appointment.totalAmount || 0),
+      amountPaid: Number(appointment.amountPaid || 0),
       clinicName: clinic.clinicName,
       clinicPhone: clinic.phoneNumber,
       clinicAddress: clinic.address,
@@ -1103,6 +1141,9 @@ async function lookupClinicPayment(req, res) {
     if (['cancelled', 'rejected'].includes(appointment.status)) blockers.push({ code: 'APPOINTMENT_CANCELLED', message: 'This appointment was cancelled.' });
     if (['Failed', 'Expired', 'Cancelled', 'Refunded'].includes(payment.status)) blockers.push({ code: 'PAYMENT_CLOSED', message: `This payment is marked ${payment.status}. Ask the parent to start a new payment.` });
     if (Number(payment.totalAmount) !== Number(appointment.totalAmount)) blockers.push({ code: 'AMOUNT_MISMATCH', message: 'The payment amount no longer matches the appointment fee. Escalate to admin.' });
+    const isBalance = payment.paymentType === 'balance_payment';
+    const amountDue = payment.status === 'Paid' ? Number(payment.amount || 0) : paymentService.amountDueFor(payment, appointment);
+    if (isBalance && payment.status !== 'Paid' && !(amountDue > 0)) blockers.push({ code: 'NOTHING_DUE', message: 'Nothing is owed on this appointment any more.' });
 
     const apptDay = new Date(appointment.appointmentDate);
     const today = new Date();
@@ -1115,7 +1156,11 @@ async function lookupClinicPayment(req, res) {
       isToday: sameDay,
       payment: {
         paymentRef: payment.paymentRef,
-        amountDue: payment.totalAmount,
+        amountDue,
+        // A balance row is the half left after the online deposit.
+        isBalance,
+        totalAmount: Number(appointment.totalAmount || 0),
+        paidSoFar: Number(appointment.amountPaid || 0),
         currency: payment.currency || 'PHP',
         paymentMethod: payment.paymentMethod,
         status: payment.status,
@@ -1208,6 +1253,41 @@ async function confirmClinicPayment(req, res) {
   }
 }
 
+// POST /api/payments/appointments/:appointmentId/collect-balance
+// Clinic staff record the balance left after the online deposit, by
+// appointment rather than by scanning (the pediatrician's appointment card).
+// It resolves the balance reference and then takes exactly the Cashier's
+// Confirm path, so there is one way a clinic payment gets settled.
+async function collectBalance(req, res) {
+  try {
+    const scope = await resolveCashierScope(req);
+    const appointment = await Appointment.findOne({ id: Number(req.params.appointmentId) });
+    if (!appointment) return res.status(404).json({ error: 'Appointment not found.' });
+    if (!scope.isAdmin && String(appointment.pediatricianId || '') !== String(scope.pediatricianId)) {
+      return res.status(403).json({ error: 'This appointment belongs to another clinic.' });
+    }
+    if (['cancelled', 'rejected'].includes(appointment.status)) {
+      return res.status(400).json({ error: 'Cannot take payment for a cancelled appointment.' });
+    }
+    if (appointment.paymentStatus !== 'Down Payment') {
+      return res.status(409).json({
+        error: appointment.paymentStatus === 'Paid'
+          ? 'This appointment is already fully paid.'
+          : 'The online deposit has not been paid yet, so there is no clinic balance to record.',
+        code: 'NO_BALANCE',
+      });
+    }
+    const payment = await paymentService.ensureBalancePayment(appointment);
+    if (!payment) return res.status(409).json({ error: 'This appointment is already fully paid.', code: 'NO_BALANCE' });
+
+    req.params.paymentRef = payment.paymentRef;
+    return confirmClinicPayment(req, res);
+  } catch (err) {
+    console.error('collectBalance error:', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+}
+
 // GET /api/payments/clinic/today
 // Today's appointments for the caller's clinic, with payment state attached.
 async function getClinicToday(req, res) {
@@ -1237,12 +1317,20 @@ async function getClinicToday(req, res) {
 
     const parentMap = new Map(parents.map((p) => [String(p._id), `${p.firstName} ${p.lastName}`.trim()]));
     const childMap = new Map(children.map((c) => [String(c._id), `${c.firstName} ${c.lastName}`.trim()]));
-    // Prefer a settled payment; otherwise show the newest open one.
+    // Prefer a settled payment; otherwise show the newest open one. When only
+    // the deposit is in, the open balance row is the one to collect.
+    const owesBalance = new Set(appointments
+      .filter((a) => a.paymentStatus !== 'Paid' && Number(a.amountPaid || 0) > 0)
+      .map((a) => String(a._id)));
+    const isOpen = (p) => ['Pending', 'Verification Pending'].includes(p.status);
     const paymentMap = new Map();
     for (const p of payments) {
       const key = String(p.appointmentId);
       const current = paymentMap.get(key);
-      if (!current || (p.status === 'Paid' && current.status !== 'Paid')) paymentMap.set(key, p);
+      const better = owesBalance.has(key)
+        ? isOpen(p) && !isOpen(current || {})
+        : p.status === 'Paid' && current?.status !== 'Paid';
+      if (!current || better) paymentMap.set(key, p);
     }
 
     res.json({
@@ -1257,6 +1345,8 @@ async function getClinicToday(req, res) {
           childName: childMap.get(String(a.childId)) || '—',
           service: a.reason || 'Consultation',
           amount: a.totalAmount || 0,
+          amountPaid: a.amountPaid || 0,
+          balanceDue: a.balanceDue || 0,
           appointmentStatus: a.status,
           paymentStatus: a.paymentStatus,
           paymentMethod: pay?.paymentMethod || a.pendingPaymentMode || null,
@@ -1557,6 +1647,7 @@ async function updateClinicConfig(req, res) {
 }
 
 module.exports = {
+  collectBalance,
   getMyRefunds,
   requestRefund,
   getClinicRefunds,

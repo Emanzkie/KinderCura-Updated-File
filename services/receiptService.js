@@ -17,6 +17,11 @@ const Child = require('../models/Child');
 const User = require('../models/User');
 const SystemSetting = require('../models/SystemSetting');
 const emailService = require('./emailService');
+const paymentService = require('./paymentService');
+
+// The online deposit and the clinic balance each settle for their own share
+// (paymentService.amountDueFor); every other row settles for the whole fee.
+const PARTIAL_TYPES = ['down_payment', 'balance_payment'];
 
 /**
  * Collect everything a receipt needs to display, from the database rather than
@@ -171,15 +176,31 @@ async function settlePayment({
     return { payment: existing.toObject(), alreadySettled: true, emailed: false };
   }
 
+  let amount = existing.totalAmount;
+  let balanceDue = 0;
+  const partial = PARTIAL_TYPES.includes(existing.paymentType);
+  if (partial) {
+    const appointment = existing.appointmentId ? await Appointment.findById(existing.appointmentId).lean() : null;
+    const owner = appointment || { totalAmount: existing.totalAmount, amountPaid: 0 };
+    amount = paymentService.amountDueFor(existing, owner);
+    if (!(amount > 0)) {
+      throw Object.assign(new Error('Nothing is owed on this appointment.'), { statusCode: 409, code: 'NOTHING_DUE' });
+    }
+    balanceDue = Math.max(
+      paymentService.roundCurrency(Number(owner.totalAmount || 0) - Number(owner.amountPaid || 0) - amount),
+      0
+    );
+  }
+
   const receiptNumber = existing.receiptNumber || await Payment.nextReceiptNumber();
 
   const set = {
     status: 'Paid',
     paidAt,
     receiptNumber,
-    amount: existing.totalAmount,
-    balanceDue: 0,
-    paymentType: 'full_payment',
+    amount,
+    balanceDue,
+    paymentType: partial ? existing.paymentType : 'full_payment',
     verifiedAt: paidAt,
   };
   if (method) set.paymentMethod = method;
@@ -228,10 +249,24 @@ async function syncAppointmentAfterPayment(payment) {
 
   const total = Number(appointment.totalAmount || payment.totalAmount || 0);
   appointment.totalAmount = total;
-  appointment.amountPaid = total;
-  appointment.balanceDue = 0;
-  appointment.paymentStatus = 'Paid';
-  appointment.paymentType = 'Full';
+  const isDeposit = payment.paymentType === 'down_payment';
+  if (PARTIAL_TYPES.includes(payment.paymentType)) {
+    // Deposit: 'Down Payment' with the rest owed. Balance: 'Paid' once settled.
+    const summary = paymentService.buildPaymentSummary({
+      totalAmount: total,
+      amountPaid: Number(appointment.amountPaid || 0) + Number(payment.amount || 0),
+      paymentType: 'down_payment',
+    });
+    appointment.amountPaid = summary.amountPaid;
+    appointment.balanceDue = summary.balanceDue;
+    appointment.paymentStatus = summary.paymentStatus;
+    appointment.paymentType = summary.paymentType;
+  } else {
+    appointment.amountPaid = total;
+    appointment.balanceDue = 0;
+    appointment.paymentStatus = 'Paid';
+    appointment.paymentType = 'Full';
+  }
 
   // A paid appointment that was still waiting on money is now confirmed.
   // Cancelled or rejected appointments are left alone — a late payment must
@@ -239,6 +274,12 @@ async function syncAppointmentAfterPayment(payment) {
   if (appointment.status === 'pending') appointment.status = 'approved';
 
   await appointment.save();
+
+  // The other half is paid at the clinic: give it its own reference now so the
+  // Cashier can collect it and the parent can show its QR.
+  if (isDeposit && !['cancelled', 'rejected'].includes(appointment.status)) {
+    await paymentService.ensureBalancePayment(appointment);
+  }
   return appointment;
 }
 
