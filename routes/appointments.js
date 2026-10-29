@@ -1295,8 +1295,10 @@ function ewalletBrandLabel(sourceType, fallback = '—') {
 // live on the payment row, so fold those in without ever inventing "Paid".
 function derivePaymentDisplayStatus(appointmentDoc, payment) {
   const apptStatus = appointmentDoc.paymentStatus || 'Unpaid';
-  if (apptStatus === 'Paid') return 'Paid';
   const rec = payment?.status;
+  // A refund keeps the appointment snapshot at 'Paid'; the payment row knows.
+  if (rec === 'Refunded') return 'Refunded';
+  if (apptStatus === 'Paid') return 'Paid';
   if (['Failed', 'Expired', 'Refunded'].includes(rec)) return rec;
   if (apptStatus === 'Cancelled' || rec === 'Cancelled') return 'Cancelled';
   return apptStatus;

@@ -340,6 +340,7 @@ function stopCameraScan() {
 
 document.addEventListener('DOMContentLoaded', () => {
     if (typeof initNav === 'function') initNav();
+    if (typeof initRefundRequests === 'function') initRefundRequests('refundRequestsList');
     document.querySelectorAll('a.logout').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); logout(); }));
 
     // A USB scanner ends its transmission with Enter, so this makes the

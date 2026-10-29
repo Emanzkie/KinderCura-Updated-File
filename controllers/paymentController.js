@@ -12,6 +12,7 @@ const QRCode = require('qrcode');
 const SystemSetting = require('../models/SystemSetting');
 const paymongoService = require('../services/paymongoService');
 const receiptService = require('../services/receiptService');
+const refundService = require('../services/refundService');
 const adminOps = require('../services/adminOperationsAnalytics');
 const { SECRETARY_DEFAULT_PERMISSIONS } = require('../services/secretaryPermissions');
 const { CLINIC_TIMEZONE, clinicDayStart, clinicDayEnd } = require('../constants/clinicTime');
@@ -913,6 +914,13 @@ async function handlePaymongoWebhook(req, res) {
     const eventType = event.attributes?.type || null;
     const resource = event.attributes?.data || null;
 
+    // A refund event only says "look again": refundService re-fetches the
+    // refund from PayMongo before changing anything.
+    if (eventType === 'payment.refunded') {
+      const outcome = await refundService.handleRefundWebhook(resource);
+      return res.status(200).json({ received: true, refund: outcome });
+    }
+
     const HANDLED_PAID = ['checkout_session.payment.paid', 'payment.paid', 'payment_intent.succeeded'];
     const HANDLED_FAILED = ['payment.failed', 'payment_intent.payment_failed'];
     const HANDLED_EXPIRED = ['checkout_session.expired', 'qr.expired'];
@@ -1378,8 +1386,9 @@ async function getPaymentReceipt(req, res) {
     // An unpaid/pending/failed transaction must never be presented as a
     // completed receipt, however this endpoint was reached (browser history,
     // premature poll, a modified client). Only a settled payment has a real
-    // receiptNumber and a final paidAt/amount worth showing.
-    if (payment.status !== 'Paid') {
+    // receiptNumber and a final paidAt/amount worth showing. A refunded payment
+    // was still paid, so its original receipt stays available.
+    if (!['Paid', 'Refunded'].includes(payment.status)) {
       return res.status(409).json({
         error: 'This payment has not been confirmed yet. A receipt is not available.',
         status: payment.status,
@@ -1391,6 +1400,81 @@ async function getPaymentReceipt(req, res) {
   } catch (err) {
     console.error('getPaymentReceipt error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+}
+
+// ── Refunds (see services/refundService.js) ────────────────────────────────
+
+function sendRefundError(res, err, label) {
+  if (!err.statusCode) console.error(`${label} error:`, err.message);
+  res.status(err.statusCode || 500).json({ error: err.message, code: err.code || undefined });
+}
+
+// Refund decisions belong to the appointment's pediatrician or their secretary
+// (with Manage Payments) — not admins, who see refunds on the payment monitor.
+async function resolveRefundScope(req) {
+  if (!['pediatrician', 'secretary'].includes(req.user.role)) {
+    throw Object.assign(new Error('Refund requests are reviewed by the pediatrician or their secretary.'), { statusCode: 403 });
+  }
+  try {
+    return await resolveClinicPediatricianId(req);
+  } catch (err) {
+    throw Object.assign(err, { statusCode: 403 });
+  }
+}
+
+// GET /api/payments/refunds/mine
+async function getMyRefunds(req, res) {
+  try {
+    res.json({ success: true, ...(await refundService.listForParent(req.user)) });
+  } catch (err) {
+    sendRefundError(res, err, 'getMyRefunds');
+  }
+}
+
+// POST /api/payments/appointments/:appointmentId/refund-request
+async function requestRefund(req, res) {
+  try {
+    const refund = await refundService.requestRefund({
+      user: req.user,
+      appointmentNumericId: req.params.appointmentId,
+      reason: req.body?.reason,
+    });
+    res.status(201).json({ success: true, refundId: String(refund._id), status: refund.status });
+  } catch (err) {
+    sendRefundError(res, err, 'requestRefund');
+  }
+}
+
+// GET /api/payments/refunds/clinic
+async function getClinicRefunds(req, res) {
+  try {
+    const pediatricianId = await resolveRefundScope(req);
+    res.json({ success: true, refunds: await refundService.listForClinic(pediatricianId) });
+  } catch (err) {
+    sendRefundError(res, err, 'getClinicRefunds');
+  }
+}
+
+// POST /api/payments/refunds/:refundId/review   { decision: 'approve'|'reject', note }
+async function reviewRefund(req, res) {
+  try {
+    const scopePediatricianId = await resolveRefundScope(req);
+    const refund = await refundService.reviewRefund({
+      user: req.user,
+      scopePediatricianId,
+      refundId: req.params.refundId,
+      decision: req.body?.decision,
+      note: req.body?.note,
+    });
+    res.json({
+      success: true,
+      status: refund.status,
+      statusLabel: refundService.STATUS_LABELS[refund.status],
+      failureReason: refund.failureReason || null,
+    });
+  } catch (err) {
+    sendRefundError(res, err, 'reviewRefund');
   }
 }
 
@@ -1473,6 +1557,10 @@ async function updateClinicConfig(req, res) {
 }
 
 module.exports = {
+  getMyRefunds,
+  requestRefund,
+  getClinicRefunds,
+  reviewRefund,
   startOnlineCheckout,
   getPaymentStatusByRef,
   reconcileCheckout,

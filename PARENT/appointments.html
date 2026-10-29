@@ -128,7 +128,10 @@
                 <div id="activeList"><p style="color:var(--text-light);text-align:center;padding:1rem;">Loading…</p></div>
             </div>
             <div>
-                <h3 style="color:var(--text-dark);margin-bottom:1rem;font-size:1rem;"><img src="/icons/finished_closed_appointments.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Past / Closed</h3>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+                    <h3 style="color:var(--text-dark);margin:0;font-size:1rem;"><img src="/icons/finished_closed_appointments.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Past / Closed</h3>
+                    <button type="button" class="payment-link-btn" onclick="openRefundPolicy()">Refund Policy</button>
+                </div>
                 <div id="pastList"><p style="color:var(--text-light);text-align:center;padding:1rem;">Loading…</p></div>
             </div>
         </div>
@@ -160,6 +163,34 @@
             <div class="modal-actions" style="margin-top:1rem;">
                 <button type="button" class="btn btn-primary" style="flex:1;padding:.8rem;" id="bookConfirmBtn" onclick="confirmBooking()">Confirm and Continue</button>
                 <button type="button" class="btn btn-secondary" style="flex:1;padding:.8rem;" id="bookBackBtn" onclick="closeBookConfirm()">Go Back</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Refund Policy, and the refund request form for an eligible cancelled/rejected online payment. -->
+<div class="kc-modal-backdrop" id="refundModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="refundModalTitle">
+    <div class="kc-modal" role="document">
+        <div class="kc-modal__header">
+            <h3 id="refundModalTitle">Refund Policy</h3>
+            <button type="button" class="kc-modal__close" onclick="closeRefundModal()" aria-label="Close refund">&times;</button>
+        </div>
+        <div class="kc-modal__body">
+            <div id="refundPolicyBody"></div>
+            <div id="refundRequestForm" style="display:none;">
+                <div class="fee-highlight" style="margin:0 0 1rem;">
+                    <span class="fee-highlight__label">Refund for Appointment <span id="refundAppointmentNo"></span></span>
+                    <span class="fee-highlight__amount" id="refundAmount"></span>
+                </div>
+                <div id="refundError" class="error-msg" style="margin-bottom:.75rem;"></div>
+                <div class="form-group">
+                    <label class="form-label" for="refundReason">Reason for the refund</label>
+                    <textarea id="refundReason" class="form-input" maxlength="500" style="resize:vertical;min-height:80px;line-height:1.4;" placeholder="e.g. We had to cancel because our child was unwell."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-primary" style="flex:1;padding:.8rem;" id="refundSubmitBtn" onclick="submitRefundRequest()">Submit Request</button>
+                    <button type="button" class="btn btn-secondary" style="flex:1;padding:.8rem;" onclick="closeRefundModal()">Cancel</button>
+                </div>
             </div>
         </div>
     </div>

@@ -632,6 +632,37 @@ body {
     color: var(--text-light);
 }
 
+/* Refund status on a past appointment card, and the policy list in the refund modal */
+.refund-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px dashed var(--border);
+}
+
+.refund-badge {
+    color: var(--text-dark);
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 0.25rem 0.7rem;
+    border-radius: 999px;
+}
+
+.refund-policy-list {
+    margin: 0 0 1rem;
+    padding-left: 1.2rem;
+    color: var(--text-dark);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.refund-policy-list li + li {
+    margin-top: 0.4rem;
+}
+
 .confirm-summary {
     margin: 0 0 1rem;
 }

@@ -472,7 +472,7 @@ async function cancelConfirm(aptId, childName) {
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 function switchTab(tab) {
-    ['upcoming','completed','cancelled'].forEach(t => {
+    ['upcoming','completed','cancelled','refunds'].forEach(t => {
         document.getElementById(`${t}-pane`).style.display = 'none';
         document.getElementById(`tab-${t}`).classList.remove('active');
     });
@@ -527,3 +527,4 @@ document.getElementById('rDate').addEventListener('change', loadRescheduleAvaila
 loadRescheduleSlotSettings();
 loadAppointments();
 loadNotificationCount();
+if (typeof initRefundRequests === 'function') initRefundRequests('refundRequestsList'); // js/shared/refund-requests.js

@@ -172,6 +172,44 @@ async function retrieveCheckoutSession(sessionId) {
   return callApi('GET', path);
 }
 
+// ── Refunds ──────────────────────────────────────────────────────────────
+// Refunds and payments are v1 resources regardless of PAYMONGO_API_VERSION.
+// A refund's status is PayMongo's: pending, processing, succeeded or failed.
+
+/** Refund a paid PayMongo payment (pay_...). Amount is in pesos. */
+async function createRefund({ paymentId, amount, reason = 'requested_by_customer', notes = null, metadata = {} }) {
+  const centavos = toCentavos(amount);
+  if (!Number.isFinite(centavos) || centavos <= 0) {
+    throw new Error('Refund amount must be greater than zero.');
+  }
+  const attributes = { amount: centavos, payment_id: paymentId, reason, metadata };
+  if (notes) attributes.notes = String(notes).slice(0, 255);
+  const json = await callApi('POST', '/v1/refunds', { data: { attributes } });
+  return readRefund(json?.data);
+}
+
+async function retrieveRefund(refundId) {
+  const json = await callApi('GET', `/v1/refunds/${encodeURIComponent(refundId)}`);
+  return readRefund(json?.data);
+}
+
+/** A payment's refunds as PayMongo records them (newest last). */
+async function retrievePaymentRefunds(paymentId) {
+  const json = await callApi('GET', `/v1/payments/${encodeURIComponent(paymentId)}`);
+  const refunds = json?.data?.attributes?.refunds;
+  return Array.isArray(refunds) ? refunds.map(readRefund) : [];
+}
+
+function readRefund(data) {
+  const attrs = data?.attributes || {};
+  return {
+    id: data?.id || null,
+    status: attrs.status || null,
+    amount: attrs.amount != null ? Number(attrs.amount) / 100 : null,
+    paymentId: attrs.payment_id || null,
+  };
+}
+
 /**
  * Pull the actual billing contact PayMongo recorded for a payment, preferring
  * the specific payment sub-resource (what the payer actually submitted at
@@ -312,4 +350,7 @@ module.exports = {
   readBillingFromWebhookResource,
   verifyWebhookSignature,
   toCentavos,
+  createRefund,
+  retrieveRefund,
+  retrievePaymentRefunds,
 };

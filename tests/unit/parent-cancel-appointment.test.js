@@ -63,7 +63,8 @@ const APPTS = [
     const p = makePage();
     p.run(`activeAppointments = ${JSON.stringify(APPTS)}`);
     await p.run('cancelAppointment(11)');
-    assert.deepStrictEqual(p.calls.map((c) => `${c.method} ${c.url}`), ['POST /appointments/11/cancel', 'GET /appointments/u1']);
+    // The reload also fetches refund info, so the now-cancelled booking can offer Request Refund.
+    assert.deepStrictEqual(p.calls.map((c) => `${c.method} ${c.url}`), ['POST /appointments/11/cancel', 'GET /appointments/u1', 'GET /payments/refunds/mine']);
     assert.ok(!/payment stays on record/.test(p.confirms[0]), 'no refund note for an unpaid booking');
     ok('confirming posts /appointments/11/cancel and reloads the list');
   }

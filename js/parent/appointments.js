@@ -692,7 +692,7 @@ async function loadAppointments() {
     const user = KC.user();
     if (!user) return;
     try {
-        const data = await apiFetch(`/appointments/${user.id}`);
+        const [data] = await Promise.all([apiFetch(`/appointments/${user.id}`), loadRefundInfo()]);
         const all = (data.appointments || []).sort((a, b) => (b.id || 0) - (a.id || 0));
         activeAppointments = all.filter((a) => ['pending', 'approved'].includes(a.status));
         renderActive(activeAppointments);
@@ -964,7 +964,7 @@ async function cancelAppointment(appointmentId) {
     const who = appt.pediatricianName ? `Dr. ${appt.pediatricianName}` : 'the pediatrician';
     const paid = String(appt.paymentStatus || '').toLowerCase() === 'paid' || Number(appt.amountPaid || 0) > 0;
     const message = `Cancel the appointment with ${who} on ${fmtDate(appt.appointmentDate)} at ${fmtTime(appt.appointmentTime)}? This cannot be undone.`
-        + (paid ? '\n\nYour payment stays on record. Please contact the clinic about a refund.' : '');
+        + (paid ? '\n\nYour payment stays on record. After cancelling, an online payment can be refunded with Request Refund on this appointment; clinic payments are refunded at the clinic.' : '');
     if (!window.confirm(message)) return;
 
     cancellingAppointments.add(appt.id);
@@ -1035,7 +1035,145 @@ function renderPast(list) {
                 ${a.isRescheduled && a.reschedule ? `<span class="badge rescheduled" style="background:var(--surface-muted,#f0efe8);color:var(--primary-dark);">Rescheduled</span>` : ''}
             </div>
             ${renderPaymentSummary(a)}
+            ${renderRefundSection(a)}
         </div>`).join('');
+}
+
+// ── Refunds of online payments ───────────────────────────────────────────────
+// The server decides eligibility (GET /payments/refunds/mine); this page only
+// shows it. A refund reads Refunded only after PayMongo confirms it.
+
+let refundInfo = { refunds: [], eligible: [], clinicPaidAppointmentIds: [], policy: null };
+let refundTarget = null;
+let submittingRefund = false;
+
+async function loadRefundInfo() {
+    try {
+        const data = await apiFetch('/payments/refunds/mine');
+        refundInfo = {
+            refunds: Array.isArray(data.refunds) ? data.refunds : [],
+            eligible: Array.isArray(data.eligible) ? data.eligible : [],
+            clinicPaidAppointmentIds: Array.isArray(data.clinicPaidAppointmentIds) ? data.clinicPaidAppointmentIds : [],
+            policy: data.policy || null,
+        };
+    } catch {
+        // Appointments still render; only the refund parts are missing.
+        refundInfo = { refunds: [], eligible: [], clinicPaidAppointmentIds: [], policy: null };
+    }
+}
+
+const REFUND_BADGE_STYLE = {
+    pending_review: 'background:var(--accent);',
+    approved: 'background:var(--surface-muted);',
+    processing: 'background:var(--surface-muted);',
+    refunded: 'background:var(--success);',
+    rejected: 'background:var(--accent-red);',
+    failed: 'background:var(--accent-red);',
+};
+
+const REFUND_STATUS_TEXT = {
+    pending_review: 'The clinic is reviewing your refund request.',
+    approved: 'Approved. Sending the refund to PayMongo.',
+    processing: 'Approved. Waiting for PayMongo to confirm the refund.',
+    refunded: 'PayMongo confirmed the refund to your GCash or Maya account.',
+    rejected: 'The clinic did not approve this refund.',
+    failed: 'PayMongo could not complete this refund.',
+};
+
+function renderRefundSection(a) {
+    const refund = refundInfo.refunds.find((r) => r.appointmentId === a.id);
+    const eligible = refundInfo.eligible.find((e) => e.appointmentId === a.id);
+    const parts = [];
+
+    if (refund) {
+        const details = [REFUND_STATUS_TEXT[refund.status] || ''];
+        if (refund.reviewNote) details.push(`Clinic note: ${refund.reviewNote}`);
+        if (refund.status === 'failed' && refund.failureReason) details.push(`Reason: ${refund.failureReason}`);
+        parts.push(`
+            <div class="refund-status">
+                <span class="refund-badge" style="${REFUND_BADGE_STYLE[refund.status] || ''}">Refund: ${escapeHtml(refund.statusLabel)}</span>
+                <span class="mini">${escapeHtml(formatMoney(refund.amount))}</span>
+                ${details.filter(Boolean).map((d) => `<p class="mini" style="margin:.25rem 0 0;width:100%;">${escapeHtml(d)}</p>`).join('')}
+            </div>`);
+    }
+    if (eligible) {
+        parts.push(`<button type="button" class="payment-link-btn" style="margin-top:.6rem;" onclick="openRefundRequest(${Number(a.id)})">Request Refund</button>`);
+    } else if (!refund && refundInfo.clinicPaidAppointmentIds.includes(a.id)) {
+        parts.push('<p class="mini" style="margin:.5rem 0 0;">Paid at the clinic. Refunds for clinic payments are handled at the clinic counter.</p>');
+    }
+    return parts.join('');
+}
+
+function renderRefundPolicy() {
+    const policy = refundInfo.policy;
+    const el = document.getElementById('refundPolicyBody');
+    if (!el) return;
+    el.innerHTML = policy && Array.isArray(policy.points)
+        ? `<ul class="refund-policy-list">${policy.points.map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ul>`
+        : '<p class="mini">The refund policy could not be loaded. Please try again.</p>';
+}
+
+function openRefundModal(mode) {
+    document.getElementById('refundModalTitle').textContent = mode === 'request' ? 'Request a Refund' : 'Refund Policy';
+    document.getElementById('refundRequestForm').style.display = mode === 'request' ? 'block' : 'none';
+    document.getElementById('refundError').style.display = 'none';
+    renderRefundPolicy();
+    document.getElementById('refundModal').style.display = 'flex';
+}
+
+async function openRefundPolicy() {
+    if (!refundInfo.policy) await loadRefundInfo();
+    refundTarget = null;
+    openRefundModal('policy');
+}
+
+function openRefundRequest(appointmentId) {
+    const eligible = refundInfo.eligible.find((e) => e.appointmentId === Number(appointmentId));
+    if (!eligible) return;
+    refundTarget = eligible;
+    document.getElementById('refundAmount').textContent = formatMoney(eligible.amount);
+    document.getElementById('refundAppointmentNo').textContent = `#${eligible.appointmentId}`;
+    document.getElementById('refundReason').value = '';
+    setRefundSubmitting(false);
+    openRefundModal('request');
+}
+
+function closeRefundModal() {
+    if (submittingRefund) return;
+    document.getElementById('refundModal').style.display = 'none';
+    refundTarget = null;
+}
+
+function setRefundSubmitting(busy) {
+    submittingRefund = busy;
+    const btn = document.getElementById('refundSubmitBtn');
+    btn.disabled = busy;
+    btn.textContent = busy ? 'Submitting...' : 'Submit Request';
+}
+
+async function submitRefundRequest() {
+    if (!refundTarget || submittingRefund) return;
+    const errEl = document.getElementById('refundError');
+    const reason = document.getElementById('refundReason').value.trim();
+    if (!reason) {
+        errEl.textContent = 'Please tell the clinic why you are requesting a refund.';
+        errEl.style.display = 'block';
+        return;
+    }
+    setRefundSubmitting(true);
+    try {
+        await apiFetch(`/payments/appointments/${refundTarget.appointmentId}/refund-request`, {
+            method: 'POST',
+            body: JSON.stringify({ reason }),
+        });
+        setRefundSubmitting(false);
+        closeRefundModal();
+        await loadAppointments();
+    } catch (err) {
+        setRefundSubmitting(false);
+        errEl.textContent = err.message || 'Could not send the refund request.';
+        errEl.style.display = 'block';
+    }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

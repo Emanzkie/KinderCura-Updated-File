@@ -51,4 +51,10 @@ router.get('/admin/monitor', authMiddleware, paymentController.getAdminPaymentMo
 router.get('/clinic-config', authMiddleware, paymentController.getClinicConfig);
 router.put('/clinic-config', authMiddleware, paymentController.updateClinicConfig);
 
+// Refunds of online payments: parent request, clinic review, PayMongo refund.
+router.get('/refunds/mine', authMiddleware, paymentController.getMyRefunds);
+router.post('/appointments/:appointmentId/refund-request', authMiddleware, paymentController.requestRefund);
+router.get('/refunds/clinic', authMiddleware, paymentController.getClinicRefunds);
+router.post('/refunds/:refundId/review', authMiddleware, paymentController.reviewRefund);
+
 module.exports = router;
