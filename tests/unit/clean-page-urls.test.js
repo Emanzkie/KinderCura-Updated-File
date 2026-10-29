@@ -14,6 +14,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..', '..');
 const app = require(path.join(ROOT, 'server.js'));
+const { versionAssetUrls } = require(path.join(ROOT, 'services', 'assetVersions.js'));
 
 const results = [];
 const ok = (label) => results.push(label);
@@ -26,7 +27,9 @@ async function run() {
     const res = await fetch(base + url, { headers: { accept: 'text/html' }, redirect: 'manual' });
     return { status: res.status, location: res.headers.get('location'), body: await res.text() };
   };
-  const read = (...parts) => fs.readFileSync(path.join(ROOT, ...parts), 'utf8');
+  // A page is served with its own script/stylesheet URLs content-versioned
+  // (tests/unit/asset-versions.test.js), so compare against that.
+  const read = (...parts) => versionAssetUrls(fs.readFileSync(path.join(ROOT, ...parts), 'utf8'));
 
   try {
     // 1. Clean addresses serve the page itself.
