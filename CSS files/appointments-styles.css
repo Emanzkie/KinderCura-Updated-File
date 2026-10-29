@@ -602,6 +602,67 @@ body {
     gap: 1rem;
 }
 
+/* Selected pediatrician's consultation fee, and the same total in the booking confirmation */
+.fee-highlight {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    background: var(--surface-tint);
+    border-left: 4px solid var(--primary);
+    border-radius: 8px;
+    padding: 0.7rem 0.9rem;
+    margin-top: 0.8rem;
+}
+
+.fee-highlight__label {
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+.fee-highlight__amount {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: var(--primary-dark);
+}
+
+.fee-highlight__note {
+    font-size: 0.85rem;
+    color: var(--text-light);
+}
+
+.confirm-summary {
+    margin: 0 0 1rem;
+}
+
+.confirm-summary__row {
+    display: grid;
+    grid-template-columns: 9rem 1fr;
+    gap: 0.75rem;
+    padding: 0.55rem 0;
+    border-bottom: 1px dashed var(--border);
+}
+
+.confirm-summary__row dt {
+    color: var(--text-light);
+    font-size: 0.88rem;
+}
+
+.confirm-summary__row dd {
+    margin: 0;
+    color: var(--text-dark);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+    .confirm-summary__row {
+        grid-template-columns: 1fr;
+        gap: 0.15rem;
+    }
+}
+
 .suggestion-banner {
     background: linear-gradient(135deg, var(--bg-primary) 0%, rgba(107, 142, 111, 0.06) 100%);
     border-left: 4px solid var(--primary);

@@ -146,6 +146,25 @@
     </div>
 </div>
 
+<!-- Booking confirmation. Opened by Book Appointment; nothing is booked until Confirm and Continue. -->
+<div class="kc-modal-backdrop" id="bookConfirmModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="bookConfirmTitle">
+    <div class="kc-modal" role="document">
+        <div class="kc-modal__header">
+            <h3 id="bookConfirmTitle">Confirm Your Appointment</h3>
+            <button type="button" class="kc-modal__close" onclick="closeBookConfirm()" aria-label="Close confirmation">&times;</button>
+        </div>
+        <div class="kc-modal__body">
+            <p class="mini" style="margin:0 0 .75rem;">Please check these details. You will choose how to pay on the next page.</p>
+            <dl class="confirm-summary" id="bookConfirmSummary"></dl>
+            <div id="bookConfirmFee"></div>
+            <div class="modal-actions" style="margin-top:1rem;">
+                <button type="button" class="btn btn-primary" style="flex:1;padding:.8rem;" id="bookConfirmBtn" onclick="confirmBooking()">Confirm and Continue</button>
+                <button type="button" class="btn btn-secondary" style="flex:1;padding:.8rem;" id="bookBackBtn" onclick="closeBookConfirm()">Go Back</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Parent-initiated reschedule. Only opened from an existing appointment card. -->
 <div class="kc-modal-backdrop" id="rescheduleModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="rescheduleModalTitle">
     <div class="kc-modal" role="document">

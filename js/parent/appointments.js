@@ -13,6 +13,8 @@ let rescheduleTarget = null;
 let rescheduleAvailability = null;
 let appointmentSlotSettings = { enforceThirtyMinuteSlots: true, slotMinutes: 60 };
 let availabilityBlocksBooking = false;
+// Booking details the parent is reviewing in #bookConfirmModal.
+let pendingBooking = null;
 
 function useStartTimeSlots() {
     return Boolean(appointmentSlotSettings?.enforceThirtyMinuteSlots);
@@ -36,6 +38,19 @@ function getSelectedPediatrician() {
 function getConsultationFee(ped = getSelectedPediatrician()) {
     const fee = Number(ped?.consultationFee);
     return Number.isFinite(fee) && fee > 0 ? roundMoney(fee) : 0;
+}
+
+// The fee comes from the selected pediatrician's profile — the same value
+// POST /appointments/create stores as the appointment's totalAmount.
+function consultationFeeHtml(ped, label = 'Consultation Fee') {
+    const fee = getConsultationFee(ped);
+    return `
+        <div class="fee-highlight">
+            <span class="fee-highlight__label"><img src="/icons/consultation_fee.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(label)}</span>
+            ${fee > 0
+                ? `<span class="fee-highlight__amount">${formatMoney(fee)}</span>`
+                : '<span class="fee-highlight__note">Fee not set yet. The clinic will confirm it.</span>'}
+        </div>`;
 }
 
 function getMinimumPayment(totalAmount) {
@@ -330,12 +345,12 @@ function renderSelectedPediatrician() {
                 <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(ped.clinicName || ped.institution || 'Clinic not set')}</p>
                 <p class="mini" style="margin:0 0 .2rem;"><img src="/icons/address.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(ped.clinicAddress || 'Clinic address not available')}</p>
                 ${ped.phoneNumber ? `<p class="mini" style="margin:0 0 .2rem;"><img src="/icons/mobile_number.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> ${escapeHtml(ped.phoneNumber)}</p>` : ''}
-                ${ped.consultationFee != null ? `<p class="mini" style="margin:0;"><img src="/icons/consultation_fee.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Consultation Fee: ₱${Number(ped.consultationFee).toLocaleString()}</p>` : ''}
             </div>
             <div>
                 ${ped.isSuggested ? '<span class="pill green">Suggested Match</span>' : '<span class="pill gold">Available</span>'}
             </div>
         </div>
+        ${consultationFeeHtml(ped)}
         <div class="clinic-grid" style="margin-top:.8rem;">
             <div class="mini"><img src="/icons/appointment.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Available Days: ${escapeHtml(availability.days)}</div>
             <div class="mini"><img src="/icons/pedia_hours.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Hours: ${escapeHtml(availability.hours)}</div>
@@ -577,7 +592,6 @@ async function resolveContext() {
 }
 
 async function bookAppointment() {
-    const btn = document.getElementById('bookBtn');
     const errEl = document.getElementById('bookError');
     const sucEl = document.getElementById('bookSuccess');
     errEl.style.display = 'none';
@@ -609,16 +623,64 @@ async function bookAppointment() {
         return;
     }
 
+    // Nothing is booked yet: the parent reviews these exact values first, and
+    // confirmBooking() sends this snapshot, not whatever the form holds later.
+    pendingBooking = { childId, pediatricianId, appointmentDate, appointmentTime, reason, notes };
+    openBookConfirm(chosenPedia);
+}
+
+function openBookConfirm(ped) {
+    const b = pendingBooking;
+    const child = allChildren.find((c) => c.id === b.childId);
+    const clinic = ped.clinicName || ped.institution;
+    const rows = [
+        ['Pediatrician', `Dr. ${ped.firstName} ${ped.lastName}${clinic ? ` — ${clinic}` : ''}`],
+        ['Child', child ? `${child.firstName} ${child.lastName}` : '-'],
+        // T00:00:00 keeps the picked calendar day (a bare YYYY-MM-DD parses as UTC).
+        ['Schedule', `${fmtDate(`${b.appointmentDate}T00:00:00`)} at ${fmtTime(b.appointmentTime)}`],
+        ['Reason for Visit', b.reason || '-'],
+    ];
+    if (b.notes) rows.push(['Notes', b.notes]);
+
+    document.getElementById('bookConfirmSummary').innerHTML = rows.map(([label, value]) => `
+        <div class="confirm-summary__row"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('');
+    document.getElementById('bookConfirmFee').innerHTML = consultationFeeHtml(ped, 'Total Consultation Fee');
+    setBookConfirmBusy(false);
+    document.getElementById('bookConfirmModal').style.display = 'flex';
+    document.getElementById('bookConfirmBtn').focus();
+}
+
+function setBookConfirmBusy(busy) {
+    const confirmBtn = document.getElementById('bookConfirmBtn');
+    confirmBtn.disabled = busy;
+    confirmBtn.textContent = busy ? 'Booking...' : 'Confirm and Continue';
+    document.getElementById('bookBackBtn').disabled = busy;
+}
+
+function closeBookConfirm() {
+    if (document.getElementById('bookConfirmBtn').disabled) return; // booking in flight
+    document.getElementById('bookConfirmModal').style.display = 'none';
+    pendingBooking = null;
+}
+
+async function confirmBooking() {
+    if (!pendingBooking || document.getElementById('bookConfirmBtn').disabled) return; // one booking per confirmation
+    const btn = document.getElementById('bookBtn');
+    const errEl = document.getElementById('bookError');
+
+    setBookConfirmBusy(true);
     btn.textContent = 'Booking...';
     btn.disabled = true;
     try {
         const data = await apiFetch('/appointments/create', {
             method: 'POST',
-            body: JSON.stringify({ childId, pediatricianId, appointmentDate, appointmentTime, reason, notes }),
+            body: JSON.stringify(pendingBooking),
         });
         localStorage.removeItem('kc_prefPediaId');
         window.location.href = `/PARENT/payment.html?appointmentId=${data.appointmentId}`;
     } catch (e) {
+        setBookConfirmBusy(false);
+        closeBookConfirm();
         errEl.textContent = e.message;
         errEl.style.display = 'block';
         btn.textContent = 'Book Appointment';
