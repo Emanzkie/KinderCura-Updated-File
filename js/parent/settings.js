@@ -21,6 +21,7 @@ function switchTab(tab) {
             if (tab === 'family') {
                 loadFamilyTabData();
             }
+            if (tab === 'notifications') loadAssessmentReminders();
         }
 
         function toggleProfileMenu() {
@@ -264,6 +265,143 @@ function switchTab(tab) {
 
         function savePrivacyPrefs() {
             return savePrefs('privacySettings', PRIVACY_PREF_INPUTS, 'savePrivacyPrefsBtn', 'privacyPrefsMsg');
+        }
+
+        // ── Assessment Reminders (Notifications tab) ─────────────────────────
+        // One recurring reminder per child, kept by /api/reminders/assessment.
+        // The server works out the next dates; the daily reminder job sends them.
+        let assessmentReminderChildren = [];
+        let assessmentReminderBusy = false;
+
+        function arDate(ymd) {
+            return ymd ? new Date(`${ymd}T00:00:00`).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+        }
+
+        function arOrdinal(n) {
+            const s = ['th', 'st', 'nd', 'rd'];
+            const v = n % 100;
+            return n + (s[(v - 20) % 10] || s[v] || s[0]);
+        }
+
+        function arSelected() {
+            const id = document.getElementById('arChild')?.value;
+            return assessmentReminderChildren.find((c) => c.childId === id) || null;
+        }
+
+        function arMsg(text, isError) {
+            const el = document.getElementById('arMsg');
+            if (!el) return;
+            el.textContent = text || '';
+            el.style.color = isError ? 'var(--status-attention-fg)' : 'var(--text-light)';
+        }
+
+        async function loadAssessmentReminders() {
+            const sel = document.getElementById('arChild');
+            if (!sel) return;
+            const day = document.getElementById('arDay');
+            if (day && !day.options.length) {
+                day.innerHTML = Array.from({ length: 28 }, (_, i) => `<option value="${i + 1}">${arOrdinal(i + 1)}</option>`).join('');
+            }
+            try {
+                const data = await apiFetch('/reminders/assessment');
+                assessmentReminderChildren = Array.isArray(data.children) ? data.children : [];
+                const previous = sel.value || localStorage.getItem('kc_childId') || '';
+                if (!assessmentReminderChildren.length) {
+                    sel.innerHTML = '<option value="">No child registered yet</option>';
+                    renderAssessmentReminder();
+                    return;
+                }
+                sel.innerHTML = assessmentReminderChildren
+                    .map((c) => `<option value="${escapeHtml(c.childId)}">${escapeHtml(c.childName || 'Child')}</option>`).join('');
+                sel.value = assessmentReminderChildren.some((c) => c.childId === previous) ? previous : assessmentReminderChildren[0].childId;
+                renderAssessmentReminder();
+            } catch (err) {
+                document.getElementById('arStatus').textContent = err.message || 'Could not load assessment reminders.';
+            }
+        }
+
+        function renderAssessmentReminder() {
+            const child = arSelected();
+            const r = child && child.reminder;
+            const status = document.getElementById('arStatus');
+            const pauseBtn = document.getElementById('arPauseBtn');
+            const offBtn = document.getElementById('arOffBtn');
+            arMsg('');
+            if (!child) {
+                status.textContent = 'Add a child first to set an assessment reminder.';
+                pauseBtn.style.display = 'none';
+                offBtn.style.display = 'none';
+                return;
+            }
+            document.getElementById('arFrequency').value = String(r ? r.frequencyMonths : 1);
+            document.getElementById('arDay').value = String(r ? r.dayOfMonth : 1);
+            document.getElementById('arLead').value = String(r ? r.leadDays : 0);
+            pauseBtn.style.display = r ? '' : 'none';
+            offBtn.style.display = r ? '' : 'none';
+            if (!r) {
+                status.textContent = `Off. Set a schedule below to get reminders for ${child.childName}.`;
+                return;
+            }
+            const every = r.frequencyMonths === 1 ? 'every month' : `every ${r.frequencyMonths} months`;
+            const when = r.leadDays === 0 ? 'on the day' : `${r.leadDays} day${r.leadDays === 1 ? '' : 's'} before`;
+            pauseBtn.textContent = r.status === 'paused' ? 'Resume' : 'Pause';
+            status.textContent = r.status === 'paused'
+                ? `Paused: ${every} on the ${arOrdinal(r.dayOfMonth)}, ${when}. Resume to get reminders again.`
+                : `Active: ${every} on the ${arOrdinal(r.dayOfMonth)}, ${when}. Next reminder: ${arDate(r.nextReminderDate)} (assessment due ${arDate(r.nextDueDate)}).`;
+        }
+
+        async function putAssessmentReminder(status, doneText) {
+            const child = arSelected();
+            if (!child || assessmentReminderBusy) return;
+            assessmentReminderBusy = true;
+            arMsg('Saving…');
+            try {
+                const data = await apiFetch(`/reminders/assessment/${encodeURIComponent(child.childId)}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        frequencyMonths: Number(document.getElementById('arFrequency').value),
+                        dayOfMonth: Number(document.getElementById('arDay').value),
+                        leadDays: Number(document.getElementById('arLead').value),
+                        status,
+                    }),
+                });
+                child.reminder = data.reminder;
+                renderAssessmentReminder();
+                arMsg(doneText);
+            } catch (err) {
+                arMsg(err.message || 'Could not save the reminder.', true);
+            } finally {
+                assessmentReminderBusy = false;
+            }
+        }
+
+        function saveAssessmentReminder() {
+            const current = arSelected()?.reminder;
+            return putAssessmentReminder(current && current.status === 'paused' ? 'paused' : 'active', 'Reminder saved.');
+        }
+
+        function toggleAssessmentReminderPause() {
+            const current = arSelected()?.reminder;
+            if (!current) return;
+            const resume = current.status === 'paused';
+            return putAssessmentReminder(resume ? 'active' : 'paused', resume ? 'Reminder resumed.' : 'Reminder paused.');
+        }
+
+        async function turnOffAssessmentReminder() {
+            const child = arSelected();
+            if (!child || !child.reminder || assessmentReminderBusy) return;
+            if (!window.confirm(`Turn off assessment reminders for ${child.childName}?`)) return;
+            assessmentReminderBusy = true;
+            try {
+                await apiFetch(`/reminders/assessment/${encodeURIComponent(child.childId)}`, { method: 'DELETE' });
+                child.reminder = null;
+                renderAssessmentReminder();
+                arMsg('Reminder turned off.');
+            } catch (err) {
+                arMsg(err.message || 'Could not turn off the reminder.', true);
+            } finally {
+                assessmentReminderBusy = false;
+            }
         }
 
         loadAccountSettings();

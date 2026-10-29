@@ -148,6 +148,45 @@
 
                     <button type="button" id="saveNotificationPrefsBtn" class="btn btn-primary" onclick="saveNotificationPrefs()" style="padding: 0.7rem 1.5rem;">Save Preferences</button>
                     <p id="notificationPrefsMsg" role="status" aria-live="polite" style="color: var(--text-light); font-size: 0.9rem; margin-top: 0.75rem;"></p>
+
+                    <!-- Recurring assessment reminder, one per child (js/parent/settings.js) -->
+                    <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border);">
+                        <h3 style="font-weight: 600; margin-bottom: 0.3rem;">Assessment Reminders</h3>
+                        <p style="color: var(--text-light); font-size: 0.9rem; margin-bottom: 1rem;">Get a reminder in KinderCura to screen your child regularly. Each child has their own reminder.</p>
+
+                        <label for="arChild" style="display:block;font-weight:600;font-size:0.9rem;margin-bottom:0.3rem;">Child</label>
+                        <select id="arChild" onchange="renderAssessmentReminder()" style="width:100%;padding:0.7rem;border:2px solid var(--border);border-radius:8px;margin-bottom:0.9rem;"></select>
+
+                        <p id="arStatus" role="status" aria-live="polite" style="background:var(--surface-tint);border-left:4px solid var(--primary);border-radius:6px;padding:0.7rem 0.9rem;font-size:0.9rem;margin-bottom:1rem;">Loading…</p>
+
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:0.8rem;margin-bottom:1rem;">
+                            <label style="font-size:0.9rem;font-weight:600;">Frequency
+                                <select id="arFrequency" style="display:block;width:100%;margin-top:0.3rem;padding:0.6rem;border:2px solid var(--border);border-radius:8px;">
+                                    <option value="1">Every month</option>
+                                    <option value="2">Every 2 months</option>
+                                    <option value="3">Every 3 months</option>
+                                </select>
+                            </label>
+                            <label style="font-size:0.9rem;font-weight:600;">Day of the month
+                                <select id="arDay" style="display:block;width:100%;margin-top:0.3rem;padding:0.6rem;border:2px solid var(--border);border-radius:8px;"></select>
+                            </label>
+                            <label style="font-size:0.9rem;font-weight:600;">Remind me
+                                <select id="arLead" style="display:block;width:100%;margin-top:0.3rem;padding:0.6rem;border:2px solid var(--border);border-radius:8px;">
+                                    <option value="0">On the day</option>
+                                    <option value="1">1 day before</option>
+                                    <option value="3">3 days before</option>
+                                    <option value="7">7 days before</option>
+                                </select>
+                            </label>
+                        </div>
+
+                        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
+                            <button type="button" id="arSaveBtn" class="btn btn-primary" onclick="saveAssessmentReminder()" style="padding:0.7rem 1.5rem;">Save Reminder</button>
+                            <button type="button" id="arPauseBtn" class="btn btn-secondary" onclick="toggleAssessmentReminderPause()" style="padding:0.7rem 1.2rem;display:none;">Pause</button>
+                            <button type="button" id="arOffBtn" class="btn btn-secondary" onclick="turnOffAssessmentReminder()" style="padding:0.7rem 1.2rem;display:none;">Turn Off</button>
+                        </div>
+                        <p id="arMsg" role="status" aria-live="polite" style="color: var(--text-light); font-size: 0.9rem; margin-top: 0.75rem;"></p>
+                    </div>
                 </div>
 
                 <!-- Privacy Settings -->

@@ -1,11 +1,13 @@
 // Scheduled reminders for parents, run once a day by the Vercel cron in
 // vercel.json (GET /api/reminders/run, routes/reminders.js).
 //
-// Two reminders, both in-app bell notifications to the child's parent:
+// Three reminders, all in-app bell notifications to the child's parent:
 //   - an approved appointment that is tomorrow (Manila day);
 //   - a next-assessment date the pediatrician set that has arrived (today or
 //     in the last week, in case a daily run was missed), unless the child has
-//     already been screened again since that review.
+//     already been screened again since that review;
+//   - the parent's own recurring assessment reminder for a child
+//     (models/AssessmentReminder.js), on the due day or up to 7 days before.
 //
 // Each reminder carries a reminderKey with a unique index on Notification, so
 // running the job again (or twice at once) never sends the same one twice. A
@@ -15,6 +17,7 @@ const Assessment = require('../models/Assessment');
 const Child = require('../models/Child');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const AssessmentReminder = require('../models/AssessmentReminder');
 const { CLINIC_TIMEZONE, clinicDayStart, clinicDayEnd } = require('../constants/clinicTime');
 
 const ASSESSMENT_LOOKBACK_DAYS = 7;
@@ -137,12 +140,81 @@ async function assessmentReminders(today) {
   return reminders;
 }
 
+// ── Parent-set recurring reminders (models/AssessmentReminder.js) ──────────
+// Due dates are `dayOfMonth` in `startMonth` and every `frequencyMonths`
+// after it, all as Manila YYYY-MM-DD strings.
+
+const monthIndex = (ym) => Number(ym.slice(0, 4)) * 12 + Number(ym.slice(5, 7)) - 1;
+
+function addMonths(ym, n) {
+  const i = monthIndex(ym) + n;
+  return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
+}
+
+const dueOn = (ym, dayOfMonth) => `${ym}-${String(dayOfMonth).padStart(2, '0')}`;
+
+/** Month of the first due date on or after today: this month if the day has not passed. */
+function firstDueMonth(dayOfMonth, today) {
+  const thisMonth = today.slice(0, 7);
+  return Number(today.slice(8, 10)) <= dayOfMonth ? thisMonth : addMonths(thisMonth, 1);
+}
+
+function isPlanDueDate(setting, ymd) {
+  if (Number(ymd.slice(8, 10)) !== setting.dayOfMonth) return false;
+  const diff = monthIndex(ymd.slice(0, 7)) - monthIndex(setting.startMonth);
+  return diff >= 0 && diff % setting.frequencyMonths === 0;
+}
+
+/** The first due date on or after today, and when its reminder goes out. */
+function nextPlanDates(setting, today) {
+  const f = setting.frequencyMonths;
+  let ym = setting.startMonth;
+  const behind = monthIndex(today.slice(0, 7)) - monthIndex(ym);
+  if (behind > 0) ym = addMonths(ym, Math.ceil(behind / f) * f);
+  let due = dueOn(ym, setting.dayOfMonth);
+  if (due < today) due = dueOn(addMonths(ym, f), setting.dayOfMonth);
+  const remindOn = addDays(due, -setting.leadDays);
+  return { nextDueDate: due, nextReminderDate: remindOn < today ? today : remindOn };
+}
+
+// A due date within [today, today + leadDays] is announced. A missed daily run
+// is caught up the next day; the key keeps each due date to one notification.
+async function planReminders(today) {
+  const settings = await AssessmentReminder.find({ status: 'active' }).lean();
+  if (!settings.length) return [];
+  const children = await namesById(Child, [...new Set(settings.map((s) => String(s.childId)))]);
+
+  const reminders = [];
+  for (const s of settings) {
+    const child = children.get(String(s.childId));
+    if (!child || String(child.parentId || '') !== String(s.parentId)) continue;
+    for (let d = 0; d <= s.leadDays; d += 1) {
+      const due = addDays(today, d);
+      if (!isPlanDueDate(s, due)) continue;
+      const name = personName(child) || 'Your child';
+      reminders.push({
+        userId: s.parentId,
+        title: 'Assessment Reminder',
+        message: d === 0
+          ? `Reminder: ${name}'s developmental assessment is due today. Open Screening to start it.`
+          : `Reminder: ${name}'s developmental assessment is due on ${formatYmd(due)} (in ${d} day${d === 1 ? '' : 's'}). Open Screening to start it.`,
+        type: 'assessment_reminder',
+        relatedPage: '/parent/screening',
+        relatedId: String(s.childId),
+        reminderKey: `assessment-plan:${s.childId}:${due}`,
+      });
+    }
+  }
+  return reminders;
+}
+
 async function runReminders(now = new Date()) {
   const today = clinicToday(now);
-  const summary = { date: today, appointments: 0, assessments: 0, alreadySent: 0 };
+  const summary = { date: today, appointments: 0, assessments: 0, planned: 0, alreadySent: 0 };
   const groups = [
     ['appointments', await appointmentReminders(today)],
     ['assessments', await assessmentReminders(today)],
+    ['planned', await planReminders(today)],
   ];
   for (const [field, reminders] of groups) {
     for (const reminder of reminders) {
@@ -153,4 +225,11 @@ async function runReminders(now = new Date()) {
   return summary;
 }
 
-module.exports = { runReminders, clinicToday, addDays, _internals: { appointmentReminders, assessmentReminders, sendOnce } };
+module.exports = {
+  runReminders,
+  clinicToday,
+  addDays,
+  firstDueMonth,
+  nextPlanDates,
+  _internals: { appointmentReminders, assessmentReminders, planReminders, isPlanDueDate, sendOnce },
+};
