@@ -422,6 +422,23 @@
         </div>
     </div>
 
+    <!-- Patient History Modal — every record for one child in a single
+         newest-first timeline. Read-only; see js/pedia/patient-history.js. -->
+    <div class="notifications-modal" id="patientHistoryModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="patientHistoryTitle">
+        <div class="notifications-content" style="max-width:860px;">
+            <div class="notifications-header">
+                <h3 id="patientHistoryTitle">Patient History</h3>
+                <button class="close-btn" onclick="closePatientHistory()" aria-label="Close">&#215;</button>
+            </div>
+            <div style="padding:1.25rem 1.5rem 1.75rem;max-height:78vh;overflow-y:auto;">
+                <p style="margin:0 0 0.9rem;font-size:0.8rem;color:var(--text-light);">All of this child's records with you, newest first: assessments, appointments, check-ups, referrals, follow-up plans, progress notes, questions to the parent and chat. Nothing here can be edited — use the patient card's other buttons for that.</p>
+                <div id="patientHistoryNotice"></div>
+                <div id="patientHistoryFilters" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;"></div>
+                <div id="patientHistoryList" style="display:grid;gap:0.8rem;"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Review Assessment Modal (scores, answers, review remarks) -->
     <div class="notifications-modal" id="reviewModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="reviewModalTitle">
         <div class="notifications-content review-modal-content">
@@ -461,5 +478,6 @@
 <script src="/js/shared/care-plan-labels.js"></script>
 <script src="/js/shared/mobile-nav.js"></script>
 <script src="/js/pedia/pediatrician-patients.js"></script>
+<script src="/js/pedia/patient-history.js"></script>
 </body>
 </html>

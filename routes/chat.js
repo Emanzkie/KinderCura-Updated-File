@@ -13,6 +13,7 @@ const Child = require('../models/Child');
 const User = require('../models/User');
 const GuardianLink = require('../models/GuardianLink');
 const { hasPermission } = require('../middleware/guardianPermission');
+const { pediatricianHasPatient } = require('../services/patientAccess');
 
 // Resolve the Notification model even if the module is exported in a slightly
 // different shape. This prevents the chat flow from crashing when notifications
@@ -130,6 +131,48 @@ async function resolveChatAccess(appointmentId, userId, userRole) {
     pedPhoto: pediatrician?.profileIcon || null,
   };
 }
+
+// GET /api/chat/summary/child/:childId
+// For the pediatrician's Patient History: how many messages each of their
+// conversations with this child's family holds, and when the first and last
+// were sent. Read-only — no message text, and unlike GET /:appointmentId it
+// marks nothing read. Conversations are the pediatrician's approved and
+// completed appointments with the child, the same ones chat is open for.
+router.get('/summary/child/:childId', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== 'pediatrician') return res.status(403).json({ error: 'Pediatricians only.' });
+    const { childId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(childId)) return res.status(404).json({ error: 'Child not found.' });
+    if (!(await pediatricianHasPatient(req.user.userId, childId))) return res.status(403).json({ error: 'Access denied.' });
+
+    const appointments = await Appointment.find({
+      childId,
+      pediatricianId: req.user.userId,
+      status: { $in: ['approved', 'completed'] },
+    }).select('id').lean();
+    const ids = appointments.map((a) => a.id);
+
+    const rows = ids.length
+      ? await ChatMessage.aggregate([
+        { $match: { appointmentId: { $in: ids } } },
+        { $group: { _id: '$appointmentId', messageCount: { $sum: 1 }, firstMessageAt: { $min: '$createdAt' }, lastMessageAt: { $max: '$createdAt' } } },
+      ])
+      : [];
+
+    res.json({
+      success: true,
+      conversations: rows.map((r) => ({
+        appointmentId: r._id,
+        messageCount: r.messageCount,
+        firstMessageAt: r.firstMessageAt,
+        lastMessageAt: r.lastMessageAt,
+      })),
+    });
+  } catch (err) {
+    console.error('chat summary error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // GET /api/chat/threads
 // Parents, pediatricians, and guardians with messaging permission may fetch threads
