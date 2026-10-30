@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Profile - KinderCura Pediatrician</title>
+    <link rel="stylesheet" href="/css/dashboard-new-styles.css">
+    <link rel="stylesheet" href="/css/pedia-reports-styles.css">
+    <link rel="stylesheet" href="/css/notifications-styles.css">
+    <link rel="stylesheet" href="/notifications-card-ui.css">
+    <link rel="stylesheet" href="/css/mobile-nav.css">
+    <link rel="stylesheet" href="/css/pedia-responsive.css">
+</head>
+<body data-report-tab="case-files">
+    <header class="top-nav has-mobile-nav">
+        <div class="nav-container">
+            <a href="/pedia/pediatrician-dashboard" class="logo">
+                <img src="/icons/logo.png" alt="KinderCura" class="logo-img">
+                <span class="logo-text"><span class="logo-kinder">Kinder</span><span class="logo-cura">Cura</span></span>
+            </a>
+            <nav class="main-nav">
+                <a href="/pedia/pediatrician-dashboard" class="nav-link">Dashboard</a>
+                <a href="/pedia/pediatrician-patients" class="nav-link active">My Patients</a>
+                <a href="/pedia/pedia-reports" class="nav-link">Reports</a>
+                <a href="/pedia/pediatrician-appointments" class="nav-link">Appointments</a>
+                <a href="/pedia/pedia-chat" class="nav-link">Chat</a>
+                <a href="/pedia/pedia-questions" class="nav-link">My Questions</a>
+                <!-- Collapsed-menu only: hidden on desktop by mobile-nav.css. The "logout" class is the hook api.js already binds. -->
+                <a href="#" class="nav-link nav-logout logout">Log Out</a>
+            </nav>
+            <div class="nav-right">
+                <button class="icon-btn notification-btn" onclick="openNotifications()">
+                    <img src="/icons/notif_bell.png" class="notification-icon" style="width:24px;height:24px;object-fit:contain;display:block;">
+                    <span class="notification-badge" id="notifCount" style="display:none;">0</span>
+                </button>
+                <button class="icon-btn profile-btn" onclick="toggleProfileMenu()">
+                    <img src="/icons/profile.png" class="profile-icon" id="navProfilePic">
+                </button>
+                <button type="button" class="nav-toggle" aria-label="Open menu" aria-expanded="false"><span class="nav-toggle-bars" aria-hidden="true"></span></button>
+                <div class="profile-menu" id="profileMenu" style="display:none;">
+                    <div class="menu-header"><p id="navWelcome">Welcome, Dr.</p></div>
+                    <a href="/pedia/pediatrician-profile" class="menu-item"><img src="/icons/profile_icon.png" class="menu-icon">Profile</a>
+                    <a href="/pedia/pediatrician-settings" class="menu-item"><img src="/icons/settings.png" class="menu-icon">Settings</a>
+                    <hr style="margin:0.5rem 0;">
+                    <a href="#" class="menu-item logout" onclick="doLogout()"><img src="/icons/logout.png" class="menu-icon">Logout</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- One child's profile: their own Case File and Patient History. Opened
+         from My Patients → View Profile as ?childId=<id>. See
+         js/pedia/patient-profile.js. -->
+    <div class="dashboard-container">
+        <div class="report-header">
+            <div>
+                <a href="/pedia/pediatrician-patients" style="display:inline-block;margin-bottom:0.6rem;font-size:0.85rem;font-weight:600;color:var(--primary);text-decoration:none;">&larr; Back to My Patients</a>
+                <h1 id="profileName">Patient Profile</h1>
+                <p class="report-meta" id="profileMeta">Loading…</p>
+            </div>
+            <div class="report-header-actions" id="profileCaseActions">
+                <button type="button" class="btn btn-secondary" id="printCaseFileBtn" onclick="printCaseFile()" style="padding:0.75rem 1.4rem;" hidden>Print Case File</button>
+                <button type="button" class="btn btn-primary" id="caseFilePdfBtn" onclick="downloadCaseFilePdf()" style="padding:0.75rem 1.4rem;" hidden>Download PDF</button>
+            </div>
+        </div>
+
+        <div class="report-tabs" role="tablist" aria-label="Patient profile" id="profileTabs" hidden>
+            <button type="button" class="report-tab" role="tab" id="tabProfileCaseFile" aria-controls="profileCaseFilePanel" aria-selected="true" onclick="showProfileTab('case-file')">Case File</button>
+            <button type="button" class="report-tab" role="tab" id="tabProfileHistory" aria-controls="profileHistoryPanel" aria-selected="false" onclick="showProfileTab('history')">Patient History</button>
+        </div>
+
+        <div id="profileCaseFilePanel" role="tabpanel" aria-labelledby="tabProfileCaseFile">
+            <div id="caseFileContent">
+                <div class="report-card"><div class="report-loading">Loading patient profile…</div></div>
+            </div>
+        </div>
+
+        <div id="profileHistoryPanel" role="tabpanel" aria-labelledby="tabProfileHistory" hidden>
+            <div class="report-card">
+                <p style="margin:0 0 0.9rem;font-size:0.82rem;color:var(--text-light);">All of this child's records with you, newest first: assessments, appointments, check-ups, referrals, follow-up plans, progress notes, questions to the parent and chat.</p>
+                <div id="patientHistoryNotice"></div>
+                <div id="patientHistoryFilters" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;"></div>
+                <div id="patientHistoryList" style="display:grid;gap:0.8rem;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notifications Modal -->
+<div class="notification-modal notifications-modal" id="notificationsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle" aria-hidden="true">
+    <div class="notification-modal-content notifications-content" role="document">
+        <div class="notification-modal-header notifications-header">
+            <h3 id="notificationsTitle">Notifications</h3>
+            <button type="button" class="notif-close close-btn" onclick="closeNotifications()" aria-label="Close notifications">&times;</button>
+        </div>
+        <div class="notification-action-bar clear-all-row">
+            <button type="button" class="mark-all-read-btn" id="markAllNotificationsReadBtn" onclick="markAllNotificationsRead()" disabled>Mark all read</button>
+            <button type="button" class="clear-all-btn" id="clearNotificationsBtn" onclick="clearAllNotifications()" disabled>Clear all</button>
+        </div>
+        <div class="notification-list notifications-list" id="notificationsList" role="list">
+            <p class="notifications-empty">Loading...</p>
+        </div>
+    </div>
+</div>
+
+<script src="/api.js"></script>
+<script src="/constants/scoring.js"></script>
+<script src="/notifications-card-ui.js"></script>
+<script src="/js/shared/mobile-nav.js"></script>
+<!-- Shared helpers only (escapeHtml, score and date formatting); its report
+     loading runs on the Reports page alone. -->
+<script src="/js/pedia/pedia-reports.js"></script>
+<script src="/js/pedia/pedia-case-files.js"></script>
+<script src="/js/pedia/patient-history.js"></script>
+<script src="/js/pedia/patient-profile.js"></script>
+</body>
+</html>

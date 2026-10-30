@@ -317,15 +317,23 @@ function setPatientHistoryFilter(category) {
 
 // ── Loading ─────────────────────────────────────────────────────────────────
 
+// The My Patients modal.
 async function openPatientHistory(childId, childName) {
+    document.getElementById('patientHistoryTitle').textContent = `Patient History — ${childName}`;
+    document.getElementById('patientHistoryModal').style.display = 'flex';
+    await loadPatientHistory(childId);
+}
+
+// Fills #patientHistoryNotice / Filters / List with one child's history. Used
+// by the modal above and by the Patient History tab of the patient profile
+// page (js/pedia/patient-profile.js).
+async function loadPatientHistory(childId) {
     const token = ++patientHistoryLoadToken;
     patientHistoryEntries = [];
     patientHistoryFilter = 'all';
-    document.getElementById('patientHistoryTitle').textContent = `Patient History — ${childName}`;
     document.getElementById('patientHistoryNotice').innerHTML = '';
     document.getElementById('patientHistoryFilters').innerHTML = '';
     document.getElementById('patientHistoryList').innerHTML = '<p style="text-align:center;color:var(--text-light);padding:1rem;">Loading patient history…</p>';
-    document.getElementById('patientHistoryModal').style.display = 'flex';
 
     const id = encodeURIComponent(childId);
     const load = (path, pick) => apiFetch(path).then(pick).catch(() => undefined);

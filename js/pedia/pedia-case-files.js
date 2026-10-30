@@ -757,6 +757,9 @@ function initCaseFilePicker() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // The Reports page's tabs and patient search. The patient profile page
+    // (js/pedia/patient-profile.js) reuses the case file without them.
+    if (!document.getElementById('practiceReportsPanel')) return;
     showReportTab(window.location.hash === '#practice-reports' ? 'practice-reports' : 'case-files');
     initCaseFilePicker();
 });

@@ -2057,6 +2057,9 @@ async function loadIncome() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // The patient profile page loads this file only for its helpers; the
+    // reports themselves live on the Reports page alone.
+    if (!document.getElementById('practiceReportsPanel')) return;
     if (typeof initNav === 'function') initNav();
     initClassificationFilter();
     loadReports();
