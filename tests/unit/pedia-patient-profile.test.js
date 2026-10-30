@@ -79,6 +79,18 @@ function loadPage(search, { hash = '' } = {}) {
     if (ep === '/pedia-reports/patients') return { patients: [KEMRI, LIA] };
     if (ep === '/assessments/pedia-patients') return { patients: [{ childId: 'cA', parentFirstName: 'Emmanuel', parentLastName: 'Soto', parentEmail: 'parent@example.test' }, { childId: 'cB', parentFirstName: 'Emmanuel', parentLastName: 'Soto', parentEmail: 'parent@example.test' }] };
     if (ep === '/appointments/pedia') return { appointments: APPOINTMENTS };
+    // Section B's records for the case file's Developmental progress.
+    const activity = ep.match(/^\/pedia-reports\/activity\?childId=(c[AB])$/);
+    if (activity) {
+      return { records: DATA[activity[1]].history.map((h) => ({
+        assessmentId: h.id, childId: h.childId, name: h.childId === 'cA' ? 'Kemri Soto' : 'Lia Soto', assessedAt: h.completedAt, status: 'complete',
+        domains: {
+          communication: { score: h.communicationScore, band: null }, social: { score: h.socialScore, band: null },
+          cognitive: { score: h.cognitiveScore, band: null }, motor: { score: h.motorScore, band: null },
+        },
+        overallScore: h.overallScore, overallBand: null,
+      })) };
+    }
     const m = ep.match(/^\/(assessments|checkups\/child)\/(c[AB])(\/.*)?$/) || ep.match(/^\/(assessments\/child|questions\/assigned|chat\/summary\/child)\/(c[AB])(\/.*)?$/);
     if (!m) throw new Error(`unexpected ${ep}`);
     const d = DATA[m[2]];
@@ -91,14 +103,16 @@ function loadPage(search, { hash = '' } = {}) {
     throw new Error(`unexpected ${ep}`);
   };
   vm.createContext(sandbox);
-  for (const file of ['constants/scoring.js', 'js/pedia/pedia-reports.js', 'js/pedia/pedia-case-files.js', 'js/pedia/patient-history.js', 'js/pedia/patient-profile.js']) {
+  for (const file of ['constants/scoring.js', 'js/pedia/pedia-reports-interpretations.js', 'js/pedia/pedia-reports.js', 'js/pedia/pedia-case-files.js', 'js/pedia/patient-history.js', 'js/pedia/patient-profile.js']) {
     vm.runInContext(fs.readFileSync(path.join(ROOT, file), 'utf8'), sandbox, { filename: file });
   }
   return { sandbox, elements, listeners, calls, polls: () => polls };
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 30));
-const childEndpoints = (calls) => calls.filter((c) => /\/c[AB](\/|$)/.test(c));
+// Requests naming a child: by path (/…/cA/…) or by query (?childId=cA).
+const childEndpoints = (calls) => calls.filter((c) => /\/c[AB](\/|$)|childId=c[AB]/.test(c));
+const forChild = (c, id) => c.includes(`/${id}`) || c.includes(`childId=${id}`);
 
 (async () => {
   // 1. Kemri's profile: only Kemri's records requested and shown.
@@ -107,8 +121,11 @@ const childEndpoints = (calls) => calls.filter((c) => /\/c[AB](\/|$)/.test(c));
     page.listeners.forEach((fn) => fn());
     await settle();
     assert.strictEqual(page.polls(), 0, 'no report polling on the profile page');
-    assert(!page.calls.some((c) => c.startsWith('/pedia-reports/') && c !== '/pedia-reports/patients'), 'no practice reports loaded');
-    assert(childEndpoints(page.calls).length > 0 && childEndpoints(page.calls).every((c) => c.includes('/cA')), 'only Kemri\'s endpoints');
+    // Only the patient list and this child's own records: no practice-wide reports.
+    assert.deepStrictEqual(page.calls.filter((c) => c.startsWith('/pedia-reports/')).sort(),
+      ['/pedia-reports/activity?childId=cA', '/pedia-reports/patients'], 'no practice reports loaded');
+    assert(page.elements.caseFileContent.innerHTML.includes('All recorded assessments'), 'developmental progress in the case file');
+    assert(childEndpoints(page.calls).length > 0 && childEndpoints(page.calls).every((c) => forChild(c, 'cA')), 'only Kemri\'s endpoints');
     const caseFile = page.elements.caseFileContent.innerHTML;
     assert(caseFile.includes('KEMRI RECOMMENDATION') && caseFile.includes('KEMRI FINDINGS') && caseFile.includes('KEMRI VISIT'));
     assert(!/LIA|Lia Soto/.test(caseFile), 'no sibling data in the case file');
@@ -129,7 +146,7 @@ const childEndpoints = (calls) => calls.filter((c) => /\/c[AB](\/|$)/.test(c));
     assert.strictEqual(page.elements.profileCaseFilePanel.hidden, true);
     assert.strictEqual(page.elements.profileCaseActions.style.display, 'none');
     assert.strictEqual(page.sandbox.location.hash, '#history');
-    assert(childEndpoints(page.calls).every((c) => c.includes('/cA')));
+    assert(childEndpoints(page.calls).every((c) => forChild(c, 'cA')));
     const historyHtml = page.elements.patientHistoryList.innerHTML;
     assert(historyHtml.includes('KEMRI NOTE') && historyHtml.includes('Progress note'));
     assert(!/LIA/.test(historyHtml), 'no sibling data in the history');
@@ -150,7 +167,7 @@ const childEndpoints = (calls) => calls.filter((c) => /\/c[AB](\/|$)/.test(c));
     const page = loadPage('?childId=cB', { hash: '#history' });
     page.listeners.forEach((fn) => fn());
     await settle();
-    assert(childEndpoints(page.calls).every((c) => c.includes('/cB')));
+    assert(childEndpoints(page.calls).every((c) => forChild(c, 'cB')));
     assert(page.elements.patientHistoryList.innerHTML.includes('LIA NOTE'));
     assert(page.elements.caseFileContent.innerHTML.includes('LIA FINDINGS'));
     assert(!/KEMRI/.test(page.elements.patientHistoryList.innerHTML + page.elements.caseFileContent.innerHTML));

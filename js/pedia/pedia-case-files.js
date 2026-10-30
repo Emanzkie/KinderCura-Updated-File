@@ -10,19 +10,15 @@
 //   /assessments/:childId/history  assessments, stored scores, documented review
 //   /checkups/child/:childId     this pediatrician's check-ups and referrals
 //   /appointments/pedia          this pediatrician's appointments (the clinic visits)
+//   /pedia-reports/activity?childId=  the assessment records Section B (Practice
+//                                     Reports) draws its progress from
 // /recommendations/:assessmentId is deliberately NOT used: it writes generated
 // recommendations when none exist yet.
 //
 // Loaded after js/pedia/pedia-reports.js and reuses its escapeHtml,
-// fmtShortDate, scoreText, bandChip and deltaHtml. Band keys and labels come
-// from window.KCScoring, like every other section of this page.
-
-const CASE_FILE_DOMAINS = Object.freeze([
-    { label: 'Communication', field: 'communicationScore' },
-    { label: 'Social Skills', field: 'socialScore' },
-    { label: 'Cognitive', field: 'cognitiveScore' },
-    { label: 'Motor Skills', field: 'motorScore' },
-]);
+// fmtShortDate, scoreText and bandChip, and Section B's devProgressBodyHtml /
+// drawDevProgressCharts (which need pedia-reports-interpretations.js and
+// Chart.js). Band keys and labels come from window.KCScoring.
 
 const CASE_FILE_CHECKUP_STATUS = Object.freeze({
     initial_review: 'Initial Review',
@@ -130,39 +126,13 @@ function caseFileAssessments(history, childId) {
         .sort((a, b) => new Date(a.completedAt || a.startedAt || 0) - new Date(b.completedAt || b.startedAt || 0));
 }
 
-function pointsBetween(from, to) {
-    if (from == null || to == null) return null;
-    return Math.round(Number(to)) - Math.round(Number(from));
-}
-
 /**
- * First vs latest scored assessment: the stored score for each area and
- * overall, and the difference in percentage points. Arithmetic on stored
- * values only. null when fewer than two assessments have scores.
+ * This child's assessment records from /pedia-reports/activity, the data
+ * Section B (Practice Reports) draws from, oldest first. The API lists them
+ * newest first; records of any other child are dropped.
  */
-function caseFileComparison(assessments) {
-    const scored = assessments.filter((a) => a.overallScore != null);
-    if (scored.length < 2) return null;
-    const first = scored[0];
-    const latest = scored[scored.length - 1];
-    return {
-        first,
-        latest,
-        count: scored.length,
-        rows: [
-            ...CASE_FILE_DOMAINS.map((d) => ({
-                label: d.label, from: first[d.field], to: latest[d.field], diff: pointsBetween(first[d.field], latest[d.field]),
-            })),
-            { label: 'Overall', from: first.overallScore, to: latest.overallScore, diff: pointsBetween(first.overallScore, latest.overallScore), overall: true },
-        ],
-    };
-}
-
-function changeWords(diff) {
-    if (diff == null) return 'could not be compared';
-    if (diff > 0) return `increased ${diff} pts`;
-    if (diff < 0) return `decreased ${Math.abs(diff)} pts`;
-    return 'did not change';
+function caseFileDevHistory(records, childId) {
+    return (records || []).filter((r) => String(r.childId) === String(childId)).reverse();
 }
 
 // ── Rendering ───────────────────────────────────────────────────────────────
@@ -175,78 +145,33 @@ function caseFileField(label, value) {
     return `<div class="cf-field"><dt>${escapeHtml(label)}</dt><dd>${value}</dd></div>`;
 }
 
-function renderCaseFileHistory(child, assessments) {
-    if (!assessments.length) {
+/**
+ * Section B's Patient Development Progress for this child, rendered by the
+ * same code as on Practice Reports (devProgressBodyHtml in
+ * js/pedia/pedia-reports.js): Latest recorded change, the interpretation, the
+ * four domain charts, the overall chart and All recorded assessments, with the
+ * child's age added to that table. Charts are canvases cfDev*, drawn by
+ * drawCaseFileCharts() once the case file is on the page. `devProgress` =
+ * { records, error } from /pedia-reports/activity?childId=.
+ */
+function renderCaseFileProgress(patient, devProgress) {
+    if (!devProgress || devProgress.error) {
+        return '<p class="cf-empty">Developmental progress could not be loaded right now. This does not mean there are no assessments — reopen the case file to try again.</p>';
+    }
+    const history = caseFileDevHistory(devProgress.records, patient.childId);
+    if (!history.length) {
         return '<p class="cf-empty">No completed assessments are on record for this patient.</p>';
     }
-    const rows = assessments.map((a, i) => {
-        const previous = assessments.slice(0, i).reverse().find((p) => p.overallScore != null);
-        const change = a.overallScore != null && previous ? deltaHtml(pointsBetween(previous.overallScore, a.overallScore)) : '<span class="delta delta-flat">—</span>';
-        return `
-            <tr>
-                <td class="cf-nowrap">${escapeHtml(fmtShortDate(a.completedAt))}</td>
-                <td class="cf-nowrap">${escapeHtml(caseFileAgeText(caseFileAgeMonths(child.dateOfBirth, a.completedAt)))}</td>
-                ${CASE_FILE_DOMAINS.map((d) => `<td class="num">${escapeHtml(scoreText(a[d.field]))}</td>`).join('')}
-                <td class="num"><strong>${escapeHtml(scoreText(a.overallScore))}</strong></td>
-                <td>${caseFileBand(a.overallScore)}</td>
-                <td class="num">${change}</td>
-            </tr>`;
-    }).join('');
-    return `
-        <div class="report-table-wrap">
-            <table class="report-table cf-table">
-                <thead>
-                    <tr>
-                        <th scope="col">Date</th>
-                        <th scope="col">Age</th>
-                        ${CASE_FILE_DOMAINS.map((d) => `<th scope="col" class="num">${escapeHtml(d.label)}</th>`).join('')}
-                        <th scope="col" class="num">Overall</th>
-                        <th scope="col">Classification</th>
-                        <th scope="col" class="num">Change</th>
-                    </tr>
-                </thead>
-                <tbody>${rows}</tbody>
-            </table>
-        </div>
-        <p class="cf-note">Change = overall score difference from the previous scored assessment, in percentage points (pts).</p>`;
-}
-
-function renderCaseFileComparison(assessments) {
-    const cmp = caseFileComparison(assessments);
-    if (!cmp) {
-        return '<p class="cf-empty">Not enough assessments to compare yet. A comparison needs at least two scored assessments.</p>';
-    }
-    const overall = cmp.rows[cmp.rows.length - 1];
-    return `
-        <p class="cf-lead">
-            Comparing the first scored assessment (${escapeHtml(fmtShortDate(cmp.first.completedAt))}) with the latest
-            (${escapeHtml(fmtShortDate(cmp.latest.completedAt))}), across ${cmp.count} scored assessments:
-            the overall score ${escapeHtml(changeWords(overall.diff))}.
-        </p>
-        <div class="report-table-wrap">
-            <table class="report-table cf-table">
-                <thead>
-                    <tr>
-                        <th scope="col">Area</th>
-                        <th scope="col" class="num">First</th>
-                        <th scope="col" class="num">Latest</th>
-                        <th scope="col" class="num">Change</th>
-                        <th scope="col">Latest classification</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${cmp.rows.map((r) => `
-                        <tr${r.overall ? ' class="cf-total"' : ''}>
-                            <td>${r.overall ? '<strong>Overall</strong>' : escapeHtml(r.label)}</td>
-                            <td class="num">${escapeHtml(scoreText(r.from))}</td>
-                            <td class="num">${escapeHtml(scoreText(r.to))}</td>
-                            <td class="num">${deltaHtml(r.diff)}</td>
-                            <td>${caseFileBand(r.to)}</td>
-                        </tr>`).join('')}
-                </tbody>
-            </table>
-        </div>
-        <p class="cf-note">Differences between stored screening scores. They describe recorded answers, not a cause or a diagnosis.</p>`;
+    return devProgressBodyHtml({ name: patient.name }, history, {
+        idPrefix: 'cfDev',
+        leadHtml: `
+            <p class="cf-lead">
+                Every completed assessment on record for ${escapeHtml(patient.name)}, oldest first. Domain scores are
+                the stored scores out of 100; the overall score is the average of the four.
+            </p>`,
+        ageFor: (r) => caseFileAgeText(caseFileAgeMonths(patient.dateOfBirth, r.assessedAt)),
+        keepTogether: true,
+    });
 }
 
 function renderCaseFileReviews(assessments) {
@@ -386,7 +311,8 @@ function renderCaseFileCheckups(checkupsResult, visitsResult) {
 }
 
 /**
- * The whole case file. `data` = { patient, parent, history, checkups, visits }, all
+ * The whole case file. `data` = { patient, parent, history, checkups, visits,
+ * devProgress }, all
  * for the same child; assessments for any other child are dropped here.
  */
 function renderCaseFile(data) {
@@ -435,14 +361,9 @@ function renderCaseFile(data) {
                 </dl>
             </section>
 
-            <section class="cf-section">
-                <h3>Assessment history</h3>
-                ${renderCaseFileHistory(patient, assessments)}
-            </section>
-
-            <section class="cf-section">
-                <h3>Developmental progress comparison</h3>
-                ${renderCaseFileComparison(assessments)}
+            <section class="cf-section cf-progress">
+                <h3>Developmental progress</h3>
+                ${renderCaseFileProgress(patient, data.devProgress)}
             </section>
 
             <section class="cf-section">
@@ -502,11 +423,13 @@ async function openCaseFile(childId) {
     const content = document.getElementById('caseFileContent');
     caseFileShownId = null;
     setCaseFileActionsVisible(false);
+    caseFileChartHistory = [];
+    drawCaseFileCharts();
     content.innerHTML = `<div class="report-card"><div class="report-loading">Loading ${escapeHtml(patient.name)}'s case file…</div></div>`;
 
     const id = encodeURIComponent(patient.childId);
     try {
-        const [historyData, checkups, parents, visits] = await Promise.all([
+        const [historyData, checkups, parents, visits, devProgress] = await Promise.all([
             apiFetch(`/assessments/${id}/history`),
             apiFetch(`/checkups/child/${id}`)
                 .then((r) => ({ checkups: r.checkups || [], referrals: r.referrals || [], referralsError: r.referralsError || null, error: null }))
@@ -517,6 +440,10 @@ async function openCaseFile(childId) {
             apiFetch('/appointments/pedia')
                 .then((r) => ({ visits: caseFileVisits(r.appointments, patient.childId), error: null }))
                 .catch((err) => ({ visits: [], error: err })),
+            // Section B's records for this child, all time (no date filter).
+            apiFetch(`/pedia-reports/activity?childId=${id}`)
+                .then((r) => ({ records: r.records || [], error: null }))
+                .catch((err) => ({ records: [], error: err })),
         ]);
         // Another patient was picked while this one loaded: drop this response.
         if (token !== caseFileLoadToken || caseFileSelectedId !== patient.childId) return;
@@ -527,13 +454,32 @@ async function openCaseFile(childId) {
             history: historyData.assessments || [],
             checkups,
             visits,
+            devProgress,
         })}</div>`;
+        caseFileChartHistory = devProgress.error ? [] : caseFileDevHistory(devProgress.records, patient.childId);
+        drawCaseFileCharts();
         caseFileShownId = patient.childId;
         setCaseFileActionsVisible(true);
     } catch (err) {
         if (token !== caseFileLoadToken) return;
         content.innerHTML = `<div class="report-card"><div class="report-loading">This case file could not be loaded: ${escapeHtml(err.message)}</div></div>`;
     }
+}
+
+// The open case file's Section B charts, and the records they are drawn from.
+let caseFileCharts = [];
+let caseFileChartHistory = [];
+
+/**
+ * (Re)draws the case file's progress charts. Called when a case file is
+ * inserted, and by the patient profile page when its Case File tab is shown:
+ * a chart drawn while its tab is hidden has no size.
+ */
+function drawCaseFileCharts() {
+    caseFileCharts.forEach((c) => c.destroy());
+    caseFileCharts = caseFileChartHistory.length && typeof drawDevProgressCharts === 'function'
+        ? drawDevProgressCharts(caseFileChartHistory, 'cfDev')
+        : [];
 }
 
 function setCaseFileActionsVisible(visible) {
@@ -604,7 +550,15 @@ function resizeVisibleCharts() {
 // A timer rather than requestAnimationFrame, which pauses in a background tab.
 const nextFrame = () => new Promise((resolve) => setTimeout(resolve, 60));
 
-async function downloadElementPdf(element, fileName, button) {
+// Blocks html2pdf keeps whole on one page. The case file avoids single grid
+// cells: a spacer inserted before a cell of the four-chart grid pushes the
+// cells out of line. Each chart block (.dev-keep: heading, note and chart)
+// is kept together instead.
+const PRACTICE_PDF_AVOID = ['tr', '.cf-entry', '.report-tile', '.chart-box', '.chart-interp', '.practice-print-heading'];
+const CASE_FILE_PDF_AVOID = ['tr', '.cf-entry', '.cf-visit-head', '.cf-header', '.cf-fields', '.chart-interp',
+    '.dev-keep', '.dev-zero-note'];
+
+async function downloadElementPdf(element, fileName, button, avoid = PRACTICE_PDF_AVOID) {
     if (!element || !button || button.disabled) return;
     const label = button.textContent;
     button.disabled = true;
@@ -623,7 +577,7 @@ async function downloadElementPdf(element, fileName, button) {
             // the element's own width is fixed by the kc-pdf-export CSS.
             html2canvas: { scale, useCORS: true, backgroundColor: '#ffffff' },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-            pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.cf-entry', '.report-tile', '.chart-box', '.chart-interp', '.practice-print-heading'] },
+            pagebreak: { mode: ['css', 'legacy'], avoid },
         }).from(element).save();
     } catch (e) {
         console.error('PDF download failed:', e);
@@ -641,7 +595,7 @@ function downloadCaseFilePdf() {
     if (!patient) return;
     const element = document.querySelector('#caseFileContent .case-file');
     if (!element) return;
-    downloadElementPdf(element, caseFilePdfName(patient.name), document.getElementById('caseFilePdfBtn'));
+    downloadElementPdf(element, caseFilePdfName(patient.name), document.getElementById('caseFilePdfBtn'), CASE_FILE_PDF_AVOID);
 }
 
 // ── Practice Reports: print / PDF heading ───────────────────────────────────

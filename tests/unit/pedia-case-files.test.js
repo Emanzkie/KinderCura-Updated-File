@@ -1,12 +1,13 @@
 // Patient Case Files (js/pedia/pedia-case-files.js) on the pediatrician
 // Reports page: a case file shows only the selected child's records, a late
-// response for a previously selected child is dropped, the progress comparison
-// is plain arithmetic on stored scores, and every name and clinician note is
-// escaped.
+// response for a previously selected child is dropped, its Developmental
+// progress is Section B's own rendering of that child's stored records, and
+// every name and clinician note is escaped.
 //
-// Runs the real browser scripts (constants/scoring.js, js/pedia/pedia-reports.js
-// for its shared helpers, then pedia-case-files.js) in a vm sandbox with stub
-// DOM elements. No server, no DB, no network.
+// Runs the real browser scripts (constants/scoring.js,
+// js/pedia/pedia-reports-interpretations.js and js/pedia/pedia-reports.js for
+// the shared helpers and Section B, then pedia-case-files.js) in a vm sandbox
+// with stub DOM elements. No server, no DB, no network.
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -41,7 +42,7 @@ function loadSandbox() {
   sandbox.window.KC = { user: () => ({ firstName: 'Gold', lastName: 'Deluna', role: 'pediatrician' }) };
   sandbox.KC = sandbox.window.KC;
   vm.createContext(sandbox);
-  for (const file of ['constants/scoring.js', 'js/pedia/pedia-reports.js', 'js/pedia/pedia-case-files.js']) {
+  for (const file of ['constants/scoring.js', 'js/pedia/pedia-reports-interpretations.js', 'js/pedia/pedia-reports.js', 'js/pedia/pedia-case-files.js']) {
     vm.runInContext(fs.readFileSync(path.join(ROOT, file), 'utf8'), sandbox, { filename: file });
   }
   return { sandbox, elements };
@@ -57,6 +58,25 @@ const assessment = (id, childId, completedAt, scores, extra = {}) => ({
 const KEMRI = { childId: 'cA', name: 'Kemri <b>Soto</b>', dateOfBirth: '2022-01-05T00:00:00.000Z', gender: 'male', assessmentCount: 2 };
 const LIA = { childId: 'cB', name: 'Lia Soto', dateOfBirth: '2023-04-20T00:00:00.000Z', gender: 'female', assessmentCount: 1 };
 
+// Activity records (/pedia-reports/activity), as Section B receives them.
+const band = (v) => (v == null ? null : v >= 80 ? 'on_track' : v >= 60 ? 'developing' : v >= 40 ? 'at_risk' : 'delayed');
+const record = (assessmentId, childId, assessedAt, scores, name = 'Kemri <b>Soto</b>') => {
+  const overallScore = Math.round(scores.reduce((a, b) => a + b, 0) / 4);
+  const [communication, social, cognitive, motor] = scores;
+  const d = (score) => ({ score, band: band(score) });
+  return {
+    assessmentId, childId, name, assessedAt, status: 'complete',
+    domains: { communication: d(communication), social: d(social), cognitive: d(cognitive), motor: d(motor) },
+    overallScore, overallBand: band(overallScore),
+  };
+};
+// Newest first, as the API sends them, with a sibling's record among them.
+const RECORDS = [
+  record('K2', 'cA', '2026-06-10T02:00:00Z', [65, 70, 60, 72]),
+  record('L1', 'cB', '2026-05-01T02:00:00Z', [20, 20, 20, 20], 'Lia Soto'),
+  record('K1', 'cA', '2026-03-02T02:00:00Z', [50, 60, 55, 62]),
+];
+
 (async () => {
   const { sandbox, elements } = loadSandbox();
 
@@ -69,6 +89,8 @@ const LIA = { childId: 'cB', name: 'Lia Soto', dateOfBirth: '2023-04-20T00:00:00
   ];
   const list = sandbox.caseFileAssessments(history, 'cA');
   assert.deepStrictEqual(Array.from(list, (a) => a.id), ['K1', 'K2'], 'oldest first, sibling and draft dropped');
+  assert.deepStrictEqual(Array.from(sandbox.caseFileDevHistory(RECORDS, 'cA'), (r) => r.assessmentId), ['K1', 'K2'],
+    'Section B records: oldest first, sibling dropped');
   ok('case file keeps only the selected child, completed assessments, oldest first');
 
   const html = sandbox.renderCaseFile({
@@ -76,9 +98,10 @@ const LIA = { childId: 'cB', name: 'Lia Soto', dateOfBirth: '2023-04-20T00:00:00
     parent: { name: 'Emmanuel <i>Soto</i>', email: 'parent@example.test' },
     history,
     checkups: { checkups: [{ checkupDate: '2026-06-12T00:00:00Z', visitType: 'initial_checkup', status: 'monitoring', findings: 'Needs <script>x</script>' }], referrals: [], referralsError: null, error: null },
+    devProgress: { records: RECORDS, error: null },
   });
-  assert(!html.includes('L1') && !html.includes('20%'), 'no sibling scores in the case file');
-  assert(!html.includes('90%'), 'no in-progress assessment in the case file');
+  assert(!html.includes('L1') && !html.includes('20 / 100'), 'no sibling scores in the case file');
+  assert(!html.includes('90 / 100') && !html.includes('90%'), 'no in-progress assessment in the case file');
   assert(html.includes('Mar 2, 2026') && html.includes('Jun 10, 2026'));
   ok('rendered case file contains no sibling or in-progress records');
 
@@ -89,18 +112,32 @@ const LIA = { childId: 'cB', name: 'Lia Soto', dateOfBirth: '2023-04-20T00:00:00
   assert(html.includes('Needs &lt;script&gt;') && !html.includes('<script>'));
   ok('child, parent and clinician text is escaped');
 
-  // 3. Progress comparison: first vs latest, in points.
-  const cmp = sandbox.caseFileComparison(list);
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(cmp.rows.map((r) => [r.label, r.diff]))), [
-    ['Communication', 15], ['Social Skills', 10], ['Cognitive', 5], ['Motor Skills', 10], ['Overall', 10],
-  ]);
-  assert(html.includes('the overall score increased 10 pts'));
-  assert.strictEqual(sandbox.caseFileComparison(list.slice(0, 1)), null);
-  const single = sandbox.renderCaseFile({ patient: LIA, parent: null, history, checkups: { checkups: [], referrals: [], referralsError: null, error: null }, visits: { visits: [], error: null } });
-  assert(single.includes('Not enough assessments to compare yet'));
+  // 3. Developmental progress is Section B's rendering of this child's records.
+  const progress = html.slice(html.indexOf('<h3>Developmental progress</h3>'), html.indexOf('Pediatrician reviews'));
+  assert(progress.length > 0, 'Developmental progress section present');
+  for (const part of ['Latest recorded change', 'Interpretation', 'Developmental domains', 'Overall assessment score', 'All recorded assessments']) {
+    assert(progress.includes(part), `includes ${part}`);
+  }
+  assert(progress.includes('65 / 100') && progress.includes('50 / 100') && progress.includes('67%'), 'stored scores as recorded');
+  assert(progress.includes('<th scope="col">Age</th>') && progress.includes('4 y 1 mo') && progress.includes('4 y 5 mo'), 'age at each assessment');
+  assert(/Communication<\/th>[\s\S]*?65 \/ 100[\s\S]*?50 \/ 100[\s\S]*?\+15 pts/.test(progress), 'latest vs previous: Communication 50 -> 65');
+  for (const id of ['cfDevDomainChart0', 'cfDevDomainChart1', 'cfDevDomainChart2', 'cfDevDomainChart3', 'cfDevOverallChart']) {
+    assert(progress.includes(`id="${id}"`), `canvas ${id}`);
+  }
+  assert(!/id="dev(Domain|Overall)Chart/.test(html), "never Section B's own canvas ids");
+  assert(!html.includes('Developmental progress comparison') && !html.includes('<h3>Assessment history</h3>'), 'the duplicated sections are gone');
+
+  const single = sandbox.renderCaseFile({ patient: LIA, parent: null, history, checkups: { checkups: [], referrals: [], referralsError: null, error: null },
+    visits: { visits: [], error: null }, devProgress: { records: RECORDS, error: null } });
+  assert(single.includes('Not enough assessments for a trend') && !single.includes('<canvas'), 'one assessment: no chart');
+  assert(single.includes('20 / 100'));
   assert(single.includes('No clinic visits or check-ups are on record'));
-  assert(!single.includes('K1') && !single.includes('Kemri'));
-  ok('comparison is first vs latest in points; one assessment says not enough to compare');
+  assert(!single.includes('K1') && !single.includes('Kemri') && !single.includes('65 / 100'));
+
+  const progressFailed = sandbox.renderCaseFile({ patient: LIA, parent: null, history, checkups: { checkups: [], referrals: [], referralsError: null, error: null },
+    visits: { visits: [], error: null }, devProgress: { records: [], error: new Error('x') } });
+  assert(progressFailed.includes('Developmental progress could not be loaded') && !progressFailed.includes('No completed assessments are on record'));
+  ok("developmental progress is Section B for this child only, with age; one assessment draws no chart; a failed load is stated");
 
   // 4. A failed check-up request is not shown as "none".
   const failed = sandbox.renderCaseFile({ patient: LIA, parent: null, history, checkups: { checkups: [], referrals: [], error: new Error('x') }, visits: { visits: [], error: null } });
@@ -175,6 +212,9 @@ const LIA = { childId: 'cB', name: 'Lia Soto', dateOfBirth: '2023-04-20T00:00:00
     if (ep === '/assessments/cB/history') return { assessments: history };
     if (ep.startsWith('/checkups/child/')) return { checkups: [], referrals: [] };
     if (ep === '/appointments/pedia') return { appointments: [] };
+    // Section B's records are requested for the selected child only.
+    if (ep === '/pedia-reports/activity?childId=cA') return { records: RECORDS.filter((r) => r.childId === 'cA') };
+    if (ep === '/pedia-reports/activity?childId=cB') return { records: RECORDS.filter((r) => r.childId === 'cB') };
     throw new Error(`unexpected ${ep}`);
   };
   await vm.runInContext('loadCaseFilePatients()', sandbox);
@@ -182,6 +222,7 @@ const LIA = { childId: 'cB', name: 'Lia Soto', dateOfBirth: '2023-04-20T00:00:00
   await sandbox.openCaseFile('cB');
   const afterLia = elements.caseFileContent.innerHTML;
   assert(afterLia.includes('Lia Soto') && afterLia.includes('May 1, 2026'));
+  assert(afterLia.includes('20 / 100') && afterLia.includes('All recorded assessments'), "Lia's developmental progress is shown");
   releaseKemri({ assessments: history });
   await first;
   assert.strictEqual(elements.caseFileContent.innerHTML, afterLia, 'late Kemri response does not replace Lia');
@@ -232,6 +273,26 @@ const LIA = { childId: 'cB', name: 'Lia Soto', dateOfBirth: '2023-04-20T00:00:00
   sandbox.fillPracticePrintHeading(day);
   assert.strictEqual(elements.practicePrintFilters.textContent, '', 'a hidden filter note is not printed');
   ok('practice print heading copies the scope line and the active filter note');
+
+  // 11. Section B on Practice Reports is unchanged by the reuse: same card,
+  // dropdown and canvas ids; the case file draws its own cfDev* charts.
+  {
+    const fresh = loadSandbox();
+    const drawn = [];
+    fresh.sandbox.Chart = function Chart(canvas) { drawn.push(canvas.id); this.destroy = () => {}; };
+    fresh.sandbox.Chart.defaults = { font: { family: 'x' } };
+    const getEl = fresh.sandbox.document.getElementById;
+    fresh.sandbox.document.getElementById = (id) => { const el = getEl(id); el.id = id; return el; };
+    vm.runInContext('renderDevProgress', fresh.sandbox)({ records: RECORDS }, { patients: [] });
+    const section = fresh.elements.devProgressSection.innerHTML;
+    assert(section.includes('<h2>Assessment history</h2>') && section.includes('id="devProgressPatient"'));
+    assert(section.includes('Only your own patients are listed.') && !section.includes('<th scope="col">Age</th>'));
+    assert.deepStrictEqual(drawn, ['devDomainChart0', 'devDomainChart1', 'devDomainChart2', 'devDomainChart3', 'devOverallChart']);
+    drawn.length = 0;
+    vm.runInContext(`caseFileChartHistory = caseFileDevHistory(${JSON.stringify(RECORDS)}, 'cA'); drawCaseFileCharts();`, fresh.sandbox);
+    assert.deepStrictEqual(drawn, ['cfDevDomainChart0', 'cfDevDomainChart1', 'cfDevDomainChart2', 'cfDevDomainChart3', 'cfDevOverallChart']);
+  }
+  ok('Section B still draws into its own canvases; the case file draws cfDev* charts');
 
   results.forEach((r) => console.log('ok -', r));
   console.log(`\npedia-case-files: ${results.length} passed`);

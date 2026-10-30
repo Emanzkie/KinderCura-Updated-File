@@ -1360,7 +1360,6 @@ function devChangeTableHtml(summary) {
 
 function renderDevProgress(activity, roster) {
     const section = document.getElementById('devProgressSection');
-    const KCPI = window.KCPediaReportsInterpretations;
     const patients = devProgressPatients(activity, roster);
 
     if (!patients.length) {
@@ -1387,6 +1386,45 @@ function renderDevProgress(activity, roster) {
     const patient = patients.find((p) => p.childId === devProgressChildId);
     const history = patient.history;
 
+    section.innerHTML = `
+        <div class="report-card">
+            <h2>Assessment history</h2>
+            <div class="activity-controls">
+                <label for="devProgressPatient">Patient</label>
+                <select id="devProgressPatient" onchange="setDevProgressPatient(this.value)">
+                    ${patients.map((p) => `<option value="${escapeHtml(p.childId)}" ${p.childId === patient.childId ? 'selected' : ''}>${
+                        escapeHtml(p.label)} — ${p.history.length} ${plural(p.history.length, 'assessment')}</option>`).join('')}
+                </select>
+            </div>${devProgressBodyHtml(patient, history, {
+                leadHtml: `
+            <p class="section-lead">
+                Every assessment ${escapeHtml(patient.name)} has in the selected period, oldest first. Domain scores
+                are the stored scores out of ${DOMAIN_SCORE_MAX}; the overall score is the average of the four.
+                Only your own patients are listed.
+            </p>`,
+            })}
+        </div>`;
+
+    destroyDevProgressCharts();
+    devProgressCharts = drawDevProgressCharts(history, 'dev');
+}
+
+/**
+ * Section B's content for one patient: Latest recorded change, the
+ * interpretation, the four domain panels and the overall panel (or the
+ * not-enough-assessments note), the note on stored 0s, and All recorded
+ * assessments. `history` = that patient's activity records, oldest first.
+ * Shared by Section B (renderDevProgress) and the Patient Case File
+ * (js/pedia/pedia-case-files.js). Options: idPrefix names the chart canvases
+ * (`${idPrefix}DomainChart0`…, `${idPrefix}OverallChart`; 'dev' on Reports);
+ * leadHtml goes first; ageFor(record), when given, adds an Age column to All
+ * recorded assessments; keepTogether wraps each chart heading, note and chart
+ * in an unstyled .dev-keep block, so a PDF never leaves a heading on one page
+ * and its chart on the next. Charts are drawn afterwards by
+ * drawDevProgressCharts.
+ */
+function devProgressBodyHtml(patient, history, { idPrefix = 'dev', leadHtml = '', ageFor = null, keepTogether = false } = {}) {
+    const KCPI = window.KCPediaReportsInterpretations;
     const dates = history.map((r) => fmtShortDate(r.assessedAt));
     const sameDay = new Set(dates).size !== dates.length;
     // Two assessments on one day get their time too, so the table rows stay distinguishable.
@@ -1407,29 +1445,18 @@ function renderDevProgress(activity, roster) {
 
     const rows = history.map((r, i) => `
         <tr${i === history.length - 1 ? ' class="dev-latest-row"' : ''}>
-            <th scope="row">${escapeHtml(pointLabels[i])}${i === history.length - 1 ? '<span class="dev-latest-tag">Latest</span>' : ''}</th>
+            <th scope="row">${escapeHtml(pointLabels[i])}${i === history.length - 1 ? '<span class="dev-latest-tag">Latest</span>' : ''}</th>${ageFor ? `<td class="dev-age">${escapeHtml(ageFor(r))}</td>` : ''}
             ${DOMAINS.map((d) => devScoreCell(r.domains?.[d.key]?.score, r.domains?.[d.key]?.band)).join('')}
             <td class="num"><span class="domain-score">${r.overallScore == null ? 'N/A' : escapeHtml(scoreText(r.overallScore))}</span></td>
             <td>${bandChip(r.overallBand)}</td>
         </tr>`).join('');
 
     const canChart = history.length >= 2;
+    // Empty unless keepTogether, so Section B's own markup is unchanged.
+    const keepOpen = keepTogether ? '<div class="dev-keep">' : '';
+    const keepClose = keepTogether ? '</div>' : '';
 
-    section.innerHTML = `
-        <div class="report-card">
-            <h2>Assessment history</h2>
-            <div class="activity-controls">
-                <label for="devProgressPatient">Patient</label>
-                <select id="devProgressPatient" onchange="setDevProgressPatient(this.value)">
-                    ${patients.map((p) => `<option value="${escapeHtml(p.childId)}" ${p.childId === patient.childId ? 'selected' : ''}>${
-                        escapeHtml(p.label)} — ${p.history.length} ${plural(p.history.length, 'assessment')}</option>`).join('')}
-                </select>
-            </div>
-            <p class="section-lead">
-                Every assessment ${escapeHtml(patient.name)} has in the selected period, oldest first. Domain scores
-                are the stored scores out of ${DOMAIN_SCORE_MAX}; the overall score is the average of the four.
-                Only your own patients are listed.
-            </p>
+    return `${leadHtml}
 
             <h3 class="dev-subhead">Latest recorded change</h3>
             <p class="dev-subnote">
@@ -1445,7 +1472,7 @@ function renderDevProgress(activity, roster) {
             </div>
 
             ${canChart ? `
-            <h3 class="dev-subhead">Developmental domains</h3>
+            ${keepOpen}<h3 class="dev-subhead">Developmental domains</h3>
             <p class="dev-subnote">
                 One panel per domain, each on the same 0&ndash;${DOMAIN_SCORE_MAX} scale and the same ${history.length}
                 assessments, evenly spaced in date order. The darker point is the latest recorded score.
@@ -1456,17 +1483,17 @@ function renderDevProgress(activity, roster) {
                 ${DOMAINS.map((d, i) => `
                 <figure class="dev-panel">
                     <figcaption class="dev-panel-title">${escapeHtml(d.label)}</figcaption>
-                    <div class="chart-box dev-panel-chart"><canvas id="devDomainChart${i}" role="img"
+                    <div class="chart-box dev-panel-chart"><canvas id="${idPrefix}DomainChart${i}" role="img"
                         aria-label="${escapeHtml(`Line chart of ${patient.name}'s recorded ${d.label} scores. ${KCPI.formatChangeSentence(d.label, summary.domains[i])}`)}"></canvas></div>
                 </figure>`).join('')}
-            </div>
+            </div>${keepClose}
 
-            <h3 class="dev-subhead">Overall assessment score</h3>
+            ${keepOpen}<h3 class="dev-subhead">Overall assessment score</h3>
             <p class="dev-subnote">The stored overall percentage at each assessment, shown apart from the four domain scores.</p>
             <figure class="dev-panel dev-panel-overall">
-                <div class="chart-box dev-panel-chart"><canvas id="devOverallChart" role="img"
+                <div class="chart-box dev-panel-chart"><canvas id="${idPrefix}OverallChart" role="img"
                     aria-label="${escapeHtml(`Line chart of ${patient.name}'s overall assessment score. ${KCPI.formatChangeSentence('Overall score', summary.overall, '%')}`)}"></canvas></div>
-            </figure>
+            </figure>${keepClose}
             ` : `
             <div class="report-empty">
                 <h3>Not enough assessments for a trend</h3>
@@ -1486,7 +1513,7 @@ function renderDevProgress(activity, roster) {
                 <table class="report-table dev-history-table">
                     <thead>
                         <tr>
-                            <th scope="col">Assessment date</th>
+                            <th scope="col">Assessment date</th>${ageFor ? '<th scope="col">Age</th>' : ''}
                             ${DOMAINS.map((d) => `<th scope="col">${escapeHtml(d.label)}<br><span class="th-sub">score out of ${DOMAIN_SCORE_MAX}</span></th>`).join('')}
                             <th scope="col" class="num">Overall score</th>
                             <th scope="col">Overall classification</th>
@@ -1500,17 +1527,23 @@ function renderDevProgress(activity, roster) {
                 scoring rules and are not recomputed here. N/A means no score is stored for that domain. Score changes
                 describe recorded results only; they are not a diagnosis and do not show recovery. Assessment results
                 support monitoring and do not replace professional clinical evaluation.
-            </p>
-        </div>`;
+            </p>`;
+}
 
-    destroyDevProgressCharts();
-    if (!canChart || typeof Chart === 'undefined') return;
+/**
+ * Draws devProgressBodyHtml's five charts into `${idPrefix}DomainChart0-3` and
+ * `${idPrefix}OverallChart`; returns them so the caller can destroy them later.
+ * Fewer than two assessments draw nothing (the body shows a note instead).
+ */
+function drawDevProgressCharts(history, idPrefix = 'dev') {
+    const charts = [];
+    if (history.length < 2 || typeof Chart === 'undefined') return charts;
 
     const scoreOrNull = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
     DOMAINS.forEach((d, i) => {
-        const canvas = document.getElementById(`devDomainChart${i}`);
+        const canvas = document.getElementById(`${idPrefix}DomainChart${i}`);
         if (!canvas) return;
-        devProgressCharts.push(devPanelChart(canvas, {
+        charts.push(devPanelChart(canvas, {
             label: d.label,
             values: history.map((r) => scoreOrNull(r.domains?.[d.key]?.score)),
             history,
@@ -1519,9 +1552,9 @@ function renderDevProgress(activity, roster) {
             color: DEV_COLORS.line,
         }));
     });
-    const overallCanvas = document.getElementById('devOverallChart');
+    const overallCanvas = document.getElementById(`${idPrefix}OverallChart`);
     if (overallCanvas) {
-        devProgressCharts.push(devPanelChart(overallCanvas, {
+        charts.push(devPanelChart(overallCanvas, {
             label: 'Overall score',
             values: history.map((r) => scoreOrNull(r.overallScore)),
             history,
@@ -1530,6 +1563,7 @@ function renderDevProgress(activity, roster) {
             color: DEV_COLORS.overall,
         }));
     }
+    return charts;
 }
 
 // ── Section C: Clinical Status Summary ──────────────────────────────────────

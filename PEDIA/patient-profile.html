@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="/notifications-card-ui.css">
     <link rel="stylesheet" href="/css/mobile-nav.css">
     <link rel="stylesheet" href="/css/pedia-responsive.css">
+    <!-- Same charting library the Reports page loads, for the case file's progress charts. -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
 </head>
 <body data-report-tab="case-files">
     <header class="top-nav has-mobile-nav">
@@ -106,8 +108,9 @@
 <script src="/constants/scoring.js"></script>
 <script src="/notifications-card-ui.js"></script>
 <script src="/js/shared/mobile-nav.js"></script>
-<!-- Shared helpers only (escapeHtml, score and date formatting); its report
-     loading runs on the Reports page alone. -->
+<!-- Shared helpers only (escapeHtml, score and date formatting, Section B's
+     progress rendering); its report loading runs on the Reports page alone. -->
+<script src="/js/pedia/pedia-reports-interpretations.js"></script>
 <script src="/js/pedia/pedia-reports.js"></script>
 <script src="/js/pedia/pedia-case-files.js"></script>
 <script src="/js/pedia/patient-history.js"></script>

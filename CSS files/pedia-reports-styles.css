@@ -1617,3 +1617,122 @@ body.kc-pdf-export .case-file .report-table-wrap {
         page-break-after: avoid;
     }
 }
+
+/* Developmental progress in the case file: Section B's own markup
+   (devProgressBodyHtml), spaced to sit inside a case-file section. */
+/* Sub-headings under the small-caps section heading: normal case, so they read
+   as parts of "Developmental progress" rather than as sections of their own. */
+.case-file .cf-progress .dev-subhead {
+    margin: 1.4rem 0 0.35rem;
+    font-size: 0.92rem;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.case-file .cf-progress .cf-lead + .dev-subhead {
+    margin-top: 0.6rem;
+}
+
+.case-file .cf-progress .dev-multiples {
+    margin-bottom: 0.4rem;
+}
+
+.case-file .dev-history-table .dev-age {
+    white-space: nowrap;
+    vertical-align: top;
+}
+
+/* Print and PDF: Section B tables fit the page width instead of scrolling,
+   charts scale to the page, and figures and rows stay whole. */
+@media print {
+    body[data-report-tab="case-files"] .case-file .table-scroll {
+        overflow: visible;
+    }
+
+    body[data-report-tab="case-files"] .case-file .dev-change-table,
+    body[data-report-tab="case-files"] .case-file .dev-history-table {
+        font-size: 8.5pt;
+    }
+
+    body[data-report-tab="case-files"] .case-file .dev-history-table th[scope="row"] {
+        white-space: normal;
+    }
+
+    body[data-report-tab="case-files"] .case-file .band-chip {
+        padding: 0.1rem 0.4rem;
+        font-size: 7.5pt;
+    }
+
+    body[data-report-tab="case-files"] .case-file canvas {
+        max-width: 100% !important;
+        height: auto !important;
+    }
+
+    body[data-report-tab="case-files"] .case-file .dev-multiples,
+    body[data-report-tab="case-files"] .case-file .dev-panel,
+    body[data-report-tab="case-files"] .case-file .chart-interp,
+    body[data-report-tab="case-files"] .case-file .dev-zero-note {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    body[data-report-tab="case-files"] .case-file .dev-subhead {
+        break-after: avoid;
+        page-break-after: avoid;
+    }
+}
+
+body.kc-pdf-export .case-file .table-scroll {
+    overflow: visible;
+}
+
+body.kc-pdf-export .case-file .dev-change-table,
+body.kc-pdf-export .case-file .dev-history-table {
+    font-size: 0.74rem;
+}
+
+body.kc-pdf-export .case-file .dev-history-table th,
+body.kc-pdf-export .case-file .dev-change-table th {
+    white-space: normal;
+    letter-spacing: 0;
+}
+
+body.kc-pdf-export .case-file .dev-history-table th,
+body.kc-pdf-export .case-file .dev-history-table td {
+    padding: 0.45rem 0.4rem;
+}
+
+body.kc-pdf-export .case-file .band-chip {
+    padding: 0.1rem 0.4rem;
+    font-size: 0.64rem;
+}
+
+/* The four domain charts stay two per row on paper whatever the screen width
+   (the page itself stacks them below 700px), so the grid is half as tall and
+   fits on a page with its heading. */
+@media print {
+    body[data-report-tab="case-files"] .case-file .dev-multiples {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.8rem 1rem;
+    }
+}
+
+body.kc-pdf-export .case-file .dev-multiples {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.8rem 1rem;
+}
+
+body.kc-pdf-export .case-file .chart-box.dev-panel-chart {
+    height: 190px;
+}
+
+body.kc-pdf-export .case-file .dev-panel-overall .chart-box.dev-panel-chart {
+    height: 210px;
+}
+
+@media print {
+    body[data-report-tab="case-files"] .case-file .dev-keep {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+}

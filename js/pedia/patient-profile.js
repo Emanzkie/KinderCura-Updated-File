@@ -46,6 +46,8 @@ function showProfileTab(tab) {
         profileHistoryLoaded = true;
         loadPatientHistory(profileChildId);
     }
+    // Progress charts drawn while this tab was hidden have no size.
+    if (!onHistory) drawCaseFileCharts();
 }
 
 function renderProfileHeader(patient, parent) {
