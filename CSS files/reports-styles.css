@@ -34,6 +34,28 @@
     font-size: 0.95rem;
 }
 
+.report-header-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.report-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.report-actions[hidden] {
+    display: none;
+}
+
+/* Shown only in the printed report and the downloaded PDF. */
+.print-only {
+    display: none;
+}
+
 /* ── Screening notice ──────────────────────────────────────────────────────
    Always visible. This is the note that keeps the page honest about what it
    is: a screening record, not a diagnosis. */
@@ -608,4 +630,93 @@
     .review-fields {
         grid-template-columns: 1fr;
     }
+
+    .report-header-controls,
+    .report-actions,
+    .report-actions .btn {
+        width: 100%;
+    }
 }
+
+/* ── Printed report and downloaded PDF ─────────────────────────────────────
+   One layout for both: @media print for Print Report, body.kc-pdf-export
+   while js/parent/reports.js captures #printableReport for Download PDF.
+   Hides page controls (nav, child selector, buttons) and keeps each card
+   in one piece. */
+@media print {
+    @page { size: A4; margin: 12mm; }
+
+    .top-nav,
+    .notifications-modal,
+    .report-header-controls,
+    .report-card .btn,
+    .report-state .btn,
+    .followup-action {
+        display: none !important;
+    }
+
+    body {
+        background: #fff !important;
+    }
+
+    .dashboard-container {
+        max-width: none;
+        min-height: 0;
+        padding: 0 !important;
+    }
+
+    .print-only { display: block; }
+
+    .report-header,
+    .screening-notice,
+    .report-card,
+    .report-state,
+    .data-note {
+        box-shadow: none !important;
+        border: 1px solid var(--border);
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    .report-header { padding: 1.25rem 1.5rem; }
+    .report-card { padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
+
+    .timeline-item,
+    .domain-card {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    .domain-grid { grid-template-columns: repeat(2, 1fr); }
+
+    .trend-chart-wrap { height: 260px; }
+
+    * {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}
+
+body.kc-pdf-export {
+    background: #fff !important;
+}
+
+body.kc-pdf-export .report-header-controls,
+body.kc-pdf-export .report-card .btn,
+body.kc-pdf-export .report-state .btn,
+body.kc-pdf-export .followup-action {
+    display: none !important;
+}
+
+body.kc-pdf-export .print-only { display: block; }
+
+body.kc-pdf-export #printableReport .report-header,
+body.kc-pdf-export #printableReport .screening-notice,
+body.kc-pdf-export #printableReport .report-card,
+body.kc-pdf-export #printableReport .report-state,
+body.kc-pdf-export #printableReport .data-note {
+    box-shadow: none !important;
+    border: 1px solid var(--border);
+}
+
+body.kc-pdf-export .domain-grid { grid-template-columns: repeat(2, 1fr); }

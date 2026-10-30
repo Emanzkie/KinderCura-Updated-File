@@ -732,6 +732,108 @@ function renderDataNote(unrenderable) {
         </div>`;
 }
 
+// ── Printed / PDF report ────────────────────────────────────────────────────
+// Child details for the printed and downloaded report only (hidden on screen,
+// where the header already names the child). Read from the report response's
+// own `child`, i.e. the child the server checked access for.
+
+// Whole months from date of birth to today; mirrors ageInMonths() in
+// routes/parent-reports.js.
+function monthsSince(dateString) {
+    const dob = new Date(dateString);
+    if (!dateString || Number.isNaN(dob.getTime())) return null;
+    const now = new Date();
+    let months = (now.getFullYear() - dob.getFullYear()) * 12 + (now.getMonth() - dob.getMonth());
+    if (now.getDate() < dob.getDate()) months -= 1;
+    return Math.max(0, months);
+}
+
+function renderChildInfo(child, assessments) {
+    const dated = assessments.filter((a) => a.completedAt);
+    const first = dated.length ? fmtDate(dated[0].completedAt) : null;
+    const latest = dated.length ? fmtDate(dated[dated.length - 1].completedAt) : null;
+    const sex = child.gender ? child.gender.charAt(0).toUpperCase() + child.gender.slice(1) : 'Not recorded';
+    return `
+        <div class="report-card print-only child-info-card">
+            <h2>Child information</h2>
+            <dl class="review-fields">
+                <div><dt>Name</dt><dd>${escapeHtml(`${child.firstName} ${child.lastName}`.trim())}</dd></div>
+                <div><dt>Date of birth</dt><dd>${escapeHtml(fmtScheduledDate(child.dateOfBirth) || 'Not recorded')}</dd></div>
+                <div><dt>Sex</dt><dd>${escapeHtml(sex)}</dd></div>
+                <div><dt>Current age</dt><dd>${escapeHtml(fmtAge(monthsSince(child.dateOfBirth)) || 'Not recorded')}</dd></div>
+                <div><dt>Completed assessments</dt><dd>${assessments.length}</dd></div>
+                <div><dt>Assessment period</dt><dd>${first ? escapeHtml(first === latest ? first : `${first} – ${latest}`) : 'No completed assessments yet'}</dd></div>
+                <div class="review-field-wide"><dt>Report generated</dt><dd>${escapeHtml(fmtDate(new Date()))}</dd></div>
+            </dl>
+        </div>`;
+}
+
+function setReportActionsVisible(visible) {
+    const actions = document.getElementById('reportActions');
+    if (actions) actions.hidden = !visible;
+}
+
+function printReport() {
+    window.print();
+}
+
+const HTML2PDF_SRC = 'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js';
+let html2pdfLoading = null;
+
+// Loaded on the first Download PDF click so the page itself loads no faster or slower.
+function loadHtml2pdf() {
+    if (typeof window.html2pdf === 'function') return Promise.resolve(window.html2pdf);
+    if (!html2pdfLoading) {
+        html2pdfLoading = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = HTML2PDF_SRC;
+            script.onload = () => (typeof window.html2pdf === 'function' ? resolve(window.html2pdf) : reject(new Error('PDF library unavailable')));
+            script.onerror = () => { html2pdfLoading = null; reject(new Error('PDF library could not be loaded')); };
+            document.head.appendChild(script);
+        });
+    }
+    return html2pdfLoading;
+}
+
+function reportPdfFileName(child) {
+    const part = (s) => String(s || '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const name = [part(child.firstName), part(child.lastName)].filter(Boolean).join('-') || 'Child';
+    const d = new Date();
+    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return `KinderCura-Progress-Report-${name}-${day}.pdf`;
+}
+
+async function downloadReportPdf() {
+    const button = document.getElementById('downloadPdfBtn');
+    const source = document.getElementById('printableReport');
+    if (!reportData || !reportData.child || !source || button.disabled) return;
+
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Preparing PDF…';
+    try {
+        const html2pdf = await loadHtml2pdf();
+        document.body.classList.add('kc-pdf-export');
+        if (trendChart) trendChart.resize();
+        await html2pdf().set({
+            margin: [10, 10, 12, 10],
+            filename: reportPdfFileName(reportData.child),
+            image: { type: 'jpeg', quality: 0.95 },
+            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak: { mode: ['css', 'legacy'], avoid: ['.report-card', '.timeline-item', '.domain-card', '.screening-notice'] },
+        }).from(source).save();
+    } catch (e) {
+        console.error('PDF download failed:', e);
+        alert('The PDF could not be created right now. Please use Print Report and choose "Save as PDF" instead.');
+    } finally {
+        document.body.classList.remove('kc-pdf-export');
+        if (trendChart) trendChart.resize();
+        button.disabled = false;
+        button.textContent = label;
+    }
+}
+
 // ── Page assembly ───────────────────────────────────────────────────────────
 
 function renderEmptyState() {
@@ -751,6 +853,7 @@ async function loadReport() {
     const meta = document.getElementById('reportMeta');
 
     try {
+        setReportActionsVisible(false);
         content.innerHTML = '<div class="report-state"><p>Loading your child\'s progress report…</p></div>';
 
         allChildren = await fetchParentChildren();
@@ -790,8 +893,13 @@ async function loadReport() {
         meta.textContent = `${activeChild.firstName} ${activeChild.lastName} • ${
             assessments.length} completed assessment${assessments.length === 1 ? '' : 's'}`;
 
+        // Print/PDF only once the loaded report is the selected child's own.
+        const reportChild = reportData.child && String(reportData.child.id) === String(activeChild.id) ? reportData.child : null;
+        const childInfo = reportChild ? renderChildInfo(reportChild, assessments) : '';
+
         if (!assessments.length) {
-            content.innerHTML = renderEmptyState() + renderCheckupHistory(checkups, checkupsError, referrals, referralsError);
+            content.innerHTML = childInfo + renderEmptyState() + renderCheckupHistory(checkups, checkupsError, referrals, referralsError);
+            setReportActionsVisible(Boolean(reportChild));
             return;
         }
 
@@ -800,6 +908,7 @@ async function loadReport() {
             || assessments[assessments.length - 1];
 
         content.innerHTML = `
+            ${childInfo}
             ${renderScoreKey()}
             ${renderTrend(assessments, reportData.trendAvailable)}
             ${renderLatestDomains(latest)}
@@ -810,7 +919,9 @@ async function loadReport() {
             ${renderDataNote(reportData.unrenderable)}`;
 
         drawTrendChart(assessments);
+        setReportActionsVisible(Boolean(reportChild));
     } catch (e) {
+        setReportActionsVisible(false);
         meta.textContent = 'Could not load report';
         content.innerHTML = `
             <div class="report-state report-error">
@@ -823,5 +934,8 @@ async function loadReport() {
 
 document.addEventListener('DOMContentLoaded', () => {
     if (typeof initNav === 'function') initNav();
+    // Fit the trend chart to the paper width while printing, then back.
+    window.addEventListener('beforeprint', () => { if (trendChart) trendChart.resize(); });
+    window.addEventListener('afterprint', () => { if (trendChart) trendChart.resize(); });
     loadReport();
 });

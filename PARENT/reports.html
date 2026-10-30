@@ -48,12 +48,20 @@
 </header>
 
 <div class="dashboard-container">
+<!-- Everything inside #printableReport is what Print Report and Download PDF output. -->
+<div id="printableReport">
     <div class="report-header">
         <div>
             <h1>Progress Report</h1>
             <p class="report-meta" id="reportMeta">Loading…</p>
         </div>
-        <div id="childSwitchWrap"></div>
+        <div class="report-header-controls">
+            <div id="childSwitchWrap"></div>
+            <div class="report-actions" id="reportActions" hidden>
+                <button type="button" class="btn btn-secondary" onclick="printReport()">Print Report</button>
+                <button type="button" class="btn btn-primary" id="downloadPdfBtn" onclick="downloadReportPdf()">Download PDF</button>
+            </div>
+        </div>
     </div>
 
     <!-- Assessment notice -->
@@ -70,6 +78,7 @@
             <p>Loading your child's progress report…</p>
         </div>
     </div>
+</div>
 </div>
 
 <div class="notification-modal notifications-modal" id="notificationsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle" aria-hidden="true">
