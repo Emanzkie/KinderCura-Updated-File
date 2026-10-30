@@ -1099,3 +1099,340 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* ── Patient Case Files (js/pedia/pedia-case-files.js) ───────────────────── */
+#exportBtn[hidden],
+#printCaseFileBtn[hidden] {
+    display: none;
+}
+
+.report-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+}
+
+.report-tab {
+    padding: 0.7rem 1.3rem;
+    border: 2px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: var(--bg-primary);
+    color: var(--text-dark);
+    font-weight: 700;
+    font-size: 0.92rem;
+    cursor: pointer;
+}
+
+.report-tab[aria-selected="true"] {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--bg-primary);
+}
+
+.report-tab:focus-visible {
+    outline: 2px solid var(--primary-dark);
+    outline-offset: 2px;
+}
+
+.case-file-label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-dark);
+    margin-bottom: 0.5rem;
+}
+
+.case-file-picker-row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.case-file-search {
+    position: relative;
+    flex: 1 1 320px;
+    min-width: 0;
+}
+
+.case-file-search input {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    font-size: 0.95rem;
+    background: var(--bg-primary);
+    color: var(--text-dark);
+}
+
+.case-file-search input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.case-file-results {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    max-height: 320px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0.3rem;
+    list-style: none;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(61, 71, 56, 0.14);
+}
+
+.case-file-result {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.case-file-result.is-active,
+.case-file-result:hover {
+    background: var(--surface-tint);
+}
+
+.case-file-result.is-empty {
+    cursor: default;
+    color: var(--text-light);
+}
+
+.case-file-result-name {
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.case-file-result-meta {
+    font-size: 0.8rem;
+    color: var(--text-light);
+}
+
+.case-file-picker .filter-note {
+    font-size: 0.78rem;
+    color: var(--text-light);
+    margin: 0.75rem 0 0;
+}
+
+.cf-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid var(--primary);
+}
+
+.cf-kicker {
+    margin: 0 0 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--primary);
+}
+
+.report-card .cf-title {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.cf-generated {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-light);
+    text-align: right;
+}
+
+.cf-section {
+    padding: 1.1rem 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.cf-section h3 {
+    margin: 0 0 0.75rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-dark);
+}
+
+.cf-subhead {
+    margin: 1rem 0 0.5rem;
+    font-size: 0.9rem;
+    color: var(--text-dark);
+}
+
+.cf-fields {
+    margin: 0;
+    display: grid;
+    gap: 0.6rem;
+}
+
+.cf-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem 1.5rem;
+}
+
+.cf-field dt {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-light);
+}
+
+.cf-field dd {
+    margin: 0.15rem 0 0;
+    color: var(--text-dark);
+    line-height: 1.5;
+    white-space: pre-line;
+}
+
+.cf-entry {
+    padding: 0.75rem 0;
+    border-top: 1px dashed var(--border);
+}
+
+.cf-entry:first-child,
+.cf-section h3 + .cf-entry {
+    border-top: none;
+    padding-top: 0;
+}
+
+.cf-entry-date {
+    margin: 0 0 0.5rem;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.cf-table .cf-nowrap {
+    white-space: nowrap;
+}
+
+.cf-table tr.cf-total td {
+    border-top: 2px solid var(--border);
+}
+
+.cf-lead {
+    margin: 0 0 0.75rem;
+    line-height: 1.6;
+    color: var(--text-dark);
+}
+
+.cf-note,
+.cf-empty {
+    margin: 0.6rem 0 0;
+    font-size: 0.82rem;
+    color: var(--text-light);
+    line-height: 1.55;
+}
+
+.cf-footer {
+    padding-top: 1rem;
+    font-size: 0.78rem;
+    color: var(--text-light);
+    line-height: 1.55;
+}
+
+@media (max-width: 700px) {
+    .case-file-picker-row .btn {
+        width: 100%;
+    }
+
+    .cf-generated {
+        text-align: left;
+    }
+}
+
+/* Print Case File: only the selected patient's case file. Scoped to the Case
+   Files tab, so printing the Practice Reports tab is unchanged. */
+@media print {
+    @page { size: A4; margin: 14mm 12mm; }
+
+    body[data-report-tab="case-files"] {
+        background: #fff !important;
+    }
+
+    body[data-report-tab="case-files"] .top-nav,
+    body[data-report-tab="case-files"] .report-header,
+    body[data-report-tab="case-files"] .report-tabs,
+    body[data-report-tab="case-files"] .case-file-picker,
+    body[data-report-tab="case-files"] #practiceReportsPanel,
+    body[data-report-tab="case-files"] .notifications-modal {
+        display: none !important;
+    }
+
+    body[data-report-tab="case-files"] .dashboard-container {
+        max-width: none;
+        min-height: 0;
+        padding: 0 !important;
+    }
+
+    body[data-report-tab="case-files"] .case-file-card {
+        box-shadow: none;
+        padding: 0;
+        margin: 0;
+        border-radius: 0;
+        background: #fff;
+    }
+
+    body[data-report-tab="case-files"] .case-file,
+    body[data-report-tab="case-files"] .case-file .report-table td,
+    body[data-report-tab="case-files"] .case-file .cf-field dd {
+        color: #000;
+    }
+
+    body[data-report-tab="case-files"] .case-file .report-table-wrap {
+        overflow: visible;
+    }
+
+    body[data-report-tab="case-files"] .case-file .report-table {
+        font-size: 9.5pt;
+    }
+
+    body[data-report-tab="case-files"] .case-file .report-table th,
+    body[data-report-tab="case-files"] .case-file .report-table td {
+        padding: 0.35rem 0.45rem;
+        border: 1px solid #bbb;
+    }
+
+    body[data-report-tab="case-files"] .case-file .report-table th {
+        white-space: normal;
+        letter-spacing: 0;
+    }
+
+    body[data-report-tab="case-files"] .case-file thead {
+        display: table-header-group;
+    }
+
+    body[data-report-tab="case-files"] .case-file tr,
+    body[data-report-tab="case-files"] .case-file .cf-entry,
+    body[data-report-tab="case-files"] .case-file .cf-field {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    body[data-report-tab="case-files"] .case-file .cf-section h3 {
+        break-after: avoid;
+        page-break-after: avoid;
+    }
+
+    body[data-report-tab="case-files"] .case-file * {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}

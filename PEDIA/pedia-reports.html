@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reports - KinderCura Pediatrician</title>
+    <title>Patient Case Files - KinderCura Pediatrician</title>
     <link rel="stylesheet" href="/css/dashboard-new-styles.css">
     <link rel="stylesheet" href="/css/pedia-reports-styles.css">
     <link rel="stylesheet" href="/css/notifications-styles.css">
@@ -54,11 +54,40 @@
     <div class="dashboard-container">
         <div class="report-header">
             <div>
-                <h1>Reports</h1>
-                <p class="report-meta" id="reportMeta">Loading…</p>
+                <h1>Patient Case Files</h1>
+                <p class="report-meta" id="caseFileMeta">Search for a patient to view and print their case file.</p>
+                <p class="report-meta" id="reportMeta" hidden>Loading…</p>
             </div>
-            <button class="btn btn-secondary" id="exportBtn" onclick="exportScreeningsCsv()" style="padding:0.75rem 1.4rem;">Export assessments (CSV)</button>
+            <button class="btn btn-secondary" id="exportBtn" onclick="exportScreeningsCsv()" style="padding:0.75rem 1.4rem;" hidden>Export assessments (CSV)</button>
         </div>
+
+        <div class="report-tabs" role="tablist" aria-label="Report views">
+            <button type="button" class="report-tab" role="tab" id="tabCaseFiles" aria-controls="caseFilePanel" aria-selected="true" onclick="showReportTab('case-files')">Patient Case Files</button>
+            <button type="button" class="report-tab" role="tab" id="tabPracticeReports" aria-controls="practiceReportsPanel" aria-selected="false" onclick="showReportTab('practice-reports')">Practice Reports</button>
+        </div>
+
+        <!-- Patient Case Files: one patient's complete record, printable on its
+             own. See js/pedia/pedia-case-files.js. -->
+        <div id="caseFilePanel" role="tabpanel" aria-labelledby="tabCaseFiles">
+            <div class="report-card case-file-picker">
+                <label for="caseFileSearch" class="case-file-label">Patient</label>
+                <div class="case-file-picker-row">
+                    <div class="case-file-search">
+                        <input type="search" id="caseFileSearch" placeholder="Search your patients by name…" autocomplete="off"
+                            role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="caseFileResults">
+                        <ul class="case-file-results" id="caseFileResults" role="listbox" hidden></ul>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="printCaseFileBtn" onclick="printCaseFile()" style="padding:0.75rem 1.4rem;" hidden>Print Case File</button>
+                </div>
+                <p class="filter-note">Lists only the children who have a pending, approved or completed appointment with you.</p>
+            </div>
+            <div id="caseFileContent">
+                <div class="report-card"><div class="report-loading">Choose a patient above to open their case file.</div></div>
+            </div>
+        </div>
+
+        <!-- Practice Reports: every report section below is unchanged. -->
+        <div id="practiceReportsPanel" role="tabpanel" aria-labelledby="tabPracticeReports" hidden>
 
 
         <!-- 1. Filters + cohort counts.
@@ -180,6 +209,7 @@
                 <div class="report-card"><div class="report-loading">Loading income summary…</div></div>
             </div>
         </section>
+        </div>
     </div>
 
     <!-- Notifications Modal -->
@@ -205,5 +235,6 @@
 <script src="/js/shared/mobile-nav.js"></script>
 <script src="/js/pedia/pedia-reports-interpretations.js"></script>
 <script src="/js/pedia/pedia-reports.js"></script>
+<script src="/js/pedia/pedia-case-files.js"></script>
 </body>
 </html>
