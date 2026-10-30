@@ -63,9 +63,9 @@
                 <p>Review pediatrician registration documents, verify licenses, and approve or reject accounts.</p>
             </div>
             <div class="prc-header-actions">
-                <button class="prc-btn prc-btn--outline" onclick="window.open('https://www.prc.gov.ph/online-services/verify-license', '_blank')">
-                    Open PRC Portal
-                </button>
+                <a class="prc-btn prc-btn--outline" href="https://verification.prc.gov.ph/Verification" target="_blank" rel="noopener noreferrer">
+                    Verify PRC License
+                </a>
             </div>
         </div>
 
@@ -101,11 +101,12 @@
                         <th>Specialization</th>
                         <th>Registration Date</th>
                         <th>Status</th>
+                        <th>PRC Check</th>
                         <th>Action</th>
                     </tr>
                 </thead>
                 <tbody id="prcTableBody">
-                    <tr><td colspan="7" class="prc-empty-row"><div class="prc-loading-spinner"></div><span>Loading...</span></td></tr>
+                    <tr><td colspan="8" class="prc-empty-row"><div class="prc-loading-spinner"></div><span>Loading...</span></td></tr>
                 </tbody>
             </table>
         </div>

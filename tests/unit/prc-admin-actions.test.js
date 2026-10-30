@@ -106,6 +106,27 @@ async function backendTests() {
     assert.strictEqual(accounts.get(pediaId).status, 'suspended', 'approval does not lift a suspension');
     ok('approving a suspended pediatrician\'s PRC keeps the account suspended');
 
+    // The manual PRC record check is separate from approval.
+    accounts.get(pediaId).status = 'pending';
+    accounts.get(pediaId).prcVerificationStatus = 'pending';
+    const notifsBefore = notifications.length;
+    r = await call('PUT', `/api/prc/verifications/${pediaId}/record-check`, { status: 'approved' });
+    assert.strictEqual(r.status, 400, 'an unknown check status is refused');
+    r = await call('PUT', `/api/prc/verifications/${parentId}/record-check`, { status: 'verified' });
+    assert.strictEqual(r.status, 400, 'a parent account cannot be checked');
+    assert.strictEqual(accounts.get(parentId).prcRecordCheckStatus, undefined);
+    for (const status of ['verified', 'needs_review', 'unable_to_verify', 'pending_verification']) {
+      r = await call('PUT', `/api/prc/verifications/${pediaId}/record-check`, { status });
+      assert.strictEqual(r.status, 200);
+      assert.strictEqual(accounts.get(pediaId).prcRecordCheckStatus, status);
+    }
+    assert.strictEqual(String(accounts.get(pediaId).prcRecordCheckedBy), adminId, 'the checking admin is recorded');
+    assert(accounts.get(pediaId).prcRecordCheckedAt instanceof Date);
+    assert.strictEqual(accounts.get(pediaId).prcVerificationStatus, 'pending', 'approval status untouched');
+    assert.strictEqual(accounts.get(pediaId).status, 'pending', 'account status untouched');
+    assert.strictEqual(notifications.length, notifsBefore, 'no notification for a PRC check');
+    ok('the PRC record check saves one of 4 statuses and never changes approval, account status or notifications');
+
     // The document route: header only.
     r = await call('GET', `/api/prc/document/${pediaId}?token=${encodeURIComponent(token)}`, null, {});
     assert.strictEqual(r.status, 401, 'a token in the query string is no longer accepted');
@@ -214,6 +235,23 @@ async function pageTests() {
   await sandbox.handlePrcAction('p1', 'rejected');
   assert.deepStrictEqual(apiCalls.map((c) => [c.method, c.url, c.body]), [['PUT', '/prc/verifications/p1/reject', { reason: 'Blurry photo' }]]);
   ok('Approve/Reject call the PRC verification routes; Reject asks for a reason and sends nothing without one');
+
+  assert(html.includes('href="https://verification.prc.gov.ph/Verification" target="_blank" rel="noopener noreferrer">Verify on PRC Website</a>'));
+  for (const label of ['Pending Verification', 'Verified', 'Needs Review', 'Unable to Verify']) {
+    assert(html.includes(`>${label}</option>`), `check option ${label}`);
+  }
+  assert(/does not verify licenses automatically/.test(html), 'no claim of automatic verification');
+  el('prcCheckSelect').value = 'needs_review';
+  apiCalls.length = 0;
+  await sandbox.savePrcRecordCheck('p1');
+  assert.deepStrictEqual(apiCalls.map((c) => [c.method, c.url, c.body]), [['PUT', '/prc/verifications/p1/record-check', { status: 'needs_review' }]]);
+  assert(el('prcCheckBadge').innerHTML.includes('Needs Review'));
+  ok('the pop-up links to the official PRC site in a new tab and saves the PRC check on its own route');
+
+  const page = fs.readFileSync(path.join(ROOT, 'ADMIN/admin-prc-verification.html'), 'utf8');
+  assert(page.includes('href="https://verification.prc.gov.ph/Verification" target="_blank" rel="noopener noreferrer">'));
+  assert(/>\s*Verify PRC License\s*</.test(page) && !page.includes('Open PRC Portal'));
+  ok('the header button is "Verify PRC License" and opens the official PRC site in a new tab');
 }
 
 (async () => {

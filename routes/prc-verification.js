@@ -240,6 +240,10 @@ function submitPrcDocument(req, res) {
       user.prcVerificationStatus = 'pending';
       user.prcAdminNotes = null;
       user.prcSubmittedAt = new Date();
+      // A new submission needs a fresh manual check against PRC records.
+      user.prcRecordCheckStatus = null;
+      user.prcRecordCheckedAt = null;
+      user.prcRecordCheckedBy = null;
       await user.save();
 
       console.log('[PRC Upload][standalone] Saved PRC document fields:', {
@@ -539,7 +543,7 @@ router.get('/verifications', authMiddleware, adminOnly, async (req, res) => {
 
     const users = await User.find(filter)
       .sort({ prcSubmittedAt: -1, createdAt: -1 })
-      .select('firstName lastName email prcLicenseNumber specialization clinicName clinicAddress phoneNumber prcVerificationStatus prcAdminNotes prcSubmittedAt prcVerifiedAt prcVerifiedBy prcIdDocumentPath idDocumentPath profileIcon createdAt')
+      .select('firstName lastName email prcLicenseNumber specialization clinicName clinicAddress phoneNumber prcVerificationStatus prcAdminNotes prcSubmittedAt prcVerifiedAt prcVerifiedBy prcRecordCheckStatus prcIdDocumentPath idDocumentPath profileIcon createdAt')
       .lean();
 
     res.json({
@@ -555,6 +559,7 @@ router.get('/verifications', authMiddleware, adminOnly, async (req, res) => {
         clinicAddress: u.clinicAddress || null,
         phoneNumber: u.phoneNumber || null,
         prcVerificationStatus: u.prcVerificationStatus || 'pending',
+        prcRecordCheckStatus: u.prcRecordCheckStatus || 'pending_verification',
         prcAdminNotes: u.prcAdminNotes || null,
         prcSubmittedAt: u.prcSubmittedAt || null,
         prcVerifiedAt: u.prcVerifiedAt || null,
@@ -641,6 +646,43 @@ router.put('/verifications/:userId/approve', authMiddleware, adminOnly, async (r
       success: true,
       message: `Verification approved for Dr. ${user.firstName} ${user.lastName}.`,
       verificationStatus: 'verified',
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────
+// PUT /api/prc/verifications/:userId/record-check
+// Admin records the result of manually comparing the submission against the
+// official PRC verification site. Body: { status }. This is NOT approval: it
+// leaves prcVerificationStatus, the account status and notifications alone.
+// ──────────────────────────────────────────────────────────────────
+const PRC_RECORD_CHECK_STATUSES = ['pending_verification', 'verified', 'needs_review', 'unable_to_verify'];
+
+router.put('/verifications/:userId/record-check', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const status = String((req.body && req.body.status) || '');
+    if (!PRC_RECORD_CHECK_STATUSES.includes(status)) {
+      return res.status(400).json({ error: 'Invalid PRC check status.' });
+    }
+
+    const user = await User.findById(req.params.userId);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    if (user.role !== 'pediatrician') {
+      return res.status(400).json({ error: 'Only pediatrician accounts can be checked.' });
+    }
+
+    user.prcRecordCheckStatus = status;
+    user.prcRecordCheckedAt = new Date();
+    user.prcRecordCheckedBy = req.user.userId;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'PRC check saved.',
+      prcRecordCheckStatus: status,
+      prcRecordCheckedAt: user.prcRecordCheckedAt,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

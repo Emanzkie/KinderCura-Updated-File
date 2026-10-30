@@ -50,6 +50,21 @@ document.addEventListener('DOMContentLoaded', function() {
         return `<span class="prc-badge ${s.cls}">${s.label}</span>`;
     }
 
+    // The admin's manual check against the official PRC site. Kept apart from
+    // the account approval badge above: it never approves or rejects anyone.
+    const PRC_PORTAL_URL = 'https://verification.prc.gov.ph/Verification';
+    const PRC_CHECK_STATUSES = {
+        pending_verification: { cls: 'prc-badge--unsubmitted', label: 'Pending Verification' },
+        verified: { cls: 'prc-badge--approved', label: 'Verified' },
+        needs_review: { cls: 'prc-badge--pending', label: 'Needs Review' },
+        unable_to_verify: { cls: 'prc-badge--rejected', label: 'Unable to Verify' }
+    };
+
+    function prcCheckBadge(status) {
+        const s = PRC_CHECK_STATUSES[status] || PRC_CHECK_STATUSES.pending_verification;
+        return `<span class="prc-badge ${s.cls}">${s.label}</span>`;
+    }
+
     function capitalize(str) {
         if (!str) return '';
         return str.charAt(0).toUpperCase() + str.slice(1);
@@ -97,6 +112,7 @@ document.addEventListener('DOMContentLoaded', function() {
             specialization: u.specialization || '—',
             regDate: u.prcSubmittedAt || u.createdAt || null,
             status: u.prcVerificationStatus || 'pending',
+            prcCheck: u.prcRecordCheckStatus || 'pending_verification',
         };
     }
 
@@ -113,7 +129,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!tableBody) return;
         if (items.length === 0) {
             tableBody.innerHTML = `
-                <tr><td colspan="7" class="prc-empty-row">
+                <tr><td colspan="8" class="prc-empty-row">
                     <div style="padding:2rem;">
                         <p style="font-size:1.2rem;margin-bottom:0.5rem;">No verification requests found</p>
                         <p style="color:var(--text-light);">${currentFilter === 'all' ? 'No pediatricians have submitted PRC verification requests yet.' : 'No ' + currentFilter + ' verifications at this time.'}</p>
@@ -129,6 +145,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <td>${esc(p.specialization)}</td>
                 <td>${formatDate(p.regDate)}</td>
                 <td>${statusBadge(p.status)}</td>
+                <td>${prcCheckBadge(p.prcCheck)}</td>
                 <td>
                     <button class="prc-view-btn" data-id="${esc(p._id)}" onclick="openPrcVerification('${esc(p._id)}')">
                         View Documents
@@ -170,6 +187,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="prc-card__detail-item">
                         <span class="prc-card__detail-label">Registered</span>
                         <span class="prc-card__detail-value">${formatDate(p.regDate)}</span>
+                    </div>
+                    <div class="prc-card__detail-item">
+                        <span class="prc-card__detail-label">PRC Check</span>
+                        <span class="prc-card__detail-value">${prcCheckBadge(p.prcCheck)}</span>
                     </div>
                 </div>
                 <div>
@@ -502,6 +523,50 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
 
+            <div class="mt-4">
+                <h5 class="prc-modal-section-title">Compare with Official PRC Records</h5>
+                <p style="font-size:0.85rem;color:var(--text-light);margin-bottom:0.75rem;">
+                    KinderCura does not verify licenses automatically. Search the PRC website and compare these details
+                    with the official record and the uploaded PRC ID above.
+                </p>
+                <div class="prc-info-grid">
+                    <div class="prc-info-item">
+                        <span class="prc-info-label">Submitted Full Name</span>
+                        <span class="prc-info-value">${val(pedia.fullName)}</span>
+                    </div>
+                    <div class="prc-info-item">
+                        <span class="prc-info-label">Submitted PRC License No.</span>
+                        <span class="prc-info-value">${val(pedia.prcLicenseNumber)}</span>
+                    </div>
+                    <div class="prc-info-item">
+                        <span class="prc-info-label">Submitted Specialization</span>
+                        <span class="prc-info-value">${val(pedia.specialization)}</span>
+                    </div>
+                    <div class="prc-info-item">
+                        <span class="prc-info-label">Uploaded PRC ID</span>
+                        <span class="prc-info-value">${hasUploadedDocument ? 'Shown in Uploaded Documents above' : 'Not uploaded'}</span>
+                    </div>
+                </div>
+                <div style="margin-top:0.75rem;">
+                    <a class="prc-btn prc-btn--outline" href="${PRC_PORTAL_URL}" target="_blank" rel="noopener noreferrer">Verify on PRC Website</a>
+                </div>
+                <div class="prc-info-item" style="margin-top:1rem;">
+                    <span class="prc-info-label">PRC Check Status</span>
+                    <span class="prc-info-value" id="prcCheckBadge">${prcCheckBadge(pedia.prcRecordCheckStatus)}</span>
+                </div>
+                <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-top:0.5rem;">
+                    <select class="form-select form-select-sm" id="prcCheckSelect" aria-label="PRC check status" style="max-width:220px;">
+                        ${Object.entries(PRC_CHECK_STATUSES).map(([value, s]) => `
+                            <option value="${value}"${value === (pedia.prcRecordCheckStatus || 'pending_verification') ? ' selected' : ''}>${s.label}</option>
+                        `).join('')}
+                    </select>
+                    <button type="button" class="prc-btn prc-btn--outline" onclick="savePrcRecordCheck('${esc(pedia._id)}')">Save PRC Check</button>
+                </div>
+                <p style="font-size:0.75rem;color:var(--text-light);margin-top:0.5rem;">
+                    This records your manual comparison only. It does not approve or reject the account.
+                </p>
+            </div>
+
             <div class="prc-action-buttons" style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--border);">
                 <button type="button" class="prc-btn prc-btn--cancel" data-bs-dismiss="modal">Close</button>
                 <div style="display:flex;gap:0.5rem;">
@@ -553,6 +618,36 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
+    // Saves the manual PRC record check. Separate from handlePrcAction: no
+    // approval change, no reload, the modal stays open.
+    let prcCheckInFlight = false;
+    window.savePrcRecordCheck = async function(id) {
+        if (prcCheckInFlight) return;
+        const select = $('prcCheckSelect');
+        const status = select ? select.value : '';
+        if (!PRC_CHECK_STATUSES[status]) return;
+
+        prcCheckInFlight = true;
+        try {
+            await apiFetch(`/prc/verifications/${encodeURIComponent(id)}/record-check`, {
+                method: 'PUT',
+                body: JSON.stringify({ status })
+            });
+            const badge = $('prcCheckBadge');
+            if (badge) badge.innerHTML = prcCheckBadge(status);
+            const row = verifications.find(v => v._id === id);
+            if (row) {
+                row.prcCheck = status;
+                render();
+            }
+            showToast('PRC check saved: ' + PRC_CHECK_STATUSES[status].label);
+        } catch (e) {
+            showToast('Could not save the PRC check: ' + e.message, 'error');
+        } finally {
+            prcCheckInFlight = false;
+        }
+    };
+
     // ── URL params handling ──
     function handleUrlParams() {
         const params = new URLSearchParams(window.location.search);
@@ -569,7 +664,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // ── Load data ──
     async function loadData() {
         if (tableBody) {
-            tableBody.innerHTML = '<tr><td colspan="7"><div class="prc-loading-row"><div class="prc-loading-spinner"></div><span>Loading verification requests...</span></div></td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="8"><div class="prc-loading-row"><div class="prc-loading-spinner"></div><span>Loading verification requests...</span></div></td></tr>';
         }
         if (cardView) {
             cardView.innerHTML = '<div class="prc-empty"><div class="prc-loading-spinner" style="margin:0 auto 1rem;"></div><p>Loading verification requests...</p></div>';

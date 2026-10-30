@@ -124,6 +124,20 @@ const userSchema = new mongoose.Schema(
       ref: 'User',
       default: null,
     },
+    // The admin's manual comparison against the official PRC verification site.
+    // Separate from prcVerificationStatus (account approval): it never changes
+    // login access. null is shown as "Pending Verification".
+    prcRecordCheckStatus: {
+      type: String,
+      enum: ['pending_verification', 'verified', 'needs_review', 'unable_to_verify'],
+      default: null,
+    },
+    prcRecordCheckedAt: { type: Date, default: null },
+    prcRecordCheckedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
 
     // Admin fields
     organization: { type: String, trim: true, default: null },

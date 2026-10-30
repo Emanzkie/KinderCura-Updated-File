@@ -2750,6 +2750,8 @@ router.get('/pediatricians/:id/prc-details', authMiddleware, adminOnly, async (r
       licenseExpiry: user.licenseExpiry ? new Date(user.licenseExpiry).toLocaleDateString() : null,
       specialization: user.specialization,
       accountStatus: user.prcVerificationStatus || 'pending',
+      prcRecordCheckStatus: user.prcRecordCheckStatus || 'pending_verification',
+      prcRecordCheckedAt: user.prcRecordCheckedAt || null,
       prcIdDocumentPath: docInfo.storedPath,
       idDocumentPath: user.idDocumentPath || null,
       prcDocumentUrl: docInfo.secureEndpoint,
