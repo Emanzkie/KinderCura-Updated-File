@@ -18,6 +18,7 @@ const Assessment = require('../models/Assessment');
 const AssessmentResult = require('../models/AssessmentResult');
 const Child = require('../models/Child');
 const Notification = require('../models/Notification');
+const Payment = require('../models/Payment');
 const { clinicToday, addDays } = require('./reminders');
 const { CLINIC_TIMEZONE, clinicDayEnd } = require('../constants/clinicTime');
 
@@ -99,6 +100,34 @@ async function activateForAppointment(appointment, now = new Date()) {
   }
 }
 
+// Catch-up for a payment confirmed somewhere that did not assign the plan —
+// e.g. a PayMongo webhook handled by a server still running code without this
+// module, after which settlePayment() rightly treats the payment as settled
+// and never syncs it again. An appointment is paid once it is approved with at
+// least the deposit recorded (it cannot be approved otherwise). The period
+// starts at the first settled payment, not when this runs. Returns true when
+// any plan was activated.
+const PAID_STATUSES = ['Down Payment', 'Partially Paid', 'Paid'];
+
+async function activateConfirmedPlans(plans) {
+  const waiting = plans.filter((p) => p.status === 'awaiting_payment');
+  if (!waiting.length) return false;
+  const paid = await Appointment.find({
+    _id: { $in: waiting.map((p) => p.appointmentId) },
+    status: 'approved',
+    paymentStatus: { $in: PAID_STATUSES },
+  }).select('id status appointmentDate appointmentTime paymentStatus').lean();
+
+  let activated = false;
+  for (const appointment of paid) {
+    const first = await Payment.findOne({ appointmentId: appointment._id, status: 'Paid' })
+      .sort({ verifiedAt: 1, createdAt: 1 }).select('verifiedAt createdAt').lean();
+    const paidAt = (first && (first.verifiedAt || first.createdAt)) || new Date();
+    if (await activateForAppointment(appointment, new Date(paidAt))) activated = true;
+  }
+  return activated;
+}
+
 // What a plan looks like now. Appointment state wins over the plan's own
 // status: a cancelled appointment ends the plan, a completed one means the
 // follow-up visit happened.
@@ -177,6 +206,7 @@ async function planProgress(plans, now = new Date()) {
 
 module.exports = {
   activateForAppointment,
+  activateConfirmedPlans,
   planProgress,
   dueDateFrom,
   _internals: { planState, formatTime, formatAppointmentDate, formatClinicDate },

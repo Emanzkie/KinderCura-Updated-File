@@ -124,15 +124,24 @@ function renderFollowUpPlan(plan) {
     }
 
     const pct = plan.requiredAssessments ? Math.min(100, Math.round((plan.completed / plan.requiredAssessments) * 100)) : 0;
+    // Whole days until the deadline (the end of a Manila day), counted by date.
+    const daysLeft = plan.dueDate
+        ? Math.round((new Date(new Date(plan.dueDate).toDateString()) - new Date(new Date().toDateString())) / 86400000)
+        : null;
+    const dueText = daysLeft === 0 ? 'due today' : daysLeft === 1 ? '1 day left' : `${daysLeft} days left`;
     const statusText = plan.state === 'assessments_complete'
         ? 'All assigned assessments are done. Thank you!'
         : plan.state === 'overdue'
             ? `The deadline (${followUpDateText(plan.dueDate)}) has passed. Please finish the remaining assessments before the check-up.`
-            : `Due ${followUpDateText(plan.dueDate)}.`;
+            : `Due ${followUpDateText(plan.dueDate)}${daysLeft != null && daysLeft >= 0 ? ` (${dueText})` : ''}.`;
+    const done = (plan.assessments || []).map((a, i) =>
+        `<li>Assessment ${i + 1} — ${escapeHtml(followUpDateText(a.completedAt))}${a.late ? ' (after the deadline)' : ''}</li>`).join('');
+    const doneList = done ? `<div class="kc-card-note" style="margin:0;"><strong>Completed so far:</strong><ul style="margin:0.25rem 0 0;padding-left:1.2rem;">${done}</ul></div>` : '';
     body.innerHTML = `<div style="${LAYOUT}">
         <p style="margin:0;"><strong>${escapeHtml(plan.completed)}</strong> of <strong>${escapeHtml(plan.requiredAssessments)}</strong> assessments completed · <strong>${escapeHtml(plan.remaining)}</strong> remaining</p>
         <div style="justify-self:stretch;height:10px;background:var(--bg-secondary);border-radius:999px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:var(--primary);"></div></div>
         <p class="kc-card-note" style="margin:0;">${escapeHtml(statusText)} Follow-up check-up with ${doctor}: <strong>${escapeHtml(visit)}</strong>${appt ? ` (${escapeHtml(appt.paymentStatus)})` : ''}.</p>
+        ${doneList}
         ${instructions}
         ${plan.remaining > 0 ? `<button class="btn btn-primary" onclick="window.location.href='/parent/screening'">Start Assessment</button>` : ''}
     </div>`;

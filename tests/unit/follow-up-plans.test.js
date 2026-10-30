@@ -304,6 +304,45 @@ const expectHttp = async (promise, status, pattern) => {
   assert.strictEqual(summary.followUps, 0, 'nothing for a cancelled appointment');
   ok('reminders go out 7, 3, 1 and 0 days before the deadline while assessments remain, once each, and stop when done or cancelled');
 
+  // ── 9. Catch-up: paid somewhere that did not assign the plan ─────────────
+  // e.g. the PayMongo webhook was handled by a server running older code:
+  // the appointment is approved with a deposit, the plan is still waiting.
+  const missedAppt = { _id: oid(), id: 117, childId: child._id, parentId, pediatricianId: pediaId, status: 'approved', paymentStatus: 'Down Payment', appointmentDate: new Date('2026-11-30T00:00:00Z'), appointmentTime: '13:00' };
+  const pendingAppt = { _id: oid(), id: 118, childId: child._id, parentId, pediatricianId: pediaId, status: 'pending', paymentStatus: 'Pending Payment', appointmentDate: new Date('2026-12-01T00:00:00Z'), appointmentTime: '13:00' };
+  const unpaidApproved = { _id: oid(), id: 119, childId: child._id, parentId, pediatricianId: pediaId, status: 'approved', paymentStatus: 'Pending Payment', appointmentDate: new Date('2026-12-02T00:00:00Z'), appointmentTime: '13:00' };
+  appointments.push(missedAppt, pendingAppt, unpaidApproved);
+  const waitingPlan = (a) => ({ _id: oid(), childId: child._id, parentId, pediatricianId: pediaId, appointmentId: a._id, appointmentNumericId: a.id, fee: 500, requiredAssessments: 10, monitoringDays: 30, status: 'awaiting_payment', activatedAt: null, dueDate: null, createdAt: new Date() });
+  const missedPlan = waitingPlan(missedAppt);
+  const stillPending = waitingPlan(pendingAppt);
+  const notPaid = waitingPlan(unpaidApproved);
+  plans.length = 0;
+  plans.push(missedPlan, stillPending, notPaid);
+
+  Appointment.find = (f) => q(appointments.filter((a) => f._id.$in.some((id) => same(id, a._id))
+    && (!f.status || a.status === f.status)
+    && (!f.paymentStatus || f.paymentStatus.$in.includes(a.paymentStatus))));
+  FollowUpPlan.find = (f) => q(plans.filter((p) => same(p.childId, f.childId) && (!f.pediatricianId || same(p.pediatricianId, f.pediatricianId))));
+  const paidAt = new Date('2026-10-30T12:42:37Z');
+  Payment.findOne = (f) => q(same(f.appointmentId, missedAppt._id) && f.status === 'Paid' ? { verifiedAt: paidAt } : null);
+  Assessment.find = () => q([]);
+  notifications = [];
+  Notification.create = async (n) => { notifications.push(n); return n; };
+
+  const parentUser = { userId: String(parentId), role: 'parent' };
+  let view = await listFollowUpPlansForChild(child._id, parentUser);
+  const byAppt = (id) => view.find((p) => p.appointment && p.appointment.id === id);
+  assert.strictEqual(missedPlan.status, 'active', 'the paid plan is caught up when the page is opened');
+  assert.strictEqual(missedPlan.activatedAt.toISOString(), paidAt.toISOString(), 'the period starts at the payment, not at the page view');
+  assert.strictEqual(new Date(missedPlan.dueDate).toISOString(), '2026-11-29T15:59:59.999Z');
+  assert.deepStrictEqual([byAppt(117).state, byAppt(117).completed, byAppt(117).remaining], ['active', 0, 10]);
+  assert.strictEqual(stillPending.status, 'awaiting_payment', 'an unpaid appointment is not activated');
+  assert.strictEqual(notPaid.status, 'awaiting_payment', 'approved without a recorded payment is not activated');
+  assert.strictEqual(notifications.filter((n) => n.title === 'Follow-up assessments assigned').length, 1);
+  view = await listFollowUpPlansForChild(child._id, pediaUser);
+  assert.strictEqual(byAppt(117).state, 'active');
+  assert.strictEqual(notifications.filter((n) => n.title === 'Follow-up assessments assigned').length, 1, 'nothing is assigned or sent twice');
+  ok('a payment confirmed without assigning its plan is caught up on the next page view, from the payment time, once');
+
   console.log(results.map((m) => `  ok - ${m}`).join('\n'));
   console.log(`Follow-up plan tests OK — ${results.length} groups`);
 })().catch((err) => {

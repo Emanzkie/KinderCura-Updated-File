@@ -34,7 +34,7 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const AuditLog = require('../models/AuditLog');
 const paymentService = require('../services/paymentService');
-const { planProgress, _internals: { formatTime: formatClockTime } } = require('../services/followUpPlans');
+const { planProgress, activateConfirmedPlans, _internals: { formatTime: formatClockTime } } = require('../services/followUpPlans');
 
 class HttpError extends Error {
   constructor(statusCode, message) {
@@ -732,10 +732,14 @@ async function listFollowUpPlansForChild(childId, user) {
   const filter = { childId: child._id };
   if (user.role === 'pediatrician') filter.pediatricianId = user.userId;
 
-  const plans = await FollowUpPlan.find(filter)
+  const load = () => FollowUpPlan.find(filter)
     .populate('pediatricianId', 'firstName lastName')
     .sort({ createdAt: -1 })
     .lean();
+  let plans = await load();
+  // A payment confirmed without assigning its plan is caught up here, so the
+  // parent and the pediatrician never see a paid follow-up still waiting.
+  if (await activateConfirmedPlans(plans)) plans = await load();
   return planProgress(plans);
 }
 
