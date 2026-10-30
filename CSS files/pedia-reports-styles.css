@@ -1102,7 +1102,33 @@
 
 /* ── Patient Case Files (js/pedia/pedia-case-files.js) ───────────────────── */
 #exportBtn[hidden],
-#printCaseFileBtn[hidden] {
+#printCaseFileBtn[hidden],
+#caseFilePdfBtn[hidden],
+#printPracticeBtn[hidden],
+#practicePdfBtn[hidden] {
+    display: none;
+}
+
+.report-header-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+/* Shown only in the printed Practice Reports and the PDF. */
+.print-only {
+    display: none;
+}
+
+.practice-print-meta,
+.practice-print-filters {
+    margin: 0.25rem 0 0;
+    font-size: 0.85rem;
+    color: var(--text-dark);
+    line-height: 1.5;
+}
+
+.practice-print-filters:empty {
     display: none;
 }
 
@@ -1435,4 +1461,115 @@
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
+}
+
+/* Print Report (Practice Reports tab): the report sections under a heading of
+   their own, without the page controls. Scoped to that tab, so the case-file
+   print rules above are unaffected. */
+@media print {
+    @page { size: A4; margin: 12mm; }
+
+    body[data-report-tab="practice-reports"] {
+        background: #fff !important;
+    }
+
+    body[data-report-tab="practice-reports"] .top-nav,
+    body[data-report-tab="practice-reports"] .report-header,
+    body[data-report-tab="practice-reports"] .report-tabs,
+    body[data-report-tab="practice-reports"] .notifications-modal,
+    body[data-report-tab="practice-reports"] .report-filters,
+    body[data-report-tab="practice-reports"] #practiceReportsPanel button {
+        display: none !important;
+    }
+
+    body[data-report-tab="practice-reports"] .dashboard-container {
+        max-width: none;
+        min-height: 0;
+        padding: 0 !important;
+    }
+
+    body[data-report-tab="practice-reports"] #practiceReportsPanel .print-only {
+        display: block;
+    }
+
+    body[data-report-tab="practice-reports"] #practiceReportsPanel .report-card,
+    body[data-report-tab="practice-reports"] #practiceReportsPanel .report-tile {
+        box-shadow: none !important;
+        border: 1px solid var(--border);
+    }
+
+    body[data-report-tab="practice-reports"] #practiceReportsPanel canvas {
+        max-width: 100% !important;
+    }
+
+    body[data-report-tab="practice-reports"] #practiceReportsPanel .report-table-wrap {
+        overflow: visible;
+    }
+
+    body[data-report-tab="practice-reports"] #practiceReportsPanel tr,
+    body[data-report-tab="practice-reports"] #practiceReportsPanel .report-tile,
+    body[data-report-tab="practice-reports"] #practiceReportsPanel .chart-box,
+    body[data-report-tab="practice-reports"] #practiceReportsPanel .chart-interp {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    body[data-report-tab="practice-reports"] #practiceReportsPanel thead {
+        display: table-header-group;
+    }
+
+    body[data-report-tab="practice-reports"] #practiceReportsPanel * {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}
+
+/* Download PDF (both tabs): the same clean layout while js/pedia/pedia-case-files.js
+   captures the element. 718px is the A4 width inside the 10mm margins
+   (190mm at 96px/in), the width html2pdf lays the capture out at; matching it
+   lets the charts redraw at their PDF size and prints text at true size on
+   any screen. */
+body.kc-pdf-export #practiceReportsPanel,
+body.kc-pdf-export .case-file {
+    width: 718px;
+}
+
+body.kc-pdf-export .case-file {
+    background: #fff;
+}
+
+/* Same table fit as the case-file print rules, so all nine history columns
+   stay on the page. */
+body.kc-pdf-export .case-file .report-table {
+    font-size: 0.8rem;
+}
+
+body.kc-pdf-export .case-file .report-table th,
+body.kc-pdf-export .case-file .report-table td {
+    padding: 0.45rem 0.45rem;
+}
+
+body.kc-pdf-export .case-file .report-table th {
+    white-space: normal;
+    letter-spacing: 0;
+}
+
+body.kc-pdf-export #practiceReportsPanel .report-filters,
+body.kc-pdf-export #practiceReportsPanel button {
+    display: none !important;
+}
+
+body.kc-pdf-export #practiceReportsPanel .print-only {
+    display: block;
+}
+
+body.kc-pdf-export #practiceReportsPanel .report-card,
+body.kc-pdf-export #practiceReportsPanel .report-tile {
+    box-shadow: none !important;
+    border: 1px solid var(--border);
+}
+
+body.kc-pdf-export #practiceReportsPanel .report-table-wrap,
+body.kc-pdf-export .case-file .report-table-wrap {
+    overflow: visible;
 }

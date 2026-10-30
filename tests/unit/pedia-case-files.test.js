@@ -17,7 +17,7 @@ const results = [];
 const ok = (label) => results.push(label);
 
 function element() {
-  return { innerHTML: '', hidden: false, value: '', dataset: {}, setAttribute() {}, removeAttribute() {}, addEventListener() {} };
+  return { innerHTML: '', textContent: '', hidden: false, value: '', style: {}, dataset: {}, setAttribute() {}, removeAttribute() {}, addEventListener() {} };
 }
 
 function loadSandbox() {
@@ -144,6 +144,42 @@ const LIA = { childId: 'cB', name: 'Lia Soto', dateOfBirth: '2023-04-20T00:00:00
   vm.runInContext('printCaseFile()', sandbox);
   assert.strictEqual(printed, 1);
   ok('Print Case File prints the open case file');
+
+  // 8. Download PDF file names: from the patient's name, unsafe characters removed.
+  const day = new Date(2026, 9, 31);
+  assert.strictEqual(sandbox.caseFilePdfName('Kemri <b>Soto</b>', day), 'KinderCura-Case-File-Kemri-b-Soto-b-2026-10-31.pdf');
+  assert.strictEqual(sandbox.caseFilePdfName('Ñiño  O\'Neil/../x', day), 'KinderCura-Case-File-i-o-O-Neil-x-2026-10-31.pdf');
+  assert.strictEqual(sandbox.caseFilePdfName('', day), 'KinderCura-Case-File-Patient-2026-10-31.pdf');
+  assert.strictEqual(sandbox.practiceReportPdfName(day), 'KinderCura-Practice-Report-2026-10-31.pdf');
+  ok('PDF file names come from the patient name with unsafe characters removed');
+
+  // 9. Download PDF / Print do nothing while no case file is fully shown.
+  {
+    const fresh = loadSandbox();
+    let captured = 0;
+    fresh.sandbox.downloadElementPdf = () => { captured += 1; };
+    let freshPrinted = 0;
+    fresh.sandbox.window.print = () => { freshPrinted += 1; };
+    fresh.sandbox.print = fresh.sandbox.window.print;
+    vm.runInContext('downloadCaseFilePdf(); printCaseFile();', fresh.sandbox);
+    assert.strictEqual(captured, 0);
+    assert.strictEqual(freshPrinted, 0);
+  }
+  ok('Download PDF and Print do nothing before a case file is open');
+
+  // 10. The practice print/PDF heading copies the on-screen scope and filters.
+  const el = sandbox.document.getElementById;
+  el('reportMeta').textContent = '6 patients • 18 assessments • all time';
+  el('activeFilterNote').textContent = 'Showing 2 of 6 patients: latest classification At-Risk.';
+  el('activeFilterNote').style.display = 'block';
+  sandbox.fillPracticePrintHeading(day);
+  assert(elements.practicePrintMeta.textContent.startsWith('6 patients • 18 assessments • all time · Generated October 31, 2026'));
+  assert(elements.practicePrintMeta.textContent.endsWith('Prepared by Dr. Gold Deluna'));
+  assert.strictEqual(elements.practicePrintFilters.textContent, 'Showing 2 of 6 patients: latest classification At-Risk.');
+  el('activeFilterNote').style.display = 'none';
+  sandbox.fillPracticePrintHeading(day);
+  assert.strictEqual(elements.practicePrintFilters.textContent, '', 'a hidden filter note is not printed');
+  ok('practice print heading copies the scope line and the active filter note');
 
   results.forEach((r) => console.log('ok -', r));
   console.log(`\npedia-case-files: ${results.length} passed`);

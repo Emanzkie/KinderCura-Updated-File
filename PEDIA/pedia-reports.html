@@ -58,7 +58,11 @@
                 <p class="report-meta" id="caseFileMeta">Search for a patient to view and print their case file.</p>
                 <p class="report-meta" id="reportMeta" hidden>Loading…</p>
             </div>
-            <button class="btn btn-secondary" id="exportBtn" onclick="exportScreeningsCsv()" style="padding:0.75rem 1.4rem;" hidden>Export assessments (CSV)</button>
+            <div class="report-header-actions">
+                <button class="btn btn-secondary" id="exportBtn" onclick="exportScreeningsCsv()" style="padding:0.75rem 1.4rem;" hidden>Export assessments (CSV)</button>
+                <button type="button" class="btn btn-secondary" id="printPracticeBtn" onclick="printPracticeReport()" style="padding:0.75rem 1.4rem;" hidden>Print Report</button>
+                <button type="button" class="btn btn-primary" id="practicePdfBtn" onclick="downloadPracticeReportPdf()" style="padding:0.75rem 1.4rem;" hidden>Download PDF</button>
+            </div>
         </div>
 
         <div class="report-tabs" role="tablist" aria-label="Report views">
@@ -77,7 +81,8 @@
                             role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="caseFileResults">
                         <ul class="case-file-results" id="caseFileResults" role="listbox" hidden></ul>
                     </div>
-                    <button type="button" class="btn btn-primary" id="printCaseFileBtn" onclick="printCaseFile()" style="padding:0.75rem 1.4rem;" hidden>Print Case File</button>
+                    <button type="button" class="btn btn-secondary" id="printCaseFileBtn" onclick="printCaseFile()" style="padding:0.75rem 1.4rem;" hidden>Print Case File</button>
+                    <button type="button" class="btn btn-primary" id="caseFilePdfBtn" onclick="downloadCaseFilePdf()" style="padding:0.75rem 1.4rem;" hidden>Download PDF</button>
                 </div>
                 <p class="filter-note">Lists only the children who have a pending, approved or completed appointment with you.</p>
             </div>
@@ -88,6 +93,13 @@
 
         <!-- Practice Reports: every report section below is unchanged. -->
         <div id="practiceReportsPanel" role="tabpanel" aria-labelledby="tabPracticeReports" hidden>
+        <!-- Heading for the printed report and the PDF only; filled in by
+             js/pedia/pedia-case-files.js when either starts. -->
+        <div class="report-card print-only practice-print-heading" id="practicePrintHeading">
+            <p class="cf-kicker">KinderCura &mdash; Practice Reports</p>
+            <p class="practice-print-meta" id="practicePrintMeta"></p>
+            <p class="practice-print-filters" id="practicePrintFilters"></p>
+        </div>
 
 
         <!-- 1. Filters + cohort counts.

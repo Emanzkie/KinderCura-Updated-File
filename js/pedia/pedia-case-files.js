@@ -40,6 +40,7 @@ let caseFileMatches = [];
 let caseFileActiveIndex = -1;
 let caseFileSelectedId = null;
 let caseFileLoadToken = 0;
+let caseFileShownId = null;   // the patient whose case file is fully on screen
 let practiceReportsShown = false;       // Practice Reports has been visible at least once
 let practiceReportsDrawnHidden = false; // its charts were drawn while it was hidden
 
@@ -55,6 +56,8 @@ function showReportTab(tab) {
     document.getElementById('caseFileMeta').hidden = !caseFiles;
     document.getElementById('reportMeta').hidden = caseFiles;
     document.getElementById('exportBtn').hidden = caseFiles;
+    document.getElementById('printPracticeBtn').hidden = caseFiles;
+    document.getElementById('practicePdfBtn').hidden = caseFiles;
     // A bookmarkable view without storing anything: #practice-reports reopens it.
     const hash = caseFiles ? '' : '#practice-reports';
     if (window.location.hash !== hash) {
@@ -409,8 +412,8 @@ async function openCaseFile(childId) {
     caseFileSelectedId = patient.childId;
 
     const content = document.getElementById('caseFileContent');
-    const printBtn = document.getElementById('printCaseFileBtn');
-    printBtn.hidden = true;
+    caseFileShownId = null;
+    setCaseFileActionsVisible(false);
     content.innerHTML = `<div class="report-card"><div class="report-loading">Loading ${escapeHtml(patient.name)}'s case file…</div></div>`;
 
     const id = encodeURIComponent(patient.childId);
@@ -431,16 +434,147 @@ async function openCaseFile(childId) {
             history: historyData.assessments || [],
             checkups,
         })}</div>`;
-        printBtn.hidden = false;
+        caseFileShownId = patient.childId;
+        setCaseFileActionsVisible(true);
     } catch (err) {
         if (token !== caseFileLoadToken) return;
         content.innerHTML = `<div class="report-card"><div class="report-loading">This case file could not be loaded: ${escapeHtml(err.message)}</div></div>`;
     }
 }
 
+function setCaseFileActionsVisible(visible) {
+    document.getElementById('printCaseFileBtn').hidden = !visible;
+    document.getElementById('caseFilePdfBtn').hidden = !visible;
+}
+
 function printCaseFile() {
-    if (!caseFileSelectedId) return;
+    if (!caseFileShownId) return;
     window.print();
+}
+
+// ── Download PDF (both tabs) ─────────────────────────────────────────────────
+// Same approach and pinned library as the parent Progress Report download
+// (js/parent/reports.js): rendered in the browser from what is on screen,
+// nothing is sent to a server.
+
+const HTML2PDF_SRC = 'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js';
+let html2pdfLoading = null;
+
+// Loaded on the first Download PDF click so the page itself loads no slower.
+function loadHtml2pdf() {
+    if (typeof window.html2pdf === 'function') return Promise.resolve(window.html2pdf);
+    if (!html2pdfLoading) {
+        html2pdfLoading = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = HTML2PDF_SRC;
+            script.onload = () => (typeof window.html2pdf === 'function' ? resolve(window.html2pdf) : reject(new Error('PDF library unavailable')));
+            script.onerror = () => { html2pdfLoading = null; reject(new Error('PDF library could not be loaded')); };
+            document.head.appendChild(script);
+        });
+    }
+    return html2pdfLoading;
+}
+
+/** "Kemri Soto" -> "Kemri-Soto"; anything but letters and digits becomes a hyphen. */
+function pdfNamePart(value) {
+    return String(value || '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+function pdfDateStamp(d = new Date()) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function caseFilePdfName(patientName, d = new Date()) {
+    return `KinderCura-Case-File-${pdfNamePart(patientName) || 'Patient'}-${pdfDateStamp(d)}.pdf`;
+}
+
+function practiceReportPdfName(d = new Date()) {
+    return `KinderCura-Practice-Report-${pdfDateStamp(d)}.pdf`;
+}
+
+// While capturing, body.kc-pdf-export gives the captured element a fixed
+// width (pedia-reports-styles.css), so text is the same readable size on any
+// screen; charts are redrawn at that width rather than stretched.
+// Browsers refuse canvases much taller than ~32,000 px, so a long report is
+// captured at a lower scale instead of failing.
+const PDF_MAX_CANVAS_HEIGHT = 30000;
+
+// Chart.js postpones a resize while an animation is running and draws on the
+// next animation frame, which the capture can beat. Stopping the animation
+// first and updating with mode 'none' resizes and draws at once.
+function resizeVisibleCharts() {
+    if (typeof Chart === 'undefined' || !Chart.instances) return;
+    Object.values(Chart.instances).forEach((chart) => { chart.stop(); chart.resize(); chart.update('none'); });
+}
+
+// A timer rather than requestAnimationFrame, which pauses in a background tab.
+const nextFrame = () => new Promise((resolve) => setTimeout(resolve, 60));
+
+async function downloadElementPdf(element, fileName, button) {
+    if (!element || !button || button.disabled) return;
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Preparing PDF…';
+    try {
+        const html2pdf = await loadHtml2pdf();
+        document.body.classList.add('kc-pdf-export');
+        resizeVisibleCharts();
+        await nextFrame();
+        const scale = Math.max(1, Math.min(2, PDF_MAX_CANVAS_HEIGHT / Math.max(1, element.scrollHeight)));
+        await html2pdf().set({
+            margin: [10, 10, 12, 10],
+            filename: fileName,
+            image: { type: 'jpeg', quality: 0.95 },
+            // The capture window must match the real one, or the crop shifts sideways;
+            // the element's own width is fixed by the kc-pdf-export CSS.
+            html2canvas: { scale, useCORS: true, backgroundColor: '#ffffff' },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.cf-entry', '.report-tile', '.chart-box', '.chart-interp', '.practice-print-heading'] },
+        }).from(element).save();
+    } catch (e) {
+        console.error('PDF download failed:', e);
+        alert('The PDF could not be created right now. Please use Print and choose "Save as PDF" instead.');
+    } finally {
+        document.body.classList.remove('kc-pdf-export');
+        resizeVisibleCharts();
+        button.disabled = false;
+        button.textContent = label;
+    }
+}
+
+function downloadCaseFilePdf() {
+    const patient = (caseFilePatients || []).find((p) => p.childId === caseFileShownId);
+    if (!patient) return;
+    const element = document.querySelector('#caseFileContent .case-file');
+    if (!element) return;
+    downloadElementPdf(element, caseFilePdfName(patient.name), document.getElementById('caseFilePdfBtn'));
+}
+
+// ── Practice Reports: print / PDF heading ───────────────────────────────────
+
+/** Fills the print-only heading from what the page currently shows. */
+function fillPracticePrintHeading(now = new Date()) {
+    const me = (window.KC && KC.user && KC.user()) || {};
+    const preparedBy = [me.firstName, me.lastName].filter(Boolean).join(' ');
+    const scope = document.getElementById('reportMeta').textContent.trim();
+    const filterNote = document.getElementById('activeFilterNote');
+    const filters = filterNote && filterNote.style.display !== 'none' ? filterNote.textContent.trim() : '';
+    document.getElementById('practicePrintMeta').textContent = [
+        scope,
+        `Generated ${now.toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}`,
+        preparedBy ? `Prepared by Dr. ${preparedBy}` : '',
+    ].filter(Boolean).join(' · ');
+    document.getElementById('practicePrintFilters').textContent = filters;
+}
+
+function printPracticeReport() {
+    fillPracticePrintHeading();
+    window.print();
+}
+
+function downloadPracticeReportPdf() {
+    fillPracticePrintHeading();
+    downloadElementPdf(document.getElementById('practiceReportsPanel'), practiceReportPdfName(), document.getElementById('practicePdfBtn'));
 }
 
 // ── Searchable patient picker ───────────────────────────────────────────────
