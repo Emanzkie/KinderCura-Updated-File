@@ -518,7 +518,29 @@ ${clinic.phoneNumber || ''}
   return { sent: true };
 }
 
+/* ─────────────────── reminders ─────────────────── */
+
+// Email copy of a bell reminder from the daily job (services/reminders.js):
+// appointment tomorrow, next assessment due, or the parent's own recurring
+// assessment reminder. Same title and message as the bell. Never throws.
+async function sendReminderEmail({ to, name, title, message, relatedPage }) {
+  const link = `${appUrl()}${relatedPage || '/parent/dashboard'}`;
+  const body = `
+    <p>Hi ${escapeHtml(name || 'there')},</p>
+    <p>${escapeHtml(message)}</p>
+    <p style="text-align:center;margin:24px 0">${actionButton('Open KinderCura', link)}</p>
+    <p style="color:#6B7967;font-size:13px">You get this email because Reminder Emails is on in Settings → Notifications. Reminders always appear in your KinderCura notifications too.</p>`;
+  return deliver({
+    to,
+    subject: `KinderCura: ${title}`,
+    html: wrap(title, title, body),
+    text: `${message}\n\nOpen KinderCura: ${link}`,
+    kind: 'reminder',
+  });
+}
+
 module.exports = {
+  sendReminderEmail,
   sendInvitationEmail,
   sendWelcomeEmail,
   sendAcceptanceNotification,

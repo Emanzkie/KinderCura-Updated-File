@@ -73,7 +73,7 @@ Notification.create = async (doc) => {
 (async () => {
   // 2. First run: one appointment reminder, one assessment reminder.
   let summary = await reminders.runReminders(NOW);
-  assert.deepStrictEqual(summary, { date: '2026-10-28', appointments: 1, assessments: 1, planned: 0, alreadySent: 0 });
+  assert.deepStrictEqual(summary, { date: '2026-10-28', appointments: 1, assessments: 1, planned: 0, alreadySent: 0, emailed: 0, emailFailed: 0 });
   assert.strictEqual(apptQuery.status, 'approved', 'only approved appointments');
   assert.deepStrictEqual(
     [apptQuery.appointmentDate.$gte.toISOString(), apptQuery.appointmentDate.$lt.toISOString()],
@@ -106,7 +106,7 @@ Notification.create = async (doc) => {
 
   // 3. Second run the same day: nothing new.
   summary = await reminders.runReminders(NOW);
-  assert.deepStrictEqual(summary, { date: '2026-10-28', appointments: 0, assessments: 0, planned: 0, alreadySent: 2 });
+  assert.deepStrictEqual(summary, { date: '2026-10-28', appointments: 0, assessments: 0, planned: 0, alreadySent: 2, emailed: 0, emailFailed: 0 });
   assert.strictEqual(stored.size, 2);
   ok('running again sends nothing twice');
 

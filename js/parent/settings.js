@@ -197,6 +197,7 @@ function switchTab(tab) {
         // admin training export only uses screenings when it is on.
         const NOTIFICATION_PREF_INPUTS = {
             prefEmailAppointments: 'emailAppointments',
+            prefEmailReminders: 'emailReminders',
         };
         const PRIVACY_PREF_INPUTS = {
             prefResearchParticipation: 'researchParticipation',

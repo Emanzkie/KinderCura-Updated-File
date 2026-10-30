@@ -521,6 +521,7 @@ function publicUser(user) {
     },
     notificationSettings: {
       emailAppointments: Boolean(user.notificationSettings?.emailAppointments ?? true),
+      emailReminders: Boolean(user.notificationSettings?.emailReminders ?? true),
       inApp: Boolean(user.notificationSettings?.inApp ?? true),
       sms: Boolean(user.notificationSettings?.sms ?? false),
       assessmentCompleted: Boolean(user.notificationSettings?.assessmentCompleted ?? true),
@@ -1375,7 +1376,7 @@ router.put('/update-profile', authMiddleware, async (req, res) => {
   }
 });
 
-const PARENT_NOTIFICATION_PREF_KEYS = ['emailAppointments'];
+const PARENT_NOTIFICATION_PREF_KEYS = ['emailAppointments', 'emailReminders'];
 
 function mergeBooleanPrefs(user, field, input, allowedKeys) {
   if (!input || typeof input !== 'object') return;

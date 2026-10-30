@@ -27,6 +27,9 @@ const availabilitySchema = new mongoose.Schema(
 const notificationSettingsSchema = new mongoose.Schema(
   {
     emailAppointments: { type: Boolean, default: true },
+    // Email copy of the daily reminders (services/reminders.js); the bell
+    // reminder is always sent.
+    emailReminders: { type: Boolean, default: true },
     inApp: { type: Boolean, default: true },
     sms: { type: Boolean, default: false },
     assessmentCompleted: { type: Boolean, default: true },

@@ -18,6 +18,7 @@ const Appointment = require('../../models/Appointment');
 const Assessment = require('../../models/Assessment');
 const Child = require('../../models/Child');
 const Notification = require('../../models/Notification');
+const User = require('../../models/User');
 const AssessmentReminder = require('../../models/AssessmentReminder');
 const reminders = require('../../services/reminders');
 const router = require('../../routes/reminders');
@@ -44,6 +45,8 @@ Notification.create = async (doc) => {
   sent.set(doc.reminderKey, doc);
   return doc;
 };
+// Email copies are covered by tests/unit/reminder-emails.test.js.
+User.find = () => q([]);
 AssessmentReminder.find = (f) => q(settings.filter((s) => (f.status ? s.status === f.status : f.childId.$in.some((id) => same(id, s.childId)))));
 AssessmentReminder.findOne = (f) => q(settings.find((s) => same(s.childId, f.childId)) || null);
 AssessmentReminder.findOneAndUpdate = (f, u) => {

@@ -9,6 +9,9 @@
 //   - the parent's own recurring assessment reminder for a child
 //     (models/AssessmentReminder.js), on the due day or up to 7 days before.
 //
+// Each new reminder is also emailed to the parent unless they turned Reminder
+// Emails off (User.notificationSettings.emailReminders).
+//
 // Each reminder carries a reminderKey with a unique index on Notification, so
 // running the job again (or twice at once) never sends the same one twice. A
 // rescheduled appointment gets a new key because the date is part of it.
@@ -18,6 +21,7 @@ const Child = require('../models/Child');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const AssessmentReminder = require('../models/AssessmentReminder');
+const emailService = require('./emailService');
 const { CLINIC_TIMEZONE, clinicDayStart, clinicDayEnd } = require('../constants/clinicTime');
 
 const ASSESSMENT_LOOKBACK_DAYS = 7;
@@ -208,20 +212,62 @@ async function planReminders(today) {
   return reminders;
 }
 
+// Email copy of each reminder this run created (never one that was already
+// sent), unless the parent turned Reminder Emails off. The run must answer
+// inside Vercel's ~10 s limit, so emails go out together and the run waits at
+// most EMAIL_BUDGET_MS for them; the bell reminder is the guaranteed copy.
+const EMAIL_BUDGET_MS = 5000;
+
+async function emailNewReminders(created) {
+  const result = { emailed: 0, emailFailed: 0 };
+  if (!created.length) return result;
+  const ids = [...new Set(created.map((r) => String(r.userId)))];
+  const parents = await User.find({ _id: { $in: ids } }).select('firstName email notificationSettings').lean();
+  const byId = new Map(parents.map((p) => [String(p._id), p]));
+
+  let timer;
+  const deadline = new Promise((resolve) => { timer = setTimeout(() => resolve('timeout'), EMAIL_BUDGET_MS); });
+  const outcomes = await Promise.all(created.map((r) => {
+    const parent = byId.get(String(r.userId));
+    if (!parent || !parent.email || parent.notificationSettings?.emailReminders === false) return 'skipped';
+    const send = emailService.sendReminderEmail({
+      to: parent.email,
+      name: parent.firstName,
+      title: r.title,
+      message: r.message,
+      relatedPage: r.relatedPage,
+    }).then((out) => (out && out.sent ? 'sent' : 'failed'), () => 'failed');
+    return Promise.race([send, deadline]);
+  }));
+  clearTimeout(timer);
+
+  for (const outcome of outcomes) {
+    if (outcome === 'sent') result.emailed += 1;
+    else if (outcome !== 'skipped') result.emailFailed += 1;
+  }
+  return result;
+}
+
 async function runReminders(now = new Date()) {
   const today = clinicToday(now);
-  const summary = { date: today, appointments: 0, assessments: 0, planned: 0, alreadySent: 0 };
+  const summary = { date: today, appointments: 0, assessments: 0, planned: 0, alreadySent: 0, emailed: 0, emailFailed: 0 };
   const groups = [
     ['appointments', await appointmentReminders(today)],
     ['assessments', await assessmentReminders(today)],
     ['planned', await planReminders(today)],
   ];
+  const created = [];
   for (const [field, reminders] of groups) {
     for (const reminder of reminders) {
-      if (await sendOnce(reminder)) summary[field] += 1;
-      else summary.alreadySent += 1;
+      if (await sendOnce(reminder)) {
+        summary[field] += 1;
+        created.push(reminder);
+      } else {
+        summary.alreadySent += 1;
+      }
     }
   }
+  Object.assign(summary, await emailNewReminders(created));
   return summary;
 }
 
@@ -231,5 +277,5 @@ module.exports = {
   addDays,
   firstDueMonth,
   nextPlanDates,
-  _internals: { appointmentReminders, assessmentReminders, planReminders, isPlanDueDate, sendOnce },
+  _internals: { appointmentReminders, assessmentReminders, planReminders, isPlanDueDate, sendOnce, emailNewReminders, EMAIL_BUDGET_MS },
 };
