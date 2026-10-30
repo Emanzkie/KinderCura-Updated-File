@@ -53,6 +53,7 @@ Appointment.countDocuments = async () => appointmentCount;
 Notification.create = async (n) => { notifications.push(n); return n; };
 Notification.deleteMany = async ({ userId }) => { deletedNotificationsFor.push(String(userId)); return { deletedCount: 0 }; };
 AuditLog.create = async (entry) => { logs.push(entry); return entry; };
+AuditLog.find = () => chain([]);
 
 const quiet = async (fn) => {
   const saved = { log: console.log, warn: console.warn, error: console.error };
@@ -182,6 +183,45 @@ const quiet = async (fn) => {
     assert.strictEqual(r.status, 500);
     assert(!JSON.stringify(r.body).includes('secret driver detail'), 'internal errors are not sent to the page');
     ok('search is literal, pediatrician rows carry their PRC status, and errors stay generic');
+
+    // ── Active / Suspended Users ──────────────────────────────────────────
+    // Suspend then Re-activate only flips the status; the record stays.
+    const roundTrip = add({ role: 'parent', status: 'active' });
+    r = await call('POST', '/api/admin/users/suspend', { userId: roundTrip, reason: 'test' });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(accounts.get(roundTrip).status, 'suspended');
+    assert.strictEqual(logs.at(-1).action, 'user_suspended');
+    assert.strictEqual(String(logs.at(-1).targetId), roundTrip, 'the suspension is logged against the account');
+    r = await call('POST', '/api/admin/users/approve', { userId: roundTrip });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.body.message, 'User re-activated.');
+    assert.strictEqual(accounts.get(roundTrip).status, 'active');
+    assert(accounts.has(roundTrip), 'a suspended account is never deleted');
+    ok('Suspend then Re-activate flips the status, logs the suspension and keeps the account');
+
+    // The suspension date comes from the newest user_suspended audit entry.
+    const suspendedWithLog = add({ role: 'parent', status: 'suspended' });
+    const suspendedNoLog = add({ role: 'pediatrician', status: 'suspended' });
+    let auditQuery = null;
+    const savedAuditFind = AuditLog.find;
+    AuditLog.find = (q) => {
+      auditQuery = q;
+      return chain([
+        { targetId: new mongoose.Types.ObjectId(suspendedWithLog), createdAt: new Date('2026-10-20T04:00:00Z') },
+        { targetId: suspendedWithLog, createdAt: new Date('2026-09-01T04:00:00Z') },
+      ]);
+    };
+    r = await call('GET', '/api/admin/users');
+    AuditLog.find = savedAuditFind;
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(auditQuery.action, 'user_suspended');
+    assert(auditQuery.targetId.$in.map(String).includes(suspendedWithLog), 'looks up the suspended accounts');
+    const row = (id) => r.body.users.find((u) => u.id === id);
+    assert.strictEqual(row(suspendedWithLog).suspendedAt, 'Oct 20, 2026', 'newest suspension wins');
+    assert.strictEqual(row(suspendedNoLog).suspendedAt, null, 'no log entry: no date');
+    assert(!('suspendedAt' in row(roundTrip)), 'active accounts carry no suspension date');
+    assert(!('status' in lastFindFilter), 'the list is not filtered by status: the page splits it');
+    ok('GET /admin/users gives suspended accounts their suspension date from the audit log');
   } finally {
     server.closeAllConnections();
     server.close();

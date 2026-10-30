@@ -823,6 +823,22 @@ router.get('/users', authMiddleware, adminOnly, async (req, res) => {
     }
 
     const users = await User.find(filter).sort({ createdAt: -1 }).lean();
+
+    // There is no suspension date on User; the suspend action's audit log entry
+    // carries it. Newest entry wins, so a re-suspension shows its own date.
+    const suspendedAt = new Map();
+    const suspendedIds = users.filter((u) => u.status === 'suspended').map((u) => u._id);
+    if (suspendedIds.length) {
+      const logs = await AuditLog.find({
+        action: 'user_suspended',
+        targetId: { $in: [...suspendedIds, ...suspendedIds.map(String)] },
+      }).sort({ createdAt: -1 }).select('targetId createdAt').lean();
+      for (const log of logs) {
+        const key = String(log.targetId);
+        if (!suspendedAt.has(key)) suspendedAt.set(key, log.createdAt);
+      }
+    }
+
     res.json({
       success: true,
       users: users.map((u) => ({
@@ -837,6 +853,9 @@ router.get('/users', authMiddleware, adminOnly, async (req, res) => {
         // the PRC Verification page instead of offering Approve.
         prcVerificationStatus: u.role === 'pediatrician' ? (u.prcVerificationStatus || null) : null,
         createdAt: fmtDate(u.createdAt),
+        ...(u.status === 'suspended'
+          ? { suspendedAt: suspendedAt.has(String(u._id)) ? fmtDate(suspendedAt.get(String(u._id))) : null }
+          : {}),
         licenseNumber: u.licenseNumber || null,
         institution: u.institution || null,
         specialization: u.specialization || null,

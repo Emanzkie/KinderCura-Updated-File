@@ -9,13 +9,12 @@
         // Filters apply when Search is clicked (or Enter in the search box), not
         // while typing. loadUsers() and the 30-second refresh use the last
         // applied values, never something half-typed.
-        let appliedFilters = { search: '', role: '', status: '' };
+        let appliedFilters = { search: '', role: '' };
 
         function applyFilters() {
             appliedFilters = {
                 search: document.getElementById('searchInput').value.trim(),
                 role: document.getElementById('roleFilter').value,
-                status: document.getElementById('statusFilter').value,
             };
             loadUsers();
         }
@@ -23,9 +22,31 @@
         function resetFilters() {
             document.getElementById('searchInput').value = '';
             document.getElementById('roleFilter').value = '';
-            document.getElementById('statusFilter').value = '';
-            appliedFilters = { search: '', role: '', status: '' };
+            appliedFilters = { search: '', role: '' };
             loadUsers();
+        }
+
+        // ── Active / Suspended sections ──────────────────────────────────────────
+        // The status tabs replace the old Status dropdown. One fetch fills both
+        // lists (search and role apply to each); switching tabs only re-renders.
+        // Pending sign-ups appear in neither: they have their own card below.
+        let currentSection = 'active';
+        let usersBySection = { active: [], suspended: [] };
+
+        function showSection(section) {
+            currentSection = section === 'suspended' ? 'suspended' : 'active';
+            const isSuspended = currentSection === 'suspended';
+            const activeTab = document.getElementById('tabActiveUsers');
+            const suspendedTab = document.getElementById('tabSuspendedUsers');
+            activeTab.className = isSuspended ? 'btn btn-secondary' : 'btn btn-primary';
+            suspendedTab.className = isSuspended ? 'btn btn-primary' : 'btn btn-secondary';
+            activeTab.setAttribute('aria-selected', String(!isSuspended));
+            suspendedTab.setAttribute('aria-selected', String(isSuspended));
+            document.getElementById('userSectionTitle').textContent = isSuspended ? 'Suspended Users' : 'Active Users';
+            document.getElementById('userDateHeader').textContent = isSuspended ? 'Suspended On' : 'Joined';
+            const shown = usersBySection[currentSection];
+            document.getElementById('userCount').textContent = `(${shown.length})`;
+            renderUsers(shown);
         }
 
         function formatDateTime(ts) {
@@ -47,19 +68,26 @@
 
         // ── loadUsers ────────────────────────────────────────────────────────────
         // Fetches all users from the backend using the applied search/filter values
-        // and re-renders both the main table and the pending approvals section.
+        // and re-renders the selected section and the pending approvals section.
         async function loadUsers() {
-            const { search, role, status } = appliedFilters;
+            const { search, role } = appliedFilters;
             const params = new URLSearchParams();
             if (search) params.append('search', search);
             if (role)   params.append('role', role);
-            if (status) params.append('status', status);
 
             try {
                 const data = await apiFetch(`/admin/users?${params}`);
-                renderUsers(data.users || []);
-                renderPending((data.users || []).filter(u => u.status === 'pending'));
-                document.getElementById('userCount').textContent = `(${(data.users || []).length})`;
+                const users = data.users || [];
+                // Anything not suspended or pending counts as active, so an
+                // account with no stored status (which can still sign in) shows.
+                usersBySection = {
+                    active: users.filter(u => u.status !== 'suspended' && u.status !== 'pending'),
+                    suspended: users.filter(u => u.status === 'suspended'),
+                };
+                document.getElementById('activeCount').textContent = `(${usersBySection.active.length})`;
+                document.getElementById('suspendedCount').textContent = `(${usersBySection.suspended.length})`;
+                showSection(currentSection);
+                renderPending(users.filter(u => u.status === 'pending'));
             } catch (e) {
                 document.getElementById('usersList').innerHTML = `<tr><td colspan="6" style="padding:2rem;color:red;text-align:center;">Error: ${escapeHtml(e.message)}</td></tr>`;
             }
@@ -77,14 +105,14 @@
                         <td style="padding:1rem;color:var(--text-light);">${escapeHtml(u.email)}</td>
                         <td style="padding:1rem;"><span style="background:var(--bg-primary);padding:0.3rem 0.8rem;border-radius:4px;font-size:0.85rem;text-transform:capitalize;">${escapeHtml(u.role)}</span></td>
                         <td style="padding:1rem;"><span style="background:${statusColor[u.status]||'var(--border)'};color:#3D4738;padding:0.3rem 0.8rem;border-radius:4px;font-size:0.85rem;text-transform:capitalize;">${escapeHtml(u.status)}</span></td>
-                        <td style="padding:1rem;color:var(--text-light);">${escapeHtml(u.createdAt)}</td>
+                        <td style="padding:1rem;color:var(--text-light);">${escapeHtml(u.status === 'suspended' ? (u.suspendedAt || '—') : u.createdAt)}</td>
                         <td style="padding:1rem;text-align:center;">
                             ${u.status === 'pending' ? `
                                 ${needsPrcReview(u)
                                     ? `<a href="${PRC_PAGE}" style="display:inline-block;padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border-radius:4px;text-decoration:none;margin-right:0.3rem;">Review PRC</a>`
                                     : `<button onclick="approveUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;margin-right:0.3rem;">Approve</button>`}
                                 <button onclick="rejectUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Reject</button>
-                            ` : u.status === 'active' ? `
+                            ` : (u.status === 'active' || !u.status) ? `
                                 <button onclick="suspendUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Suspend</button>
                             ` : needsPrcReview(u) ? `
                                 <a href="${PRC_PAGE}" style="display:inline-block;padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border-radius:4px;text-decoration:none;">Review PRC</a>
@@ -93,7 +121,7 @@
                             `}
                         </td>
                     </tr>`).join('')
-                : '<tr><td colspan="6" style="padding:2rem;text-align:center;color:var(--text-light);">No users found</td></tr>';
+                : `<tr><td colspan="6" style="padding:2rem;text-align:center;color:var(--text-light);">${currentSection === 'suspended' ? 'No suspended users' : 'No active users found'}</td></tr>`;
         }
 
         // ── renderPending ────────────────────────────────────────────────────────
