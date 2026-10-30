@@ -107,14 +107,19 @@ function renderFollowUpPlan(plan) {
     const visit = appt ? `${followUpDateText(appt.date, true)} at ${followUpTimeText(appt.time)}` : '—';
     const fee = `₱${Number(plan.fee || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const doctor = plan.pediatricianName ? `Dr. ${escapeHtml(plan.pediatricianName)}` : 'Your pediatrician';
-    const instructions = plan.instructions ? `<p class="kc-card-note"><strong>Instructions:</strong> ${escapeHtml(plan.instructions)}</p>` : '';
+    // .kc-card-note has a negative top margin made for a note right under the
+    // card's <h3>; here notes follow other lines, so the body stacks its lines
+    // with a grid gap and the notes take margin 0.
+    const LAYOUT = 'display:grid;gap:0.75rem;justify-items:start;';
+    const instructions = plan.instructions ? `<p class="kc-card-note" style="margin:0;"><strong>Instructions:</strong> ${escapeHtml(plan.instructions)}</p>` : '';
 
     if (plan.state === 'awaiting_payment') {
-        body.innerHTML = `
-            <p>${doctor} scheduled a follow-up check-up on <strong>${escapeHtml(visit)}</strong>. Fee: <strong>${escapeHtml(fee)}</strong>.</p>
-            <p class="kc-card-note">Once your payment is confirmed, ${escapeHtml(plan.requiredAssessments)} developmental assessment${plan.requiredAssessments === 1 ? '' : 's'} will be assigned to complete within ${escapeHtml(plan.monitoringDays)} days, and the appointment will be confirmed.</p>
+        body.innerHTML = `<div style="${LAYOUT}">
+            <p style="margin:0;">${doctor} scheduled a follow-up check-up on <strong>${escapeHtml(visit)}</strong>. Fee: <strong>${escapeHtml(fee)}</strong>.</p>
+            <p class="kc-card-note" style="margin:0;">Once your payment is confirmed, ${escapeHtml(plan.requiredAssessments)} developmental assessment${plan.requiredAssessments === 1 ? '' : 's'} will be assigned to complete within ${escapeHtml(plan.monitoringDays)} days, and the appointment will be confirmed.</p>
             ${instructions}
-            <button class="btn btn-primary" onclick="window.location.href='/parent/payment?appointmentId=${encodeURIComponent(appt ? appt.id : '')}'">Pay Now</button>`;
+            <button class="btn btn-primary" onclick="window.location.href='/parent/payment?appointmentId=${encodeURIComponent(appt ? appt.id : '')}'">Pay Now</button>
+        </div>`;
         return;
     }
 
@@ -124,12 +129,13 @@ function renderFollowUpPlan(plan) {
         : plan.state === 'overdue'
             ? `The deadline (${followUpDateText(plan.dueDate)}) has passed. Please finish the remaining assessments before the check-up.`
             : `Due ${followUpDateText(plan.dueDate)}.`;
-    body.innerHTML = `
-        <p><strong>${escapeHtml(plan.completed)}</strong> of <strong>${escapeHtml(plan.requiredAssessments)}</strong> assessments completed · <strong>${escapeHtml(plan.remaining)}</strong> remaining</p>
-        <div style="height:10px;background:var(--bg-primary);border-radius:999px;overflow:hidden;margin:0.5rem 0;"><div style="height:100%;width:${pct}%;background:var(--primary);"></div></div>
-        <p class="kc-card-note">${escapeHtml(statusText)} Follow-up check-up with ${doctor}: <strong>${escapeHtml(visit)}</strong>${appt ? ` (${escapeHtml(appt.paymentStatus)})` : ''}.</p>
+    body.innerHTML = `<div style="${LAYOUT}">
+        <p style="margin:0;"><strong>${escapeHtml(plan.completed)}</strong> of <strong>${escapeHtml(plan.requiredAssessments)}</strong> assessments completed · <strong>${escapeHtml(plan.remaining)}</strong> remaining</p>
+        <div style="justify-self:stretch;height:10px;background:var(--bg-secondary);border-radius:999px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:var(--primary);"></div></div>
+        <p class="kc-card-note" style="margin:0;">${escapeHtml(statusText)} Follow-up check-up with ${doctor}: <strong>${escapeHtml(visit)}</strong>${appt ? ` (${escapeHtml(appt.paymentStatus)})` : ''}.</p>
         ${instructions}
-        ${plan.remaining > 0 ? `<button class="btn btn-primary" onclick="window.location.href='/parent/screening'">Start Assessment</button>` : ''}`;
+        ${plan.remaining > 0 ? `<button class="btn btn-primary" onclick="window.location.href='/parent/screening'">Start Assessment</button>` : ''}
+    </div>`;
 }
 
 // Never throws; a stale response for a previously selected child is ignored.
