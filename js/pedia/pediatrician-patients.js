@@ -807,6 +807,62 @@ const API = window.location.origin + '/api';
         sel.value = current || '';
     }
 
+    // ── Clinic visit link ──────────────────────────────────────────────────
+    // A check-up records one clinic visit: an approved or completed appointment
+    // between this pediatrician and the child (routes/checkups.js
+    // resolveAppointmentRef applies the same rule and checks the choice).
+    let _currentVisits = [];
+
+    // Appointment dates are stored as UTC midnight of the booked day.
+    function visitDayKey(visit) {
+        return visit && visit.appointmentDate ? new Date(visit.appointmentDate).toISOString().slice(0, 10) : '';
+    }
+
+    function visitLabel(visit) {
+        const date = visit.appointmentDate
+            ? new Date(visit.appointmentDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
+            : 'Date not set';
+        const time = visit.appointmentTime ? ` · ${fmtTime(visit.appointmentTime)}` : '';
+        const status = visit.status === 'completed' ? 'Completed' : 'Approved';
+        return `${date}${time} · ${status}${visit.reason ? ` · ${visit.reason}` : ''} (#${visit.id})`;
+    }
+
+    function populateVisitOptions(visits) {
+        _currentVisits = visits || [];
+        const sel = document.getElementById('checkup-visit');
+        if (!sel) return;
+        const current = sel.value;
+        sel.innerHTML = '<option value="">Automatic — the latest visit on or before the check-up date</option>'
+            + _currentVisits.map((v) => `<option value="${escapeHtml(v.id)}">${escapeHtml(visitLabel(v))}</option>`).join('');
+        sel.value = current || '';
+        if (!sel.value) syncCheckupVisitToDate();
+    }
+
+    // Pre-selects the visit on the check-up date, until the pediatrician picks
+    // one themselves.
+    function syncCheckupVisitToDate() {
+        const sel = document.getElementById('checkup-visit');
+        const day = document.getElementById('checkup-date')?.value;
+        if (!sel || sel.disabled || sel.dataset.chosen === '1') return;
+        const sameDay = _currentVisits.find((v) => visitDayKey(v) === day);
+        sel.value = sameDay ? String(sameDay.id) : '';
+    }
+
+    function linkedVisitLabel(appointmentIdValue) {
+        const v = _currentVisits.find((x) => String(x.id) === String(appointmentIdValue));
+        return v ? visitLabel(v) : `Appointment #${appointmentIdValue}`;
+    }
+
+    // Visits up to today: a check-up cannot be dated later (see the date input's
+    // max), so a visit booked for a later day is not one it can record.
+    async function loadChildVisits(childId) {
+        const data = await apiFetch('/appointments/pedia');
+        const today = toDateInputValue(new Date());
+        return (data.appointments || [])
+            .filter((a) => String(a.childId) === String(childId) && ['approved', 'completed'].includes(a.status))
+            .filter((a) => visitDayKey(a) <= today);
+    }
+
     function assessmentDateLabel(assessmentIdValue) {
         const a = _currentCheckupAssessments.find(x => String(x.id) === String(assessmentIdValue));
         if (!a || !a.completedAt) return null;
@@ -884,6 +940,7 @@ const API = window.location.origin + '/api';
                     ${c.recommendations ? `<p style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--text-dark);line-height:1.5;"><strong>Recommendations:</strong> ${escapeHtml(c.recommendations)}</p>` : ''}
                     ${nextFollowText ? `<p style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--text-dark);"><strong>Next Follow-up:</strong> ${escapeHtml(nextFollowText)}${c.nextFollowUpReason ? ` — ${escapeHtml(c.nextFollowUpReason)}` : ''}</p>` : ''}
                     ${linkedAssessmentLabel ? `<p style="margin:0.5rem 0 0;font-size:0.8rem;color:var(--status-info-fg);">Linked Assessment: ${escapeHtml(linkedAssessmentLabel)} Assessment</p>` : ''}
+                    <p style="margin:0.5rem 0 0;font-size:0.8rem;color:var(--text-light);">Clinic visit: ${c.appointmentId != null ? escapeHtml(linkedVisitLabel(c.appointmentId)) : 'not linked to a visit'}</p>
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75rem;">
                         <p style="margin:0;font-size:0.74rem;color:var(--text-light);">Recorded by ${escapeHtml(c.pediatricianName || 'Pediatrician')}${c.editedAt ? ' · edited' : ''}</p>
                         <div style="display:flex;gap:0.9rem;flex-wrap:wrap;justify-content:flex-end;">
@@ -956,6 +1013,13 @@ const API = window.location.origin + '/api';
         document.getElementById('checkup-status').value = 'initial_review';
         const linkedSel = document.getElementById('checkup-linked-assessment');
         if (linkedSel) linkedSel.value = '';
+        const visitSel = document.getElementById('checkup-visit');
+        if (visitSel) {
+            visitSel.disabled = false;
+            delete visitSel.dataset.chosen;
+            visitSel.value = '';
+            syncCheckupVisitToDate();
+        }
     }
 
     // Controlled edit: pre-fills the SAME form from an existing record and
@@ -992,6 +1056,15 @@ const API = window.location.origin + '/api';
         document.getElementById('checkup-status').value = record.status;
         const linkedSel = document.getElementById('checkup-linked-assessment');
         if (linkedSel) linkedSel.value = record.assessmentId || '';
+        // Which visit a record belongs to is fixed once saved, like its date.
+        const visitSel = document.getElementById('checkup-visit');
+        if (visitSel) {
+            if (record.appointmentId != null && !visitSel.querySelector(`option[value="${CSS.escape(String(record.appointmentId))}"]`)) {
+                visitSel.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(record.appointmentId)}">${escapeHtml(linkedVisitLabel(record.appointmentId))}</option>`);
+            }
+            visitSel.value = record.appointmentId != null ? String(record.appointmentId) : '';
+            visitSel.disabled = true;
+        }
 
         document.getElementById('checkupFormWrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
@@ -1015,6 +1088,7 @@ const API = window.location.origin + '/api';
         const nextFollowUpReason = document.getElementById('checkup-next-reason').value.trim();
         const status = document.getElementById('checkup-status').value;
         const linkedAssessmentId = document.getElementById('checkup-linked-assessment')?.value || '';
+        const visitAppointmentId = document.getElementById('checkup-visit')?.value || '';
 
         // Mirrors the server-side rules in routes/checkups.js so the
         // pediatrician gets the message inline instead of via a failed request.
@@ -1051,6 +1125,7 @@ const API = window.location.origin + '/api';
             payload.visitType = visitType;
             payload.checkupDate = checkupDate;
             if (linkedAssessmentId) payload.assessmentId = linkedAssessmentId;
+            if (visitAppointmentId) payload.appointmentId = Number(visitAppointmentId);
         }
 
         const btn = document.getElementById('checkupSubmitBtn');
@@ -1366,18 +1441,25 @@ const API = window.location.origin + '/api';
     async function loadProgressData(childId) {
         cancelFollowUp();
         loadFollowUpPlans(childId);
-        const [historyData, notesData, checkupsResult] = await Promise.all([
+        const [historyData, notesData, checkupsResult, visits] = await Promise.all([
             apiFetch(`/assessments/${childId}/history`),
             apiFetch(`/assessments/child/${childId}/progress-notes`),
             // Isolated on purpose: a check-up failure only affects the Check-up
             // panel and never takes down Assessment History or Progress Notes.
             apiFetch(`/checkups/child/${childId}`)
                 .then((d) => ({ checkups: d.checkups || [], referrals: d.referrals || [], error: null }))
-                .catch((err) => ({ checkups: [], referrals: [], error: err }))
+                .catch((err) => ({ checkups: [], referrals: [], error: err })),
+            // Without the visit list the form still saves; the server then links
+            // the latest visit on or before the check-up date.
+            loadChildVisits(childId).catch(() => []),
         ]);
+        // Another patient's history was opened while this one loaded.
+        if (String(window.currentProgressChildId) !== String(childId)) return;
         renderAssessmentHistory(historyData.assessments || []);
         renderProgressNotes(notesData.notes || []);
         populateLinkedAssessmentOptions(historyData.assessments || []);
+        populateVisitOptions(visits);
+        openPendingVisitCheckup();
         if (checkupsResult.error) renderCheckupHistoryError(checkupsResult.error);
         else renderCheckupHistory(checkupsResult.checkups, checkupsResult.referrals);
     }
@@ -1385,14 +1467,42 @@ const API = window.location.origin + '/api';
     // Pediatrician Reports links here as ?history=<childId> to open that
     // patient's Check-up History. Only a child already in this pediatrician's
     // own patient list opens; anything else is ignored. Runs once per page load.
+    // Appointments adds &recordVisit=<appointment id> after Mark Completed, to
+    // open the Add Check-up form for that visit.
     let _historyLinkHandled = false;
+    let _pendingRecordVisit = null;
     function openRequestedCheckupHistory(patients) {
         if (_historyLinkHandled) return;
         _historyLinkHandled = true;
-        const requested = new URLSearchParams(window.location.search).get('history');
+        const params = new URLSearchParams(window.location.search);
+        const requested = params.get('history');
         if (!requested) return;
         const p = patients.find((x) => String(x.childId) === requested);
-        if (p) openProgressModal(String(p.childId), `${p.childFirstName || ''} ${p.childLastName || ''}`.trim());
+        if (!p) return;
+        _pendingRecordVisit = params.get('recordVisit');
+        openProgressModal(String(p.childId), `${p.childFirstName || ''} ${p.childLastName || ''}`.trim());
+    }
+
+    // Opens Add Check-up with the requested visit chosen, once the visit list
+    // has loaded. A visit that is not this child's approved or completed
+    // appointment with this pediatrician is not in the list, so it is ignored.
+    function openPendingVisitCheckup() {
+        if (!_pendingRecordVisit) return;
+        const visit = _currentVisits.find((v) => String(v.id) === String(_pendingRecordVisit));
+        _pendingRecordVisit = null;
+        if (!visit) return;
+        cancelReferral();
+        cancelFollowUp();
+        resetCheckupForm();
+        const day = visitDayKey(visit);
+        const dateEl = document.getElementById('checkup-date');
+        if (day && day <= dateEl.max) dateEl.value = day;
+        const visitSel = document.getElementById('checkup-visit');
+        visitSel.value = String(visit.id);
+        visitSel.dataset.chosen = '1';
+        const wrap = document.getElementById('checkupFormWrap');
+        wrap.style.display = 'block';
+        wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     function openProgressModal(childId, childName) {

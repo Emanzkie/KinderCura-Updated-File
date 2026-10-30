@@ -96,16 +96,67 @@ const LIA = { childId: 'cB', name: 'Lia Soto', dateOfBirth: '2023-04-20T00:00:00
   ]);
   assert(html.includes('the overall score increased 10 pts'));
   assert.strictEqual(sandbox.caseFileComparison(list.slice(0, 1)), null);
-  const single = sandbox.renderCaseFile({ patient: LIA, parent: null, history, checkups: { checkups: [], referrals: [], referralsError: null, error: null } });
+  const single = sandbox.renderCaseFile({ patient: LIA, parent: null, history, checkups: { checkups: [], referrals: [], referralsError: null, error: null }, visits: { visits: [], error: null } });
   assert(single.includes('Not enough assessments to compare yet'));
-  assert(single.includes('No check-up visits have been recorded'));
+  assert(single.includes('No clinic visits or check-ups are on record'));
   assert(!single.includes('K1') && !single.includes('Kemri'));
   ok('comparison is first vs latest in points; one assessment says not enough to compare');
 
   // 4. A failed check-up request is not shown as "none".
-  const failed = sandbox.renderCaseFile({ patient: LIA, parent: null, history, checkups: { checkups: [], referrals: [], error: new Error('x') } });
-  assert(failed.includes('could not be loaded') && !failed.includes('No check-up visits have been recorded'));
+  const failed = sandbox.renderCaseFile({ patient: LIA, parent: null, history, checkups: { checkups: [], referrals: [], error: new Error('x') }, visits: { visits: [], error: null } });
+  assert(failed.includes('Check-up history could not be loaded') && !failed.includes('No clinic visits or check-ups are on record'));
   ok('check-up load failure is stated, not shown as empty');
+
+  // 4b. Clinic visits: only this child's approved/completed appointments,
+  // newest first, each paired with the check-ups recorded for it.
+  const appointments = [
+    { id: 11, childId: 'cA', status: 'completed', appointmentDate: '2026-03-02T00:00:00.000Z', appointmentTime: '09:00', reason: 'Initial visit' },
+    { id: 12, childId: 'cA', status: 'completed', appointmentDate: '2026-06-12T00:00:00.000Z', appointmentTime: '14:30', reason: 'Check-up' },
+    { id: 13, childId: 'cA', status: 'approved', appointmentDate: '2026-11-20T00:00:00.000Z', appointmentTime: '10:00', reason: 'Follow-up Check-up' },
+    { id: 14, childId: 'cA', status: 'cancelled', appointmentDate: '2026-05-01T00:00:00.000Z', appointmentTime: '10:00' },
+    { id: 15, childId: 'cA', status: 'pending', appointmentDate: '2026-12-01T00:00:00.000Z', appointmentTime: '10:00' },
+    { id: 21, childId: 'cB', status: 'completed', appointmentDate: '2026-06-12T00:00:00.000Z', appointmentTime: '15:00', reason: 'SIBLING VISIT' },
+  ];
+  const visits = sandbox.caseFileVisits(appointments, 'cA', '2026-12-31');
+  assert.deepStrictEqual(Array.from(visits, (v) => v.id), [13, 12, 11], 'approved/completed only, this child only, newest first');
+  assert.deepStrictEqual(Array.from(sandbox.caseFileVisits(appointments, 'cA', '2026-10-31'), (v) => v.id), [12, 11],
+    'a visit booked for a later day is not listed yet');
+
+  const checkupsForA = [
+    { id: 'x1', appointmentId: 12, checkupDate: '2026-06-12T04:00:00Z', visitType: 'initial_checkup', status: 'monitoring', findings: 'Speech <delay> noted' },
+    { id: 'x2', appointmentId: null, checkupDate: '2026-04-01T04:00:00Z', visitType: 'follow_up_checkup', status: 'stable', findings: 'UNLINKED RECORD' },
+    { id: 'x3', appointmentId: 14, checkupDate: '2026-05-01T04:00:00Z', visitType: 'follow_up_checkup', status: 'stable', findings: 'LINKED TO CANCELLED' },
+  ];
+  const paired = sandbox.pairVisitsWithCheckups(visits, checkupsForA);
+  assert.deepStrictEqual(Array.from(paired.visits, (v) => [v.visit.id, v.checkups.length]), [[13, 0], [12, 1], [11, 0]].map((x) => x));
+  assert.deepStrictEqual(Array.from(paired.unlinked, (c) => c.id), ['x2', 'x3'], 'records not tied to a listed visit are kept, not dropped');
+
+  const withVisits = sandbox.renderCaseFile({
+    patient: KEMRI, parent: null, history,
+    checkups: { checkups: checkupsForA, referrals: [], referralsError: null, error: null },
+    visits: { visits, error: null },
+  });
+  assert(withVisits.includes('3 clinic visits: 1 with a check-up recorded, 2 without.'));
+  const v12 = withVisits.indexOf('Appointment #12');
+  const v11 = withVisits.indexOf('Appointment #11');
+  assert(v12 > 0 && v11 > v12, 'newest visit first');
+  const block12 = withVisits.slice(v12, v11);
+  assert(block12.includes('Speech &lt;delay&gt; noted') && !block12.includes('No check-up recorded for this visit'), 'visit #12 shows its own check-up');
+  assert(withVisits.slice(v11).includes('No check-up recorded for this visit'), 'visit #11 is flagged as missing a record');
+  assert(withVisits.includes('June 12, 2026, 2:30 PM') && withVisits.includes('Appointment #13'));
+  assert(withVisits.includes('Check-ups not linked to a visit') && withVisits.includes('UNLINKED RECORD') && withVisits.includes('LINKED TO CANCELLED'));
+  assert(!withVisits.includes('SIBLING VISIT') && !withVisits.includes('#21') && !withVisits.includes('#14') && !withVisits.includes('#15'));
+  ok('clinic visits pair each visit with its check-ups, flag visits without one, and keep unlinked records');
+
+  // 4c. Visit list failed to load: check-ups still listed, not shown as unlinked.
+  const visitsFailed = sandbox.renderCaseFile({
+    patient: KEMRI, parent: null, history,
+    checkups: { checkups: checkupsForA, referrals: [], referralsError: null, error: null },
+    visits: { visits: [], error: new Error('down') },
+  });
+  assert(visitsFailed.includes('Clinic visits could not be loaded right now') && visitsFailed.includes('UNLINKED RECORD'));
+  assert(!visitsFailed.includes('Check-ups not linked to a visit') && !visitsFailed.includes('No check-up recorded for this visit'));
+  ok('a failed visit list keeps the check-ups and does not mislabel them');
 
   // 5. Search narrows by name, case-insensitively, all words.
   const patients = [KEMRI, LIA, { childId: 'cC', name: 'Ana Cruz' }];
@@ -123,6 +174,7 @@ const LIA = { childId: 'cB', name: 'Lia Soto', dateOfBirth: '2023-04-20T00:00:00
     if (ep === '/assessments/cA/history') return kemriHistory;
     if (ep === '/assessments/cB/history') return { assessments: history };
     if (ep.startsWith('/checkups/child/')) return { checkups: [], referrals: [] };
+    if (ep === '/appointments/pedia') return { appointments: [] };
     throw new Error(`unexpected ${ep}`);
   };
   await vm.runInContext('loadCaseFilePatients()', sandbox);

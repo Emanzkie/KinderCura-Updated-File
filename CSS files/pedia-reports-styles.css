@@ -1573,3 +1573,47 @@ body.kc-pdf-export #practiceReportsPanel .report-table-wrap,
 body.kc-pdf-export .case-file .report-table-wrap {
     overflow: visible;
 }
+
+/* Clinic visits in the case file (js/pedia/pedia-case-files.js
+   renderCaseFileVisits): each visit followed by the check-ups recorded for it. */
+.cf-visit {
+    margin-top: 0.9rem;
+    padding: 0.75rem 0 0 0.9rem;
+    border-left: 3px solid var(--border);
+}
+
+.cf-visit:first-of-type {
+    margin-top: 0;
+}
+
+.cf-visit-head {
+    margin: 0 0 0.6rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--primary-dark);
+}
+
+.cf-visit-id {
+    margin-left: 0.35rem;
+    font-weight: 400;
+    color: var(--text-light);
+}
+
+.cf-visit .cf-entry:first-of-type {
+    border-top: none;
+    padding-top: 0;
+}
+
+.cf-missing {
+    margin: 0 0 0.25rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--status-attention-fg);
+}
+
+@media print {
+    body[data-report-tab="case-files"] .case-file .cf-visit-head {
+        break-after: avoid;
+        page-break-after: avoid;
+    }
+}

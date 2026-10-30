@@ -23,7 +23,8 @@ const router = express.Router();
 
 const { authMiddleware } = require('../middleware/auth');
 const { hasPermission } = require('../middleware/guardianAccess');
-const { pediatricianHasPatient, findLinkedAppointment } = require('../services/patientAccess');
+const { pediatricianHasPatient } = require('../services/patientAccess');
+const { clinicToday } = require('../services/reminders');
 const Child = require('../models/Child');
 const Appointment = require('../models/Appointment');
 const Assessment = require('../models/Assessment');
@@ -195,7 +196,13 @@ function isRetainedFollowUpDate(existing, raw) {
 
 // ── Cross-reference resolution — every id is verified against THIS child,
 // never trusted from the client as-is. ──────────────────────────────────
-async function resolveAppointmentRef(rawAppointmentId, child, pediatricianId) {
+// A check-up records a clinic visit: an appointment that was approved (the
+// visit is happening) or completed. A pending, cancelled or rejected booking
+// is not a visit.
+const VISIT_APPOINTMENT_STATUSES = ['approved', 'completed'];
+
+// `checkupDay` is the check-up's calendar day, 'YYYY-MM-DD'.
+async function resolveAppointmentRef(rawAppointmentId, child, pediatricianId, checkupDay) {
   if (rawAppointmentId != null && String(rawAppointmentId).trim() !== '') {
     const numericId = Number(rawAppointmentId);
     if (!Number.isFinite(numericId)) throw new HttpError(400, 'appointmentId must be a number.');
@@ -203,15 +210,36 @@ async function resolveAppointmentRef(rawAppointmentId, child, pediatricianId) {
     if (!appt || String(appt.childId) !== String(child._id) || String(appt.pediatricianId) !== String(pediatricianId)) {
       throw new HttpError(400, 'The supplied appointment does not belong to this child and pediatrician.');
     }
+    if (!VISIT_APPOINTMENT_STATUSES.includes(appt.status)) {
+      throw new HttpError(400, 'Only an approved or completed appointment can be recorded as a visit.');
+    }
+    // Appointment dates are stored as UTC midnight of the booked day.
+    if (appt.appointmentDate && new Date(appt.appointmentDate).toISOString().slice(0, 10) > checkupDay) {
+      throw new HttpError(400, 'That visit is after the check-up date.');
+    }
     return numericId;
   }
 
-  // Not supplied — auto-attach the most recent appointment between this
-  // pediatrician and child, the same convenience routes/assessments.js POST
-  // /child/:childId/progress-notes already provides, so the pediatrician
-  // does not have to look up an appointment id by hand.
-  const linked = await findLinkedAppointment(pediatricianId, child._id);
-  return linked ? linked.id : null;
+  // Not supplied — attach the visit this check-up most likely records: the
+  // latest approved or completed appointment on or before the check-up day.
+  // A visit booked for a later day is never the one being written up (it used
+  // to be picked when it was the newest appointment, e.g. a Follow-up Check-up).
+  const nextDay = new Date(`${checkupDay}T00:00:00.000Z`);
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+  const visit = await Appointment.findOne({
+    pediatricianId,
+    childId: child._id,
+    status: { $in: VISIT_APPOINTMENT_STATUSES },
+    appointmentDate: { $lt: nextDay },
+  }).sort({ appointmentDate: -1, appointmentTime: -1, createdAt: -1 }).lean();
+  return visit ? visit.id : null;
+}
+
+// The check-up's calendar day: the date as entered, or today in clinic time.
+function checkupDayOf(rawCheckupDate, checkupDate) {
+  const text = rawCheckupDate == null ? '' : String(rawCheckupDate).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  return clinicToday(checkupDate);
 }
 
 async function resolveAssessmentRef(rawAssessmentId, child) {
@@ -298,7 +326,7 @@ async function createCheckupRecord(childId, user, body) {
   if (nextFollowUpDateResult.error) throw new HttpError(400, nextFollowUpDateResult.error);
 
   const [appointmentId, assessmentId, previousRecordId] = await Promise.all([
-    resolveAppointmentRef(body.appointmentId, child, user.userId),
+    resolveAppointmentRef(body.appointmentId, child, user.userId, checkupDayOf(body.checkupDate, checkupDateResult.value)),
     resolveAssessmentRef(body.assessmentId, child),
     resolvePreviousRecordRef(body.previousRecordId, child, user.userId),
   ]);

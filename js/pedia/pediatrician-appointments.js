@@ -368,6 +368,7 @@ async function loadAppointments() {
     try {
         const data = await apiFetch('/appointments/pedia');
         const all  = (data.appointments || []).sort((a,b) => (b.id||0)-(a.id||0));
+        loadedAppointments = all;
         renderUpcoming(all.filter(a => ['pending','approved'].includes(a.status)));
         renderCompleted(all.filter(a => a.status === 'completed'));
         renderCancelled(all.filter(a => ['cancelled','rejected'].includes(a.status)));
@@ -404,6 +405,10 @@ function focusAppointmentFromQuery() {
 }
 
 // ── Status updates ────────────────────────────────────────────────────────────
+// The appointments last loaded, so a completed visit can be matched to its child.
+let loadedAppointments = [];
+
+// Resolves true when the status was saved.
 async function updateStatus(aptId, status, childName, notes='') {
     try {
         await apiFetch(`/appointments/${aptId}/status`, {
@@ -412,7 +417,19 @@ async function updateStatus(aptId, status, childName, notes='') {
         });
         await loadAppointments();
         await loadNotificationCount();
-    } catch(e) { alert('Error: ' + e.message); }
+        return true;
+    } catch(e) { alert('Error: ' + e.message); return false; }
+}
+
+// Completing an appointment does not record the visit itself: the check-up
+// (diagnosis, findings, recommendations) is the pediatrician's own entry. Offer
+// to open My Patients with the Add Check-up form set to this visit.
+function offerVisitCheckup(aptId) {
+    const apt = loadedAppointments.find((a) => String(a.id) === String(aptId));
+    if (!apt || !apt.childId) return;
+    const name = apt.childName ? ` for ${apt.childName}` : '';
+    if (!confirm(`Appointment completed. Record the check-up${name} for this visit now?`)) return;
+    window.location.href = `/pedia/pediatrician-patients?history=${encodeURIComponent(apt.childId)}&recordVisit=${encodeURIComponent(apt.id)}`;
 }
 
 let _pendingStatus = null, _pendingAptId = null;
@@ -430,7 +447,10 @@ function openStatusModal(aptId, status, childName) {
 async function confirmStatus() {
     const notes = document.getElementById('statusNote').value.trim();
     closeModal('statusModal');
-    await updateStatus(_pendingAptId, _pendingStatus, '', notes);
+    const aptId = _pendingAptId;
+    const status = _pendingStatus;
+    const saved = await updateStatus(aptId, status, '', notes);
+    if (saved && status === 'completed') offerVisitCheckup(aptId);
 }
 
 // ── Reschedule ────────────────────────────────────────────────────────────────

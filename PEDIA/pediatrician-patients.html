@@ -278,8 +278,15 @@
                         </div>
                         <div class="form-group" style="margin-bottom:0;">
                             <label style="font-weight:600;">Check-up Date</label>
-                            <input type="date" id="checkup-date" style="width:100%;padding:0.8rem;border:2px solid var(--border);border-radius:8px;">
+                            <input type="date" id="checkup-date" onchange="syncCheckupVisitToDate()" style="width:100%;padding:0.8rem;border:2px solid var(--border);border-radius:8px;">
                         </div>
+                    </div>
+                    <div class="form-group" style="margin-top:1rem;">
+                        <label for="checkup-visit" style="font-weight:600;">Clinic Visit</label>
+                        <select id="checkup-visit" onchange="this.dataset.chosen = '1'" style="width:100%;padding:0.8rem;border:2px solid var(--border);border-radius:8px;">
+                            <option value="">Automatic — the latest visit on or before the check-up date</option>
+                        </select>
+                        <p style="font-size:0.76rem;color:var(--text-light);margin-top:0.35rem;">The appointment this check-up records. Lists this child's approved and completed appointments with you, up to today.</p>
                     </div>
                     <div class="form-group" style="margin-top:1rem;">
                         <label style="font-weight:600;">Diagnosis</label>

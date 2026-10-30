@@ -333,6 +333,70 @@ async function run() {
     }), 400, 'appointment');
   })();
 
+  // ── Visit link: an explicit appointment must be an approved or completed
+  // visit; a pending, cancelled or rejected booking is refused. ────────────
+  for (const status of ['pending', 'cancelled', 'rejected']) {
+    await withMocks({
+      apptExists: async () => true,
+      apptFindOne: () => chainable({ id: 777, childId, pediatricianId: pediaId, status }),
+    }, async () => {
+      await expectHttpError(createCheckupRecord(childId, { userId: pediaId, role: 'pediatrician' }, {
+        visitType: 'initial_checkup', status: 'initial_review', diagnosis: 'Valid diagnosis text.',
+        appointmentId: 777,
+      }), 400, 'approved or completed');
+    })();
+  }
+  await withMocks({
+    apptExists: async () => true,
+    apptFindOne: () => chainable({ id: 778, childId, pediatricianId: pediaId, status: 'completed', appointmentDate: new Date('2026-06-12T00:00:00.000Z') }),
+  }, async () => {
+    const created = await createCheckupRecord(childId, { userId: pediaId, role: 'pediatrician' }, {
+      visitType: 'initial_checkup', status: 'initial_review', diagnosis: 'Valid diagnosis text.',
+      appointmentId: '778', checkupDate: '2026-06-12',
+    });
+    assert.strictEqual(created.appointmentId, 778, 'the chosen visit is kept');
+    // The same visit for a check-up dated the day before it is refused.
+    await expectHttpError(createCheckupRecord(childId, { userId: pediaId, role: 'pediatrician' }, {
+      visitType: 'initial_checkup', status: 'initial_review', diagnosis: 'Valid diagnosis text.',
+      appointmentId: 778, checkupDate: '2026-06-11',
+    }), 400, 'after the check-up date');
+  })();
+
+  // ── Visit link when none is chosen: the latest approved/completed visit on
+  // or before the check-up day — never a visit booked for a later day. ─────
+  {
+    let filter = null;
+    await withMocks({
+      apptExists: async () => true,
+      apptFindOne: (f) => { filter = f; return chainable({ id: 610, childId, pediatricianId: pediaId, status: 'completed' }); },
+    }, async () => {
+      const created = await createCheckupRecord(childId, { userId: pediaId, role: 'pediatrician' }, {
+        visitType: 'initial_checkup', status: 'initial_review', diagnosis: 'Valid diagnosis text.',
+        checkupDate: '2026-06-12',
+      });
+      assert.strictEqual(created.appointmentId, 610);
+    })();
+    assert.deepStrictEqual(filter.status, { $in: ['approved', 'completed'] }, 'pending bookings are not visits');
+    assert.strictEqual(String(filter.pediatricianId), pediaId);
+    assert.strictEqual(String(filter.childId), childId);
+    assert.strictEqual(filter.appointmentDate.$lt.toISOString(), '2026-06-13T00:00:00.000Z', 'only visits up to the check-up day');
+
+    // No check-up date entered: the day is today in clinic (Manila) time.
+    await withMocks({
+      apptExists: async () => true,
+      apptFindOne: (f) => { filter = f; return chainable(null); },
+    }, async () => {
+      const created = await createCheckupRecord(childId, { userId: pediaId, role: 'pediatrician' }, {
+        visitType: 'initial_checkup', status: 'initial_review', diagnosis: 'Valid diagnosis text.',
+      });
+      assert.strictEqual(created.appointmentId, null, 'no visit on or before today -> not linked, never a future one');
+    })();
+    const manilaToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const expectedNext = new Date(`${manilaToday}T00:00:00.000Z`);
+    expectedNext.setUTCDate(expectedNext.getUTCDate() + 1);
+    assert.strictEqual(filter.appointmentDate.$lt.toISOString(), expectedNext.toISOString());
+  }
+
   // ── 9. Unauthorized create rejected (not linked to this patient) ───────
   await withMocks({ apptExists: async () => false }, async () => {
     await expectHttpError(createCheckupRecord(childId, { userId: otherPediaId, role: 'pediatrician' }, {

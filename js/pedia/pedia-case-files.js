@@ -9,6 +9,7 @@
 //   /assessments/pedia-patients  parent name and e-mail (the My Patients source)
 //   /assessments/:childId/history  assessments, stored scores, documented review
 //   /checkups/child/:childId     this pediatrician's check-ups and referrals
+//   /appointments/pedia          this pediatrician's appointments (the clinic visits)
 // /recommendations/:assessmentId is deliberately NOT used: it writes generated
 // recommendations when none exist yet.
 //
@@ -264,12 +265,56 @@ function renderCaseFileReviews(assessments) {
         </div>`).join('');
 }
 
-function renderCaseFileCheckups(checkupsResult) {
-    if (checkupsResult.error) {
-        return '<p class="cf-empty">Check-up history could not be loaded right now. This does not mean none has been recorded.</p>';
+// ── Clinic visits ───────────────────────────────────────────────────────────
+// A clinic visit is an approved or completed appointment with this
+// pediatrician (routes/checkups.js links check-ups to the same kind). Each
+// check-up names its visit by the appointment's numeric id (appointmentId).
+
+const CASE_FILE_VISIT_STATUSES = Object.freeze(['approved', 'completed']);
+
+function localDayStamp(d = new Date()) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * This child's clinic visits up to `today` ('YYYY-MM-DD'), newest first. A
+ * visit booked for a later day has not happened, so it is not listed (and not
+ * flagged as missing a check-up). Appointment dates are UTC midnight of the
+ * booked day.
+ */
+function caseFileVisits(appointments, childId, today = localDayStamp()) {
+    return (appointments || [])
+        .filter((a) => String(a.childId) === String(childId) && CASE_FILE_VISIT_STATUSES.includes(a.status))
+        .filter((a) => !a.appointmentDate || new Date(a.appointmentDate).toISOString().slice(0, 10) <= today)
+        .sort((a, b) => (new Date(b.appointmentDate || 0) - new Date(a.appointmentDate || 0))
+            || String(b.appointmentTime || '').localeCompare(String(a.appointmentTime || '')));
+}
+
+/** Each visit with the check-ups recorded for it; the rest are not linked to a listed visit. */
+function pairVisitsWithCheckups(visits, checkups) {
+    const byVisit = new Map();
+    for (const c of checkups) {
+        if (c.appointmentId == null) continue;
+        const key = String(c.appointmentId);
+        if (!byVisit.has(key)) byVisit.set(key, []);
+        byVisit.get(key).push(c);
     }
-    const { checkups, referrals, referralsError } = checkupsResult;
-    const visits = checkups.map((c) => `
+    const listed = new Set(visits.map((v) => String(v.id)));
+    return {
+        visits: visits.map((visit) => ({ visit, checkups: byVisit.get(String(visit.id)) || [] })),
+        unlinked: checkups.filter((c) => c.appointmentId == null || !listed.has(String(c.appointmentId))),
+    };
+}
+
+function caseFileTime(value) {
+    const [h, m] = String(value || '').split(':');
+    const hour = parseInt(h, 10);
+    if (Number.isNaN(hour)) return '';
+    return `${hour % 12 || 12}:${String(m || '00').padStart(2, '0')} ${hour >= 12 ? 'PM' : 'AM'}`;
+}
+
+function caseFileCheckupEntry(c) {
+    return `
         <div class="cf-entry">
             <p class="cf-entry-date">${escapeHtml(caseFileLongDate(c.checkupDate))} &middot;
                 ${c.visitType === 'follow_up_checkup' ? 'Follow-up Check-up' : 'Initial Check-up'} &middot;
@@ -280,7 +325,50 @@ function renderCaseFileCheckups(checkupsResult) {
                 ${c.recommendations ? caseFileField('Recommendations', escapeHtml(c.recommendations)) : ''}
                 ${c.nextFollowUpDate ? caseFileField('Next follow-up', `${escapeHtml(caseFileDay(c.nextFollowUpDate))}${c.nextFollowUpReason ? ` — ${escapeHtml(c.nextFollowUpReason)}` : ''}`) : ''}
             </dl>
+        </div>`;
+}
+
+/**
+ * Visits paired with their check-ups. `visitsResult` = { visits, error }: when
+ * the visit list could not be loaded, the check-ups are listed on their own
+ * rather than every one being shown as "not linked".
+ */
+function renderCaseFileVisits(checkups, visitsResult) {
+    if (!visitsResult || visitsResult.error) {
+        return `<p class="cf-empty">Clinic visits could not be loaded right now, so check-ups are listed without their visits.</p>
+            ${checkups.map(caseFileCheckupEntry).join('') || '<p class="cf-empty">No check-ups have been recorded by you for this patient.</p>'}`;
+    }
+    const { visits, unlinked } = pairVisitsWithCheckups(visitsResult.visits, checkups);
+    if (!visits.length && !unlinked.length) {
+        return '<p class="cf-empty">No clinic visits or check-ups are on record with you for this patient.</p>';
+    }
+    const recorded = visits.filter((v) => v.checkups.length).length;
+    const summary = visits.length
+        ? `<p class="cf-lead">${visits.length} clinic ${plural(visits.length, 'visit')}: ${recorded} with a check-up recorded, ${visits.length - recorded} without.</p>`
+        : '';
+    const visitBlocks = visits.map(({ visit, checkups: records }) => `
+        <div class="cf-visit">
+            <p class="cf-visit-head">
+                Visit &mdash; ${escapeHtml(caseFileDay(visit.appointmentDate))}${visit.appointmentTime ? `, ${escapeHtml(caseFileTime(visit.appointmentTime))}` : ''}
+                &middot; ${visit.status === 'completed' ? 'Completed' : 'Approved'}${visit.reason ? ` &middot; ${escapeHtml(visit.reason)}` : ''}
+                <span class="cf-visit-id">Appointment #${escapeHtml(visit.id)}</span>
+            </p>
+            ${records.length
+                ? records.map(caseFileCheckupEntry).join('')
+                : '<p class="cf-missing">No check-up recorded for this visit.</p>'}
         </div>`).join('');
+    const unlinkedBlock = unlinked.length
+        ? `<h3 class="cf-subhead">Check-ups not linked to a visit</h3>${unlinked.map(caseFileCheckupEntry).join('')}`
+        : '';
+    return summary + visitBlocks + unlinkedBlock;
+}
+
+function renderCaseFileCheckups(checkupsResult, visitsResult) {
+    if (checkupsResult.error) {
+        return '<p class="cf-empty">Check-up history could not be loaded right now. This does not mean none has been recorded.</p>';
+    }
+    const { checkups, referrals, referralsError } = checkupsResult;
+    const visits = renderCaseFileVisits(checkups, visitsResult);
     const refs = referrals.map((r) => `
         <div class="cf-entry">
             <p class="cf-entry-date">${escapeHtml(caseFileLongDate(r.referredAt))} &middot; Specialist referral</p>
@@ -292,13 +380,13 @@ function renderCaseFileCheckups(checkupsResult) {
             </dl>
         </div>`).join('');
     return `
-        ${visits || '<p class="cf-empty">No check-up visits have been recorded by you for this patient.</p>'}
+        ${visits}
         ${referralsError ? '<p class="cf-empty">Specialist referrals could not be loaded right now.</p>' : ''}
         ${refs ? `<h3 class="cf-subhead">Specialist referrals</h3>${refs}` : ''}`;
 }
 
 /**
- * The whole case file. `data` = { patient, parent, history, checkups }, all
+ * The whole case file. `data` = { patient, parent, history, checkups, visits }, all
  * for the same child; assessments for any other child are dropped here.
  */
 function renderCaseFile(data) {
@@ -363,8 +451,8 @@ function renderCaseFile(data) {
             </section>
 
             <section class="cf-section">
-                <h3>Check-up history</h3>
-                ${renderCaseFileCheckups(data.checkups)}
+                <h3>Clinic visits &amp; check-ups</h3>
+                ${renderCaseFileCheckups(data.checkups, data.visits)}
             </section>
 
             <footer class="cf-footer">
@@ -418,12 +506,17 @@ async function openCaseFile(childId) {
 
     const id = encodeURIComponent(patient.childId);
     try {
-        const [historyData, checkups, parents] = await Promise.all([
+        const [historyData, checkups, parents, visits] = await Promise.all([
             apiFetch(`/assessments/${id}/history`),
             apiFetch(`/checkups/child/${id}`)
                 .then((r) => ({ checkups: r.checkups || [], referrals: r.referrals || [], referralsError: r.referralsError || null, error: null }))
                 .catch((err) => ({ checkups: [], referrals: [], referralsError: null, error: err })),
             loadCaseFileParents().catch(() => new Map()),
+            // This pediatrician's appointments; the child's visits are picked out
+            // in caseFileVisits().
+            apiFetch('/appointments/pedia')
+                .then((r) => ({ visits: caseFileVisits(r.appointments, patient.childId), error: null }))
+                .catch((err) => ({ visits: [], error: err })),
         ]);
         // Another patient was picked while this one loaded: drop this response.
         if (token !== caseFileLoadToken || caseFileSelectedId !== patient.childId) return;
@@ -433,6 +526,7 @@ async function openCaseFile(childId) {
             parent: parents.get(patient.childId) || null,
             history: historyData.assessments || [],
             checkups,
+            visits,
         })}</div>`;
         caseFileShownId = patient.childId;
         setCaseFileActionsVisible(true);
