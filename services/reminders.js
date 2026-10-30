@@ -7,7 +7,9 @@
 //     in the last week, in case a daily run was missed), unless the child has
 //     already been screened again since that review;
 //   - the parent's own recurring assessment reminder for a child
-//     (models/AssessmentReminder.js), on the due day or up to 7 days before.
+//     (models/AssessmentReminder.js), on the due day or up to 7 days before;
+//   - an active Follow-up Check-up plan (models/FollowUpPlan.js) with
+//     assessments still to do, 7, 3 and 1 days before its deadline and on it.
 //
 // Each new reminder is also emailed to the parent unless they turned Reminder
 // Emails off (User.notificationSettings.emailReminders).
@@ -21,6 +23,7 @@ const Child = require('../models/Child');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const AssessmentReminder = require('../models/AssessmentReminder');
+const FollowUpPlan = require('../models/FollowUpPlan');
 const emailService = require('./emailService');
 const { CLINIC_TIMEZONE, clinicDayStart, clinicDayEnd } = require('../constants/clinicTime');
 
@@ -212,6 +215,53 @@ async function planReminders(today) {
   return reminders;
 }
 
+// ── Follow-up Check-up assessments (models/FollowUpPlan.js) ────────────────
+// An active plan's deadline is the end of a Manila day. While assessments are
+// still missing, the parent is reminded 7, 3 and 1 days before it and on the
+// day. Completed means the child's completed screenings since the plan became
+// active, the same count services/followUpPlans.js shows.
+const FOLLOW_UP_REMINDER_DAYS = [7, 3, 1, 0];
+
+async function followUpReminders(today) {
+  const plans = await FollowUpPlan.find({
+    status: 'active',
+    dueDate: { $gte: clinicDayStart(today), $lte: clinicDayEnd(addDays(today, Math.max(...FOLLOW_UP_REMINDER_DAYS))) },
+  }).select('childId parentId appointmentId requiredAssessments activatedAt dueDate').lean();
+  if (!plans.length) return [];
+
+  // A cancelled appointment ends the plan; a completed one means the visit
+  // already happened.
+  const live = await Appointment.find({ _id: { $in: plans.map((p) => p.appointmentId) }, status: 'approved' }).select('_id').lean();
+  const liveIds = new Set(live.map((a) => String(a._id)));
+  const children = await namesById(Child, [...new Set(plans.map((p) => String(p.childId)))]);
+  const reminders = [];
+  for (const plan of plans) {
+    if (!liveIds.has(String(plan.appointmentId))) continue;
+    const dueYmd = clinicToday(new Date(plan.dueDate));
+    const daysLeft = FOLLOW_UP_REMINDER_DAYS.find((d) => addDays(today, d) === dueYmd);
+    if (daysLeft === undefined) continue;
+    const child = children.get(String(plan.childId));
+    const parentId = plan.parentId || child?.parentId;
+    if (!parentId) continue;
+    const completed = await Assessment.countDocuments({ childId: plan.childId, status: 'complete', completedAt: { $gte: plan.activatedAt } });
+    const remaining = plan.requiredAssessments - completed;
+    if (remaining <= 0) continue;
+    const name = personName(child) || 'your child';
+    reminders.push({
+      userId: parentId,
+      title: 'Follow-up Assessment Reminder',
+      message: `${completed} of ${plan.requiredAssessments} follow-up assessments done for ${name}; ${remaining} left, `
+        + (daysLeft === 0 ? 'due today.' : `due ${formatYmd(dueYmd)} (in ${daysLeft} day${daysLeft === 1 ? '' : 's'}).`)
+        + ' Open Screening to continue.',
+      type: 'assessment_reminder',
+      relatedPage: '/parent/screening',
+      relatedId: String(plan._id),
+      reminderKey: `follow-up-plan:${plan._id}:${today}`,
+    });
+  }
+  return reminders;
+}
+
 // Email copy of each reminder this run created (never one that was already
 // sent), unless the parent turned Reminder Emails off. The run must answer
 // inside Vercel's ~10 s limit, so emails go out together and the run waits at
@@ -250,11 +300,12 @@ async function emailNewReminders(created) {
 
 async function runReminders(now = new Date()) {
   const today = clinicToday(now);
-  const summary = { date: today, appointments: 0, assessments: 0, planned: 0, alreadySent: 0, emailed: 0, emailFailed: 0 };
+  const summary = { date: today, appointments: 0, assessments: 0, planned: 0, followUps: 0, alreadySent: 0, emailed: 0, emailFailed: 0 };
   const groups = [
     ['appointments', await appointmentReminders(today)],
     ['assessments', await assessmentReminders(today)],
     ['planned', await planReminders(today)],
+    ['followUps', await followUpReminders(today)],
   ];
   const created = [];
   for (const [field, reminders] of groups) {
@@ -277,5 +328,5 @@ module.exports = {
   addDays,
   firstDueMonth,
   nextPlanDates,
-  _internals: { appointmentReminders, assessmentReminders, planReminders, isPlanDueDate, sendOnce, emailNewReminders, EMAIL_BUDGET_MS },
+  _internals: { appointmentReminders, assessmentReminders, planReminders, followUpReminders, isPlanDueDate, sendOnce, emailNewReminders, EMAIL_BUDGET_MS },
 };

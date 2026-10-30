@@ -920,7 +920,7 @@ const API = window.location.origin + '/api';
         const wrap = document.getElementById('checkupFormWrap');
         if (!wrap) return;
         const show = wrap.style.display === 'none';
-        if (show) { resetCheckupForm(); cancelReferral(); }
+        if (show) { resetCheckupForm(); cancelReferral(); cancelFollowUp(); }
         wrap.style.display = show ? 'block' : 'none';
     }
 
@@ -1173,7 +1173,199 @@ const API = window.location.origin + '/api';
         }
     }
 
+    // ── Follow-up Check-up ───────────────────────────────────────────────────
+    // POST /checkups/child/:childId/follow-ups creates a pending, unpaid
+    // appointment on your schedule plus its plan. The parent pays through the
+    // usual payment page; payment confirmation assigns the assessments and
+    // confirms the appointment. The plans list below is the progress review.
+    let _followUpRequestId = null;
+    let _followUpSaving = false;
+    let _followUpDefaultFee = null;
+
+    const FOLLOW_UP_STATES = {
+        awaiting_payment:     { label: 'Awaiting Payment',     color: 'var(--status-caution-fg)',   bg: 'var(--status-caution-bg)' },
+        active:               { label: 'Assessments Assigned', color: 'var(--status-info-fg)',      bg: 'var(--status-info-bg)' },
+        assessments_complete: { label: 'Assessments Complete', color: 'var(--status-positive-fg)',  bg: 'var(--status-positive-bg)' },
+        overdue:              { label: 'Overdue',              color: 'var(--status-attention-fg)', bg: 'var(--status-attention-bg)' },
+        visit_completed:      { label: 'Visit Completed',      color: 'var(--status-positive-fg)',  bg: 'var(--status-positive-bg)' },
+        cancelled:            { label: 'Cancelled',            color: 'var(--status-neutral-fg)',   bg: 'var(--status-neutral-bg)' },
+    };
+
+    function followUpDate(value, utc) {
+        if (!value) return '—';
+        return new Date(value).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', ...(utc ? { timeZone: 'UTC' } : {}) });
+    }
+
+    function followUpTime(value) {
+        const [h, m] = String(value || '').split(':');
+        const hour = parseInt(h, 10);
+        if (Number.isNaN(hour)) return String(value || '');
+        return `${hour % 12 || 12}:${String(m || '00').padStart(2, '0')} ${hour >= 12 ? 'PM' : 'AM'}`;
+    }
+
+    function peso(value) {
+        return `₱${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    function renderFollowUpPlans(plans) {
+        const wrap = document.getElementById('followUpPlansWrap');
+        const list = document.getElementById('followUpPlansList');
+        if (!wrap || !list) return;
+        if (!plans || !plans.length) { wrap.style.display = 'none'; list.innerHTML = ''; return; }
+        wrap.style.display = 'block';
+        list.innerHTML = plans.map((p) => {
+            const meta = FOLLOW_UP_STATES[p.state] || FOLLOW_UP_STATES.active;
+            const appt = p.appointment;
+            const pct = p.requiredAssessments ? Math.min(100, Math.round((p.completed / p.requiredAssessments) * 100)) : 0;
+            const assigned = Boolean(p.activatedAt);
+            const done = (p.assessments || []).map((a) => `
+                        <li style="font-size:0.8rem;color:var(--text-dark);">${escapeHtml(followUpDate(a.completedAt))}${a.overallScore != null ? ` — overall assessment score ${Math.round(a.overallScore)}%` : ''}${a.late ? ' <span style="color:var(--status-attention-fg);">(after deadline)</span>' : ''}</li>`).join('');
+            return `
+                <div style="background:#FAFAF6;border:1px solid var(--border);border-left:4px solid ${meta.color};border-radius:10px;padding:1.1rem 1.3rem;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+                        <div>
+                            <p style="margin:0;font-weight:700;color:var(--text-dark);">${appt ? `${escapeHtml(followUpDate(appt.date, true))} at ${escapeHtml(followUpTime(appt.time))}` : 'Appointment unavailable'}</p>
+                            <p style="margin:0.15rem 0 0;font-size:0.8rem;color:var(--text-light);">Follow-up Check-up${appt ? ` · Appointment #${escapeHtml(appt.id)}` : ''}</p>
+                        </div>
+                        <span style="background:${meta.bg};color:${meta.color};padding:0.25rem 0.7rem;border-radius:999px;font-size:0.76rem;font-weight:700;white-space:nowrap;">${escapeHtml(meta.label)}</span>
+                    </div>
+                    <p style="margin:0.75rem 0 0;font-size:0.85rem;color:var(--text-dark);"><strong>Fee:</strong> ${escapeHtml(peso(p.fee))}${appt ? ` · <strong>Payment:</strong> ${escapeHtml(appt.paymentStatus)}` : ''}</p>
+                    <p style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--text-dark);"><strong>Assessments:</strong> ${assigned
+                        ? `${escapeHtml(p.completed)} of ${escapeHtml(p.requiredAssessments)} completed · ${escapeHtml(p.remaining)} remaining · due ${escapeHtml(followUpDate(p.dueDate))}`
+                        : p.state === 'cancelled'
+                            ? `${escapeHtml(p.requiredAssessments)} were never assigned — the appointment was cancelled before payment`
+                            : `${escapeHtml(p.requiredAssessments)} to assign when payment is confirmed (${escapeHtml(p.monitoringDays)}-day monitoring period)`}</p>
+                    ${assigned ? `<div style="height:8px;background:var(--bg-primary);border-radius:999px;margin-top:0.5rem;overflow:hidden;"><div style="height:100%;width:${pct}%;background:var(--primary);"></div></div>` : ''}
+                    ${p.instructions ? `<p style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--text-dark);line-height:1.5;"><strong>Instructions:</strong> ${escapeHtml(p.instructions)}</p>` : ''}
+                    ${done ? `<p style="margin:0.6rem 0 0.2rem;font-size:0.8rem;font-weight:600;color:var(--text-dark);">Completed assessments</p><ul style="margin:0;padding-left:1.1rem;">${done}</ul>` : ''}
+                    <p style="margin:0.75rem 0 0;font-size:0.74rem;color:var(--text-light);">Scheduled ${escapeHtml(followUpDate(p.createdAt))}${assigned ? ` · assigned ${escapeHtml(followUpDate(p.activatedAt))}` : ''} · open "Review Assessment" for full results</p>
+                </div>`;
+        }).join('');
+    }
+
+    // Never throws: the rest of the history window works without it.
+    async function loadFollowUpPlans(childId) {
+        try {
+            const data = await apiFetch(`/checkups/child/${childId}/follow-ups`);
+            _followUpDefaultFee = data.defaultFee;
+            renderFollowUpPlans(data.plans || []);
+        } catch (err) {
+            console.warn('Follow-up plans could not be loaded:', err && err.message);
+            const wrap = document.getElementById('followUpPlansWrap');
+            if (wrap) {
+                wrap.style.display = 'block';
+                document.getElementById('followUpPlansList').innerHTML = `<p style="text-align:center;color:var(--status-attention-fg);padding:1rem;background:var(--bg-primary);border-radius:10px;">Follow-up plans could not be loaded right now (${escapeHtml((err && err.message) || 'unknown error')}).</p>`;
+            }
+        }
+    }
+
+    function resetFollowUpForm() {
+        _followUpRequestId = newReferralRequestId();
+        const fee = document.getElementById('followup-fee');
+        fee.value = _followUpDefaultFee != null ? _followUpDefaultFee : '';
+        document.getElementById('followup-required').value = '10';
+        document.getElementById('followup-period').value = '30';
+        const dateEl = document.getElementById('followup-date');
+        dateEl.value = '';
+        dateEl.min = toDateInputValue(new Date());
+        document.getElementById('followup-time').innerHTML = '<option value="">Choose a date first</option>';
+        document.getElementById('followUpTimeHint').textContent = '';
+        document.getElementById('followup-instructions').value = '';
+    }
+
+    function toggleFollowUpForm() {
+        const wrap = document.getElementById('followUpFormWrap');
+        if (!wrap) return;
+        const show = wrap.style.display === 'none';
+        if (show) {
+            resetFollowUpForm();
+            document.getElementById('checkupFormWrap').style.display = 'none';
+            cancelReferral();
+        }
+        wrap.style.display = show ? 'block' : 'none';
+    }
+
+    function cancelFollowUp() {
+        const wrap = document.getElementById('followUpFormWrap');
+        if (wrap) wrap.style.display = 'none';
+        _followUpRequestId = null;
+    }
+
+    // Start times come from your own schedule (GET /appointments/availability/check),
+    // the same rules parent booking and rescheduling use.
+    async function loadFollowUpTimes() {
+        const date = document.getElementById('followup-date').value;
+        const sel = document.getElementById('followup-time');
+        const hint = document.getElementById('followUpTimeHint');
+        if (!date) { sel.innerHTML = '<option value="">Choose a date first</option>'; hint.textContent = ''; return; }
+        sel.innerHTML = '<option value="">Loading...</option>';
+        try {
+            const params = new URLSearchParams({ pediatricianId: _u?.id || _u?._id || '', date });
+            const data = await apiFetch(`/appointments/availability/check?${params.toString()}`);
+            if (document.getElementById('followup-date').value !== date) return;
+            const now = new Date();
+            const slots = (data.availability?.availableSlots || []).filter((slot) => new Date(`${date}T${slot}`) >= now);
+            sel.innerHTML = slots.length
+                ? '<option value="">Choose a time</option>' + slots.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(followUpTime(s))}</option>`).join('')
+                : '<option value="">No open times</option>';
+            const days = data.availability?.availableDays || [];
+            hint.textContent = slots.length
+                ? 'Times come from your clinic schedule; break periods are skipped.'
+                : `${data.availability?.message || 'No open start times on this date.'}${days.length ? ` Your available days: ${days.join(', ')}.` : ''}`;
+        } catch (err) {
+            sel.innerHTML = '<option value="">No open times</option>';
+            hint.textContent = err.message || 'Could not load your available times.';
+        }
+    }
+
+    async function submitFollowUp() {
+        if (_followUpSaving) return;
+        const childId = window.currentProgressChildId;
+        if (!childId) { alert('Child is missing. Please reopen the check-up history modal.'); return; }
+
+        const fee = Number(document.getElementById('followup-fee').value);
+        const requiredAssessments = Number(document.getElementById('followup-required').value);
+        const monitoringDays = Number(document.getElementById('followup-period').value);
+        const appointmentDate = document.getElementById('followup-date').value;
+        const appointmentTime = document.getElementById('followup-time').value;
+        const instructions = document.getElementById('followup-instructions').value.trim();
+
+        // Mirrors routes/checkups.js createFollowUpPlan().
+        if (!Number.isFinite(fee) || fee < 1 || fee > 100000) { alert('Enter a check-up fee between ₱1 and ₱100,000.'); return; }
+        if (!Number.isInteger(requiredAssessments) || requiredAssessments < 1 || requiredAssessments > 30) { alert('Required assessments must be a whole number from 1 to 30.'); return; }
+        if (!appointmentDate || isPastDateInput(appointmentDate)) { alert('Choose a next appointment date that is today or later.'); return; }
+        if (!appointmentTime) { alert('Choose the next appointment time.'); return; }
+        if (!_followUpRequestId) _followUpRequestId = newReferralRequestId();
+
+        const btn = document.getElementById('followUpSubmitBtn');
+        _followUpSaving = true;
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        try {
+            const data = await apiFetch(`/checkups/child/${childId}/follow-ups`, {
+                method: 'POST',
+                body: JSON.stringify({ fee, requiredAssessments, monitoringDays, appointmentDate, appointmentTime, instructions: instructions || null, clientRequestId: _followUpRequestId }),
+            });
+            alert(data.duplicate
+                ? 'This follow-up was already saved.'
+                : '✅ Follow-up check-up scheduled. The parent has been notified to pay; the assessments are assigned and the appointment confirmed once payment is confirmed.');
+            cancelFollowUp();
+            await loadFollowUpPlans(childId);
+            await loadPatients();
+        } catch (err) {
+            // The form keeps its contents and the same request id, so retrying
+            // can never create the follow-up twice.
+            alert('Could not save the follow-up: ' + err.message + '\nYour entries have been kept so you can try again.');
+        } finally {
+            _followUpSaving = false;
+            btn.disabled = false;
+            btn.textContent = 'Save Follow-up';
+        }
+    }
+
     async function loadProgressData(childId) {
+        cancelFollowUp();
+        loadFollowUpPlans(childId);
         const [historyData, notesData, checkupsResult] = await Promise.all([
             apiFetch(`/assessments/${childId}/history`),
             apiFetch(`/assessments/child/${childId}/progress-notes`),

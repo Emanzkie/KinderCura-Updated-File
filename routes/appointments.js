@@ -2354,3 +2354,7 @@ router.delete('/:appointmentId', authMiddleware, adminOnly, async (req, res) => 
 });
 
 module.exports = router;
+
+// The booking rules, for routes that create an appointment on the
+// pediatrician's schedule (routes/checkups.js, Follow-up Check-up).
+router.bookingHelpers = { evaluateAvailability, normalizeUtcDate, normalizeTimeString, isSlotTakenError, SLOT_TAKEN_MESSAGE };

@@ -29,8 +29,12 @@ const Appointment = require('../models/Appointment');
 const Assessment = require('../models/Assessment');
 const PediatricianCheckup = require('../models/PediatricianCheckup');
 const SpecialistReferral = require('../models/SpecialistReferral');
+const FollowUpPlan = require('../models/FollowUpPlan');
+const User = require('../models/User');
 const Notification = require('../models/Notification');
 const AuditLog = require('../models/AuditLog');
+const paymentService = require('../services/paymentService');
+const { planProgress, _internals: { formatTime: formatClockTime } } = require('../services/followUpPlans');
 
 class HttpError extends Error {
   constructor(statusCode, message) {
@@ -565,6 +569,176 @@ async function listReferralsForChild(childId, user) {
     .lean();
 }
 
+// ── Follow-up Check-up (models/FollowUpPlan.js) ─────────────────────────
+// The pediatrician schedules the next visit with its fee, and how many
+// assessments the parent should complete before it within a monitoring
+// period. The visit is an ordinary pending, unpaid Appointment on the
+// pediatrician's schedule, created with the plan, so the parent pays through
+// the existing payment page and policy. Payment confirmation approves it and
+// assigns the assessments (services/followUpPlans.js activateForAppointment).
+
+const FOLLOW_UP_MAX_FEE = 100000;
+const FOLLOW_UP_MAX_ASSESSMENTS = 30;
+const FOLLOW_UP_MIN_DAYS = 7;
+const FOLLOW_UP_MAX_DAYS = 180;
+
+function parseFee(value) {
+  const fee = Number(value);
+  if (value == null || String(value).trim() === '' || !Number.isFinite(fee) || fee < 1 || fee > FOLLOW_UP_MAX_FEE) {
+    throw new HttpError(400, `Check-up fee must be between 1 and ${FOLLOW_UP_MAX_FEE.toLocaleString('en-US')}.`);
+  }
+  return Math.round(fee * 100) / 100;
+}
+
+function parseWholeNumber(value, min, max, message) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < min || n > max) throw new HttpError(400, message);
+  return n;
+}
+
+async function createFollowUpPlan(childId, user, body) {
+  if (user.role !== 'pediatrician') throw new HttpError(403, 'Pediatricians only.');
+
+  const { child, canWrite } = await loadChildAndAccess(childId, user);
+  if (!canWrite) {
+    throw new HttpError(403, 'You are not linked to this patient — only a pediatrician with an appointment for this child may schedule a follow-up.');
+  }
+  if (!child.parentId) throw new HttpError(400, 'This child has no parent account to notify and bill.');
+
+  const fee = parseFee(body.fee);
+  const requiredAssessments = parseWholeNumber(body.requiredAssessments, 1, FOLLOW_UP_MAX_ASSESSMENTS,
+    `Required assessments must be a whole number from 1 to ${FOLLOW_UP_MAX_ASSESSMENTS}.`);
+  const monitoringDays = parseWholeNumber(body.monitoringDays, FOLLOW_UP_MIN_DAYS, FOLLOW_UP_MAX_DAYS,
+    `Monitoring period must be between ${FOLLOW_UP_MIN_DAYS} and ${FOLLOW_UP_MAX_DAYS} days.`);
+  const instructions = optionalText(body.instructions, 2000, 'Instructions');
+  const appointmentDate = String(body.appointmentDate ?? '').trim();
+  const appointmentTime = String(body.appointmentTime ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(appointmentDate)) throw new HttpError(400, 'Choose the next appointment date.');
+  if (!appointmentTime) throw new HttpError(400, 'Choose the next appointment time.');
+  const clientRequestId = parseClientRequestId(body.clientRequestId);
+
+  const findPrevious = async () => {
+    if (!clientRequestId) return null;
+    const existing = await FollowUpPlan.findOne({ pediatricianId: user.userId, clientRequestId }).lean();
+    if (existing && String(existing.childId) !== String(child._id)) {
+      throw new HttpError(409, 'This request was already used for a different follow-up.');
+    }
+    return existing;
+  };
+  const previous = await findPrevious();
+  if (previous) return { plan: previous, duplicate: true };
+
+  // One open follow-up per child and pediatrician: an unpaid or active plan
+  // whose appointment is still live blocks a second one.
+  const open = await FollowUpPlan.find({
+    childId: child._id, pediatricianId: user.userId, status: { $in: ['awaiting_payment', 'active'] },
+  }).select('appointmentId').lean();
+  if (open.length) {
+    const live = await Appointment.countDocuments({ _id: { $in: open.map((p) => p.appointmentId) }, status: { $in: ['pending', 'approved'] } });
+    if (live) {
+      throw new HttpError(409, 'This patient already has an open follow-up check-up. It must be completed or cancelled before scheduling another.');
+    }
+  }
+
+  const pediatrician = await User.findOne({ _id: user.userId, role: 'pediatrician', status: 'active' });
+  if (!pediatrician) throw new HttpError(403, 'Your pediatrician account is not active.');
+
+  // Loaded here, not at the top: routes/appointments.js is a large router and
+  // only this path needs its booking rules.
+  const { evaluateAvailability, normalizeUtcDate, normalizeTimeString, isSlotTakenError, SLOT_TAKEN_MESSAGE } = require('./appointments').bookingHelpers;
+  const availability = await evaluateAvailability({ pediatrician, appointmentDate, appointmentTime });
+  if (!availability.available) throw new HttpError(400, availability.message);
+
+  const sourceCheckupId = await resolvePreviousRecordRef(null, child, user.userId);
+  const paymentPlan = paymentService.buildDeferredPaymentPlan({ totalAmount: fee });
+
+  let appointment;
+  let plan;
+  try {
+    await paymentService.withPaymentTransaction(async (session) => {
+      [appointment] = await Appointment.create([{
+        childId: child._id,
+        parentId: child.parentId,
+        pediatricianId: pediatrician._id,
+        clinicId: pediatrician.clinicId || null,
+        appointmentDate: normalizeUtcDate(appointmentDate),
+        appointmentTime: availability.requestedTime || normalizeTimeString(appointmentTime) || appointmentTime,
+        reason: 'Follow-up Check-up',
+        location: pediatrician.clinicAddress || pediatrician.clinicName || pediatrician.institution || null,
+        status: paymentPlan.appointmentStatus,
+        pendingPaymentMode: null,
+        ...paymentPlan.paymentFields,
+      }], { session });
+      [plan] = await FollowUpPlan.create([{
+        childId: child._id,
+        parentId: child.parentId,
+        pediatricianId: pediatrician._id,
+        sourceCheckupId,
+        appointmentId: appointment._id,
+        appointmentNumericId: appointment.id,
+        fee,
+        requiredAssessments,
+        monitoringDays,
+        instructions,
+        status: 'awaiting_payment',
+        clientRequestId,
+      }], { session });
+    });
+  } catch (err) {
+    if (isSlotTakenError(err)) throw new HttpError(409, SLOT_TAKEN_MESSAGE);
+    // Two identical submissions raced past findPrevious(): hand back the saved one.
+    if (err && err.code === 11000) {
+      const raced = await findPrevious();
+      if (raced) return { plan: raced, duplicate: true };
+    }
+    throw err;
+  }
+
+  await AuditLog.create({
+    actorId: user.userId,
+    action: 'follow_up_plan_created',
+    targetType: 'FollowUpPlan',
+    targetId: plan._id,
+    details: { childId: String(child._id), appointmentId: appointment.id, fee, requiredAssessments, monitoringDays },
+  });
+
+  try {
+    const childName = [child.firstName, child.lastName].filter(Boolean).join(' ').trim() || 'your child';
+    const date = new Date(appointment.appointmentDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+    await Notification.create({
+      userId: child.parentId,
+      title: 'Follow-up check-up scheduled — payment required',
+      message: `Dr. ${formatPersonName(pediatrician, '')} scheduled a follow-up check-up for ${childName} on ${date} at ${formatClockTime(appointment.appointmentTime)}. `
+        + `Fee: ${fee.toLocaleString('en-US', { minimumFractionDigits: 2 })}. Open this notification to choose how to pay. `
+        + `Once payment is confirmed, ${requiredAssessments} assessment${requiredAssessments === 1 ? '' : 's'} will be assigned to complete within ${monitoringDays} days.`,
+      type: 'payment',
+      relatedPage: `/parent/payment?appointmentId=${appointment.id}`,
+      relatedId: String(appointment.id),
+      isRead: false,
+    });
+  } catch (err) {
+    console.warn('follow-up notification create failed:', err.message);
+  }
+
+  return { plan: plan.toObject ? plan.toObject() : plan, duplicate: false };
+}
+
+// Same visibility as the check-up list: a pediatrician sees only their own
+// follow-ups for this child; the parent, permitted guardians and admins see all.
+async function listFollowUpPlansForChild(childId, user) {
+  const { child, canRead } = await loadChildAndAccess(childId, user);
+  if (!canRead) throw new HttpError(403, 'Access denied.');
+
+  const filter = { childId: child._id };
+  if (user.role === 'pediatrician') filter.pediatricianId = user.userId;
+
+  const plans = await FollowUpPlan.find(filter)
+    .populate('pediatricianId', 'firstName lastName')
+    .sort({ createdAt: -1 })
+    .lean();
+  return planProgress(plans);
+}
+
 // ── Response shaping ─────────────────────────────────────────────────────
 function shapeReferral(doc) {
   const pedia = doc.pediatricianId;
@@ -662,6 +836,40 @@ router.post('/child/:childId/referrals', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/checkups/child/:childId/follow-ups
+// Follow-up Check-up plans with assessment progress. A pediatrician also gets
+// their consultation fee, which the form offers as the default fee.
+// Must stay above the /:checkupId routes.
+router.get('/child/:childId/follow-ups', authMiddleware, async (req, res) => {
+  try {
+    const plans = await listFollowUpPlansForChild(req.params.childId, req.user);
+    let defaultFee = null;
+    if (req.user.role === 'pediatrician') {
+      const me = await User.findById(req.user.userId).select('consultationFee').lean();
+      defaultFee = me && me.consultationFee != null ? Number(me.consultationFee) : null;
+    }
+    res.json({ success: true, plans, defaultFee });
+  } catch (err) {
+    if (err instanceof HttpError) return res.status(err.statusCode).json({ error: err.message });
+    console.error('follow-up list error:', err);
+    res.status(500).json({ error: 'Follow-up check-ups could not be loaded.' });
+  }
+});
+
+// POST /api/checkups/child/:childId/follow-ups
+// Schedules a Follow-up Check-up: a pending, unpaid appointment plus its plan.
+router.post('/child/:childId/follow-ups', authMiddleware, async (req, res) => {
+  try {
+    const { plan, duplicate } = await createFollowUpPlan(req.params.childId, req.user, req.body || {});
+    const [shaped] = await planProgress([plan]);
+    res.status(duplicate ? 200 : 201).json({ success: true, duplicate, plan: shaped });
+  } catch (err) {
+    if (err instanceof HttpError) return res.status(err.statusCode).json({ error: err.message });
+    console.error('follow-up create error:', err);
+    res.status(500).json({ error: 'The follow-up check-up could not be saved. Please try again.' });
+  }
+});
+
 // GET /api/checkups/child/:childId/:checkupId
 router.get('/child/:childId/:checkupId', authMiddleware, async (req, res) => {
   try {
@@ -713,4 +921,7 @@ router.__testables = {
   listReferralsForChild,
   resolveSourceCheckup,
   shapeReferral,
+  createFollowUpPlan,
+  listFollowUpPlansForChild,
+  parseFee,
 };

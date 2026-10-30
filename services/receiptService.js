@@ -18,6 +18,7 @@ const User = require('../models/User');
 const SystemSetting = require('../models/SystemSetting');
 const emailService = require('./emailService');
 const paymentService = require('./paymentService');
+const followUpPlans = require('./followUpPlans');
 
 // The online deposit and the clinic balance each settle for their own share
 // (paymentService.amountDueFor); every other row settles for the whole fee.
@@ -280,6 +281,10 @@ async function syncAppointmentAfterPayment(payment) {
   if (isDeposit && !['cancelled', 'rejected'].includes(appointment.status)) {
     await paymentService.ensureBalancePayment(appointment);
   }
+
+  // A Follow-up Check-up's assessments are assigned once its payment confirms
+  // the appointment. Does nothing for an ordinary booking or a second payment.
+  await followUpPlans.activateForAppointment(appointment);
   return appointment;
 }
 

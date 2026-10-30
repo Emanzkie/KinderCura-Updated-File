@@ -77,6 +77,76 @@ function renderChildSwitcher() {
         </select>`;
 }
 
+// ── Follow-up Assessment Plan ────────────────────────────────────────────────
+// A Follow-up Check-up the pediatrician scheduled (GET /checkups/child/:id/follow-ups).
+// Before payment it offers Pay Now; once payment is confirmed it shows the
+// assigned assessments, how many are done and the deadline. Assessments are the
+// ordinary Screening ones — nothing here scores anything.
+const FOLLOW_UP_OPEN_STATES = ['awaiting_payment', 'active', 'overdue', 'assessments_complete'];
+
+function followUpDateText(value, utc) {
+    if (!value) return '—';
+    return new Date(value).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', ...(utc ? { timeZone: 'UTC' } : {}) });
+}
+
+function followUpTimeText(value) {
+    const [h, m] = String(value || '').split(':');
+    const hour = parseInt(h, 10);
+    if (Number.isNaN(hour)) return String(value || '');
+    return `${hour % 12 || 12}:${String(m || '00').padStart(2, '0')} ${hour >= 12 ? 'PM' : 'AM'}`;
+}
+
+function renderFollowUpPlan(plan) {
+    const card = document.getElementById('followUpCard');
+    const body = document.getElementById('followUpPlanBody');
+    if (!card || !body) return;
+    if (!plan) { card.style.display = 'none'; body.innerHTML = ''; return; }
+    card.style.display = '';
+
+    const appt = plan.appointment;
+    const visit = appt ? `${followUpDateText(appt.date, true)} at ${followUpTimeText(appt.time)}` : '—';
+    const fee = `₱${Number(plan.fee || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const doctor = plan.pediatricianName ? `Dr. ${escapeHtml(plan.pediatricianName)}` : 'Your pediatrician';
+    const instructions = plan.instructions ? `<p class="kc-card-note"><strong>Instructions:</strong> ${escapeHtml(plan.instructions)}</p>` : '';
+
+    if (plan.state === 'awaiting_payment') {
+        body.innerHTML = `
+            <p>${doctor} scheduled a follow-up check-up on <strong>${escapeHtml(visit)}</strong>. Fee: <strong>${escapeHtml(fee)}</strong>.</p>
+            <p class="kc-card-note">Once your payment is confirmed, ${escapeHtml(plan.requiredAssessments)} developmental assessment${plan.requiredAssessments === 1 ? '' : 's'} will be assigned to complete within ${escapeHtml(plan.monitoringDays)} days, and the appointment will be confirmed.</p>
+            ${instructions}
+            <button class="btn btn-primary" onclick="window.location.href='/parent/payment?appointmentId=${encodeURIComponent(appt ? appt.id : '')}'">Pay Now</button>`;
+        return;
+    }
+
+    const pct = plan.requiredAssessments ? Math.min(100, Math.round((plan.completed / plan.requiredAssessments) * 100)) : 0;
+    const statusText = plan.state === 'assessments_complete'
+        ? 'All assigned assessments are done. Thank you!'
+        : plan.state === 'overdue'
+            ? `The deadline (${followUpDateText(plan.dueDate)}) has passed. Please finish the remaining assessments before the check-up.`
+            : `Due ${followUpDateText(plan.dueDate)}.`;
+    body.innerHTML = `
+        <p><strong>${escapeHtml(plan.completed)}</strong> of <strong>${escapeHtml(plan.requiredAssessments)}</strong> assessments completed · <strong>${escapeHtml(plan.remaining)}</strong> remaining</p>
+        <div style="height:10px;background:var(--bg-primary);border-radius:999px;overflow:hidden;margin:0.5rem 0;"><div style="height:100%;width:${pct}%;background:var(--primary);"></div></div>
+        <p class="kc-card-note">${escapeHtml(statusText)} Follow-up check-up with ${doctor}: <strong>${escapeHtml(visit)}</strong>${appt ? ` (${escapeHtml(appt.paymentStatus)})` : ''}.</p>
+        ${instructions}
+        ${plan.remaining > 0 ? `<button class="btn btn-primary" onclick="window.location.href='/parent/screening'">Start Assessment</button>` : ''}`;
+}
+
+// Never throws; a stale response for a previously selected child is ignored.
+async function loadFollowUpPlan(childId, loadId) {
+    if (!childId) { renderFollowUpPlan(null); return; }
+    try {
+        const data = await apiFetch(`/checkups/child/${childId}/follow-ups`);
+        if (loadId !== _dashboardLoadCounter) return;
+        const open = (data.plans || []).filter((p) => FOLLOW_UP_OPEN_STATES.includes(p.state));
+        renderFollowUpPlan(open[0] || null);
+    } catch (err) {
+        if (loadId !== _dashboardLoadCounter) return;
+        console.warn('[PARENT_DASHBOARD] Follow-up plan could not be loaded:', err && err.message);
+        renderFollowUpPlan(null);
+    }
+}
+
 // Load parent dashboard summary, child info, and latest results.
 // Order of operations (per spec):
 //   1. Fetch children list.
@@ -115,6 +185,8 @@ async function loadDashboard() {
         document.getElementById('childName').textContent = 'No child registered';
         document.getElementById('childMeta').textContent = 'Go to Profile to add a child';
     }
+
+    loadFollowUpPlan(childId, loadId);
 
     // Clear stale data only when the active child changed — avoids flicker on
     // the 5-second interval poll when the same child is still selected.

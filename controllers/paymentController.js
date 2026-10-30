@@ -13,6 +13,7 @@ const SystemSetting = require('../models/SystemSetting');
 const paymongoService = require('../services/paymongoService');
 const receiptService = require('../services/receiptService');
 const refundService = require('../services/refundService');
+const followUpPlans = require('../services/followUpPlans');
 const adminOps = require('../services/adminOperationsAnalytics');
 const { SECRETARY_DEFAULT_PERMISSIONS } = require('../services/secretaryPermissions');
 const { CLINIC_TIMEZONE, clinicDayStart, clinicDayEnd } = require('../constants/clinicTime');
@@ -356,6 +357,9 @@ async function confirmWalkIn(req, res) {
     // Approve the appointment now that payment is confirmed
     appointment.status = 'approved';
     await appointment.save();
+
+    // A Follow-up Check-up's assessments are assigned now (once).
+    await followUpPlans.activateForAppointment(appointment);
 
     // Notify parent
     await pushNotification(

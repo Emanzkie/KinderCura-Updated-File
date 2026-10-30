@@ -43,6 +43,7 @@ const plan = (child) => ({ _id: oid(), childId: child._id, parentId: child.paren
 const sent = new Map();
 let settings = [];
 Appointment.find = () => q([]);
+require('../../models/FollowUpPlan').find = () => q([]); // none here: tests/unit/follow-up-plans.test.js
 Assessment.find = () => q([]);
 AssessmentReminder.find = () => q(settings);
 Child.find = (f) => q(kids.filter((c) => f._id.$in.some((id) => same(id, c._id))));

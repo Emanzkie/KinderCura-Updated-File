@@ -208,7 +208,62 @@
                         <h4 style="margin:0;color:var(--primary);">Patient Check-up History</h4>
                         <p style="margin:0.25rem 0 0;font-size:0.78rem;color:var(--text-light);max-width:560px;">A continuous medical-history-style record of this patient's visits over time — each check-up is its own entry and earlier entries are never overwritten.</p>
                     </div>
-                    <button type="button" class="btn btn-primary" id="addCheckupToggleBtn" onclick="toggleAddCheckupForm()" style="padding:0.6rem 1.1rem;white-space:nowrap;">+ Add Check-up</button>
+                    <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
+                        <button type="button" class="btn btn-primary" id="addCheckupToggleBtn" onclick="toggleAddCheckupForm()" style="padding:0.6rem 1.1rem;white-space:nowrap;">+ Add Check-up</button>
+                        <button type="button" class="btn btn-secondary" id="followUpToggleBtn" onclick="toggleFollowUpForm()" style="padding:0.6rem 1.1rem;white-space:nowrap;">+ Follow-up Check-up</button>
+                    </div>
+                </div>
+
+                <!-- Follow-up Check-up — schedules the next visit on your own schedule.
+                     It is created as a pending, unpaid appointment; the parent is
+                     notified to pay, and once payment is confirmed the assessments
+                     below are assigned and the appointment is confirmed. -->
+                <div id="followUpFormWrap" style="display:none;background:var(--bg-primary);border-radius:12px;padding:1.2rem;margin:1rem 0 1.5rem;">
+                    <h5 style="margin:0 0 0.4rem;color:var(--primary);">Follow-up Check-up</h5>
+                    <p style="margin:0 0 0.9rem;font-size:0.8rem;color:var(--text-light);">The parent is notified to pay. When payment is confirmed (online, or walk-in confirmed by clinic staff), the assessments are assigned and the appointment is confirmed.</p>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="followup-fee" style="font-weight:600;">Check-up Fee (₱)</label>
+                            <input type="number" id="followup-fee" min="1" max="100000" step="0.01" style="width:100%;padding:0.8rem;border:2px solid var(--border);border-radius:8px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="followup-required" style="font-weight:600;">Required Assessments</label>
+                            <input type="number" id="followup-required" min="1" max="30" step="1" value="10" style="width:100%;padding:0.8rem;border:2px solid var(--border);border-radius:8px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="followup-date" style="font-weight:600;">Next Appointment Date</label>
+                            <input type="date" id="followup-date" onchange="loadFollowUpTimes()" style="width:100%;padding:0.8rem;border:2px solid var(--border);border-radius:8px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="followup-time" style="font-weight:600;">Next Appointment Time</label>
+                            <select id="followup-time" style="width:100%;padding:0.8rem;border:2px solid var(--border);border-radius:8px;">
+                                <option value="">Choose a date first</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="followup-period" style="font-weight:600;">Monitoring Period</label>
+                            <select id="followup-period" style="width:100%;padding:0.8rem;border:2px solid var(--border);border-radius:8px;">
+                                <option value="14">2 weeks</option>
+                                <option value="30" selected>1 month</option>
+                                <option value="60">2 months</option>
+                                <option value="90">3 months</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p id="followUpTimeHint" style="font-size:0.76rem;color:var(--text-light);margin:0.35rem 0 0;"></p>
+                    <div class="form-group" style="margin-top:1rem;">
+                        <label for="followup-instructions" style="font-weight:600;">Instructions for the Parent <span style="font-weight:400;color:var(--text-light);">(optional)</span></label>
+                        <textarea id="followup-instructions" maxlength="2000" placeholder="e.g., Answer one assessment every 2–3 days, at a time when your child is rested." style="width:100%;height:90px;padding:0.9rem;border:2px solid var(--border);border-radius:8px;font-family:inherit;resize:vertical;"></textarea>
+                    </div>
+                    <div style="display:flex;justify-content:flex-end;gap:0.8rem;margin-top:1rem;">
+                        <button type="button" class="btn btn-secondary" onclick="cancelFollowUp()" style="padding:0.75rem 1.2rem;">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="followUpSubmitBtn" onclick="submitFollowUp()" style="padding:0.75rem 1.2rem;">Save Follow-up</button>
+                    </div>
+                </div>
+
+                <div id="followUpPlansWrap" style="display:none;margin:1rem 0 1.5rem;">
+                    <h5 style="margin:0 0 0.6rem;color:var(--primary);">Follow-up Plans</h5>
+                    <div id="followUpPlansList" style="display:grid;gap:1rem;"></div>
                 </div>
 
                 <div id="checkupFormWrap" style="display:none;background:var(--bg-primary);border-radius:12px;padding:1.2rem;margin:1rem 0 1.5rem;">
