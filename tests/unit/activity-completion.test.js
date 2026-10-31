@@ -46,6 +46,8 @@ AssessmentResult.findOne = (f) => chain(() => db.results.find((r) => same(r.asse
 
 Recommendation.findById = (id) => chain(() => db.recs.find((r) => same(r._id, id)) || null);
 Recommendation.find = (f) => chain(() => db.recs.filter((r) => same(r.assessmentResultId, f.assessmentResultId)));
+// No scheduled sessions here (tests/unit/activity-scheduling.test.js).
+require('../../models/ActivitySchedule').find = () => chain(() => []);
 Recommendation.insertMany = async (rows) => { db.recs.push(...rows.map((r) => ({ _id: oid(), completedActivities: [], ...r }))); };
 // Mirrors the two update shapes the route sends, including the $ne guard.
 let updateCalls = 0;

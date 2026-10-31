@@ -9,7 +9,9 @@
 //   - the parent's own recurring assessment reminder for a child
 //     (models/AssessmentReminder.js), on the due day or up to 7 days before;
 //   - an active Follow-up Check-up plan (models/FollowUpPlan.js) with
-//     assessments still to do, 7, 3 and 1 days before its deadline and on it.
+//     assessments still to do, 7, 3 and 1 days before its deadline and on it;
+//   - a pending home-activity session (models/ActivitySchedule.js) scheduled
+//     for today (later than now) or tomorrow, sent to whoever scheduled it.
 //
 // Each new reminder is also emailed to the parent unless they turned Reminder
 // Emails off (User.notificationSettings.emailReminders).
@@ -24,6 +26,7 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const AssessmentReminder = require('../models/AssessmentReminder');
 const FollowUpPlan = require('../models/FollowUpPlan');
+const ActivitySchedule = require('../models/ActivitySchedule');
 const emailService = require('./emailService');
 const { CLINIC_TIMEZONE, clinicDayStart, clinicDayEnd } = require('../constants/clinicTime');
 
@@ -262,6 +265,46 @@ async function followUpReminders(today) {
   return reminders;
 }
 
+// ── Scheduled home-activity sessions (models/ActivitySchedule.js) ──────────
+// The job runs once a day, so each pending session is announced on the run
+// before it: tomorrow's, and today's that are still ahead. The key holds the
+// date and time, so a session is reminded once and again only if rescheduled.
+const SKILL_LABELS = { communication: 'Communication', social: 'Social Skills', cognitive: 'Cognitive', motor: 'Motor Skills' };
+
+/** Current clinic wall-clock time, as HH:MM. */
+function clinicTimeNow(now = new Date()) {
+  return new Intl.DateTimeFormat('en-GB', { timeZone: CLINIC_TIMEZONE, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
+}
+
+async function activityReminders(today, now = new Date()) {
+  const tomorrow = addDays(today, 1);
+  const tasks = await ActivitySchedule.find({ status: 'pending', scheduledDate: { $in: [today, tomorrow] } })
+    .select('childId assessmentId skill activity scheduledDate scheduledTime createdBy').lean();
+  if (!tasks.length) return [];
+
+  const timeNow = clinicTimeNow(now);
+  const children = await namesById(Child, [...new Set(tasks.map((t) => String(t.childId)))]);
+  const reminders = [];
+  for (const t of tasks) {
+    if (t.scheduledDate === today && t.scheduledTime <= timeNow) continue;
+    const child = children.get(String(t.childId));
+    if (!child || !t.createdBy) continue;
+    const page = new URLSearchParams({ childId: String(t.childId) });
+    if (t.assessmentId) page.set('assessmentId', String(t.assessmentId));
+    const when = t.scheduledDate === today ? 'today' : 'tomorrow';
+    reminders.push({
+      userId: t.createdBy,
+      title: 'Activity Reminder',
+      message: `Reminder: ${personName(child) || 'Your child'}'s ${SKILL_LABELS[t.skill] || t.skill} activity "${t.activity}" is scheduled ${when}, ${formatYmd(t.scheduledDate)}, at ${formatTime(t.scheduledTime)}.`,
+      type: 'activity_reminder',
+      relatedPage: `/parent/recommendations?${page}`,
+      relatedId: String(t._id),
+      reminderKey: `activity-task:${t._id}:${t.scheduledDate}T${t.scheduledTime}`,
+    });
+  }
+  return reminders;
+}
+
 // Email copy of each reminder this run created (never one that was already
 // sent), unless the parent turned Reminder Emails off. The run must answer
 // inside Vercel's ~10 s limit, so emails go out together and the run waits at
@@ -300,12 +343,13 @@ async function emailNewReminders(created) {
 
 async function runReminders(now = new Date()) {
   const today = clinicToday(now);
-  const summary = { date: today, appointments: 0, assessments: 0, planned: 0, followUps: 0, alreadySent: 0, emailed: 0, emailFailed: 0 };
+  const summary = { date: today, appointments: 0, assessments: 0, planned: 0, followUps: 0, activities: 0, alreadySent: 0, emailed: 0, emailFailed: 0 };
   const groups = [
     ['appointments', await appointmentReminders(today)],
     ['assessments', await assessmentReminders(today)],
     ['planned', await planReminders(today)],
     ['followUps', await followUpReminders(today)],
+    ['activities', await activityReminders(today, now)],
   ];
   const created = [];
   for (const [field, reminders] of groups) {
@@ -328,5 +372,5 @@ module.exports = {
   addDays,
   firstDueMonth,
   nextPlanDates,
-  _internals: { appointmentReminders, assessmentReminders, planReminders, followUpReminders, isPlanDueDate, sendOnce, emailNewReminders, EMAIL_BUDGET_MS },
+  _internals: { appointmentReminders, assessmentReminders, planReminders, followUpReminders, activityReminders, isPlanDueDate, sendOnce, emailNewReminders, EMAIL_BUDGET_MS },
 };

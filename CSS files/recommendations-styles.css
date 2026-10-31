@@ -608,3 +608,120 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* Scheduled home-activity sessions (js/parent/recommendations.js) */
+.activity-item {
+    padding: 0.35rem 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.activity-item:last-child {
+    border-bottom: none;
+}
+
+.activity-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.activity-btn {
+    padding: 0.3rem 0.8rem;
+    font-size: 0.8rem;
+    border-width: 1px;
+}
+
+/* The shared stylesheet makes .btn full width on smaller screens; these
+   small row actions keep their own width and wrap instead. */
+.activity-item .activity-btn {
+    width: auto;
+}
+
+.activity-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.activity-form {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin: 0.5rem 0 0.25rem 1.7rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface-muted);
+    border-radius: var(--radius-panel);
+    color: var(--text-dark);
+    font-size: 0.85rem;
+}
+
+.activity-form input {
+    margin-left: 0.3rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    background: var(--surface);
+    color: var(--text-dark);
+    font: inherit;
+}
+
+.activity-item .activity-error {
+    margin: 0.5rem 0 0 1.7rem;
+}
+
+.activity-sessions {
+    list-style: none;
+    margin: 0.25rem 0 0 1.7rem;
+    padding: 0;
+}
+
+.activity-session {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+    padding: 0.3rem 0;
+    font-size: 0.85rem;
+    color: var(--text-dark);
+}
+
+.activity-session-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-left: auto;
+}
+
+.upcoming-activities {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.upcoming-activities li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+    padding: 0.45rem 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dark);
+    font-size: 0.9rem;
+}
+
+.upcoming-activities li:last-child {
+    border-bottom: none;
+}
+
+@media (max-width: 600px) {
+    .activity-form,
+    .activity-sessions,
+    .activity-item .activity-error {
+        margin-left: 0;
+    }
+
+    .activity-session-actions {
+        margin-left: 0;
+    }
+}

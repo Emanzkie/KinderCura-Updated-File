@@ -136,6 +136,8 @@ AssessmentResult.findOne = (f) => chain(() => db.results.find((r) => same(r.asse
 AssessmentResult.find = (f) => chain(() => db.results.filter((r) => f.assessmentId.$in.map(String).includes(String(r.assessmentId))));
 
 Recommendation.find = (f) => chain(() => db.recs.filter((r) => same(r.assessmentResultId, f.assessmentResultId)));
+// No scheduled sessions here (tests/unit/activity-scheduling.test.js).
+require('../../models/ActivitySchedule').find = () => chain(() => []);
 Recommendation.insertMany = async (rows) => { db.recs.push(...rows); };
 User.find = () => chain(() => []);
 User.findById = (id) => chain(() => ({ _id: id, firstName: 'Test', lastName: 'User', email: null }));

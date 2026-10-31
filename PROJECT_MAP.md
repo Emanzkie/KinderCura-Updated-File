@@ -48,6 +48,10 @@ This is a quick reference for finding code without rescanning the repository. Th
   - `PATCH /api/recommendations/:recommendationId/activities` (:419) lets the parent or a permitted guardian mark an activity done or undo it.
   - Checkboxes are in `js/parent/recommendations.js` (`toggleActivity` :331). The dashboard bar is `renderActivityProgress` (`js/parent/dashboard.js:224`).
   - Tested by `tests/unit/activity-completion.test.js`.
+- Developmental task scheduling: `models/ActivitySchedule.js` (one session per Manila date and time, Pending/Completed/Missed, optional 0–100% score).
+  - Routes in `routes/recommendations.js`: `POST /:recommendationId/schedule`, `PATCH` and `DELETE /schedule/:taskId`, plus `scheduledTasks` on `GET /:assessmentId`. Missed is derived once a pending session's day has passed, and completing a session also ticks the activity.
+  - Reminders come from `activityReminders` in `services/reminders.js` (the daily cron). The UI is the Upcoming Activities card and the per-activity sessions in `js/parent/recommendations.js`.
+  - Tested by `tests/unit/activity-scheduling.test.js`.
 
 ## Objective 3: Automated recommendations
 - `routes/recommendations.js`:

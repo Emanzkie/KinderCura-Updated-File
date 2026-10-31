@@ -38,6 +38,8 @@ let settings = [];
 const sent = new Map();
 Appointment.find = () => q([]);
 require('../../models/FollowUpPlan').find = () => q([]); // none here: tests/unit/follow-up-plans.test.js
+// No scheduled home activities here (tests/unit/activity-scheduling.test.js).
+require('../../models/ActivitySchedule').find = () => ({ select: () => ({ lean: async () => [] }) });
 Assessment.find = () => q([]);
 Child.find = (f) => q([child, otherChild].filter((c) => (f._id ? f._id.$in.some((id) => same(id, c._id)) : same(f.parentId, c.parentId))));
 Child.findById = (id) => q([child, otherChild].find((c) => same(c._id, id)) || null);

@@ -11,6 +11,7 @@ const { authMiddleware } = require('../middleware/auth');
 const { canViewChild, hasPermission } = require('../middleware/guardianAccess');
 const AssessmentResult = require('../models/AssessmentResult');
 const Recommendation = require('../models/Recommendation');
+const ActivitySchedule = require('../models/ActivitySchedule');
 const Assessment = require('../models/Assessment');
 const Appointment = require('../models/Appointment');
 const User = require('../models/User');
@@ -19,6 +20,7 @@ const scoring = require('../constants/scoring');
 const staging = require('../constants/developmental-staging');
 
 const assessmentProgress = require('../services/assessmentProgress');
+const { clinicToday, addDays } = require('../services/reminders');
 
 // ── Three concepts, three layers (see constants/developmental-staging.js) ──
 // A. DEVELOPMENTAL BAND — a SCORE classification (constants/scoring.js:
@@ -146,6 +148,74 @@ function buildActivityProgress(recDocs) {
   }
   return { completed, total, percentage: total ? Math.round((completed / total) * 100) : 0 };
 }
+
+// Only the child's parent, or a guardian whose link grants viewRecommendations,
+// carries out home activities — pediatricians and admins can read the plan
+// through GET but never tick or schedule.
+async function canManageActivities(user, child) {
+  if (String(child.parentId) === String(user.userId)) return true;
+  return hasPermission(user.userId, child._id, 'viewRecommendations');
+}
+
+// The $ne filter makes the push a no-op when the activity is already recorded,
+// so repeated or concurrent requests never create duplicates.
+function markActivityDone(recId, activity, userId) {
+  return Recommendation.updateOne(
+    { _id: recId, 'completedActivities.activity': { $ne: activity } },
+    { $push: { completedActivities: { activity, completedAt: new Date(), completedBy: userId } } }
+  );
+}
+
+// Completed activities of one recommendation plus the progress over its whole
+// set, as the checkbox and progress bar need them after a change.
+async function activityState(rec) {
+  const recDocs = await Recommendation.find({ assessmentResultId: rec.assessmentResultId }).sort({ generatedAt: 1 }).lean();
+  const updated = recDocs.find((r) => String(r._id) === String(rec._id));
+  return {
+    completedActivities: updated ? completedActivityNames(updated) : [],
+    activityProgress: buildActivityProgress(recDocs),
+  };
+}
+
+// ── Scheduled activity sessions (models/ActivitySchedule.js) ──────────────
+// Dates are Manila YYYY-MM-DD days and times HH:MM, like services/reminders.js.
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const SCHEDULE_AHEAD_DAYS = 365;
+
+function isCalendarDate(ymd) {
+  return typeof ymd === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ymd)
+    && new Date(`${ymd}T00:00:00.000Z`).toISOString().slice(0, 10) === ymd;
+}
+
+/** Error message for a date/time the parent cannot schedule, or null. */
+function scheduleError(date, time, today) {
+  if (!isCalendarDate(date)) return 'Choose a valid date.';
+  if (typeof time !== 'string' || !TIME_RE.test(time)) return 'Choose a valid time.';
+  if (date < today) return 'The date cannot be in the past.';
+  if (date > addDays(today, SCHEDULE_AHEAD_DAYS)) return 'Schedule at most one year ahead.';
+  return null;
+}
+
+// A session still pending after its Manila day has ended counts as missed.
+function effectiveStatus(task, today) {
+  return task.status === 'pending' && task.scheduledDate < today ? 'missed' : task.status;
+}
+
+function serializeTask(task, today) {
+  return {
+    id: String(task._id),
+    recommendationId: String(task.recommendationId),
+    skill: task.skill,
+    activity: task.activity,
+    scheduledDate: task.scheduledDate,
+    scheduledTime: task.scheduledTime,
+    status: effectiveStatus(task, today),
+    score: task.score ?? null,
+    completedAt: task.completedAt || null,
+  };
+}
+
+const byWhen = (a, b) => `${a.scheduledDate}T${a.scheduledTime}`.localeCompare(`${b.scheduledDate}T${b.scheduledTime}`);
 
 // ── Overall care stage + care plan ─────────────────────────────────────────
 // This is the OVERALL consultation/monitoring decision (separate from the
@@ -338,6 +408,11 @@ router.get('/:assessmentId', authMiddleware, async (req, res) => {
       recDocs = await Recommendation.find({ assessmentResultId: resultDoc._id }).sort({ generatedAt: 1 }).lean();
     }
 
+    const today = clinicToday();
+    const tasks = (await ActivitySchedule.find({ recommendationId: { $in: recDocs.map((r) => r._id) } }).lean())
+      .map((t) => serializeTask(t, today))
+      .sort(byWhen);
+
     const recommendations = recDocs.map((r) => ({
       id: String(r._id),
       assessmentResultId: String(r.assessmentResultId),
@@ -347,6 +422,7 @@ router.get('/:assessmentId', authMiddleware, async (req, res) => {
       suggestion: r.suggestion,
       activities: Array.isArray(r.activities) ? r.activities : [],
       completedActivities: completedActivityNames(r),
+      scheduledTasks: tasks.filter((t) => t.recommendationId === String(r._id)),
       consultationNeeded: Boolean(r.consultationNeeded),
       generatedAt: r.generatedAt,
     }));
@@ -433,8 +509,7 @@ router.patch('/:recommendationId/activities', authMiddleware, async (req, res) =
 
     const child = await Child.findById(rec.childId).lean();
     if (!child) return res.status(404).json({ error: 'Child not found.' });
-    const isOwner = String(child.parentId) === String(req.user.userId);
-    if (!isOwner && !await hasPermission(req.user.userId, child._id, 'viewRecommendations')) {
+    if (!await canManageActivities(req.user, child)) {
       return res.status(403).json({ error: 'Access denied.' });
     }
 
@@ -443,29 +518,151 @@ router.patch('/:recommendationId/activities', authMiddleware, async (req, res) =
     }
 
     if (completed) {
-      // The $ne filter makes the push a no-op when the activity is already
-      // recorded, so repeated or concurrent requests never create duplicates.
-      await Recommendation.updateOne(
-        { _id: rec._id, 'completedActivities.activity': { $ne: activity } },
-        { $push: { completedActivities: { activity, completedAt: new Date(), completedBy: req.user.userId } } }
-      );
+      await markActivityDone(rec._id, activity, req.user.userId);
     } else {
       await Recommendation.updateOne({ _id: rec._id }, { $pull: { completedActivities: { activity } } });
     }
 
-    const recDocs = await Recommendation.find({ assessmentResultId: rec.assessmentResultId }).sort({ generatedAt: 1 }).lean();
-    const updated = recDocs.find((r) => String(r._id) === String(rec._id));
     res.json({
       success: true,
       recommendationId: String(rec._id),
       activity,
       completed,
-      completedActivities: updated ? completedActivityNames(updated) : [],
-      activityProgress: buildActivityProgress(recDocs),
+      ...await activityState(rec),
     });
   } catch (err) {
     console.error('activity completion update error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Schedule one session of a recommended activity: { activity, date, time }.
+router.post('/:recommendationId/schedule', authMiddleware, async (req, res) => {
+  try {
+    const { recommendationId } = req.params;
+    if (!mongoose.isValidObjectId(recommendationId)) {
+      return res.status(400).json({ error: 'Invalid recommendation id.' });
+    }
+    const rec = await Recommendation.findById(recommendationId).lean();
+    if (!rec) return res.status(404).json({ error: 'Recommendation not found.' });
+    const child = await Child.findById(rec.childId).lean();
+    if (!child) return res.status(404).json({ error: 'Child not found.' });
+    if (!await canManageActivities(req.user, child)) {
+      return res.status(403).json({ error: 'Access denied.' });
+    }
+
+    const activity = typeof req.body?.activity === 'string' ? req.body.activity : '';
+    if (!activity || !Array.isArray(rec.activities) || !rec.activities.includes(activity)) {
+      return res.status(400).json({ error: 'That activity is not part of this recommendation.' });
+    }
+    const today = clinicToday();
+    const { date, time } = req.body || {};
+    const invalid = scheduleError(date, time, today);
+    if (invalid) return res.status(400).json({ error: invalid });
+
+    const result = await AssessmentResult.findById(rec.assessmentResultId).select('assessmentId').lean();
+    const task = await ActivitySchedule.create({
+      childId: child._id,
+      recommendationId: rec._id,
+      assessmentId: result?.assessmentId || null,
+      skill: rec.skill,
+      activity,
+      scheduledDate: date,
+      scheduledTime: time,
+      createdBy: req.user.userId,
+    });
+    res.status(201).json({ success: true, task: serializeTask(task, today) });
+  } catch (err) {
+    console.error('activity schedule create error:', err);
+    res.status(500).json({ error: 'Could not schedule the activity.' });
+  }
+});
+
+// Loads a session the caller may manage; otherwise sends the error response
+// and returns null.
+async function loadOwnTask(req, res) {
+  const { taskId } = req.params;
+  if (!mongoose.isValidObjectId(taskId)) {
+    res.status(400).json({ error: 'Invalid schedule id.' });
+    return null;
+  }
+  const task = await ActivitySchedule.findById(taskId).lean();
+  if (!task) {
+    res.status(404).json({ error: 'Scheduled activity not found.' });
+    return null;
+  }
+  const child = await Child.findById(task.childId).lean();
+  if (!child) {
+    res.status(404).json({ error: 'Child not found.' });
+    return null;
+  }
+  if (!await canManageActivities(req.user, child)) {
+    res.status(403).json({ error: 'Access denied.' });
+    return null;
+  }
+  return task;
+}
+
+// Reschedule ({ date, time } puts it back to pending), or set the status
+// ({ status: 'completed', score? }, 'missed' or 'pending').
+router.patch('/schedule/:taskId', authMiddleware, async (req, res) => {
+  try {
+    const task = await loadOwnTask(req, res);
+    if (!task) return;
+    const today = clinicToday();
+    const body = req.body || {};
+    let set;
+
+    if (body.date !== undefined || body.time !== undefined) {
+      const date = body.date ?? task.scheduledDate;
+      const time = body.time ?? task.scheduledTime;
+      const invalid = scheduleError(date, time, today);
+      if (invalid) return res.status(400).json({ error: invalid });
+      set = { scheduledDate: date, scheduledTime: time, status: 'pending', score: null, completedAt: null };
+    } else if (body.status === 'completed') {
+      let score = null;
+      if (body.score !== undefined && body.score !== null && body.score !== '') {
+        score = Number(body.score);
+        if (!Number.isInteger(score) || score < 0 || score > 100) {
+          return res.status(400).json({ error: 'Score must be a whole number from 0 to 100.' });
+        }
+      }
+      set = { status: 'completed', score, completedAt: new Date() };
+    } else if (body.status === 'missed' || body.status === 'pending') {
+      set = { status: body.status, score: null, completedAt: null };
+    } else {
+      return res.status(400).json({ error: 'Give a new date and time, or a status of pending, completed or missed.' });
+    }
+
+    const updated = await ActivitySchedule.findByIdAndUpdate(task._id, { $set: set }, { new: true, runValidators: true }).lean();
+    if (!updated) return res.status(404).json({ error: 'Scheduled activity not found.' });
+
+    const response = { success: true, task: serializeTask(updated, today) };
+    const rec = await Recommendation.findById(task.recommendationId).lean();
+    if (rec) {
+      // Completing a session also ticks the activity; nothing here ever unticks it.
+      if (set.status === 'completed' && Array.isArray(rec.activities) && rec.activities.includes(task.activity)) {
+        await markActivityDone(rec._id, task.activity, req.user.userId);
+      }
+      Object.assign(response, await activityState(rec));
+    }
+    res.json(response);
+  } catch (err) {
+    console.error('activity schedule update error:', err);
+    res.status(500).json({ error: 'Could not update the scheduled activity.' });
+  }
+});
+
+// Cancel a scheduled session.
+router.delete('/schedule/:taskId', authMiddleware, async (req, res) => {
+  try {
+    const task = await loadOwnTask(req, res);
+    if (!task) return;
+    await ActivitySchedule.deleteOne({ _id: task._id });
+    res.json({ success: true, id: String(task._id) });
+  } catch (err) {
+    console.error('activity schedule delete error:', err);
+    res.status(500).json({ error: 'Could not cancel the scheduled activity.' });
   }
 });
 
@@ -474,4 +671,4 @@ module.exports = router;
 // Exposed for tests only (see tests/unit/recommendations-staging.test.js).
 // Attaching to the router function is inert for Express — app.use() only
 // ever calls it as a request handler, so this does not affect routing.
-router.__testables = { buildOverallCarePlan, getPredictionForResult, buildActivityProgress };
+router.__testables = { buildOverallCarePlan, getPredictionForResult, buildActivityProgress, effectiveStatus, scheduleError };

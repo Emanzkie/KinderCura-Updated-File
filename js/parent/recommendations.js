@@ -351,6 +351,196 @@
             }
         }
 
+        // ── Scheduled activity sessions (routes/recommendations.js) ─────────
+        // Every session of the shown assessment's recommendations, as the
+        // server serialised it (status is already "missed" once its day passed).
+        let scheduledTasks = [];
+        const SESSION_STATUS = {
+            pending:   { label: 'Pending',   tone: 'neutral' },
+            completed: { label: 'Completed', tone: 'positive' },
+            missed:    { label: 'Missed',    tone: 'attention' },
+        };
+
+        // Sessions are Manila days, like the reminder job.
+        function manilaToday() {
+            return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+        }
+
+        function fmtSessionDate(ymd) {
+            return new Date(`${ymd}T00:00:00.000Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+        }
+
+        const sessionWhen = (t) => `${t.scheduledDate}T${t.scheduledTime}`;
+
+        function sessionsFor(recId, activity) {
+            return scheduledTasks
+                .filter((t) => t.recommendationId === recId && t.activity === activity)
+                .sort((a, b) => sessionWhen(a).localeCompare(sessionWhen(b)));
+        }
+
+        function renderSessions(recId, activity) {
+            return sessionsFor(recId, activity).map((t) => {
+                const st = SESSION_STATUS[t.status] || SESSION_STATUS.pending;
+                const id = escapeHtml(t.id);
+                const actions = [
+                    t.status !== 'completed' ? `<button type="button" class="btn btn-secondary activity-btn" onclick="openCompleteForm(this, '${id}')">Mark completed</button>` : '',
+                    t.status === 'pending' ? `<button type="button" class="btn btn-secondary activity-btn" onclick="setSessionStatus(this, '${id}', 'missed')">Mark missed</button>` : '',
+                    t.status !== 'completed' ? `<button type="button" class="btn btn-secondary activity-btn" onclick="openScheduleForm(this, '${id}')">Reschedule</button>` : '',
+                    `<button type="button" class="btn btn-secondary activity-btn" onclick="removeSession(this, '${id}')">Remove</button>`,
+                ].join('');
+                return `
+                    <li class="activity-session">
+                        <span>${escapeHtml(fmtSessionDate(t.scheduledDate))} &middot; ${escapeHtml(fmtTime(t.scheduledTime))}</span>
+                        <span class="kc-badge kc-badge--${st.tone}">${st.label}</span>
+                        ${t.status === 'completed' && t.score != null ? `<span>Score: <strong>${Number(t.score)}%</strong></span>` : ''}
+                        <span class="activity-session-actions">${actions}</span>
+                    </li>`;
+            }).join('');
+        }
+
+        // In-page reminder: the next pending sessions across all four areas.
+        function renderUpcomingActivities() {
+            const upcoming = scheduledTasks
+                .filter((t) => t.status === 'pending')
+                .sort((a, b) => sessionWhen(a).localeCompare(sessionWhen(b)))
+                .slice(0, 5);
+            const list = upcoming.length
+                ? `<ul class="upcoming-activities">${upcoming.map((t) => `
+                    <li>
+                        <strong>${escapeHtml(fmtSessionDate(t.scheduledDate))} &middot; ${escapeHtml(fmtTime(t.scheduledTime))}</strong>
+                        <span>${escapeHtml(SKILL_SCORE[t.skill]?.label || t.skill)}: ${escapeHtml(t.activity)}</span>
+                    </li>`).join('')}</ul>`
+                : `<p style="color:var(--text-light);margin:0;">${scheduledTasks.length ? 'No upcoming activities.' : 'No activities scheduled yet.'} Use <strong>Schedule</strong> under any recommended activity below to plan one.</p>`;
+            return `
+                <h3 style="margin-bottom:0.35rem;color:var(--primary);">Upcoming Activities</h3>
+                <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:0.75rem;">You also get a notification the day before (or on the morning of) each scheduled activity.</p>
+                ${list}`;
+        }
+
+        function refreshActivityItem(item) {
+            const list = item.querySelector('.activity-sessions');
+            if (list) list.innerHTML = renderSessions(item.dataset.recId, item.dataset.activity);
+            const upcoming = document.getElementById('upcomingActivities');
+            if (upcoming) upcoming.innerHTML = renderUpcomingActivities();
+        }
+
+        // Checkbox and progress bar after a session was completed.
+        function applyActivityState(item, data) {
+            if (Array.isArray(data.completedActivities)) {
+                const box = item.querySelector('input[type="checkbox"]');
+                if (box) box.checked = data.completedActivities.includes(item.dataset.activity);
+            }
+            if (data.activityProgress) {
+                const progress = document.getElementById('activityProgress');
+                if (progress) progress.innerHTML = renderActivityProgress(data.activityProgress);
+            }
+        }
+
+        function upsertSession(task) {
+            scheduledTasks = scheduledTasks.filter((t) => t.id !== task.id).concat(task);
+        }
+
+        function showActivityError(item, message) {
+            const err = item.querySelector('.activity-error');
+            if (!err) return;
+            err.textContent = message || '';
+            err.style.display = message ? 'block' : 'none';
+        }
+
+        function closeActivityForm(el) {
+            const item = el.closest('.activity-item');
+            if (!item) return;
+            item.querySelector('.activity-form-slot').innerHTML = '';
+            showActivityError(item, '');
+        }
+
+        // New session (no taskId) or reschedule of an existing one.
+        function openScheduleForm(btn, taskId = '') {
+            const item = btn.closest('.activity-item');
+            const task = taskId ? scheduledTasks.find((t) => t.id === taskId) : null;
+            const today = manilaToday();
+            showActivityError(item, '');
+            item.querySelector('.activity-form-slot').innerHTML = `
+                <form class="activity-form" data-task-id="${escapeHtml(taskId)}" onsubmit="saveSchedule(event, this)">
+                    <label>Date <input type="date" name="date" required min="${today}" value="${escapeHtml(task && task.scheduledDate >= today ? task.scheduledDate : today)}"></label>
+                    <label>Time <input type="time" name="time" required value="${escapeHtml(task ? task.scheduledTime : '')}"></label>
+                    <button type="submit" class="btn btn-primary activity-btn">${task ? 'Save new time' : 'Save schedule'}</button>
+                    <button type="button" class="btn btn-secondary activity-btn" onclick="closeActivityForm(this)">Cancel</button>
+                </form>`;
+            item.querySelector('.activity-form input[name="date"]').focus();
+        }
+
+        function openCompleteForm(btn, taskId) {
+            const item = btn.closest('.activity-item');
+            showActivityError(item, '');
+            item.querySelector('.activity-form-slot').innerHTML = `
+                <form class="activity-form" data-task-id="${escapeHtml(taskId)}" onsubmit="saveCompletion(event, this)">
+                    <label>Score or progress (optional) <input type="number" name="score" min="0" max="100" step="1" inputmode="numeric" placeholder="0–100" style="width:6rem;"> %</label>
+                    <button type="submit" class="btn btn-primary activity-btn">Mark completed</button>
+                    <button type="button" class="btn btn-secondary activity-btn" onclick="closeActivityForm(this)">Cancel</button>
+                </form>`;
+            item.querySelector('.activity-form input[name="score"]').focus();
+        }
+
+        // Runs one schedule request for an activity item: disables its
+        // buttons meanwhile, shows any error on the item, re-renders on success.
+        async function sessionRequest(item, path, options) {
+            const buttons = [...item.querySelectorAll('button')];
+            buttons.forEach((b) => { b.disabled = true; });
+            showActivityError(item, '');
+            try {
+                const data = await apiFetch(path, options);
+                if (data.task) upsertSession(data.task);
+                applyActivityState(item, data);
+                item.querySelector('.activity-form-slot').innerHTML = '';
+                return data;
+            } catch (e) {
+                showActivityError(item, `Could not save that change: ${e.message}`);
+                return null;
+            } finally {
+                buttons.forEach((b) => { b.disabled = false; });
+                if (item.isConnected) refreshActivityItem(item);
+            }
+        }
+
+        async function saveSchedule(event, form) {
+            event.preventDefault();
+            const item = form.closest('.activity-item');
+            const taskId = form.dataset.taskId;
+            const body = JSON.stringify({ date: form.date.value, time: form.time.value, ...(taskId ? {} : { activity: item.dataset.activity }) });
+            await sessionRequest(item, taskId
+                ? `/recommendations/schedule/${encodeURIComponent(taskId)}`
+                : `/recommendations/${encodeURIComponent(item.dataset.recId)}/schedule`,
+                { method: taskId ? 'PATCH' : 'POST', body });
+        }
+
+        async function saveCompletion(event, form) {
+            event.preventDefault();
+            const item = form.closest('.activity-item');
+            const raw = form.score.value.trim();
+            await sessionRequest(item, `/recommendations/schedule/${encodeURIComponent(form.dataset.taskId)}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ status: 'completed', ...(raw === '' ? {} : { score: Number(raw) }) }),
+            });
+        }
+
+        async function setSessionStatus(btn, taskId, status) {
+            await sessionRequest(btn.closest('.activity-item'), `/recommendations/schedule/${encodeURIComponent(taskId)}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ status }),
+            });
+        }
+
+        async function removeSession(btn, taskId) {
+            if (!confirm('Remove this scheduled activity?')) return;
+            const item = btn.closest('.activity-item');
+            const data = await sessionRequest(item, `/recommendations/schedule/${encodeURIComponent(taskId)}`, { method: 'DELETE' });
+            if (data) {
+                scheduledTasks = scheduledTasks.filter((t) => t.id !== taskId);
+                refreshActivityItem(item);
+            }
+        }
+
         async function loadRecommendations() {
             const assessmentId = await resolveContext();
             if (!assessmentId || !activeChild) {
@@ -370,6 +560,7 @@
                 ]);
 
                 const recs = data.recommendations || [];
+                scheduledTasks = recs.flatMap((r) => (Array.isArray(r.scheduledTasks) ? r.scheduledTasks : []));
                 const result = resultData.results || {};
                 const suggested = data.suggestedPediatricians || [];
                 const booked = Boolean(data.bookedConsultation);
@@ -413,6 +604,7 @@
                 html += renderSuggestedClinics(suggested, assessmentId, booked, data.suggestionSummary || 'KinderCura matched these clinics based on the latest assessment.');
 
                 if (recs.length) html += `<div id="activityProgress" aria-live="polite" style="background:#FAFAF6;border-radius:15px;padding:1.5rem 2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);margin-bottom:1.5rem;">${renderActivityProgress(data.activityProgress)}</div>`;
+                if (recs.length) html += `<div id="upcomingActivities" aria-live="polite" style="background:#FAFAF6;border-radius:15px;padding:1.5rem 2rem;box-shadow:0 4px 15px rgba(61, 71, 56, 0.08);margin-bottom:1.5rem;">${renderUpcomingActivities()}</div>`;
                 if (recs.length) html += renderPriorityLegend();
 
                 recs.forEach((r) => {
@@ -431,9 +623,17 @@
                         <p style="color:var(--text-light);margin-bottom:1rem;line-height:1.6;">${escapeHtml(r.suggestion)}</p>
                         ${activities.length ? `
                         <h4 style="font-weight:600;margin-bottom:0.5rem;">Recommended Activities:</h4>
-                        <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:0.5rem;">Tick an activity once your child has done it.</p>
+                        <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:0.5rem;">Tick an activity once your child has done it, or schedule a date and time to do it.</p>
                         <ul style="color:var(--text-light);list-style:none;padding-left:0;line-height:1.8;">
-                            ${activities.map((a) => `<li><label style="display:flex;align-items:flex-start;gap:0.6rem;cursor:pointer;"><input type="checkbox" data-rec-id="${escapeHtml(r.id)}" data-activity="${escapeHtml(a)}" ${completedSet.has(a) ? 'checked' : ''} onchange="toggleActivity(this)" style="margin-top:0.45rem;width:1.1rem;height:1.1rem;flex-shrink:0;accent-color:var(--primary);"><span>${escapeHtml(a)}</span></label></li>`).join('')}
+                            ${activities.map((a) => `<li class="activity-item" data-rec-id="${escapeHtml(r.id)}" data-activity="${escapeHtml(a)}">
+                                <div class="activity-row">
+                                    <label style="display:flex;align-items:flex-start;gap:0.6rem;cursor:pointer;"><input type="checkbox" data-rec-id="${escapeHtml(r.id)}" data-activity="${escapeHtml(a)}" ${completedSet.has(a) ? 'checked' : ''} onchange="toggleActivity(this)" style="margin-top:0.45rem;width:1.1rem;height:1.1rem;flex-shrink:0;accent-color:var(--primary);"><span>${escapeHtml(a)}</span></label>
+                                    <button type="button" class="btn btn-secondary activity-btn" onclick="openScheduleForm(this)">Schedule</button>
+                                </div>
+                                <div class="activity-form-slot"></div>
+                                <p class="activity-error kc-alert kc-alert--error" role="alert" style="display:none;"></p>
+                                <ul class="activity-sessions" aria-label="Scheduled sessions">${renderSessions(r.id, a)}</ul>
+                            </li>`).join('')}
                         </ul>` : ''}
                     </div>`;
                 });

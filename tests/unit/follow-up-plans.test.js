@@ -273,6 +273,7 @@ const expectHttp = async (promise, status, pattern) => {
   Appointment.find = (f) => q(f._id ? appointments.filter((a) => a.status === f.status && f._id.$in.some((id) => same(id, a._id))) : []);
   Assessment.find = () => q([]);
   AssessmentReminder.find = () => q([]);
+  require('../../models/ActivitySchedule').find = () => ({ select: () => ({ lean: async () => [] }) });
   Child.find = () => q([child]);
   Assessment.countDocuments = async () => 2;
   const sent = new Map();
