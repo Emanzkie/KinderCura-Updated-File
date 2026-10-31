@@ -206,3 +206,37 @@ The file needs no cleaning: upload it as-is (source type **Synthetic**) and
 click **Process**; the upload path trains on the raw file. `ml/datasets/generated/`
 is git-ignored — the CSV is a dataset artifact, not source code.
 Synthetic data — for testing/training only — not clinically validated.
+
+## Age-aware training dataset (`--age-aware`)
+
+The default process gives every answer the same odds at every age, so a model
+trained on it cannot tell a 4-year-old whose newest milestones are still
+emerging (normal) from an 8-year-old with the same score (a concern). The
+age-aware process simulates a **developmental quotient** per child: the risk
+class is chosen first, a DQ is drawn from that class's range, and each
+milestone is answered from a mastery curve on *developmental age − the
+milestone's minimum age* (see `AGE_AWARE_DQ_RANGE` and
+`age_aware_answer_probs` in the generator). Label noise and the score formula
+are unchanged.
+
+```
+python ml/datasets/generate_kindercura_dataset.py --rows 50000 --seed 20261031 \
+  --max-age-months 107 --app-rounding --age-aware \
+  --out ml/datasets/generated/kindercura_age_aware_training_dataset_50000.csv
+```
+
+Do **not** add `--unique` here: typical children who answer "yes" to every
+milestone at the same age produce identical rows, and redrawing them removes
+mostly Low-risk children (Low fell to 17% of rows in a trial run).
+
+Upload it as source type **Synthetic** and train with **Score-based**
+features (same six columns as the current model, so no change to the
+prediction path). Before activating, check the result with:
+
+```
+python ml/age_scenarios.py --model <trained .joblib> --eval-rows 10000
+```
+
+The DQ ranges and mastery-curve constants are design parameters of the
+simulation, to be confirmed with the consultant pediatrician — not published
+norms.

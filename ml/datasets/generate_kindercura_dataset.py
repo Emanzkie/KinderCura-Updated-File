@@ -110,6 +110,64 @@ def sample_answer(true_class):
     return 'no'
 
 
+# ── Age-aware generation (opt-in: --age-aware) ─────────────────────────────
+# The default process above gives every answer the same odds whatever the
+# child's age, so a model trained on it cannot learn that an answer that is
+# normal for a 4-year-old is a concern for an 8-year-old. The age-aware
+# process uses a developmental-age model instead:
+#
+#   developmental quotient (DQ) = developmental age / chronological age
+#
+# 1. The risk class is still chosen first (uniformly), then a DQ is drawn
+#    from that class's range (AGE_AWARE_DQ_RANGE; the ranges overlap).
+# 2. developmental age = age_months x DQ, so a lower DQ means a lag that
+#    GROWS with age: at DQ 0.7 a 4-year-old is ~14 months behind and an
+#    8-year-old ~29 months behind.
+# 3. Each administered item is answered from a mastery curve on
+#    (developmental age - the item's minAgeMonths): "no" well before that
+#    age, "sometimes" while the skill is emerging, "yes" once mastered
+#    (see age_aware_answer_probs).
+# 4. Scores and the 18% label noise are applied exactly as in the default
+#    process.
+#
+# The DQ ranges and curve constants are DESIGN PARAMETERS of this simulation,
+# not published norms. They are to be confirmed with the consultant
+# pediatrician before any clinical claim is made.
+AGE_AWARE_DQ_RANGE = {
+    'Low': (0.90, 1.10),
+    'Medium': (0.75, 0.92),
+    'High': (0.50, 0.78),
+}
+# Months past an item's minAgeMonths at which half of children answer at
+# least "sometimes" (EMERGING_MIDPOINT) and "yes" (MASTERY_MIDPOINT), and how
+# gradually each rises (CURVE_SPREAD_MONTHS). Negative = before minAgeMonths.
+EMERGING_MIDPOINT_MONTHS = -9
+MASTERY_MIDPOINT_MONTHS = -1
+CURVE_SPREAD_MONTHS = 4
+
+
+def _logistic(x):
+    return 1.0 / (1.0 + math.exp(-x))
+
+
+def age_aware_answer_probs(months_past_min_age):
+    """yes/sometimes/no probabilities for an item, given how many months the
+    child's developmental age is past the item's minAgeMonths."""
+    at_least_sometimes = _logistic((months_past_min_age - EMERGING_MIDPOINT_MONTHS) / CURVE_SPREAD_MONTHS)
+    yes = min(at_least_sometimes, _logistic((months_past_min_age - MASTERY_MIDPOINT_MONTHS) / CURVE_SPREAD_MONTHS))
+    return {'yes': yes, 'sometimes': at_least_sometimes - yes, 'no': 1.0 - at_least_sometimes}
+
+
+def sample_age_aware_answer(months_past_min_age):
+    probs = age_aware_answer_probs(months_past_min_age)
+    r = random.random()
+    if r < probs['yes']:
+        return 'yes'
+    if r < probs['yes'] + probs['sometimes']:
+        return 'sometimes'
+    return 'no'
+
+
 # Default age range of the canonical file (3y0m-7y11m). The app screens
 # children aged 3 to 8 in whole years (routes/assessments.js getAgeInfo), i.e.
 # 36-107 months — pass max_age_months=107 to cover 8-year-olds too.
@@ -124,9 +182,13 @@ def app_round(value):
     return math.floor(value + 0.5)
 
 
-def generate_row(row_number, ref_width=3, max_age_months=DEFAULT_MAX_AGE_MONTHS, app_rounding=False):
+def generate_row(row_number, ref_width=3, max_age_months=DEFAULT_MAX_AGE_MONTHS, app_rounding=False,
+                 age_aware=False):
     true_class = random.choice(['Low', 'Medium', 'High'])
     age_months = random.randint(36, max_age_months)
+    # Only drawn in age-aware mode, so the default random stream (and every
+    # file generated from it) is unchanged.
+    developmental_age = age_months * random.uniform(*AGE_AWARE_DQ_RANGE[true_class]) if age_aware else None
 
     domain_earned = {k: 0 for k in DOMAIN_KEYS}
     domain_total = {k: 0 for k in DOMAIN_KEYS}
@@ -136,7 +198,10 @@ def generate_row(row_number, ref_width=3, max_age_months=DEFAULT_MAX_AGE_MONTHS,
         if age_months < min_age_months:
             question_values[question_id] = ''  # not administered (age-gated), not "no"
             continue
-        answer = sample_answer(true_class)
+        if age_aware:
+            answer = sample_age_aware_answer(developmental_age - min_age_months)
+        else:
+            answer = sample_answer(true_class)
         score = ANSWER_SCORE[answer]
         question_values[question_id] = score
         domain_total[domain] += 2  # 2 points possible per question, per scoreAnswer()
@@ -254,7 +319,7 @@ def observation_key(row):
 
 def generate_dataset(n_rows=60, seed=20260819, defect_rate=0.0,
                      max_age_months=DEFAULT_MAX_AGE_MONTHS, unique=False, stats=None,
-                     app_rounding=False):
+                     app_rounding=False, age_aware=False):
     """Generate *n_rows* synthetic assessment rows.
 
     Reproducible: the same arguments always yield the same rows. This is the
@@ -266,7 +331,8 @@ def generate_dataset(n_rows=60, seed=20260819, defect_rate=0.0,
     so identical rows occur naturally — about 1% at 50,000 rows), until exactly
     *n_rows* distinct observations exist. Pass a dict as *stats* to receive the
     number of rows drawn and discarded. app_rounding=True computes scores with
-    Math.round exactly as the app stores them (see app_round).
+    Math.round exactly as the app stores them (see app_round). age_aware=True
+    answers from the developmental-age model (see AGE_AWARE_DQ_RANGE).
 
     Returns (rows, fieldnames, injected_defects).
     """
@@ -276,7 +342,7 @@ def generate_dataset(n_rows=60, seed=20260819, defect_rate=0.0,
         rows, seen, drawn = [], set(), 0
         while len(rows) < n_rows:
             drawn += 1
-            row = generate_row(len(rows) + 1, ref_width, max_age_months, app_rounding)
+            row = generate_row(len(rows) + 1, ref_width, max_age_months, app_rounding, age_aware)
             key = observation_key(row)
             if key in seen:
                 continue
@@ -285,7 +351,7 @@ def generate_dataset(n_rows=60, seed=20260819, defect_rate=0.0,
         if stats is not None:
             stats.update({'drawn': drawn, 'duplicates_discarded': drawn - n_rows})
     else:
-        rows = [generate_row(i + 1, ref_width, max_age_months, app_rounding) for i in range(n_rows)]
+        rows = [generate_row(i + 1, ref_width, max_age_months, app_rounding, age_aware) for i in range(n_rows)]
     injected = inject_defects(rows, defect_rate, seed)
     return rows, fieldnames(), injected
 
@@ -304,9 +370,10 @@ def write_dataset(rows, columns, out_path):
 
 def main(n_rows=60, out_path='ml/datasets/kindercura_assessment_dataset.csv',
          seed=20260819, defect_rate=0.0, max_age_months=DEFAULT_MAX_AGE_MONTHS, unique=False,
-         app_rounding=False):
+         app_rounding=False, age_aware=False):
     stats = {}
-    rows, columns, injected = generate_dataset(n_rows, seed, defect_rate, max_age_months, unique, stats, app_rounding)
+    rows, columns, injected = generate_dataset(n_rows, seed, defect_rate, max_age_months, unique, stats, app_rounding,
+                                               age_aware)
     write_dataset(rows, columns, out_path)
 
     counts = {}
@@ -342,5 +409,9 @@ if __name__ == '__main__':
                         help='Emit exactly --rows distinct observations (duplicates are redrawn).')
     parser.add_argument('--app-rounding', action='store_true',
                         help='Round scores with Math.round exactly as routes/assessments.js stores them.')
+    parser.add_argument('--age-aware', action='store_true',
+                        help='Answer from the developmental-age model, so what counts as a concern '
+                             "depends on the child's age (see AGE_AWARE_DQ_RANGE).")
     cli = parser.parse_args()
-    main(cli.rows, cli.out, cli.seed, cli.defect_rate, cli.max_age_months, cli.unique, cli.app_rounding)
+    main(cli.rows, cli.out, cli.seed, cli.defect_rate, cli.max_age_months, cli.unique, cli.app_rounding,
+         cli.age_aware)

@@ -38,7 +38,7 @@
     "dataset:generate": "python ml/pipeline.py --rows 50000",
     "dataset:generate:clean-only": "python ml/pipeline.py --rows 50000 --skip-training",
     "dataset:canonical": "python ml/datasets/generate_kindercura_dataset.py",
-    "test:ml": "python ml/tests/test_canonical_dataset.py && python ml/tests/test_trainer_validation.py"
+    "test:ml": "python ml/tests/test_canonical_dataset.py && python ml/tests/test_trainer_validation.py && python ml/tests/test_age_aware.py"
   },
   "dependencies": {
     "@vercel/blob": "^2.8.0",

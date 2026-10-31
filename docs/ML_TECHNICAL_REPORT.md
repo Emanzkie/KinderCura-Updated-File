@@ -62,7 +62,7 @@ Every later page (Results, Recommendations, pediatrician views, reassessment com
 - the dataset's own note reads "Not clinically validated".
 
 That file comes from `ml/datasets/generate_kindercura_dataset.py` (command in `ml/datasets/README.md:186-192`):
-1. Each row's class (Low / Medium / High) is chosen **first, uniformly at random** (`:128`).
+1. Each row's class (Low / Medium / High) is chosen **first, uniformly at random** (`:187`).
 2. Every administered question is answered from a class-specific probability table that **overlaps** between classes (`ANSWER_PROBS`, `:93-97`):
 
    | Class | Yes | Sometimes | No |
@@ -71,8 +71,8 @@ That file comes from `ml/datasets/generate_kindercura_dataset.py` (command in `m
    | Medium | 0.40 | 0.34 | 0.26 |
    | High | 0.22 | 0.30 | 0.48 |
 
-3. Scores are computed with the app's own formula (`:148-152`).
-4. **18 % of labels are then moved to a neighbouring class** (`LABEL_NOISE_RATE`, `:99-100, 157-159`).
+3. Scores are computed with the app's own formula (`:213-217`).
+4. **18 % of labels are then moved to a neighbouring class** (`LABEL_NOISE_RATE`, `:99-100, 222-224`).
 
 The labels are therefore **simulated, not clinical outcomes**.
 
@@ -101,7 +101,7 @@ The labels are therefore **simulated, not clinical outcomes**.
 | **Age-gated questions:** each of the 34 core questions has a minimum age (36, 42, 48, 60, 72 or 84 months). A child is only asked, and is only required to answer, the questions for their age. | Yes | `js/parent/screening.js` `DOCTOR_QUESTION_BANK` (`minAgeMonths`); `routes/assessments.js:47-52` |
 | **Age as an ML feature:** `age_months` is computed from the date of birth at submission and given to the model. | Yes | `services/assessmentProgress.js:141-151`; `ml/trainer.py:264-268` |
 | **Age-normed scoring:** scores compared against what is expected for the child's age (e.g. percentile or z-score by age band). | **No** | A domain % is earned points ÷ points possible on the *administered* questions (`routes/assessments.js:1057-1060`). The same 80 / 60 / 40 cutoffs apply at every age (`constants/scoring.js:69-74`). |
-| **Age-dependent labels in the training data** | **No** | In the generator the class is drawn independently of age (`generate_kindercura_dataset.py:128-129`). The model has no age-specific pattern to learn, which matches the low importance of `age_months` in v5 (0.031). |
+| **Age-dependent labels in the training data** | **No** | In the default generator process (used for v5) the class is drawn independently of age (`generate_kindercura_dataset.py:187-188, 204`). The model has no age-specific pattern to learn, which matches the low importance of `age_months` in v5 (0.031). The age-aware process added on 31 Oct 2026 addresses this (§10). |
 
 Age also selects the screening group label (Preschool 3–5, Early School Age 6–8; `routes/assessments.js:123-132`). That is a label only; it does not change scoring.
 
@@ -181,7 +181,7 @@ No permutation importance, SHAP values or per-prediction explanations are comput
 |---|---|---|
 | G1 | **Labels are synthetic.** The model shows the pipeline works; it is not clinically validated. | `ml/datasets/README.md:7-18, 148-166`; dataset record `provenance.sourceType: synthetic` |
 | G2 | **No real outcome labels yet.** The fields exist (`Assessment.clinicalOutcome`, 5 values, and `Assessment.mlLabel`, Low / Medium / High, `models/Assessment.js:30-62`), but the DB has 34 complete non-synthetic assessments, **0** with `clinicalOutcome` and **1** with `mlLabel`. | Read-only DB count, 31 Oct 2026 |
-| G3 | **No age-normed expectations.** The same 80 / 60 / 40 cutoffs apply at every age; age only gates which questions are asked. | §3 |
+| G3 | **No age-normed expectations.** The same 80 / 60 / 40 cutoffs apply at every age; age only gates which questions are asked. The active model v5 also misses most High-risk children at ages 7–8 (§10). | §3, §10 |
 | G4 | **Collinear feature.** `overall_score` duplicates the four domains and dominates importance. | §5–6 |
 | G5 | **Impurity importance only.** No permutation importance, SHAP or per-child explanation. | `ml/trainer.py:437` |
 | G6 | **Item-level model not used.** The question-based feature set exists but was never trained or activated. | `TrainedModel` records: all score-based |
@@ -220,3 +220,98 @@ No permutation importance, SHAP values or per-prediction explanations are comput
 | *How accurate is it?* | 69.7 % accuracy and 0.689 weighted F1 on a 10,000-row held-out test split of synthetic data (`TrainedModel` v5). Not a measure of real-world accuracy. |
 
 **Not verified:** the panelists' exact comments were not available to this inspection. The questions above are inferred from the task's seven points.
+
+---
+
+## 10. Age-aware model (added 31 Oct 2026)
+
+**The panel's questions:**
+- If a 4-year-old scores low in a skill area because they are young, does the model understand that?
+- Does it know when an 8-year-old is no longer on track?
+
+**The active model v5 does not.** Its training data gave every answer the same odds at every age, so it learned "low score = concern" whatever the age.
+
+### Method
+
+`ml/datasets/generate_kindercura_dataset.py --age-aware` simulates a **developmental quotient** (DQ = developmental age ÷ chronological age), a standard concept in developmental pediatrics (`:113-170, 187-204`):
+
+1. The risk class is chosen first. A DQ is then drawn from that class's range, and the ranges overlap (`AGE_AWARE_DQ_RANGE`, `:136-140`):
+
+   | Class | DQ range |
+   |---|---|
+   | Low | 0.90–1.10 |
+   | Medium | 0.75–0.92 |
+   | High | 0.50–0.78 |
+
+2. Developmental age = age × DQ. A low DQ therefore means a lag that **grows with age**. At DQ 0.70, a 4-year-old is about 14 months behind and an 8-year-old about 29 months behind.
+3. Each milestone is answered from a mastery curve on *developmental age − the milestone's minimum age*. The curve gives "no" well before that age, "sometimes" while the skill is emerging, and "yes" once mastered (`age_aware_answer_probs`, `:153`):
+
+   | Months past the milestone's age | yes | sometimes | no |
+   |---|---|---|---|
+   | −12 | 0.06 | 0.26 | 0.68 |
+   | 0 | 0.56 | 0.34 | 0.10 |
+   | +12 | 0.96 | 0.03 | 0.01 |
+
+4. The app's score formula, the age gate and the 18 % label noise are unchanged.
+
+The DQ ranges and curve constants are **design parameters of the simulation, to be confirmed with the consultant pediatrician**. They are not published norms. The data remain simulated (provenance: synthetic).
+
+### Results (50,000 age-aware rows, seed 20261031; trained locally with the unchanged `ml/trainer.py`)
+
+| Model | Accuracy | Weighted F1 | `age_months` importance |
+|---|---:|---:|---:|
+| v5 (active, age-blind data), tested on fresh age-aware rows | 0.441 | — | 0.031 |
+| **Age-aware, score-based** (same 6 features as v5) | **0.692** | 0.684 | **0.187** |
+| Age-aware, question-based (Q01–Q34 + age) | 0.683 | 0.673 | 0.117 |
+
+Score-based importances of the age-aware model:
+
+| Feature | Importance |
+|---|---:|
+| overall | 0.248 |
+| motor | 0.194 |
+| cognitive | 0.190 |
+| **age** | **0.187** |
+| social | 0.123 |
+| communication | 0.058 |
+
+**Share of High-risk children correctly identified (High recall), per year of age**, on 10,000 fresh age-aware rows (`python ml/age_scenarios.py --eval-rows 10000`):
+
+| Age | v5 (active) | Age-aware, score-based | Age-aware, question-based |
+|---|---:|---:|---:|
+| 3 | 0.744 | 0.761 | 0.797 |
+| 4 | 0.647 | 0.843 | 0.818 |
+| 5 | 0.397 | 0.812 | 0.816 |
+| 6 | 0.247 | 0.821 | 0.810 |
+| 7 | 0.077 | 0.798 | 0.837 |
+| 8 | **0.006** | **0.745** | 0.705 |
+
+**Scenario check** (`python ml/age_scenarios.py --model <artifact>`; children built answer by answer through the app's age gate and score formula, predicted with the same `predict_from_artifact` live predictions use):
+
+| Child | Overall | v5 (active) | Age-aware, score-based |
+|---|---:|---|---|
+| 4 y: earlier milestones mastered, half of the 4-year ones still emerging | 84 % | Low | **Low** (P(High) 0.04) |
+| 4 y: earlier milestones mastered, every 4-year one only emerging | 73 % | Low | Medium |
+| 4 y: missing 3-year milestones | 29 % | High | High |
+| 8 y: every milestone mastered | 100 % | Low | Low |
+| 8 y: 6- and 7-year milestones still only emerging | 88 % | Low | **High** (P(High) 0.75) |
+| 8 y: answering like a typical 5-year-old | 64 % | Medium | **High** (P(High) 0.83) |
+| 8 y: missing 3- and 4-year milestones | 11 % | High | High |
+
+Rows 1 and 5 answer the panel directly. The 8-year-old has a **higher** overall score than the 4-year-old (88 % against 84 %) and is still the one flagged. The age-aware model judges the answers against what is expected for the child's age, not against the raw percentage.
+
+### Recommendation
+
+1. Train the **score-based** model on the age-aware dataset, through Admin → Training (command in `ml/datasets/README.md`).
+   - It matches the question-based model and uses the same six features as v5, so the prediction path and stored predictions need no change.
+2. Run the activation smoke test and `ml/age_scenarios.py`, then activate.
+   - Activation affects new assessments only. Earlier assessments keep their stored v5 prediction.
+3. Confirm the DQ ranges and mastery-curve constants with the consultant pediatrician. Replace the simulation with clinician-reviewed labels (`clinicalOutcome`, `mlLabel`) as they accumulate.
+
+### Suggested panel answers
+
+| Question | Answer |
+|---|---|
+| *A 4-year-old scores low in a skill area because they are young. Does the model understand?* | Two layers handle it. **Questions are age-gated**, so a 4-year-old is only asked milestones expected by about 4. The **age-aware model** was trained on data where the chance of each answer depends on how far the child is past that milestone's age. A 4-year-old whose newest milestones are still emerging is classified Low (84 % overall → Low, P(High) 0.04). |
+| *Does the model know when an older child is not on track?* | Yes, for the age-aware model. The same kind of answers that are normal at 4 are a concern at 8. An 8-year-old whose 6- and 7-year milestones are only emerging is High even at 88 % overall, and High-risk children are found at a similar rate at every age: recall 0.76–0.84 for ages 3–7, 0.75 at 8 (the earlier model: 0.006 at 8). |
+| *Where do the age expectations come from?* | Each milestone's minimum age comes from the KinderCura question bank. How quickly a skill moves from "emerging" to "mastered", and how much lag each risk level represents, are simulation parameters set from the developmental-quotient concept. They are pending confirmation by our consultant pediatrician. Training data are simulated, and will be replaced by pediatrician-reviewed outcomes. |
