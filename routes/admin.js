@@ -1401,11 +1401,10 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
   }
 });
 
-// The records behind /analytics averageScores, and the arithmetic that turns
-// them into the four cards. Same filter as that $group, and the same rule as
-// $avg: only numeric values count, so each domain has its own count. Children
-// get a "Child N" pseudonym (numbered by first result) — no ids or names leave
-// this function, the same approach as summarizeReviewers.
+// The arithmetic behind /analytics averageScores' four cards. Same filter as
+// that $group, and the same rule as $avg: only numeric values count, so each
+// domain has its own count. Totals only — the per-result list was removed for
+// patient confidentiality, and no ids or names leave this function.
 const AVERAGE_SCORE_DOMAINS = [
   ['communication', 'communicationScore'],
   ['social', 'socialScore'],
@@ -1414,11 +1413,7 @@ const AVERAGE_SCORE_DOMAINS = [
 ];
 
 function buildAverageScoreDetail(resultsNewestFirst) {
-  const childRefById = new Map();
-  for (let i = resultsNewestFirst.length - 1; i >= 0; i -= 1) {
-    const id = String(resultsNewestFirst[i].childId);
-    if (!childRefById.has(id)) childRefById.set(id, `Child ${childRefById.size + 1}`);
-  }
+  const childIds = new Set(resultsNewestFirst.map((r) => String(r.childId)));
 
   const domains = {};
   for (const [key, field] of AVERAGE_SCORE_DOMAINS) {
@@ -1433,15 +1428,7 @@ function buildAverageScoreDetail(resultsNewestFirst) {
     };
   }
 
-  const records = resultsNewestFirst.map((r) => {
-    const scores = {};
-    for (const [key, field] of AVERAGE_SCORE_DOMAINS) {
-      scores[key] = typeof r[field] === 'number' && Number.isFinite(r[field]) ? r[field] : null;
-    }
-    return { generatedAt: r.generatedAt, childRef: childRefById.get(String(r.childId)), scores };
-  });
-
-  return { totalResults: records.length, distinctChildren: childRefById.size, domains, records };
+  return { totalResults: resultsNewestFirst.length, distinctChildren: childIds.size, domains };
 }
 
 // GET /api/admin/analytics/average-scores-detail

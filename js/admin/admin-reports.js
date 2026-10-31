@@ -78,13 +78,28 @@ requireAuth();
             return `<div class="report-card"><p class="report-label">${label}</p><p class="report-value">${value}</p>${note ? `<p class="pr-kpi-note">${note}</p>` : ''}</div>`;
         }
 
+        // Admin Reports names no one: /admin/dashboard (shared with the Admin
+        // Dashboard) describes a sign-up as "First Last joined as <role>.", so
+        // this page keeps only the role.
+        function maskActivity(item) {
+            if (!item || item.type !== 'User Registered') return item;
+            const match = /joined as ([\w-]+)\.$/.exec(item.description || '');
+            const role = match ? (ROLE_LABELS[match[1]] || match[1].replace(/_/g, ' ')) : null;
+            return { ...item, description: role ? `A new ${role} account was registered.` : 'A new account was registered.' };
+        }
+
         async function loadReport() {
             try {
-                const [dashboard, analytics, pendingUsers] = await Promise.all([
+                const [dashboardRaw, analyticsRaw, pendingUsers] = await Promise.all([
                     apiFetch('/admin/dashboard'),
                     apiFetch('/admin/analytics'),
                     apiFetch('/admin/users?status=pending')
                 ]);
+                // Masked before caching, so Export Report JSON carries no names
+                // either: registrations by role only, and the per-pediatrician
+                // comparison (names; shown on Admin Analytics) left out.
+                const dashboard = { ...dashboardRaw, recentActivity: (dashboardRaw.recentActivity || []).map(maskActivity) };
+                const { pediatricianComparison, ...analytics } = analyticsRaw;
 
                 const appointmentStats = analytics.appointmentStats || [];
                 const roleBreakdown = analytics.roleBreakdown || [];
@@ -293,29 +308,19 @@ requireAuth();
         }
 
         // ================================================================
-        // Centralized Patient Reports — the admin pivot (see
+        // Centralized Patient Reports — aggregated statistics only (see
         // routes/admin-patient-reports.js). Read-only: this page never
-        // scores, never writes, and never invents a pediatrician/parent
-        // relationship — it aggregates the SAME stored Assessment /
-        // AssessmentResult data Parent Reports and Pediatrician Reports read.
+        // scores, never writes, and names no child, parent or pediatrician;
+        // individual patient reports stay with the parent and pediatrician.
         // ================================================================
 
-        let patientFilters = { pediatricianId: 'all', parentId: 'all', childId: 'all', dateFrom: '', dateTo: '', scope: 'all', sort: 'newest' };
-        let patientPage = 1;
-        const PATIENT_PAGE_LIMIT = 15;
-        let lastPatientPagination = null;
+        let patientFilters = { dateFrom: '', dateTo: '', scope: 'all' };
         let patientReportsCache = null; // last successful /patients response, for export (req 26)
 
         function fmtDateShortPR(d) {
             if (!d) return '—';
             const dt = new Date(d);
             return Number.isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-        }
-
-        function fmtDateTimePR(d) {
-            if (!d) return '—';
-            const dt = new Date(d);
-            return Number.isNaN(dt.getTime()) ? '—' : dt.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
         }
 
         function patientReportsNotice(message, kind) {
@@ -327,16 +332,10 @@ requireAuth();
             el.hidden = false;
         }
 
-        // ── Overview: system totals + pediatrician/parent rosters ─────────
-        // Rosters respect ONLY the date range (a roster answers "who is
-        // active", not "who matches today's drill-down" — see
-        // services/adminPatientReportsView.js header for the full policy).
+        // ── Overview: system totals ───────────────────────────────────────
         async function loadPatientReportsOverview() {
             try {
-                const params = new URLSearchParams();
-                if (patientFilters.dateFrom) params.set('dateFrom', patientFilters.dateFrom);
-                if (patientFilters.dateTo) params.set('dateTo', patientFilters.dateTo);
-                const data = await apiFetch(`/admin/patient-reports/overview?${params.toString()}`);
+                const data = await apiFetch('/admin/patient-reports/overview');
 
                 // Always system-wide and all-time (routes/admin-patient-reports.js
                 // GET /overview) — the filters below never change these.
@@ -352,40 +351,9 @@ requireAuth();
                     summaryCard('Pediatrician-Reviewed', fmtCountR(t.totalReviewed ?? 0),
                         `Completed assessments with a recorded pediatrician review: ${shareOfText(t.totalReviewed ?? 0, t.totalCompletedAssessments ?? 0, 'completed assessments')}.`),
                 ].join('');
-
-                // Pediatrician dropdown — every pediatrician account (names only,
-                // from the overview response), not just the capped roster below.
-                const pedSelect = document.getElementById('prPediatrician');
-                const currentPed = patientFilters.pediatricianId;
-                const pedOptions = data.pediatricianOptions || data.pediatricianSummary || [];
-                pedSelect.innerHTML = '<option value="all">All Pediatricians</option>'
-                    + pedOptions.map((p) => `<option value="${escapeHtml(p.pediatricianId)}" ${currentPed === p.pediatricianId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
-
-                const pedRowsEl = document.getElementById('pediatricianReportSummaryRows');
-                const pedList = data.pediatricianSummary || [];
-                pedRowsEl.innerHTML = pedList.length
-                    ? pedList.map((p) => `<tr>
-                        <td>${escapeHtml(p.name)}</td>
-                        <td class="num">${fmtCountR(p.patients)}</td>
-                        <td class="num">${fmtCountR(p.assessments)}</td>
-                        <td class="num">${fmtCountR(p.reviewed)}</td>
-                        <td>${fmtDateShortPR(p.latestActivity)}</td>
-                    </tr>`).join('') + (data.pediatricianSummaryCapped ? '<tr><td colspan="5" class="muted">Showing the most active pediatricians only. Use the Pediatrician filter above to look up a specific one.</td></tr>' : '')
-                    : '<tr><td colspan="5" class="muted">No pediatrician has any patients yet.</td></tr>';
-
-                const parentRowsEl = document.getElementById('parentReportSummaryRows');
-                const parentList = data.parentSummary || [];
-                parentRowsEl.innerHTML = parentList.length
-                    ? parentList.map((p) => `<tr>
-                        <td>${escapeHtml(p.name)}</td>
-                        <td class="num">${fmtCountR(p.children)}</td>
-                        <td class="num">${fmtCountR(p.assessments)}</td>
-                        <td>${fmtDateShortPR(p.latestActivity)}</td>
-                    </tr>`).join('') + (data.parentSummaryCapped ? '<tr><td colspan="4" class="muted">Showing the most active parents only. Use the Parent filter above to look up a specific one.</td></tr>' : '')
-                    : '<tr><td colspan="4" class="muted">No parent has any children on file yet.</td></tr>';
             } catch (err) {
                 console.error('patient reports overview error:', err);
-                document.getElementById('systemTotalsCards').innerHTML = summaryCard('Could not load', err.message);
+                document.getElementById('systemTotalsCards').innerHTML = summaryCard('Could not load', escapeHtml(err.message));
             }
         }
 
@@ -410,27 +378,42 @@ requireAuth();
                 + KS.ACTIVE_BANDS.map((b) => `${bandChip(b.key, KS.clinicalLabel(b.key))}<span class="band-range">${b.min}–${b.max}%</span>`).join('');
         }
 
-        // ── Main pivot table ───────────────────────────────────────────────
+        // Patients per latest status band. A group of fewer than the minimum
+        // arrives as null (the server never sends its count), and below the
+        // minimum in total the server sends no breakdown at all.
+        function renderPatientBandDistribution(dist, patients) {
+            const el = document.getElementById('patientBandDistributionRows');
+            if (!el) return;
+            const d = dist || {};
+            const min = d.minimumShown || 5;
+            if (!patients) {
+                el.innerHTML = '<tr><td colspan="3" class="muted">No patients match the selected filters.</td></tr>';
+                return;
+            }
+            if (d.breakdownHidden) {
+                el.innerHTML = `<tr><td colspan="3" class="muted">Fewer than ${min} patients match the selected filters, so the breakdown is hidden to protect patient privacy.</td></tr>`;
+                return;
+            }
+            el.innerHTML = (d.rows || []).map((r) => `<tr>
+                    <td>${r.key === 'none' ? escapeHtml(r.label) : bandChip(r.key, r.label)}</td>
+                    <td class="num">${r.patients == null ? `Fewer than ${min}` : fmtCountR(r.patients)}</td>
+                    <td class="num">${r.patients == null ? '—' : percentOf(r.patients, patients)}</td>
+                </tr>`).join('') + totalRow(patients);
+        }
+
+        // ── Filtered summary + status distribution ─────────────────────────
         async function loadPatientReportsList() {
-            const rowsEl = document.getElementById('patientReportsRows');
-            rowsEl.innerHTML = '<tr><td colspan="9" style="padding:2rem;text-align:center;color:var(--text-light);">Loading...</td></tr>';
             patientReportsNotice(null);
 
             try {
-                const params = new URLSearchParams({ page: patientPage, limit: PATIENT_PAGE_LIMIT, sort: patientFilters.sort, scope: patientFilters.scope });
-                if (patientFilters.pediatricianId !== 'all') params.set('pediatricianId', patientFilters.pediatricianId);
-                if (patientFilters.parentId !== 'all') params.set('parentId', patientFilters.parentId);
-                if (patientFilters.childId !== 'all') params.set('childId', patientFilters.childId);
+                const params = new URLSearchParams({ scope: patientFilters.scope });
                 if (patientFilters.dateFrom) params.set('dateFrom', patientFilters.dateFrom);
                 if (patientFilters.dateTo) params.set('dateTo', patientFilters.dateTo);
 
                 const data = await apiFetch(`/admin/patient-reports/patients?${params.toString()}`);
                 patientReportsCache = data;
-                lastPatientPagination = data.pagination || null;
 
-                document.getElementById('patientPivotTitle').textContent = data.title || 'All Patient Reports';
-
-                // Same population for all four cards and the rows below; see
+                // Same population for all four cards and the status table; see
                 // the filter policy in services/adminPatientReportsView.js.
                 const s = data.summary || {};
                 const dated = Boolean(patientFilters.dateFrom || patientFilters.dateTo);
@@ -444,35 +427,15 @@ requireAuth();
                     summaryCard('Latest Activity', fmtDateShortPR(s.latestActivity), `Most recent completion date among these assessments${inRange}.`),
                 ].join('');
                 renderPatientFilterScope(data.filters);
-
-                const rows = data.rows || [];
-                if (!rows.length) {
-                    rowsEl.innerHTML = '<tr><td colspan="9" style="padding:2rem;text-align:center;color:var(--text-light);">No reports found for the selected filters.</td></tr>';
-                } else {
-                    rowsEl.innerHTML = rows.map((r) => `
-                        <tr>
-                            <td>${escapeHtml(r.childName)}</td>
-                            <td>${escapeHtml(r.parentName)}</td>
-                            <td>${r.pediatricianName ? escapeHtml(r.pediatricianName) : '<span class="muted">—</span>'}</td>
-                            <td class="num">${fmtCountR(r.assessmentsCount)}</td>
-                            <td class="num">${r.latestScore != null ? escapeHtml(String(r.latestScore)) + '%' : '<span class="muted">—</span>'}</td>
-                            <td>${r.latestStatusLabel ? bandChip(r.latestBand, r.latestStatusLabel) : '<span class="muted">No assessment in range</span>'}</td>
-                            <td>${fmtDateShortPR(r.latestAssessmentDate)}</td>
-                            <td>${r.hasReview ? '<span class="pr-review-yes">Reviewed</span>' : '<span class="pr-review-no">Not reviewed</span>'}</td>
-                            <td><button class="btn btn-secondary" style="padding:0.35rem 0.7rem;font-size:0.78rem;" onclick="viewPatientReport('${r.childId}', '${escapeHtml(r.childName).replace(/'/g, "\\'")}')">View Report</button></td>
-                        </tr>`).join('');
-                }
-
-                renderPatientReportsPagination();
+                renderPatientBandDistribution(data.bandDistribution, s.patients ?? 0);
             } catch (err) {
                 console.error('patient reports list error:', err);
-                rowsEl.innerHTML = '';
-                patientReportsNotice(`Could not load patient reports: ${err.message}`, 'error');
+                patientReportsNotice(`Could not load patient report statistics: ${err.message}`, 'error');
                 document.getElementById('patientFilteredSummary').innerHTML = summaryCard('Could not load', 'Server request failed');
                 // Don't leave a "Showing: …" line describing figures that failed to load.
                 const scopeEl = document.getElementById('patientFilterScope');
                 if (scopeEl) scopeEl.textContent = '';
-                document.getElementById('patientReportsPageInfo').textContent = '—';
+                document.getElementById('patientBandDistributionRows').innerHTML = '<tr><td colspan="3" class="muted">Unavailable: the statistics did not load.</td></tr>';
             }
         }
 
@@ -483,17 +446,13 @@ requireAuth();
             followup: 'Patients with a follow-up date or recommendation',
         };
 
-        // One line saying exactly which filters produced the cards and rows,
+        // One line saying exactly which filters produced the cards and table,
         // from the filters the server echoes back (not from the form).
         function renderPatientFilterScope(echo) {
             const el = document.getElementById('patientFilterScope');
             if (!el) return;
             const f = echo || {};
             const parts = [SCOPE_LABELS[f.scope] || SCOPE_LABELS.all];
-            const ped = document.getElementById('prPediatrician');
-            if (f.pediatricianId && ped && ped.selectedIndex > 0) parts.push(`Pediatrician: ${ped.options[ped.selectedIndex].text.replace(/\s*\(\d+\)$/, '')}`);
-            if (f.parentId) parts.push(`Parent: ${document.getElementById('prParentSearch').value || 'selected'}`);
-            if (f.childId) parts.push(`Child: ${document.getElementById('prChildSearch').value || 'selected'}`);
             const dayOf = (iso) => (iso ? iso.slice(0, 10) : null);
             if (f.dateFrom || f.dateTo) {
                 parts.push(`Assessments completed ${f.dateFrom ? `from ${dayOf(f.dateFrom)}` : 'up to'} ${f.dateTo ? `${f.dateFrom ? 'to ' : ''}${dayOf(f.dateTo)} (inclusive, UTC dates)` : 'onwards'}`);
@@ -503,177 +462,17 @@ requireAuth();
             el.textContent = `Showing: ${parts.join(' · ')}.`;
         }
 
-        function renderPatientReportsPagination() {
-            const p = lastPatientPagination;
-            const info = document.getElementById('patientReportsPageInfo');
-            const prev = document.getElementById('prPrevBtn');
-            const next = document.getElementById('prNextBtn');
-            if (!p) { info.textContent = '—'; return; }
-            const start = p.total === 0 ? 0 : (p.page - 1) * p.limit + 1;
-            const end = Math.min(p.page * p.limit, p.total);
-            info.textContent = `Showing ${start}–${end} of ${p.total} patient${p.total === 1 ? '' : 's'} (page ${p.page} of ${p.totalPages})`;
-            prev.disabled = !p.hasPrev;
-            next.disabled = !p.hasNext;
-            prev.style.opacity = p.hasPrev ? '1' : '0.5';
-            next.style.opacity = p.hasNext ? '1' : '0.5';
-        }
-
-        function changePatientReportsPage(delta) {
-            if (!lastPatientPagination) return;
-            const next = patientPage + delta;
-            if (next < 1 || next > lastPatientPagination.totalPages) return;
-            patientPage = next;
-            loadPatientReportsList();
-        }
-
         function onPatientFilterChange(key, value) {
             patientFilters[key] = value;
-            patientPage = 1;
             loadPatientReportsList();
-            // The date range also affects the (date-scoped) roster summaries.
-            if (key === 'dateFrom' || key === 'dateTo') loadPatientReportsOverview();
         }
 
         function resetPatientFilters() {
-            patientFilters = { pediatricianId: 'all', parentId: 'all', childId: 'all', dateFrom: '', dateTo: '', scope: 'all', sort: 'newest' };
-            patientPage = 1;
-            document.getElementById('prPediatrician').value = 'all';
-            document.getElementById('prParentSearch').value = '';
-            document.getElementById('prParentId').value = '';
-            document.getElementById('prChildSearch').value = '';
-            document.getElementById('prChildId').value = '';
+            patientFilters = { dateFrom: '', dateTo: '', scope: 'all' };
             document.getElementById('prDateFrom').value = '';
             document.getElementById('prDateTo').value = '';
             document.getElementById('prScope').value = 'all';
-            document.getElementById('prSort').value = 'newest';
-            loadPatientReportsOverview();
             loadPatientReportsList();
-        }
-
-        // ── Parent / Child typeahead (req 23 — never load the whole
-        // collection into the browser) ─────────────────────────────────────
-        let parentSearchTimer = null;
-        function onParentSearchInput(value) {
-            clearTimeout(parentSearchTimer);
-            document.getElementById('prParentId').value = '';
-            // Editing the box invalidates the earlier selection (the hidden id
-            // was just cleared), so drop the applied filter too — otherwise
-            // the list stays filtered by a parent the box no longer shows.
-            if (patientFilters.parentId !== 'all') onPatientFilterChange('parentId', 'all');
-            parentSearchTimer = setTimeout(async () => {
-                const resultsEl = document.getElementById('prParentResults');
-                if (!value || value.trim().length < 2) { resultsEl.hidden = true; return; }
-                try {
-                    const data = await apiFetch(`/admin/patient-reports/search?type=parent&q=${encodeURIComponent(value.trim())}`);
-                    const results = data.results || [];
-                    resultsEl.innerHTML = results.length
-                        ? results.map((r) => `<div class="pr-typeahead-item" onclick="selectParentResult('${r.id}', '${escapeHtml(r.name).replace(/'/g, "\\'")}')">${escapeHtml(r.name)}</div>`).join('')
-                        : '<div class="pr-typeahead-item muted">No matching parent</div>';
-                    resultsEl.hidden = false;
-                } catch (err) {
-                    resultsEl.hidden = true;
-                }
-            }, 300);
-        }
-
-        function selectParentResult(id, name) {
-            document.getElementById('prParentSearch').value = name;
-            document.getElementById('prParentId').value = id;
-            document.getElementById('prParentResults').hidden = true;
-            onPatientFilterChange('parentId', id);
-        }
-
-        let childSearchTimer = null;
-        function onChildSearchInput(value) {
-            clearTimeout(childSearchTimer);
-            document.getElementById('prChildId').value = '';
-            // Same as the parent box: an edited name no longer matches the
-            // applied child filter, so remove it.
-            if (patientFilters.childId !== 'all') onPatientFilterChange('childId', 'all');
-            childSearchTimer = setTimeout(async () => {
-                const resultsEl = document.getElementById('prChildResults');
-                if (!value || value.trim().length < 2) { resultsEl.hidden = true; return; }
-                try {
-                    const params = new URLSearchParams({ type: 'child', q: value.trim() });
-                    if (patientFilters.pediatricianId !== 'all') params.set('pediatricianId', patientFilters.pediatricianId);
-                    if (patientFilters.parentId !== 'all') params.set('parentId', patientFilters.parentId);
-                    const data = await apiFetch(`/admin/patient-reports/search?${params.toString()}`);
-                    const results = data.results || [];
-                    resultsEl.innerHTML = results.length
-                        ? results.map((r) => `<div class="pr-typeahead-item" onclick="selectChildResult('${r.id}', '${escapeHtml(r.name).replace(/'/g, "\\'")}')">${escapeHtml(r.name)}</div>`).join('')
-                        : '<div class="pr-typeahead-item muted">No matching child</div>';
-                    resultsEl.hidden = false;
-                } catch (err) {
-                    resultsEl.hidden = true;
-                }
-            }, 300);
-        }
-
-        function selectChildResult(id, name) {
-            document.getElementById('prChildSearch').value = name;
-            document.getElementById('prChildId').value = id;
-            document.getElementById('prChildResults').hidden = true;
-            onPatientFilterChange('childId', id);
-        }
-
-        // ── Detailed patient report modal (req 11) — reuses the SAME
-        // /api/parent/children/:childId/report endpoint Parent Reports calls.
-        // Never recomputes a score; only reads and displays what that
-        // endpoint returns.
-        async function viewPatientReport(childId, childName) {
-            const modal = document.getElementById('patientReportModal');
-            const body = document.getElementById('patientReportModalBody');
-            document.getElementById('patientReportModalTitle').textContent = `${childName} — Patient Report`;
-            modal.style.display = 'flex';
-            body.innerHTML = '<p class="muted">Loading...</p>';
-
-            try {
-                const data = await apiFetch(`/parent/children/${childId}/report`);
-                const assessments = (data.assessments || []).slice().reverse(); // newest first for this view
-                const follow = data.followUp;
-
-                const historyRows = assessments.length
-                    ? assessments.map((a) => `
-                        <tr>
-                            <td>${fmtDateShortPR(a.completedAt)}</td>
-                            <td>${a.overallScore != null ? Math.round(a.overallScore) + '%' : '—'}</td>
-                            <td>${a.domains.find(d => d.key==='communication')?.score ?? '—'}</td>
-                            <td>${a.domains.find(d => d.key==='social')?.score ?? '—'}</td>
-                            <td>${a.domains.find(d => d.key==='cognitive')?.score ?? '—'}</td>
-                            <td>${a.domains.find(d => d.key==='motor')?.score ?? '—'}</td>
-                        </tr>`).join('')
-                    : '<tr><td colspan="6" class="muted">No completed assessments found.</td></tr>';
-
-                const latest = assessments[0];
-                const review = latest && latest.review && (latest.review.reviewedAt || latest.review.recommendations || latest.review.nextAssessmentDate)
-                    ? `
-                        <p><strong>Reviewed by:</strong> ${escapeHtml(latest.review.pediatricianName || '—')}</p>
-                        <p><strong>Reviewed date:</strong> ${fmtDateTimePR(latest.review.reviewedAt)}</p>
-                        <p><strong>Recommendation:</strong> ${latest.review.recommendations ? escapeHtml(latest.review.recommendations) : '—'}</p>
-                        <p><strong>Next recommended follow-up:</strong> ${latest.review.nextAssessmentDate ? fmtDateShortPR(latest.review.nextAssessmentDate) : '—'}</p>
-                        <p><strong>Reason:</strong> ${latest.review.nextAssessmentReason ? escapeHtml(latest.review.nextAssessmentReason) : '—'}</p>`
-                    : '<p class="muted">No pediatrician review documented.</p>';
-
-                body.innerHTML = `
-                    <p><strong>Patient:</strong> ${escapeHtml(childName)}</p>
-                    <h4 style="margin:1rem 0 0.5rem;">Assessment History</h4>
-                    <div style="overflow-x:auto;">
-                        <table class="simple-table">
-                            <thead><tr><th>Date</th><th>Overall</th><th>Communication</th><th>Social</th><th>Cognitive</th><th>Motor</th></tr></thead>
-                            <tbody>${historyRows}</tbody>
-                        </table>
-                    </div>
-                    <h4 style="margin:1.25rem 0 0.5rem;">Pediatrician Review (Latest Assessment)</h4>
-                    ${review}
-                    ${follow ? `<p class="muted" style="margin-top:0.75rem;">Scheduled follow-up on file: ${fmtDateShortPR(follow.nextAssessmentDate)}${follow.reason ? ' — ' + escapeHtml(follow.reason) : ''}</p>` : ''}
-                `;
-            } catch (err) {
-                body.innerHTML = `<p style="color:var(--status-attention-fg, #3d4738);">Could not load this patient's report: ${escapeHtml(err.message)}</p>`;
-            }
-        }
-
-        function closePatientReportModal() {
-            document.getElementById('patientReportModal').style.display = 'none';
         }
 
         // req 10: dataset/demo-data volume, kept visibly separate from the
@@ -734,10 +533,23 @@ requireAuth();
         }
 
         /** One .mini-bars set, each row scaled relative to the GROUP's own max (not a global 100).
-            `total` (the chart's own sum) adds each row's share; `leaders` tags the most frequent row(s). */
-        function renderMiniBars(orderedKeys, counts, labels, total, leaders) {
-            const max = Math.max(1, ...orderedKeys.map((k) => counts[k] || 0));
+            `total` (the chart's own sum) adds each row's share; `leaders` tags the most frequent row(s).
+            A `hidden` group (suppressSmallCounts) shows "Fewer than 5" with no bar, share or tag. */
+        function renderMiniBars(orderedKeys, counts, labels, total, leaders, hidden) {
+            const hide = hidden || [];
+            const max = Math.max(1, ...orderedKeys.filter((k) => !hide.includes(k)).map((k) => counts[k] || 0));
             return `<div class="mini-bars">${orderedKeys.map((k) => {
+                if (hide.includes(k)) {
+                    const text = `Fewer than ${window.KCAdminReportsInterpretations.SMALL_COUNT_MIN} cases`;
+                    return `
+                    <div>
+                        <div class="mini-bar-row-label">
+                            <span>${escapeHtml(labels[k] || k)}</span>
+                            <span class="mini-bar-count">${text}</span>
+                        </div>
+                        <div class="mini-bar-track" role="img" aria-label="${escapeHtml(labels[k] || k)}: ${text}, hidden to protect patient privacy" title="${escapeHtml(labels[k] || k)}: ${text}"></div>
+                    </div>`;
+                }
                 const n = counts[k] || 0;
                 const pct = Math.round((n / max) * 100);
                 const share = total ? ` · ${percentOf(n, total)}` : '';
@@ -763,7 +575,9 @@ requireAuth();
             const delayedBand = (vocab.bands || []).find((b) => b.key === 'delayed');
             const delayedLabel = delayedBand ? delayedBand.label : 'Delayed';
 
-            scopeNote.textContent = `Based on completed, scored assessments from ${fmtReportDate(data.filters?.from)} to ${fmtReportDate(data.filters?.to)} (this section's own default range; it does not follow the Centralized Patient Reports filters above). "Late development" here means an overall score in the "${delayedLabel}" band only, per KinderCura's existing scoring rules — not a new category. "${delayedLabel}" is a developmental screening category assigned from the score band; it is not a medical diagnosis. Counts are assessments, so a child assessed more than once can be counted more than once.`;
+            const KI = window.KCAdminReportsInterpretations;
+            const MIN = KI.SMALL_COUNT_MIN;
+            scopeNote.textContent = `Based on completed, scored assessments from ${fmtReportDate(data.filters?.from)} to ${fmtReportDate(data.filters?.to)} (this section's own default range; it does not follow the Centralized Patient Reports filters above). "Late development" here means an overall score in the "${delayedLabel}" band only, per KinderCura's existing scoring rules — not a new category. "${delayedLabel}" is a developmental screening category assigned from the score band; it is not a medical diagnosis. Counts are assessments, so a child assessed more than once can be counted more than once. To protect patient privacy, a group of fewer than ${MIN} cases is shown as "Fewer than ${MIN}", with a second small group hidden when needed so it cannot be worked out from the total.`;
 
             const genderKeys = [...(vocab.genders || []), unknownKey];
             const genderLabels = { ...GENDER_DISPLAY_LABELS, [unknownKey]: GENDER_UNKNOWN_LABEL };
@@ -774,7 +588,6 @@ requireAuth();
             ageLabels[unknownKey] = AGE_BAND_UNKNOWN_LABEL;
             const ageCounts = (data.bandByAgeBand && data.bandByAgeBand.delayed) || {};
 
-            const KI = window.KCAdminReportsInterpretations;
             const genderMode = KI.mostFrequentEntries(genderCounts, genderKeys);
             const ageMode = KI.mostFrequentEntries(ageCounts, ageKeys);
 
@@ -786,8 +599,20 @@ requireAuth();
                 return;
             }
 
-            const genderInterp = KI.formatGenderInterpretation(genderCounts, genderKeys, genderLabels);
-            const ageInterp = KI.formatAgeRangeInterpretation(ageCounts, ageKeys, ageLabels);
+            if (genderMode.total < MIN) {
+                body.innerHTML = `
+                    <p class="muted" style="padding:1rem 0;">
+                        Fewer than ${MIN} assessments in this range are classified as "${escapeHtml(delayedLabel)}", so the demographic profile is hidden to protect patient privacy.
+                    </p>`;
+                return;
+            }
+
+            const genderHidden = KI.suppressSmallCounts(genderCounts, genderKeys);
+            const ageHidden = KI.suppressSmallCounts(ageCounts, ageKeys);
+            const genderLeaders = genderMode.leaders.filter((k) => !genderHidden.includes(k));
+            const ageLeaders = ageMode.leaders.filter((k) => !ageHidden.includes(k));
+            const genderInterp = KI.formatGenderInterpretation(genderCounts, genderKeys, genderLabels, genderHidden);
+            const ageInterp = KI.formatAgeRangeInterpretation(ageCounts, ageKeys, ageLabels, ageHidden);
             const totalsAgree = genderMode.total === ageMode.total;
 
             body.innerHTML = `
@@ -798,7 +623,7 @@ requireAuth();
                 <div class="late-dev-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start;">
                     <div>
                         <h4 style="margin:0 0 0.6rem;">Gender Distribution</h4>
-                        ${renderMiniBars(genderKeys, genderCounts, genderLabels, genderMode.total, genderMode.leaders)}
+                        ${renderMiniBars(genderKeys, genderCounts, genderLabels, genderMode.total, genderLeaders, genderHidden)}
                         <div class="report-interp">
                             <p class="report-interp-label">Interpretation</p>
                             <p class="report-interp-text">${escapeHtml(genderInterp)}</p>
@@ -806,7 +631,7 @@ requireAuth();
                     </div>
                     <div>
                         <h4 style="margin:0 0 0.6rem;">Age Range Distribution <span class="muted" style="font-weight:400;font-size:0.78rem;">(age at assessment)</span></h4>
-                        ${renderMiniBars(ageKeys, ageCounts, ageLabels, ageMode.total, ageMode.leaders)}
+                        ${renderMiniBars(ageKeys, ageCounts, ageLabels, ageMode.total, ageLeaders, ageHidden)}
                         <div class="report-interp">
                             <p class="report-interp-label">Interpretation</p>
                             <p class="report-interp-text">${escapeHtml(ageInterp)}</p>
@@ -820,14 +645,25 @@ requireAuth();
             const body = document.getElementById('diagnosisModeBody');
             if (!scopeNote || !body) return;
 
-            scopeNote.textContent = `Based on completed assessments with a recorded pediatrician diagnosis, from ${fmtReportDate(data.filters?.from)} to ${fmtReportDate(data.filters?.to)} (same default range as the section above; not affected by the Centralized Patient Reports filters). Diagnoses are free text recorded by pediatricians and are separate from the screening bands above. Counts are assessments, not children.`;
-
-            const df = data.diagnosisFrequency || { totalConsidered: 0, rows: [], topCount: 0, topDiagnoses: [], tie: false };
             const KI = window.KCAdminReportsInterpretations;
+            const MIN = KI.SMALL_COUNT_MIN;
+            scopeNote.textContent = `Based on completed assessments with a recorded pediatrician diagnosis, from ${fmtReportDate(data.filters?.from)} to ${fmtReportDate(data.filters?.to)} (same default range as the section above; not affected by the Centralized Patient Reports filters). Diagnoses are free text recorded by pediatricians and are separate from the screening bands above. Counts are assessments, not children. To protect patient privacy, only diagnoses recorded at least ${MIN} times are listed.`;
+
+            const dfAll = data.diagnosisFrequency || { totalConsidered: 0, rows: [], topCount: 0, topDiagnoses: [], tie: false };
+            // A diagnosis recorded fewer than MIN times could point to one
+            // child, so it is never listed or named. The most frequent ones
+            // are at least as common as any listed row, so when the top count
+            // reaches MIN the mode and tie are unchanged.
+            const rareRows = (dfAll.rows || []).filter((r) => r.count < MIN);
+            const df = { ...dfAll, rows: (dfAll.rows || []).filter((r) => r.count >= MIN) };
             const interp = KI.formatDiagnosisInterpretation(df);
 
-            if (!df.rows || !df.rows.length) {
+            if (!(dfAll.rows || []).length) {
                 body.innerHTML = `<p class="muted" style="padding:1rem 0;">${escapeHtml(interp)}</p>`;
+                return;
+            }
+            if (!df.rows.length) {
+                body.innerHTML = `<p class="muted" style="padding:1rem 0;">No diagnosis was recorded ${MIN} or more times in this range (${fmtCountR(dfAll.totalConsidered)} recorded in total), so individual diagnoses are not listed to protect patient privacy.</p>`;
                 return;
             }
 
@@ -858,10 +694,14 @@ requireAuth();
                     </div>
                     ${otherCapped ? `<p class="muted" style="margin-top:0.5rem;font-size:0.8rem;">Showing the ${OTHER_DIAGNOSES_DISPLAY_LIMIT} most frequent of ${otherRowsAll.length} other recorded diagnoses.</p>` : ''}`
                 : '';
+            const rareNote = rareRows.length
+                ? `<p class="muted" style="margin-top:0.5rem;font-size:0.8rem;">${fmtCountR(rareRows.length)} other ${rareRows.length === 1 ? 'diagnosis was' : 'diagnoses were'} recorded fewer than ${MIN} times each and ${rareRows.length === 1 ? 'is' : 'are'} not listed, to protect patient privacy.</p>`
+                : '';
 
             body.innerHTML = `
                 ${topBlock}
                 ${otherTable}
+                ${rareNote}
                 <div class="report-interp">
                     <p class="report-interp-label">Interpretation</p>
                     <p class="report-interp-text">${escapeHtml(interp)}</p>
@@ -900,15 +740,12 @@ requireAuth();
         function retryAverageScoreDetail() {
             document.getElementById('averageScoreDetailMethod').textContent = 'Loading…';
             document.getElementById('averageScoreCalcRows').innerHTML = '<tr><td colspan="5" class="muted">Loading...</td></tr>';
-            document.getElementById('averageScoreRecordRows').innerHTML = '<tr><td colspan="7" class="muted">Loading...</td></tr>';
             openAverageScoreDetail();
         }
 
         async function loadAverageScoreDetail() {
             const method = document.getElementById('averageScoreDetailMethod');
             const calcRows = document.getElementById('averageScoreCalcRows');
-            const recordRows = document.getElementById('averageScoreRecordRows');
-            const recordsNote = document.getElementById('averageScoreRecordsNote');
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), AVERAGE_SCORE_DETAIL_TIMEOUT_MS);
             try {
@@ -923,8 +760,6 @@ requireAuth();
 
                 if (!detail.totalResults) {
                     calcRows.innerHTML = '<tr><td colspan="5" class="muted">No stored assessment results.</td></tr>';
-                    recordRows.innerHTML = '<tr><td colspan="7" class="muted">No stored assessment results.</td></tr>';
-                    recordsNote.textContent = '';
                     return;
                 }
 
@@ -933,12 +768,6 @@ requireAuth();
                     const excluded = d.excluded ? ` <span class="muted">(${fmtCountR(d.excluded)} without a score excluded)</span>` : '';
                     return `<tr><td>${label}</td><td class="num">${fmtCountR(d.included)}${excluded}</td><td class="num">${fmtCountR(d.sum)}</td><td class="num">${d.mean == null ? '—' : `${fmtCountR(d.sum)} ÷ ${fmtCountR(d.included)} = ${d.mean.toFixed(2)}%`}</td><td class="num">${d.rounded == null ? 'N/A' : `${d.rounded}%`}</td></tr>`;
                 }).join('');
-
-                recordsNote.textContent = `The ${fmtCountR(detail.totalResults)} results included, newest first. "Child N" is a reference numbered by each child's first result in this list — not a record ID — so the same child keeps the same number across rows. "—" means no score was stored for that domain, so that result is left out of that domain's average.`;
-                const pct = (v) => (v == null ? '—' : `${v}%`);
-                recordRows.innerHTML = detail.records.map((r, i) =>
-                    `<tr><td class="num">${i + 1}</td><td>${escapeHtml(formatDateTime(r.generatedAt))}</td><td>${escapeHtml(r.childRef)}</td><td class="num">${pct(r.scores.communication)}</td><td class="num">${pct(r.scores.social)}</td><td class="num">${pct(r.scores.cognitive)}</td><td class="num">${pct(r.scores.motor)}</td></tr>`
-                ).join('');
             } catch (err) {
                 console.error('average score detail load error:', err);
                 averageScoreDetailLoad = null;
@@ -947,8 +776,6 @@ requireAuth();
                     : err.message;
                 method.innerHTML = `Could not load the calculation detail: ${escapeHtml(reason)}. <button type="button" class="btn btn-secondary" onclick="retryAverageScoreDetail()">Retry</button>`;
                 calcRows.innerHTML = '<tr><td colspan="5" class="muted">Unavailable.</td></tr>';
-                recordRows.innerHTML = '<tr><td colspan="7" class="muted">Unavailable.</td></tr>';
-                recordsNote.textContent = '';
             } finally {
                 clearTimeout(timer);
             }

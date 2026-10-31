@@ -73,16 +73,15 @@ function testMeanOfStoredPercentages() {
   assert.deepStrictEqual(d.domains.communication, { included: 3, excluded: 0, sum: 161, mean: 53.67, rounded: 54 });
   // null social score is excluded, like $avg: (83 + 45) / 2 = 64
   assert.deepStrictEqual(d.domains.social, { included: 2, excluded: 1, sum: 128, mean: 64, rounded: 64 });
-  assert.strictEqual(d.records[1].scores.social, null);
 }
 
-function testNoIdsAndStablePseudonyms() {
+// Admin Reports confidentiality: totals only, no per-result list.
+function testTotalsOnlyNoRecords() {
   const d = buildAverageScoreDetail(results);
   const json = JSON.stringify(d);
   assert.ok(!json.includes(String(kid1)) && !json.includes(String(kid2)), 'child ids never leave the server');
-  assert.deepStrictEqual(Object.keys(d.records[0]).sort(), ['childRef', 'generatedAt', 'scores']);
-  // kid1's first (oldest) result is numbered first.
-  assert.deepStrictEqual(d.records.map((r) => r.childRef), ['Child 1', 'Child 2', 'Child 1']);
+  assert.deepStrictEqual(Object.keys(d).sort(), ['distinctChildren', 'domains', 'totalResults']);
+  assert.ok(!/Child \d|generatedAt/.test(json), 'no per-result rows or pseudonyms');
 }
 
 function testEmpty() {
@@ -99,10 +98,10 @@ async function testAdminOnly() {
 (async () => {
   await testSameFilterAsCards();
   testMeanOfStoredPercentages();
-  testNoIdsAndStablePseudonyms();
+  testTotalsOnlyNoRecords();
   testEmpty();
   await testAdminOnly();
-  console.log('Admin average-scores detail OK — same filter as the cards, mean of stored %, $avg null handling, no child ids, admin only');
+  console.log('Admin average-scores detail OK — same filter as the cards, mean of stored %, $avg null handling, totals only with no per-result rows or child ids, admin only');
 })().catch((err) => {
   console.error(err);
   process.exit(1);

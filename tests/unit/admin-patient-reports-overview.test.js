@@ -1,10 +1,8 @@
-// Admin Reports > Patient reports: the Pediatrician filter lists every
-// pediatrician (ADMIN bug scan P4).
+// Admin Reports > Patient reports overview: system-wide totals only.
 //
-// The filter was filled from the roster, which is capped at the 25 most active
-// pediatricians, while the page told the admin to use that filter to find any
-// pediatrician outside the roster. The overview now returns
-// pediatricianOptions: every pediatrician account, names only.
+// The overview used to return the 25 most active pediatricians and parents by
+// name, and every pediatrician's name for a filter. For patient
+// confidentiality it now returns counts only: no names, ids or rosters.
 const assert = require('assert');
 const http = require('http');
 const express = require('express');
@@ -20,16 +18,15 @@ const Assessment = require('../../models/Assessment');
 const Appointment = require('../../models/Appointment');
 
 const adminId = String(new mongoose.Types.ObjectId());
-const pediatricians = Array.from({ length: 40 }, (_, i) => ({ _id: new mongoose.Types.ObjectId(), firstName: `Doc${i}`, lastName: 'Cruz' }));
-const roster = pediatricians.slice(0, 25).map((p) => ({ pediatricianId: String(p._id), firstName: p.firstName, lastName: p.lastName, patients: 1, assessments: 1, reviewed: 0 }));
 
 const chain = (v) => { const q = { select: () => q, sort: () => q, lean: () => q, then: (a, b) => Promise.resolve(v).then(a, b) }; return q; };
-let pediatricianQuery = null;
+const calls = [];
 User.findById = () => chain({ _id: adminId, role: 'admin', status: 'active' });
-User.find = (q) => { pediatricianQuery = q; return chain(pediatricians); };
-for (const M of [User, Child, Assessment, Appointment]) M.countDocuments = async () => 0;
-Appointment.aggregate = async () => roster;
-Child.aggregate = async () => [];
+User.find = (q) => { calls.push(['User.find', q]); return chain([{ firstName: 'Doc', lastName: 'Cruz' }]); };
+const totals = { User: 7, Child: 11, Assessment: 5, Appointment: 9 };
+for (const [name, M] of Object.entries({ User, Child, Assessment, Appointment })) M.countDocuments = async () => totals[name];
+Appointment.aggregate = async () => { calls.push(['Appointment.aggregate']); return []; };
+Child.aggregate = async () => { calls.push(['Child.aggregate']); return []; };
 
 (async () => {
   const app = express();
@@ -42,17 +39,18 @@ Child.aggregate = async () => [];
     });
     const body = await res.json();
     assert.strictEqual(res.status, 200, JSON.stringify(body));
-    assert.strictEqual(body.pediatricianSummary.length, 25, 'the roster stays capped');
-    assert.strictEqual(body.pediatricianSummaryCapped, true);
-    assert.strictEqual(body.pediatricianOptions.length, 40, 'the filter lists every pediatrician');
-    assert.deepStrictEqual(Object.keys(body.pediatricianOptions[39]).sort(), ['name', 'pediatricianId'], 'names only');
-    assert.strictEqual(body.pediatricianOptions[39].name, 'Doc39 Cruz');
-    assert.deepStrictEqual(pediatricianQuery, { role: 'pediatrician' });
+    assert.deepStrictEqual(Object.keys(body).sort(), ['range', 'success', 'systemTotals'], 'totals only');
+    assert.deepStrictEqual(body.systemTotals, {
+      totalPatients: 11, totalParents: 7, totalPediatricians: 7,
+      totalCompletedAssessments: 5, totalAppointments: 9, totalReviewed: 5,
+    });
+    assert.ok(!/name|Cruz|Id"/i.test(JSON.stringify(body)), 'no names or ids');
+    assert.deepStrictEqual(calls, [], 'no roster or name queries');
   } finally {
     server.closeAllConnections();
     server.close();
   }
-  console.log('Admin patient reports overview OK — the Pediatrician filter lists every pediatrician, the roster stays capped');
+  console.log('Admin patient reports overview OK — system-wide totals only, no names, ids or rosters');
 })().catch((err) => {
   console.error(err);
   process.exitCode = 1;

@@ -136,7 +136,43 @@ function testDiagnosisInterpretationTie() {
   assert.ok(/Motor Delay and Speech Delay are tied as the most frequently recorded diagnoses, each appearing in 10 of 20 recorded diagnoses \(50%\)/.test(text));
 }
 
+// ── suppressSmallCounts / hidden groups (Admin Reports confidentiality) ────
+
+function testSuppressHidesSmallGroupsAndKeepsZeros() {
+  const hidden = KC.suppressSmallCounts({ male: 12, female: 3, other: 2, unknown: 0 }, GENDER_KEYS);
+  assert.deepStrictEqual(hidden, ['female', 'other'], 'counts 1-4 hidden, zero stays visible');
+  assert.strictEqual(KC.SMALL_COUNT_MIN, 5);
+  assert.deepStrictEqual(KC.suppressSmallCounts({ male: 12, female: 5 }, ['male', 'female']), [], '5 is shown');
+}
+
+function testSuppressComplementary() {
+  // Only one small group: the next smallest is hidden too, so 3 cannot be
+  // worked out as total - 7 - 9.
+  const hidden = KC.suppressSmallCounts({ male: 9, female: 7, other: 3, unknown: 0 }, GENDER_KEYS);
+  assert.deepStrictEqual(hidden.sort(), ['female', 'other']);
+}
+
+function testHiddenGroupWording() {
+  const counts = { male: 9, female: 7, other: 3, unknown: 0 };
+  const hidden = KC.suppressSmallCounts(counts, GENDER_KEYS);
+  const text = KC.formatGenderInterpretation(counts, GENDER_KEYS, GENDER_LABELS, hidden);
+  assert.ok(/Among the 19 assessments classified as Delayed/.test(text));
+  assert.ok(/Female accounts for fewer than 5 cases/.test(text) && /Other accounts for fewer than 5 cases/.test(text));
+  assert.ok(!/\b7\b|\b3\b/.test(text), 'hidden counts never printed');
+  assert.ok(/The gender with the highest recorded count is Male, with 9 cases\./.test(text));
+
+  const age = { under_3: 6, age_3: 4, age_4: 0, age_5: 0, age_6: 0, age_7_plus: 0, unknown: 0 };
+  const ageHidden = KC.suppressSmallCounts(age, AGE_KEYS);
+  assert.deepStrictEqual(ageHidden.sort(), ['age_3', 'under_3'], 'all non-zero groups hidden');
+  const ageText = KC.formatAgeRangeInterpretation(age, AGE_KEYS, AGE_LABELS, ageHidden);
+  assert.ok(/Under 3y: fewer than 5 cases/.test(ageText) && /3y: fewer than 5 cases/.test(ageText));
+  assert.ok(/no group is singled out/.test(ageText) && !/\b6\b|\b4\b/.test(ageText.replace('Among the 10', '')));
+}
+
 function run() {
+  testSuppressHidesSmallGroupsAndKeepsZeros();
+  testSuppressComplementary();
+  testHiddenGroupWording();
   testModeNoData();
   testModeSingleLeader();
   testModeTie();
@@ -151,7 +187,7 @@ function run() {
   testDiagnosisInterpretationZero();
   testDiagnosisInterpretationSingleMode();
   testDiagnosisInterpretationTie();
-  console.log('Admin Reports demographic/diagnosis interpretation rules OK — gender/age mode, ties, zero-data, singular wording, and diagnosis summary all verified');
+  console.log('Admin Reports demographic/diagnosis interpretation rules OK — gender/age mode, ties, zero-data, singular wording, diagnosis summary and small-group hiding all verified');
 }
 
 run();

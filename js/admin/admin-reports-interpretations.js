@@ -22,6 +22,10 @@
 //     screenings/cases on file, not an epidemiological study)
 //   - turn a tie into an arbitrary single winner
 //
+// SMALL GROUPS: a count of 1-4 among health outcomes could point to one child,
+// so suppressSmallCounts() picks the groups to hide and the two interpretation
+// functions describe a hidden group only as "fewer than 5 cases".
+//
 // Dual-mode like the files it mirrors: Node (tests) via require(), browser
 // via window.KCAdminReportsInterpretations.
 (function (global) {
@@ -61,26 +65,70 @@
     return { hasData: true, total, maxCount, leaders };
   }
 
+  // Smallest count that is shown as a number; anything from 1 to this minus 1 is hidden.
+  const SMALL_COUNT_MIN = 5;
+
+  /**
+   * The keys of a counts object to hide: every count from 1 to min - 1. If
+   * that hides exactly one group, the smallest remaining non-zero group is
+   * hidden too, so the hidden count cannot be worked out by subtracting the
+   * others from the total. Zeros stay visible. Callers hide the whole
+   * breakdown when the total itself is below min.
+   */
+  function suppressSmallCounts(counts, orderedKeys, min) {
+    const limit = min || SMALL_COUNT_MIN;
+    const valueOf = (k) => (counts ? (counts[k] || 0) : 0);
+    const keys = orderedKeys || [];
+    const hidden = keys.filter((k) => valueOf(k) > 0 && valueOf(k) < limit);
+    if (hidden.length === 1) {
+      const next = keys.filter((k) => valueOf(k) > 0 && !hidden.includes(k))
+        .sort((a, b) => valueOf(a) - valueOf(b))[0];
+      if (next) hidden.push(next);
+    }
+    return hidden;
+  }
+
+  // The counts with hidden groups set to 0, so a hidden group is never named
+  // as the most frequent one.
+  function visibleCounts(counts, hiddenKeys) {
+    const out = { ...(counts || {}) };
+    for (const k of hiddenKeys || []) out[k] = 0;
+    return out;
+  }
+
+  function leadSentenceFor(counts, orderedKeys, labels, hiddenKeys, singleLeader) {
+    const mode = mostFrequentEntries(visibleCounts(counts, hiddenKeys), orderedKeys);
+    if (!mode.hasData) {
+      return `Every group has fewer than ${SMALL_COUNT_MIN} cases or is hidden with one, so no group is singled out.`;
+    }
+    return mode.leaders.length > 1
+      ? `${formatList(mode.leaders.map((k) => labels[k] || k))} are tied for the highest recorded count, each with ${mode.maxCount} ${plural(mode.maxCount, 'case')}.`
+      : singleLeader(labels[mode.leaders[0]] || mode.leaders[0], mode.maxCount);
+  }
+
   /**
    * Gender-distribution interpretation for the Delayed population.
    *
    * @param {Object<string,number>} counts   e.g. { male: 12, female: 20, other: 1, unknown: 0 }
    * @param {string[]} orderedKeys           gender keys in display order (from vocabulary.genders), plus the unknown key
    * @param {Object<string,string>} labels   key -> human label (e.g. male -> "Male", unknown -> "Not recorded")
+   * @param {string[]} [hiddenKeys]          groups to describe only as "fewer than 5 cases" (suppressSmallCounts)
    */
-  function formatGenderInterpretation(counts, orderedKeys, labels) {
+  function formatGenderInterpretation(counts, orderedKeys, labels, hiddenKeys) {
     const mode = mostFrequentEntries(counts, orderedKeys);
     if (!mode.hasData) {
       return 'No assessments in the selected range are classified as Delayed, so a gender distribution cannot be shown.';
     }
+    const hidden = hiddenKeys || [];
 
     const nonZeroParts = orderedKeys
       .filter((k) => (counts[k] || 0) > 0)
-      .map((k) => `${labels[k] || k} account${counts[k] === 1 ? 's' : ''} for ${counts[k]} ${plural(counts[k], 'case')}`);
+      .map((k) => (hidden.includes(k)
+        ? `${labels[k] || k} accounts for fewer than ${SMALL_COUNT_MIN} cases`
+        : `${labels[k] || k} account${counts[k] === 1 ? 's' : ''} for ${counts[k]} ${plural(counts[k], 'case')}`));
 
-    const leadSentence = mode.leaders.length > 1
-      ? `${formatList(mode.leaders.map((k) => labels[k] || k))} are tied for the highest recorded count, each with ${mode.maxCount} ${plural(mode.maxCount, 'case')}.`
-      : `The gender with the highest recorded count is ${labels[mode.leaders[0]] || mode.leaders[0]}, with ${mode.maxCount} ${plural(mode.maxCount, 'case')}.`;
+    const leadSentence = leadSentenceFor(counts, orderedKeys, labels, hidden,
+      (label, n) => `The gender with the highest recorded count is ${label}, with ${n} ${plural(n, 'case')}.`);
 
     return `Among the ${mode.total} ${plural(mode.total, 'assessment')} classified as Delayed in this range, `
       + `${formatList(nonZeroParts)}. ${leadSentence} `
@@ -96,20 +144,23 @@
    * @param {Object<string,number>} counts   e.g. { under_3: 2, age_3: 5, age_4: 9, ... , unknown: 0 }
    * @param {string[]} orderedKeys           age-band keys in display order (from vocabulary.ageBands), plus the unknown key
    * @param {Object<string,string>} labels   key -> human label (e.g. age_4 -> "4y", unknown -> "Age not available")
+   * @param {string[]} [hiddenKeys]          groups to describe only as "fewer than 5 cases" (suppressSmallCounts)
    */
-  function formatAgeRangeInterpretation(counts, orderedKeys, labels) {
+  function formatAgeRangeInterpretation(counts, orderedKeys, labels, hiddenKeys) {
     const mode = mostFrequentEntries(counts, orderedKeys);
     if (!mode.hasData) {
       return 'No assessments in the selected range are classified as Delayed, so an age-range distribution cannot be shown.';
     }
+    const hidden = hiddenKeys || [];
 
     const nonZeroParts = orderedKeys
       .filter((k) => (counts[k] || 0) > 0)
-      .map((k) => `${labels[k] || k}: ${counts[k]} ${plural(counts[k], 'case')}`);
+      .map((k) => (hidden.includes(k)
+        ? `${labels[k] || k}: fewer than ${SMALL_COUNT_MIN} cases`
+        : `${labels[k] || k}: ${counts[k]} ${plural(counts[k], 'case')}`));
 
-    const leadSentence = mode.leaders.length > 1
-      ? `${formatList(mode.leaders.map((k) => labels[k] || k))} are tied for the highest recorded count, each with ${mode.maxCount} ${plural(mode.maxCount, 'case')}.`
-      : `The ${labels[mode.leaders[0]] || mode.leaders[0]} age range has the highest recorded count, with ${mode.maxCount} ${plural(mode.maxCount, 'case')}.`;
+    const leadSentence = leadSentenceFor(counts, orderedKeys, labels, hidden,
+      (label, n) => `The ${label} age range has the highest recorded count, with ${n} ${plural(n, 'case')}.`);
 
     return `Among the ${mode.total} ${plural(mode.total, 'assessment')} classified as Delayed in this range (age at the time of assessment), `
       + `${formatList(nonZeroParts)}. ${leadSentence} `
@@ -141,6 +192,8 @@
   }
 
   const api = {
+    SMALL_COUNT_MIN,
+    suppressSmallCounts,
     formatList,
     mostFrequentEntries,
     formatGenderInterpretation,
