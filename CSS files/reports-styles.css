@@ -720,3 +720,84 @@ body.kc-pdf-export #printableReport .data-note {
 }
 
 body.kc-pdf-export .domain-grid { grid-template-columns: repeat(2, 1fr); }
+
+/* ── Developmental Domain Progress ─────────────────────────────────────────
+   js/parent/reports.js renderDomainTrends: one line graph per area, two per
+   row, all on the same 0–100% scale. New class names only; the latest
+   assessment's .domain-grid / .domain-card above are untouched. */
+.domain-trend-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.2rem;
+}
+
+.domain-trend-panel {
+    min-width: 0;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel, 12px);
+    background: var(--bg-primary);
+}
+
+.domain-trend-title {
+    margin: 0 0 0.35rem;
+    font-size: 1rem;
+    color: var(--text-dark);
+}
+
+.domain-trend-figures {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-dark);
+}
+
+.domain-trend-figures strong {
+    color: var(--primary);
+}
+
+.domain-trend-date {
+    color: var(--text-light);
+}
+
+.domain-trend-change {
+    margin: 0.2rem 0 0.6rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--primary-dark);
+}
+
+.domain-trend-chart {
+    position: relative;
+    height: 220px;
+}
+
+.domain-trend-empty {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.55;
+    color: var(--text-light);
+}
+
+@media (max-width: 768px) {
+    .domain-trend-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Print and PDF: two graphs per row whatever the screen width, each kept whole. */
+@media print {
+    .domain-trend-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .domain-trend-chart { height: 190px; }
+    .domain-trend-panel {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+    .domain-trend-chart canvas {
+        max-width: 100% !important;
+        height: auto !important;
+    }
+}
+
+body.kc-pdf-export .domain-trend-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+body.kc-pdf-export .domain-trend-chart { height: 190px; }

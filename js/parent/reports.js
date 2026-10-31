@@ -355,6 +355,178 @@ function drawTrendChart(assessments) {
     });
 }
 
+// ── Developmental Domain Progress ───────────────────────────────────────────
+// One line graph per area, below Score over time, built from the same
+// completed assessments as the overall chart (overallScore recorded) and their
+// stored area scores. A reading with no score, or a 0 with nothing answered
+// behind it (KCReportInterpretations.isDomainUnusable), is a gap in the line
+// and never counted as 0. Every graph uses the same 0–100% scale. Changes are
+// described as increased / decreased / unchanged, never as "improvement" (see
+// js/parent/report-interpretations.js).
+
+const DOMAIN_TREND_AREAS = Object.freeze([
+    { key: 'communication', label: 'Communication' },
+    { key: 'social', label: 'Social Skills' },
+    { key: 'cognitive', label: 'Cognitive' },
+    { key: 'motor', label: 'Motor Skills' },
+]);
+
+let domainTrendCharts = [];
+
+/** One area's usable readings in date order: { points: [score|null per assessment], first, latest }. */
+function domainTrendSeries(scored, key) {
+    const interp = window.KCReportInterpretations;
+    const points = scored.map((a) => {
+        const d = (a.domains || []).find((x) => x.key === key);
+        return d && !interp.isDomainUnusable(d) ? Number(d.score) : null;
+    });
+    const usable = scored.map((a, i) => ({ a, score: points[i] })).filter((p) => p.score != null);
+    return {
+        points,
+        count: usable.length,
+        first: usable[0] || null,
+        latest: usable[usable.length - 1] || null,
+    };
+}
+
+function renderDomainTrends(assessments) {
+    const scored = assessments.filter((a) => a.overallScore != null);
+
+    if (scored.length < 2) {
+        return `
+            <div class="report-card">
+                <h2>Developmental Domain Progress</h2>
+                <div class="trend-empty">
+                    <h3>Not enough assessments yet to show progress by area</h3>
+                    <p>
+                        Each area's graph needs at least two completed assessments so its scores can be compared.
+                        ${scored.length === 1 ? 'There is one completed assessment so far.' : 'There are no completed assessments for this child yet.'}
+                    </p>
+                </div>
+            </div>`;
+    }
+
+    const interp = window.KCReportInterpretations;
+    const panels = DOMAIN_TREND_AREAS.map((area, i) => {
+        const s = domainTrendSeries(scored, area.key);
+        if (s.count < 2) {
+            return `
+                <div class="domain-trend-panel">
+                    <h3 class="domain-trend-title">${escapeHtml(area.label)}</h3>
+                    <p class="domain-trend-empty">Not enough recorded scores for this area to show a trend yet.${s.latest
+                        ? ` Its one recorded score is ${Math.round(s.latest.score)}% (${escapeHtml(fmtDate(s.latest.a.completedAt) || 'date not recorded')}).`
+                        : ''}</p>
+                </div>`;
+        }
+        const first = Math.round(s.first.score);
+        const latest = Math.round(s.latest.score);
+        const delta = interp.pointsDiffText(latest, first);
+        const change = delta.direction === 'increased'
+            ? `&#9650; Increased by ${delta.points} percentage point${delta.points === 1 ? '' : 's'}`
+            : delta.direction === 'decreased'
+                ? `&#9660; Decreased by ${delta.points} percentage point${delta.points === 1 ? '' : 's'}`
+                : '&#9679; Unchanged';
+        return `
+            <div class="domain-trend-panel">
+                <h3 class="domain-trend-title">${escapeHtml(area.label)}</h3>
+                <p class="domain-trend-figures">
+                    First: <strong>${first}%</strong> <span class="domain-trend-date">(${escapeHtml(fmtDate(s.first.a.completedAt) || 'date not recorded')})</span>
+                    &middot; Latest: <strong>${latest}%</strong> <span class="domain-trend-date">(${escapeHtml(fmtDate(s.latest.a.completedAt) || 'date not recorded')})</span>
+                </p>
+                <p class="domain-trend-change">${change}</p>
+                <div class="domain-trend-chart"><canvas id="domainTrendChart${i}" role="img"
+                    aria-label="${escapeHtml(`Line chart of the recorded ${area.label} score across ${s.count} completed assessments: first ${first}%, latest ${latest}%, ${delta.text}.`)}"></canvas></div>
+            </div>`;
+    }).join('');
+
+    return `
+        <div class="report-card">
+            <h2>Developmental Domain Progress</h2>
+            <p class="card-sub">
+                Your child's recorded score in each developmental area at every completed assessment, oldest on the
+                left. All four graphs use the same 0&ndash;100% scale so the areas can be compared. "First" and
+                "Latest" are the earliest and most recent recorded scores for that area; the change between them is
+                in percentage points. A gap in a line means no score was recorded for that area in that assessment.
+            </p>
+            <div class="domain-trend-grid">${panels}</div>
+        </div>`;
+}
+
+// Chart.js is only initialised after the markup is in the DOM.
+function drawDomainTrendCharts(assessments) {
+    domainTrendCharts.forEach((c) => c.destroy());
+    domainTrendCharts = [];
+    if (typeof Chart === 'undefined') return;
+
+    const scored = assessments.filter((a) => a.overallScore != null);
+    if (scored.length < 2) return;
+    const labels = scored.map((a) => fmtShortDate(a.completedAt));
+    const fullDates = scored.map((a) => fmtDate(a.completedAt) || 'Date not recorded');
+
+    DOMAIN_TREND_AREAS.forEach((area, i) => {
+        const canvas = document.getElementById(`domainTrendChart${i}`);
+        if (!canvas) return;
+        const s = domainTrendSeries(scored, area.key);
+        domainTrendCharts.push(new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: area.label,
+                    data: s.points,
+                    borderColor: '#6B8E6F',
+                    backgroundColor: 'rgba(107, 142, 111, 0.12)',
+                    pointBackgroundColor: s.points.map((v) => (v == null ? '#6B8E6F' : window.KCScoring.colorForScore(v))),
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    borderWidth: 2,
+                    fill: false,
+                    tension: 0,
+                    clip: false,
+                    // A missing reading stays a gap, never a line through 0.
+                    spanGaps: false,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                // Drawn at once, so print and PDF never capture a half-drawn chart.
+                animation: false,
+                scales: {
+                    y: {
+                        min: 0,
+                        max: 100,
+                        ticks: { stepSize: 25, callback: (v) => `${v}%` },
+                        title: { display: true, text: 'Score (%)' },
+                    },
+                    x: {
+                        ticks: { maxRotation: 0, autoSkip: true, autoSkipPadding: 12 },
+                        title: { display: true, text: 'Assessment date' },
+                    },
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => `Assessment date: ${fullDates[items[0].dataIndex]}`,
+                            label: (ctx) => (ctx.parsed.y == null
+                                ? `${area.label}: no score recorded`
+                                : `${area.label}: ${Math.round(ctx.parsed.y)}%`),
+                            afterLabel: (ctx) => (ctx.parsed.y == null ? '' : `Score range: ${window.KCScoring.parentDomainStatus(ctx.parsed.y).label}`),
+                        },
+                    },
+                },
+            },
+        }));
+    });
+}
+
+/** Resizes every chart on the page (before and after print / PDF capture). */
+function resizeReportCharts() {
+    if (trendChart) trendChart.resize();
+    domainTrendCharts.forEach((c) => c.resize());
+}
+
 // Per-domain breakdown for the most recent completed screening.
 function renderLatestDomains(latest) {
     if (!latest) return '';
@@ -814,7 +986,7 @@ async function downloadReportPdf() {
     try {
         const html2pdf = await loadHtml2pdf();
         document.body.classList.add('kc-pdf-export');
-        if (trendChart) trendChart.resize();
+        resizeReportCharts();
         await html2pdf().set({
             margin: [10, 10, 12, 10],
             filename: reportPdfFileName(reportData.child),
@@ -828,7 +1000,7 @@ async function downloadReportPdf() {
         alert('The PDF could not be created right now. Please use Print Report and choose "Save as PDF" instead.');
     } finally {
         document.body.classList.remove('kc-pdf-export');
-        if (trendChart) trendChart.resize();
+        resizeReportCharts();
         button.disabled = false;
         button.textContent = label;
     }
@@ -911,6 +1083,7 @@ async function loadReport() {
             ${childInfo}
             ${renderScoreKey()}
             ${renderTrend(assessments, reportData.trendAvailable)}
+            ${renderDomainTrends(assessments)}
             ${renderLatestDomains(latest)}
             ${renderDiscussPrompt(latest)}
             ${renderTimeline(assessments)}
@@ -919,6 +1092,7 @@ async function loadReport() {
             ${renderDataNote(reportData.unrenderable)}`;
 
         drawTrendChart(assessments);
+        drawDomainTrendCharts(assessments);
         setReportActionsVisible(Boolean(reportChild));
     } catch (e) {
         setReportActionsVisible(false);
@@ -934,8 +1108,8 @@ async function loadReport() {
 
 document.addEventListener('DOMContentLoaded', () => {
     if (typeof initNav === 'function') initNav();
-    // Fit the trend chart to the paper width while printing, then back.
-    window.addEventListener('beforeprint', () => { if (trendChart) trendChart.resize(); });
-    window.addEventListener('afterprint', () => { if (trendChart) trendChart.resize(); });
+    // Fit the charts to the paper width while printing, then back.
+    window.addEventListener('beforeprint', resizeReportCharts);
+    window.addEventListener('afterprint', resizeReportCharts);
     loadReport();
 });
