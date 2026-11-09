@@ -69,10 +69,21 @@ async function buildReceiptContext(payment) {
     // reported it, and never falls back to guessing one it did not report.
     paymentMethodLabel: resolvePaymentMethodLabel(payment),
     amount: payment.amount,
+    // What this transaction was (50% deposit, clinic balance or full fee) and
+    // what is still owed after it, so the receipt shows the actual payment.
+    paymentTypeLabel: receiptPaymentTypeLabel(payment.paymentType),
+    totalAmount: Number(appointment?.totalAmount ?? payment.totalAmount ?? 0),
+    balanceDue: Number(payment.balanceDue || 0),
     currency: payment.currency || 'PHP',
     paidAt: payment.paidAt,
     status: payment.status,
   };
+}
+
+function receiptPaymentTypeLabel(paymentType) {
+  if (paymentType === 'down_payment') return `Partial payment (${Math.round(paymentService.DOWN_PAYMENT_RATE * 100)}% deposit)`;
+  if (paymentType === 'balance_payment') return 'Balance payment';
+  return 'Full payment';
 }
 
 /**

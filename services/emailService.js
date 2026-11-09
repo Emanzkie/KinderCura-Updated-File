@@ -417,7 +417,11 @@ async function sendPaymentReceiptEmail(context = {}) {
     clinic = {}, receiptNumber, paymentRef, parentName, parentEmail, contactPhone,
     childName, pediatricianName, appointmentId, appointmentDate, appointmentTime,
     service, paymentMethod, paymentMethodLabel, amount, currency = 'PHP', paidAt, status = 'Paid',
+    paymentTypeLabel, totalAmount, balanceDue,
   } = context;
+  // Partial payment (50% deposit), balance payment or full payment, with the
+  // fee and what is still owed (receiptService.buildReceiptContext).
+  const owing = Number(balanceDue) > 0;
 
   if (!parentEmail) {
     return { sent: false, message: 'No recipient email supplied.' };
@@ -455,7 +459,10 @@ async function sendPaymentReceiptEmail(context = {}) {
         ${receiptRow('Appointment Time', formatClockTime(appointmentTime))}
         ${receiptRow('Service', service)}
         ${receiptRow('Payment Method', methodLabel)}
+        ${paymentTypeLabel ? receiptRow('Payment Type', paymentTypeLabel) : ''}
+        ${totalAmount ? receiptRow('Total Fee', formatPeso(totalAmount, currency)) : ''}
         ${receiptRow('Amount Paid', amountStr)}
+        ${owing ? receiptRow('Remaining Balance', `${formatPeso(balanceDue, currency)} (due at the clinic)`) : ''}
         ${receiptRow('Payment Date', formatDateTime(paidAt))}
         ${receiptRow('Payment Status', String(status).toUpperCase())}
         ${contactPhone ? receiptRow('Contact Mobile', contactPhone) : ''}
@@ -493,8 +500,8 @@ Appointment Date:   ${formatDateOnly(appointmentDate)}
 Appointment Time:   ${formatClockTime(appointmentTime)}
 Service:            ${service || '—'}
 Payment Method:     ${methodLabel}
-Amount Paid:        ${amountStr}
-Payment Date:       ${formatDateTime(paidAt)}
+${paymentTypeLabel ? `Payment Type:       ${paymentTypeLabel}\n` : ''}${totalAmount ? `Total Fee:          ${formatPeso(totalAmount, currency)}\n` : ''}Amount Paid:        ${amountStr}
+${owing ? `Remaining Balance:  ${formatPeso(balanceDue, currency)} (due at the clinic)\n` : ''}Payment Date:       ${formatDateTime(paidAt)}
 Payment Status:     ${String(status).toUpperCase()}
 ${contactPhone ? `Contact Mobile:     ${contactPhone}\n` : ''}
 ${clinic.clinicName || 'KinderCura Clinic'}

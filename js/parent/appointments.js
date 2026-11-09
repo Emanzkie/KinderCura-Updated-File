@@ -662,11 +662,10 @@ async function renderBookingSplit(fee) {
         const quote = await apiFetch(`/payments/quote?totalAmount=${encodeURIComponent(fee)}`);
         const deposit = roundMoney(quote.requiredDownPayment);
         el.innerHTML = `
-            <div class="confirm-summary__row"><dt>Pay online now (${Math.round(Number(quote.downPaymentRate || 0) * 100)}%)</dt><dd>${formatMoney(deposit)}</dd></div>
-            <div class="confirm-summary__row"><dt>Pay at the clinic on the appointment day</dt><dd>${formatMoney(roundMoney(fee - deposit))}</dd></div>
-            <div class="confirm-summary__row"><dt>Or, without GCash or Maya: pay the full fee at the clinic</dt><dd>${formatMoney(fee)}</dd></div>`;
+            <div class="confirm-summary__row"><dt>Partial payment (${Math.round(Number(quote.downPaymentRate || 0) * 100)}%)</dt><dd>${formatMoney(deposit)} now online + ${formatMoney(roundMoney(fee - deposit))} at the clinic</dd></div>
+            <div class="confirm-summary__row"><dt>Full payment (100%)</dt><dd>${formatMoney(fee)}, online or at the clinic</dd></div>`;
     } catch {
-        el.innerHTML = '<p class="mini" style="margin:.5rem 0 0;">Pay half online after booking and the rest at the clinic, or pay the full fee at the clinic.</p>';
+        el.innerHTML = '<p class="mini" style="margin:.5rem 0 0;">After booking, choose Partial (50%) or Full (100%) payment, then pay online or at the clinic.</p>';
     }
 }
 
@@ -740,7 +739,7 @@ function renderPaymentSummary(a) {
     return `
         <div class="appointment-payment-summary">
             <span class="payment-badge ${paymentBadgeClass(paymentStatus)}">${escapeHtml(paymentStatus)}</span>
-            ${a.paymentType ? `<span class="mini">${escapeHtml(a.paymentType)} plan</span>` : ''}
+            ${a.paymentType ? `<span class="mini">${escapeHtml({ Down: 'Partial (50%) payment', Full: 'Full payment' }[a.paymentType] || `${a.paymentType} plan`)}</span>` : ''}
             <span class="mini">Paid ${formatMoney(paid)} of ${formatMoney(total)}</span>
             <span class="mini">Balance ${formatMoney(balance)}</span>
             <button type="button" class="payment-link-btn" onclick="viewReceipt(${a.id})">Receipt</button>

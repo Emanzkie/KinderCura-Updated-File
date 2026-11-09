@@ -5,15 +5,19 @@ let appointmentData = null;
 let modeSelected = false;
 
 const PANEL_IDS = [
-    'optionCards', 'walkInPanel', 'ewalletSubmittedPanel',
+    'optionCards', 'methodCards', 'walkInPanel', 'ewalletSubmittedPanel',
     'clinicQrPanel', 'onlinePendingPanel', 'onlineSuccessPanel', 'onlineFailedPanel',
 ];
+const GRID_PANELS = ['optionCards', 'methodCards'];
+
+// Step 1 choice: 'partial' (50% now online, the rest at the clinic) or 'full'.
+let selectedPaymentType = 'partial';
 
 function showPanel(id) {
     PANEL_IDS.forEach((pid) => {
         const el = document.getElementById(pid);
         if (el) {
-            el.style.display = pid === id ? (id === 'optionCards' ? 'grid' : 'block') : 'none';
+            el.style.display = pid === id ? (GRID_PANELS.includes(id) ? 'grid' : 'block') : 'none';
             if (pid === id) el.classList.add('active');
             else el.classList.remove('active');
         }
@@ -75,12 +79,15 @@ function renderReceiptCard(r) {
                 <div><dt>Appointment Time</dt><dd>${fmtTime(r.appointmentTime)}</dd></div>
                 <div><dt>Service</dt><dd>${escapeHtml(r.service || 'Consultation')}</dd></div>
                 <div><dt>Payment Method</dt><dd>${escapeHtml(r.paymentMethodLabel || r.paymentMethod || '—')}</dd></div>
+                ${r.paymentTypeLabel ? `<div><dt>Payment Type</dt><dd>${escapeHtml(r.paymentTypeLabel)}</dd></div>` : ''}
+                ${Number(r.totalAmount) > 0 ? `<div><dt>Total Fee</dt><dd>${formatMoney(r.totalAmount)}</dd></div>` : ''}
             </dl>
             <div class="receipt-amount-row">
                 <span>Amount Paid</span>
                 <span class="amt">${formatMoney(r.amount)}</span>
             </div>
             <dl class="receipt-fields">
+                ${Number(r.balanceDue) > 0 ? `<div><dt>Remaining Balance</dt><dd>${formatMoney(r.balanceDue)} (due at the clinic)</dd></div>` : ''}
                 <div><dt>Paid At</dt><dd>${fmtDateTime(r.paidAt)}</dd></div>
                 <div><dt>Status</dt><dd style="color:var(--status-positive-fg);">${escapeHtml(String(r.status || '').toUpperCase())}</dd></div>
             </dl>
@@ -211,21 +218,55 @@ function owesClinicBalance(appt) {
     return appt.paymentStatus !== 'Paid' && Number(appt.amountPaid || 0) > 0 && Number(appt.balanceDue || 0) > 0;
 }
 
+// Step 1 cards: what each payment type costs now and at the clinic.
 function renderFeeSplit(appt) {
     const s = feeSplit(appt);
+    const partialEl = document.getElementById('partialSplit');
+    if (partialEl) {
+        partialEl.innerHTML = `
+            <div><dt>Total consultation fee</dt><dd>${formatMoney(s.total)}</dd></div>
+            <div class="now"><dt>Pay now (50%)</dt><dd>${formatMoney(s.deposit)}</dd></div>
+            <div><dt>Pay at the clinic on your appointment day</dt><dd>${formatMoney(s.atClinic)}</dd></div>`;
+    }
+    const fullEl = document.getElementById('fullSplit');
+    if (fullEl) {
+        fullEl.innerHTML = `
+            <div><dt>Total consultation fee</dt><dd>${formatMoney(s.total)}</dd></div>
+            <div class="now"><dt>Pay now (100%)</dt><dd>${formatMoney(s.total)}</dd></div>
+            <div><dt>Left to pay at the clinic</dt><dd>${formatMoney(0)}</dd></div>`;
+    }
+    renderMethodCards(appt);
+}
+
+// Step 2 cards for the chosen type. Online: 50% or the full fee. Clinic:
+// always the full fee, because a split cannot be paid in cash at the counter.
+function renderMethodCards(appt) {
+    const s = feeSplit(appt);
+    const full = selectedPaymentType === 'full';
+    const onlineNow = full ? s.total : s.deposit;
+    const label = document.getElementById('methodTypeLabel');
+    if (label) label.textContent = full ? 'Full Payment (100%)' : 'Partial Payment (50%)';
     const el = document.getElementById('feeSplit');
     if (el) {
         el.innerHTML = `
-            <div><dt>Total consultation fee</dt><dd>${formatMoney(s.total)}</dd></div>
-            <div class="now"><dt>Pay now online (50%)</dt><dd>${formatMoney(s.deposit)}</dd></div>
-            <div><dt>Pay at the clinic on your appointment day</dt><dd>${formatMoney(s.atClinic)}</dd></div>`;
+            <div class="now"><dt>Pay now online</dt><dd>${formatMoney(onlineNow)}</dd></div>
+            <div><dt>Pay at the clinic on your appointment day</dt><dd>${formatMoney(full ? 0 : s.atClinic)}</dd></div>`;
     }
     const btn = document.getElementById('payOnlineBtn');
-    if (btn && s.deposit > 0) btn.textContent = `Pay ${formatMoney(s.deposit)} Online`;
+    if (btn && onlineNow > 0) btn.textContent = `Pay ${formatMoney(onlineNow)} Online`;
     const clinicEl = document.getElementById('clinicFeeSplit');
     if (clinicEl) {
         clinicEl.innerHTML = `<div class="now"><dt>Pay at the clinic (full fee)</dt><dd>${formatMoney(s.total)}</dd></div>`;
     }
+    const note = document.getElementById('clinicPartialNote');
+    if (note) note.style.display = full ? 'none' : 'block';
+}
+
+function selectPaymentType(type) {
+    clearError();
+    selectedPaymentType = type === 'full' ? 'full' : 'partial';
+    if (appointmentData) renderMethodCards(appointmentData);
+    showPanel('methodCards');
 }
 
 function buildSummaryHtml(appt) {
@@ -292,7 +333,11 @@ async function payOnline() {
     if (btn) { btn.disabled = true; btn.textContent = 'Opening secure checkout…'; }
 
     try {
-        const data = await apiFetch(`/payments/appointments/${appointmentId}/checkout`, { method: 'POST' });
+        // Only the payment type is sent; the server works out the amount.
+        const data = await apiFetch(`/payments/appointments/${appointmentId}/checkout`, {
+            method: 'POST',
+            body: JSON.stringify({ paymentType: selectedPaymentType }),
+        });
         if (!data.checkoutUrl) throw new Error('The payment provider did not return a checkout link.');
         // Remember the reference so the page can resume polling if the parent
         // returns without the query string (e.g. by pressing Back).
@@ -301,7 +346,7 @@ async function payOnline() {
     } catch (err) {
         showError(err.message || 'Could not start the online payment. Please try again.');
         if (btn) btn.disabled = false;
-        if (appointmentData) renderFeeSplit(appointmentData);
+        if (appointmentData) renderMethodCards(appointmentData);
     }
 }
 

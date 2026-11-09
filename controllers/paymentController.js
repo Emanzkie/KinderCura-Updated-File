@@ -513,12 +513,15 @@ async function ensureAutomatedPayment({ appointment, method, actor, parentEmail,
   const total = Number(appointment.totalAmount || 0);
 
   // The clinic balance row (paymentService.ensureBalancePayment) is never
-  // reused for a new attempt.
+  // reused for a new attempt. Nor is a row whose PayMongo checkout was opened
+  // for the other payment type (50% vs full): if that session is paid later,
+  // its row must still settle for the amount PayMongo charged.
   const existing = await Payment.findOne({
     appointmentId: appointment._id,
     paymentMethod: { $in: ['paymongo', 'pay_at_clinic'] },
     paymentType: { $ne: 'balance_payment' },
     status: { $in: ['Pending', 'Failed', 'Expired'] },
+    $or: [{ paymongoCheckoutSessionId: null }, { paymentType }],
   }).sort({ createdAt: -1 });
 
   if (existing) {
@@ -577,8 +580,9 @@ async function startOnlineCheckout(req, res) {
       return res.status(403).json({ error: 'Access denied.' });
     }
 
-    // Authoritative amount — never req.body. Online is always the 50% deposit;
-    // the rest is paid at the clinic on the appointment day.
+    // Authoritative amount — never req.body. The parent picks the payment
+    // type only: Partial (default) is the 50% deposit, with the rest paid at
+    // the clinic on the appointment day; Full is the whole fee.
     const total = assertPayable(appointment);
     if (Number(appointment.amountPaid || 0) > 0) {
       return res.status(400).json({
@@ -586,7 +590,8 @@ async function startOnlineCheckout(req, res) {
         code: 'DEPOSIT_ALREADY_PAID',
       });
     }
-    const deposit = paymentService.calculateRequiredDownPayment(total);
+    const isFull = req.body?.paymentType === 'full';
+    const deposit = isFull ? total : paymentService.calculateRequiredDownPayment(total);
 
     const clinic = await SystemSetting.getClinic();
     if (!clinic.onlinePaymentEnabled) {
@@ -608,7 +613,7 @@ async function startOnlineCheckout(req, res) {
       actor: req.user,
       parentEmail: parent?.email || null,
       receiptPhone: parent?.phoneNumber || null,
-      paymentType: 'down_payment',
+      paymentType: isFull ? 'full_payment' : 'down_payment',
     });
 
     // Where PayMongo sends the parent back to. Behind Vercel's proxy
@@ -625,7 +630,7 @@ async function startOnlineCheckout(req, res) {
       referenceNumber: payment.paymentRef,
       amount: deposit,
       currency: payment.currency || 'PHP',
-      lineName: `${clinic.clinicName || 'KinderCura'} — Consultation (${Math.round(paymentService.DOWN_PAYMENT_RATE * 100)}% deposit)`,
+      lineName: `${clinic.clinicName || 'KinderCura'} — Consultation${isFull ? '' : ` (${Math.round(paymentService.DOWN_PAYMENT_RATE * 100)}% deposit)`}`,
       lineDescription: `Appointment #${appointment.id} for ${childName}`,
       successUrl: `${origin}/parent/payment?appointmentId=${appointment.id}&ref=${encodeURIComponent(payment.paymentRef)}&result=success`,
       cancelUrl: `${origin}/parent/payment?appointmentId=${appointment.id}&ref=${encodeURIComponent(payment.paymentRef)}&result=cancelled`,
@@ -655,6 +660,7 @@ async function startOnlineCheckout(req, res) {
       paymentRef: payment.paymentRef,
       checkoutUrl: session.checkoutUrl,
       amount: deposit,
+      paymentType: isFull ? 'full' : 'partial',
       totalAmount: total,
       balanceAtClinic: paymentService.roundCurrency(total - deposit),
       testMode: paymongoService.isTestMode(),

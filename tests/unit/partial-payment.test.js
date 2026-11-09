@@ -40,6 +40,8 @@ const query = (value) => {
 };
 const same = (a, b) => String(a) === String(b);
 const matches = (doc, filter) => Object.entries(filter).every(([k, v]) => {
+  if (k === '$or') return v.some((sub) => matches(doc, sub));
+  if (v === null) return doc[k] == null; // like Mongo: null matches a missing field too
   if (v && typeof v === 'object' && !(v instanceof mongoose.Types.ObjectId)) {
     if ('$in' in v) return v.$in.some((x) => same(x, doc[k]));
     if ('$ne' in v) return !same(v.$ne, doc[k]);
@@ -237,6 +239,66 @@ const balanceRows = () => state.payments.filter((p) => p.paymentType === 'balanc
     const refundable = await refundService.findRefundablePayment(state.appointment);
     assert.strictEqual(refundable.amount, 475);
     ok('a cancelled booking refunds the 50% paid online');
+
+    // 9. Payment type x method: each settled only by the existing verification
+    //    (PayMongo reconcile, or the secretary's Confirm), then the receipt.
+    const appt = () => [state.appointment.amountPaid, state.appointment.balanceDue, state.appointment.paymentStatus, state.appointment.paymentType];
+    const receiptOf = async (row) => {
+      const r = await receiptService.buildReceiptContext(row);
+      return [r.paymentTypeLabel, r.amount, r.totalAmount, r.balanceDue];
+    };
+
+    // Partial + Online: 50% now, the rest at the clinic.
+    reset();
+    res = await call(controller.startOnlineCheckout, parent, { appointmentId: '501' }, { paymentType: 'partial' });
+    assert.deepStrictEqual([res.statusCode, state.checkouts[0].amount, res.body.paymentType, res.body.balanceAtClinic], [201, 475, 'partial', 475]);
+    assert.match(state.checkouts[0].lineName, /\(50% deposit\)/);
+    res = await call(controller.reconcileCheckout, parent, { paymentRef: deposit().paymentRef });
+    assert.deepStrictEqual(appt(), [475, 475, 'Down Payment', 'Down']);
+    assert.deepStrictEqual(await receiptOf(deposit()), ['Partial payment (50% deposit)', 475, 950, 475]);
+    res = await call(controller.confirmClinicPayment, secretary, { paymentRef: balanceRows()[0].paymentRef });
+    assert.deepStrictEqual(appt(), [950, 0, 'Paid', 'Down']);
+    assert.deepStrictEqual(await receiptOf(balanceRows()[0]), ['Balance payment', 475, 950, 0]);
+
+    // Partial + Clinic and Full + Clinic: the whole fee at the counter.
+    reset();
+    res = await call(controller.startPayAtClinic, parent, { appointmentId: '501' });
+    assert.deepStrictEqual([res.statusCode, res.body.amount, state.payments[0].paymentType, state.payments[0].paymentMethod], [201, 950, 'full_payment', 'pay_at_clinic']);
+    assert.deepStrictEqual(appt(), [0, 950, 'Pending Payment', undefined], 'nothing paid until confirmed');
+    res = await call(controller.confirmClinicPayment, secretary, { paymentRef: state.payments[0].paymentRef });
+    assert.deepStrictEqual(appt(), [950, 0, 'Paid', 'Full']);
+    assert.deepStrictEqual(await receiptOf(state.payments[0]), ['Full payment', 950, 950, 0]);
+    assert.strictEqual(balanceRows().length, 0);
+
+    // Full + Online: PayMongo is charged the whole fee.
+    reset();
+    res = await call(controller.startOnlineCheckout, parent, { appointmentId: '501' }, { paymentType: 'full' });
+    assert.deepStrictEqual([res.statusCode, state.checkouts[0].amount, res.body.paymentType, res.body.balanceAtClinic], [201, 950, 'full', 0]);
+    assert.ok(!/deposit/.test(state.checkouts[0].lineName));
+    assert.deepStrictEqual([state.payments[0].paymentType, state.payments[0].paymentMethod, state.payments[0].status], ['full_payment', 'paymongo', 'Pending']);
+    assert.deepStrictEqual(appt(), [0, 950, 'Pending Payment', undefined], 'nothing paid until PayMongo confirms');
+    res = await call(controller.reconcileCheckout, parent, { paymentRef: state.payments[0].paymentRef });
+    assert.deepStrictEqual(appt(), [950, 0, 'Paid', 'Full']);
+    assert.deepStrictEqual([state.payments[0].status, state.payments[0].amount, state.payments[0].balanceDue], ['Paid', 950, 0]);
+    assert.deepStrictEqual(await receiptOf(state.payments[0]), ['Full payment', 950, 950, 0]);
+    assert.strictEqual(balanceRows().length, 0, 'nothing left for the clinic');
+    ok('all four combinations: Partial+Online 50% then the clinic balance; Partial/Full+Clinic and Full+Online 100%; receipts show type, fee and balance');
+
+    // 10. Switching type after opening a checkout never mixes amounts.
+    reset();
+    await call(controller.startPayAtClinic, parent, { appointmentId: '501' });
+    await call(controller.startOnlineCheckout, parent, { appointmentId: '501' }, { paymentType: 'full' });
+    assert.strictEqual(state.payments.length, 1, 'a clinic reference (no checkout yet) is reused');
+    await call(controller.startOnlineCheckout, parent, { appointmentId: '501' }, { paymentType: 'partial' });
+    assert.strictEqual(state.payments.length, 2, 'a full checkout already opened is kept; the 50% gets its own reference');
+    const [fullRow, partialRow] = state.payments;
+    assert.deepStrictEqual([fullRow.paymentType, partialRow.paymentType], ['full_payment', 'down_payment']);
+    await call(controller.startOnlineCheckout, parent, { appointmentId: '501' }, { paymentType: 'partial' });
+    assert.strictEqual(state.payments.length, 2, 'the same type reuses its own reference');
+    res = await call(controller.reconcileCheckout, parent, { paymentRef: fullRow.paymentRef });
+    assert.deepStrictEqual(appt(), [950, 0, 'Paid', 'Full'], 'the full checkout settles for the full fee');
+    assert.strictEqual(partialRow.status, 'Pending', 'the unused 50% reference is untouched');
+    ok('switching between 50% and full after opening a checkout keeps each reference at its own amount');
 
     console.log('Partial payment tests OK');
   } finally {
