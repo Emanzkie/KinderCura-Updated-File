@@ -587,7 +587,7 @@
                                 <h2 style="margin-bottom:0.5rem;">Schedule Professional Consultation</h2>
                                 <p style="margin-bottom:0.9rem;opacity:0.95;">${escapeHtml(data.suggestionSummary || 'Based on the assessment results, we recommend scheduling a consultation with a pediatrician.')}</p>
                                 ${Array.isArray(data.focusAreas) && data.focusAreas.length ? `<p style="margin:0 0 1.1rem;font-weight:600;">Focus areas: ${escapeHtml(data.focusAreas.join(', '))}</p>` : ''}
-                                <button class="btn btn-primary" onclick="window.location.href='/parent/appointments?childId=${encodeURIComponent(activeChild.id)}'" style="background:#FAFAF6;color:var(--text-dark);font-weight:700;">Book Appointment Now</button>
+                                <button class="btn btn-primary" onclick="window.location.href='/parent/appointments?childId=${encodeURIComponent(activeChild.id)}'" style="font-weight:700;">Book Appointment Now</button>
                             </div>
                         </div>
                     </div>`;

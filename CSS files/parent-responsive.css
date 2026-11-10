@@ -391,3 +391,50 @@ iframe {
         width: 200px;
     }
 }
+
+/* ==================== PARENT ACTION BUTTONS ====================
+   Every parent action button looks like Manage Guardians: cream background,
+   green outline, green text. Hover, keyboard focus and press fill it green
+   with white text. This file loads only on parent pages, after the page
+   stylesheets; the doubled classes outrank page rules such as
+   .parent-profile-page .btn-primary and .gm-btn--primary:hover:not(:disabled).
+   The outline sits over the border (offset -2px), so buttons with and without
+   a border look alike and none changes size.
+   Not included on purpose: selection buttons (answer options, choices, tabs,
+   view toggles), icon buttons, and danger/"current" guardian buttons. */
+.btn.btn,
+.gm-btn.gm-btn--primary,
+.gm-btn.gm-btn--secondary:not(.gm-btn--current),
+.assessment-action-btn.assessment-action-btn {
+    background: var(--bg-primary);
+    color: var(--primary);
+    border-color: var(--primary);
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+    box-shadow: none;
+    transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+.btn.btn:not(:disabled):hover,
+.btn.btn:not(:disabled):focus-visible,
+.btn.btn:not(:disabled):active,
+.gm-btn.gm-btn--primary:not(:disabled):hover,
+.gm-btn.gm-btn--primary:not(:disabled):focus-visible,
+.gm-btn.gm-btn--primary:not(:disabled):active,
+.gm-btn.gm-btn--secondary:not(.gm-btn--current):not(:disabled):hover,
+.gm-btn.gm-btn--secondary:not(.gm-btn--current):not(:disabled):focus-visible,
+.gm-btn.gm-btn--secondary:not(.gm-btn--current):not(:disabled):active,
+.assessment-action-btn.assessment-action-btn:not(:disabled):hover,
+.assessment-action-btn.assessment-action-btn:not(:disabled):focus-visible,
+.assessment-action-btn.assessment-action-btn:not(:disabled):active {
+    background: var(--primary);
+    color: var(--bg-primary);
+    box-shadow: none;
+    transform: none;
+}
+
+.btn.btn:disabled,
+.assessment-action-btn.assessment-action-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}

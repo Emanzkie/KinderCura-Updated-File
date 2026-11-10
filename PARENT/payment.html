@@ -272,7 +272,7 @@
                 <span class="status-badge" style="margin-top:0.75rem;display:inline-block;">Waiting for payment</span>
                 <div style="margin-top:1rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
                     <a href="/parent/appointments" class="btn btn-primary" style="display:inline-block;">Back to Appointments</a>
-                    <button class="btn" style="background:var(--surface-muted);color:var(--text-dark);" id="clinicQrBackBtn" onclick="backToOptions()">Choose a different method</button>
+                    <button class="btn" id="clinicQrBackBtn" onclick="backToOptions()">Choose a different method</button>
                 </div>
             </div>
 
@@ -297,7 +297,7 @@
                 <div id="receiptCardContainer"><p class="loading-placeholder">Loading your receipt…</p></div>
                 <div class="receipt-actions">
                     <button type="button" class="btn btn-primary" onclick="window.print()">Print Receipt</button>
-                    <a href="/parent/appointments" class="btn" style="background:var(--surface-muted);color:var(--text-dark);display:inline-block;">Back to Appointments</a>
+                    <a href="/parent/appointments" class="btn" style="display:inline-block;">Back to Appointments</a>
                 </div>
             </div>
 
@@ -308,7 +308,7 @@
                     <p id="onlineFailedReason" style="margin-top:0.4rem;">No money has been taken from your account.</p>
                 </div>
                 <button class="btn btn-primary" style="width:100%;" onclick="backToOptions()">Choose a payment method again</button>
-                <a href="/parent/appointments" class="btn" style="display:block;text-align:center;width:100%;margin-top:0.5rem;background:var(--surface-muted);color:var(--text-dark);">Back to Appointments</a>
+                <a href="/parent/appointments" class="btn" style="display:block;text-align:center;width:100%;margin-top:0.5rem;">Back to Appointments</a>
             </div>
 
             <!-- Walk-in confirmation panel -->
