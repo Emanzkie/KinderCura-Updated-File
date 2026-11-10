@@ -109,15 +109,15 @@
                         <td style="padding:1rem;text-align:center;">
                             ${u.status === 'pending' ? `
                                 ${needsPrcReview(u)
-                                    ? `<a href="${PRC_PAGE}" style="display:inline-block;padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border-radius:4px;text-decoration:none;margin-right:0.3rem;">Review PRC</a>`
-                                    : `<button onclick="approveUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;margin-right:0.3rem;">Approve</button>`}
-                                <button onclick="rejectUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Reject</button>
+                                    ? `<a href="${PRC_PAGE}" class="admin-act-btn" style="display:inline-block;padding:0.4rem 0.8rem;border-radius:4px;text-decoration:none;margin-right:0.3rem;">Review PRC</a>`
+                                    : `<button class="admin-act-btn" onclick="approveUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;border:none;border-radius:4px;cursor:pointer;margin-right:0.3rem;">Approve</button>`}
+                                <button class="admin-act-btn admin-act-btn--danger" onclick="rejectUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;border:none;border-radius:4px;cursor:pointer;">Reject</button>
                             ` : (u.status === 'active' || !u.status) ? `
-                                <button onclick="suspendUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Suspend</button>
+                                <button class="admin-act-btn admin-act-btn--danger" onclick="suspendUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;border:none;border-radius:4px;cursor:pointer;">Suspend</button>
                             ` : needsPrcReview(u) ? `
-                                <a href="${PRC_PAGE}" style="display:inline-block;padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border-radius:4px;text-decoration:none;">Review PRC</a>
+                                <a href="${PRC_PAGE}" class="admin-act-btn" style="display:inline-block;padding:0.4rem 0.8rem;border-radius:4px;text-decoration:none;">Review PRC</a>
                             ` : `
-                                <button onclick="approveUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Re-activate</button>
+                                <button class="admin-act-btn" onclick="approveUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;border:none;border-radius:4px;cursor:pointer;">Re-activate</button>
                             `}
                         </td>
                     </tr>`).join('')
@@ -138,9 +138,9 @@
                         <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:1rem;text-transform:capitalize;">Role: ${escapeHtml(u.role)}</p>
                         <div style="display:flex;gap:0.5rem;">
                             ${needsPrcReview(u)
-                                ? `<a href="${PRC_PAGE}" style="flex:1;padding:0.5rem;background:var(--success);color:#3D4738;border-radius:4px;text-decoration:none;text-align:center;">Review PRC</a>`
-                                : `<button onclick="approveUser('${escapeHtml(u.id)}')" style="flex:1;padding:0.5rem;background:var(--success);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Approve</button>`}
-                            <button onclick="rejectUser('${escapeHtml(u.id)}')" style="flex:1;padding:0.5rem;background:var(--accent-red);color:#3D4738;border:none;border-radius:4px;cursor:pointer;">Reject</button>
+                                ? `<a href="${PRC_PAGE}" class="admin-act-btn" style="flex:1;padding:0.5rem;border-radius:4px;text-decoration:none;text-align:center;">Review PRC</a>`
+                                : `<button class="admin-act-btn" onclick="approveUser('${escapeHtml(u.id)}')" style="flex:1;padding:0.5rem;border:none;border-radius:4px;cursor:pointer;">Approve</button>`}
+                            <button class="admin-act-btn admin-act-btn--danger" onclick="rejectUser('${escapeHtml(u.id)}')" style="flex:1;padding:0.5rem;border:none;border-radius:4px;cursor:pointer;">Reject</button>
                         </div>
                     </div>`).join('')
                 : '<p style="color:var(--text-light);text-align:center;grid-column:1/-1;">No pending approvals</p>';
@@ -196,7 +196,7 @@
                                     ${pediaOptions.map(p => `<option value="${escapeHtml(p.id)}" ${s.linkedPediatricianId === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
                                 </select>
                                 <!-- Update Link button: uses KinderCura primary green (#6B8E6F) instead of off-brand teal -->
-                                <button onclick="linkSecretary('${escapeHtml(s.id)}')" style="padding:0.4rem 0.8rem;background:var(--primary);color:#FAFAF6;border:none;border-radius:4px;cursor:pointer;font-size:0.85rem;">Update Link</button>
+                                <button class="admin-act-btn" onclick="linkSecretary('${escapeHtml(s.id)}')" style="padding:0.4rem 0.8rem;border:none;border-radius:4px;cursor:pointer;font-size:0.85rem;">Update Link</button>
                             </div>
                         </div>`).join('')
                     : '<p style="color:var(--text-light);text-align:center;">No assistant/secretary accounts created yet.</p>';

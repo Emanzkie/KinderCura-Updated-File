@@ -411,3 +411,95 @@
         padding: 0.9rem;
     }
 }
+
+/* ==================== ADMIN ACTION BUTTONS ====================
+   Same style as the Parent and Pediatrician sides (end of
+   parent-responsive.css / pedia-responsive.css): cream background, green
+   outline, green text; hover, keyboard focus and press fill it green with
+   white text. This file loads only on admin pages; the doubled classes
+   outrank page rules (including admin-dashboard.css, which loads after it).
+   The outline sits over the border (offset -2px), so buttons with and without
+   a border look alike and none changes size. .admin-act-btn is for the Manage
+   Users row buttons, which used to be styled inline.
+   Not included on purpose: tabs (.origin-tab, .prc-filter-tab), presets
+   (.preset-btn), .prov-toggle, icon/close buttons and the
+   notification-panel buttons. */
+.btn.btn:not(.delete-action),
+.prc-btn.prc-btn--approve,
+.prc-btn.prc-btn--outline,
+.prc-btn.prc-btn--cancel,
+.prc-view-btn.prc-view-btn,
+.dash-retry.dash-retry,
+.admin-act-btn.admin-act-btn:not(.admin-act-btn--danger) {
+    background: var(--bg-primary);
+    color: var(--primary);
+    border-color: var(--primary);
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+    box-shadow: none;
+    transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+.btn.btn:not(.delete-action):not(:disabled):hover,
+.btn.btn:not(.delete-action):not(:disabled):focus-visible,
+.btn.btn:not(.delete-action):not(:disabled):active,
+.prc-btn.prc-btn--approve:not(:disabled):hover,
+.prc-btn.prc-btn--approve:not(:disabled):focus-visible,
+.prc-btn.prc-btn--approve:not(:disabled):active,
+.prc-btn.prc-btn--outline:not(:disabled):hover,
+.prc-btn.prc-btn--outline:not(:disabled):focus-visible,
+.prc-btn.prc-btn--outline:not(:disabled):active,
+.prc-btn.prc-btn--cancel:not(:disabled):hover,
+.prc-btn.prc-btn--cancel:not(:disabled):focus-visible,
+.prc-btn.prc-btn--cancel:not(:disabled):active,
+.prc-view-btn.prc-view-btn:not(:disabled):hover,
+.prc-view-btn.prc-view-btn:not(:disabled):focus-visible,
+.prc-view-btn.prc-view-btn:not(:disabled):active,
+.dash-retry.dash-retry:not(:disabled):hover,
+.dash-retry.dash-retry:not(:disabled):focus-visible,
+.dash-retry.dash-retry:not(:disabled):active,
+.admin-act-btn.admin-act-btn:not(.admin-act-btn--danger):not(:disabled):hover,
+.admin-act-btn.admin-act-btn:not(.admin-act-btn--danger):not(:disabled):focus-visible,
+.admin-act-btn.admin-act-btn:not(.admin-act-btn--danger):not(:disabled):active {
+    background: var(--primary);
+    color: var(--bg-primary);
+    box-shadow: none;
+    transform: none;
+    opacity: 1;
+}
+
+.btn.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Danger buttons (Delete dataset, Deactivate model, PRC Reject, Reject and
+   Suspend user): pink outline and dark text; hover, keyboard focus and press
+   fill them light pink. The text stays dark because pastels never carry
+   light text. */
+.btn.delete-action,
+.prc-btn.prc-btn--reject,
+.admin-act-btn.admin-act-btn--danger {
+    background: var(--bg-primary);
+    color: var(--text-dark);
+    border-color: var(--danger);
+    outline: 2px solid var(--danger);
+    outline-offset: -2px;
+    box-shadow: none;
+    transition: background-color 0.25s ease;
+}
+
+.btn.delete-action:not(:disabled):hover,
+.btn.delete-action:not(:disabled):focus-visible,
+.btn.delete-action:not(:disabled):active,
+.prc-btn.prc-btn--reject:not(:disabled):hover,
+.prc-btn.prc-btn--reject:not(:disabled):focus-visible,
+.prc-btn.prc-btn--reject:not(:disabled):active,
+.admin-act-btn.admin-act-btn--danger:not(:disabled):hover,
+.admin-act-btn.admin-act-btn--danger:not(:disabled):focus-visible,
+.admin-act-btn.admin-act-btn--danger:not(:disabled):active {
+    background: var(--danger);
+    color: var(--text-dark);
+    border-color: var(--danger);
+    transform: none;
+}
