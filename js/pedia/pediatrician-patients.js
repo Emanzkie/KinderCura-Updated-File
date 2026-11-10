@@ -416,15 +416,15 @@ const API = window.location.origin + '/api';
                         ${hasDiag ? '<img src="/icons/edit_pedia.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">️ Edit Diagnosis' : '<img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Provide Diagnosis'}
                     </button>
                     <button class="btn btn-secondary" onclick="openProgressModal('${p.childId}','${childNameEsc}')"
-                        style="flex:1;min-width:130px;padding:0.7rem;border-color:var(--primary-dark);color:var(--primary-dark);">
+                        style="flex:1;min-width:130px;padding:0.7rem;">
                         <img src="/icons/analytics.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Check-up History
                     </button>
                     <button class="btn btn-secondary" onclick="openPatientHistory('${p.childId}','${childNameEsc}')"
-                        style="flex:1;min-width:130px;padding:0.7rem;border-color:var(--primary-dark);color:var(--primary-dark);"
+                        style="flex:1;min-width:130px;padding:0.7rem;"
                         title="Every record for this child in one timeline: assessments, appointments, check-ups, notes, questions and chat">
                         <img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Patient History
                     </button>
-                    ${p.appointmentId ? `<button class="btn btn-secondary" onclick="window.location.href='/pedia/pedia-chat?appointmentId=${p.appointmentId}'" style="flex:1;min-width:130px;padding:0.7rem;border-color:var(--primary);color:var(--primary);"> Chat with Parent</button>` : ''}
+                    ${p.appointmentId ? `<button class="btn btn-secondary" onclick="window.location.href='/pedia/pedia-chat?appointmentId=${p.appointmentId}'" style="flex:1;min-width:130px;padding:0.7rem;"> Chat with Parent</button>` : ''}
                 </div>
             </div>`;
         }).join('');

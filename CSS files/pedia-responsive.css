@@ -719,3 +719,82 @@ iframe {
         min-height: 320px;
     }
 }
+
+/* ==================== PEDIATRICIAN ACTION BUTTONS ====================
+   Same style as the Parent side (end of parent-responsive.css): cream
+   background, green outline, green text; hover, keyboard focus and press
+   fill it green with white text. This file loads only on pediatrician pages,
+   after the page stylesheets; the doubled classes outrank page rules. The
+   outline sits over the border (offset -2px), so buttons with and without a
+   border look alike and none changes size.
+   Not included on purpose: danger buttons (.btn-reject Decline/Cancel,
+   .btn-danger), a disabled Accept (its grey look means "payment needed"),
+   a disabled Assign Selected (nothing picked yet), tabs, icon/close buttons
+   and the notification-panel buttons. */
+.btn.btn:not(.btn-danger),
+.btn-primary.btn-primary:not(:disabled),
+.btn-outline.btn-outline,
+.btn-reschedule.btn-reschedule,
+.btn-approve.btn-approve:not(:disabled) {
+    background: var(--bg-primary);
+    color: var(--primary);
+    border-color: var(--primary);
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+    box-shadow: none;
+    transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+.btn.btn:not(.btn-danger):not(:disabled):hover,
+.btn.btn:not(.btn-danger):not(:disabled):focus-visible,
+.btn.btn:not(.btn-danger):not(:disabled):active,
+.btn-primary.btn-primary:not(:disabled):hover,
+.btn-primary.btn-primary:not(:disabled):focus-visible,
+.btn-primary.btn-primary:not(:disabled):active,
+.btn-outline.btn-outline:not(:disabled):hover,
+.btn-outline.btn-outline:not(:disabled):focus-visible,
+.btn-outline.btn-outline:not(:disabled):active,
+.btn-reschedule.btn-reschedule:not(:disabled):hover,
+.btn-reschedule.btn-reschedule:not(:disabled):focus-visible,
+.btn-reschedule.btn-reschedule:not(:disabled):active,
+.btn-approve.btn-approve:not(:disabled):hover,
+.btn-approve.btn-approve:not(:disabled):focus-visible,
+.btn-approve.btn-approve:not(:disabled):active {
+    background: var(--primary);
+    color: var(--bg-primary);
+    box-shadow: none;
+    transform: none;
+    opacity: 1;
+}
+
+.btn.btn:not(.btn-danger):disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Danger buttons (Reject, Decline, Cancel, Delete, Remove): pink outline and
+   dark text; hover, keyboard focus and press fill them light pink. The text
+   stays dark because pastels never carry light text (same as
+   #questionsList .btn-danger:hover in pedia-questions.css). */
+.btn.btn-danger,
+.btn-danger.btn-danger {
+    background: var(--bg-primary);
+    color: var(--text-dark);
+    border: 2px solid var(--danger);
+    transition: background-color 0.25s ease;
+}
+
+.btn.btn-danger:not(:disabled):hover,
+.btn.btn-danger:not(:disabled):focus-visible,
+.btn.btn-danger:not(:disabled):active,
+.btn-danger.btn-danger:not(:disabled):hover,
+.btn-danger.btn-danger:not(:disabled):focus-visible,
+.btn-danger.btn-danger:not(:disabled):active,
+.btn-reject.btn-reject:not(:disabled):hover,
+.btn-reject.btn-reject:not(:disabled):focus-visible,
+.btn-reject.btn-reject:not(:disabled):active {
+    background: var(--danger);
+    color: var(--text-dark);
+    border-color: var(--danger);
+    transition: background-color 0.25s ease;
+}

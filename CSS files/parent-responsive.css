@@ -438,3 +438,14 @@ iframe {
     opacity: 0.6;
     cursor: not-allowed;
 }
+
+/* Danger guardian buttons (Revoke): pink outline and dark text as before;
+   hover, keyboard focus and press fill them light pink. The text stays dark
+   because pastels never carry light text. */
+.gm-btn.gm-btn--danger:not(:disabled):hover,
+.gm-btn.gm-btn--danger:not(:disabled):focus-visible,
+.gm-btn.gm-btn--danger:not(:disabled):active {
+    background: var(--danger);
+    color: var(--text-dark);
+    border-color: var(--danger);
+}
