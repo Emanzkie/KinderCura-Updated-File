@@ -24,6 +24,7 @@ const Child = require('../../models/Child');
 const User = require('../../models/User');
 const Notification = require('../../models/Notification');
 const SystemSetting = require('../../models/SystemSetting');
+const FollowUpPlan = require('../../models/FollowUpPlan');
 const paymongo = require('../../services/paymongoService');
 const paymentService = require('../../services/paymentService');
 const receiptService = require('../../services/receiptService');
@@ -72,6 +73,8 @@ function reset({ appointment = {}, payments = [] } = {}) {
 }
 
 Appointment.findOne = () => query(state.appointment);
+// An ordinary parent request: no Follow-up Check-up plan is waiting on it.
+FollowUpPlan.exists = async () => null;
 Appointment.findById = () => query(state.appointment);
 Payment.findOne = (f) => query([...state.payments].reverse().find((p) => matches(p, f)) || null);
 Payment.findById = (id) => query(state.payments.find((p) => same(p._id, id)) || null);
@@ -159,7 +162,7 @@ const balanceRows = () => state.payments.filter((p) => p.paymentType === 'balanc
     assert.ok(deposit().receiptNumber, 'the deposit gets its own receipt');
     assert.deepStrictEqual(
       [state.appointment.amountPaid, state.appointment.balanceDue, state.appointment.paymentStatus, state.appointment.status],
-      [475, 475, 'Down Payment', 'approved']
+      [475, 475, 'Down Payment', 'pending']
     );
     assert.strictEqual(balanceRows().length, 1, 'one balance row for the clinic');
     assert.ok(state.notifications.some((n) => same(n.userId, parentId) && /remaining ₱475.00 is due at the clinic/.test(n.message)), 'the parent is told what is due at the clinic');
@@ -173,7 +176,7 @@ const balanceRows = () => state.payments.filter((p) => p.paymentType === 'balanc
     res = await call(controller.startOnlineCheckout, parent, { appointmentId: '501' });
     assert.strictEqual(res.statusCode, 400);
     assert.strictEqual(res.body.code, 'DEPOSIT_ALREADY_PAID');
-    ok('a confirmed deposit records 50%, sets Down Payment, approves, and opens one clinic balance; replays and second deposits change nothing');
+    ok('a confirmed deposit records 50%, sets Down Payment, leaves the request pending for the pediatrician, and opens one clinic balance; replays and second deposits change nothing');
 
     // 4. The parent's balance QR and the Cashier lookup show the balance.
     res = await call(controller.startPayAtClinic, parent, { appointmentId: '501' });

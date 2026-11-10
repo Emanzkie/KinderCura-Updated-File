@@ -82,44 +82,87 @@ if (!getToken() || !_u) {
                 const in7Key=dayKey(new Date(Date.now()+7*24*60*60*1000));
                 document.getElementById('statUpcoming').textContent=approved.filter(n=>{const k=String(n.appointmentDate||'').slice(0,10);return k>=todayKey&&k<=in7Key;}).length;
 
-                try {
-                    const aptData = await apiFetch('/appointments/pedia');
-                    const appointments = aptData.appointments || [];
-                    for (const n of pending) {
-                        const apt = appointments.find(a => a.id === n.appointmentId);
-                        const childId = apt ? apt.childId : n.childId;
-                        if (childId) {
-                            try {
-                                const hist = await apiFetch(`/assessments/${childId}/history`);
-                                const assessments = (hist.assessments || []).filter(a => a.overallScore !== null);
-                                if (assessments.length > 0) {
-                                    const latest = assessments[0];
-                                    n.overallScore = Math.round(latest.overallScore || 0);
-                                    n.assessmentDate = latest.completedAt || null;
-                                    n.communicationScore = Math.round(latest.communicationScore || 0);
-                                    n.communicationStatus = latest.communicationStatus;
-                                    n.socialScore = Math.round(latest.socialScore || 0);
-                                    n.socialStatus = latest.socialStatus;
-                                    n.cognitiveScore = Math.round(latest.cognitiveScore || 0);
-                                    n.cognitiveStatus = latest.cognitiveStatus;
-                                    n.motorScore = Math.round(latest.motorScore || 0);
-                                    n.motorStatus = latest.motorStatus;
-                                }
-                            } catch (err) {
-                                console.error(err);
-                            }
-                        }
-                    }
-                } catch (err) {
-                    console.error("Error fetching appointments for history mapping:", err);
-                }
-
+                // Both lists show as soon as the requests arrive; the latest
+                // assessment for each child fills in after. The child id comes
+                // with each request, and each child's history is fetched once
+                // (in parallel) and reused for HISTORY_TTL_MS across the 15 s poll.
+                pending.forEach(n => applyLatestAssessment(n));
                 renderPending(pending);
                 renderActivity(all);
+
+                const missing = [...new Set(pending.map(n => n.childId).filter(id => id && !historyIsFresh(id)))];
+                if (missing.length) {
+                    await Promise.all(missing.map(fetchLatestAssessment));
+                    pending.forEach(n => applyLatestAssessment(n));
+                    renderPending(pending);
+                }
             }catch(e){
                 document.getElementById('pendingList').innerHTML='<div class="empty-state"><span><img src="/icons/smart_notif.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">️</span>Could not load. Is the server running?</div>';
                 document.getElementById('activityList').innerHTML='<div class="empty-state"><span><img src="/icons/smart_notif.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;">️</span>Could not load activity.</div>';
             }
+        }
+
+        // ── Latest completed assessment per child (Assessment Results) ──────
+        const HISTORY_TTL_MS = 60000;
+        const historyCache = new Map(); // childId -> { at, latest }
+
+        function historyIsFresh(childId){
+            const hit = historyCache.get(String(childId));
+            return Boolean(hit && Date.now() - hit.at < HISTORY_TTL_MS);
+        }
+
+        async function fetchLatestAssessment(childId){
+            try{
+                const hist = await apiFetch(`/assessments/${childId}/history`);
+                const latest = (hist.assessments || []).find(a => a.overallScore !== null) || null;
+                historyCache.set(String(childId), { at: Date.now(), latest });
+            }catch(err){
+                console.error(err); // left uncached so the next poll tries again
+            }
+        }
+
+        function applyLatestAssessment(n){
+            const hit = n.childId ? historyCache.get(String(n.childId)) : null;
+            n.assessmentLoading = Boolean(n.childId && !hit);
+            const latest = hit && hit.latest;
+            if(!latest) return;
+            n.overallScore = Math.round(latest.overallScore || 0);
+            n.assessmentDate = latest.completedAt || null;
+            n.communicationScore = Math.round(latest.communicationScore || 0);
+            n.communicationStatus = latest.communicationStatus;
+            n.socialScore = Math.round(latest.socialScore || 0);
+            n.socialStatus = latest.socialStatus;
+            n.cognitiveScore = Math.round(latest.cognitiveScore || 0);
+            n.cognitiveStatus = latest.cognitiveStatus;
+            n.motorScore = Math.round(latest.motorScore || 0);
+            n.motorStatus = latest.motorStatus;
+        }
+
+        // ── Payment on a pending request (server: summarizeConfirmationPayment) ──
+        function dashPeso(v){
+            const n = Number(v);
+            return '₱' + (Number.isFinite(n) ? n : 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function paymentSectionHtml(p){
+            if(!p) return '';
+            const stateClass = { 'Fully Paid': 'paid', 'Partially Paid': 'partial', 'Payment Pending': 'pending', 'Unpaid': 'unpaid' }[p.state] || 'unpaid';
+            const pct = Math.max(0, Math.min(100, Number(p.percentPaid) || 0));
+            return `<div class="pay-summary">
+                    <div class="pay-summary__head">
+                        <span class="pay-summary__title">Payment</span>
+                        <span class="pay-badge pay-badge--method">${escapeHtml(p.method)}</span>
+                        <span class="pay-badge pay-badge--${stateClass}">${escapeHtml(p.state)}</span>
+                    </div>
+                    <div class="pay-summary__grid">
+                        <div><span>Consultation Fee</span><strong>${dashPeso(p.totalAmount)}</strong></div>
+                        <div><span>Amount Paid</span><strong>${dashPeso(p.verifiedPaid)}</strong></div>
+                        <div><span>Remaining Balance</span><strong>${dashPeso(p.balanceDue)}</strong></div>
+                        <div><span>Paid</span><strong>${pct}%</strong></div>
+                    </div>
+                    <div class="pay-progress" role="progressbar" aria-label="Percent of the fee paid" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>
+                    ${p.reason === 'pay_at_clinic' ? '<p class="pay-summary__note">Pay at Clinic: the fee is collected at the counter on the appointment day.</p>' : ''}
+                </div>`;
         }
 
         // Clinician-facing band label for an overall score, straight from
@@ -177,13 +220,17 @@ if (!getToken() || !_u) {
                            Motor: <strong>${n.motorScore||0}%</strong>${statusText(n.motorStatus)}<br>
                            Overall: <strong style="color:var(--primary);font-size:1rem;">${n.overallScore||0}%</strong>${overallBandText(n.overallScore)}
                            <span class="scores-caption">Latest completed assessment${n.assessmentDate ? ' (' + fmtDate(n.assessmentDate) + ')' : ''}. Domain % = that domain's assessment score; Overall = overall assessment score (average of the four domain scores).</span></div>`
-                        :`<p style="color:var(--text-light);font-size:.85rem;font-style:italic;margin:.5rem 0;">No assessment results on file yet.</p>`
+                        :`<p style="color:var(--text-light);font-size:.85rem;font-style:italic;margin:.5rem 0;">${n.assessmentLoading ? 'Loading assessment results…' : 'No assessment results on file yet.'}</p>`
                     }
+                    ${paymentSectionHtml(n.payment)}
                     <div class="apt-actions">
-                        <button class="btn-approve" onclick="respond(${n.id},'approved')">Accept</button>
+                        ${n.payment && !n.payment.canAccept
+                            ? `<button class="btn-approve" disabled title="${escapeHtml(n.payment.message || '')}">Accept</button>`
+                            : `<button class="btn-approve" onclick="respond(${n.id},'approved')">Accept</button>`}
                         <button class="btn-reschedule" onclick="openReschedule(${n.id})">Reschedule</button>
                         <button class="btn-reject"  onclick="respond(${n.id},'declined')">Decline</button>
                     </div>
+                    ${n.payment && !n.payment.canAccept ? `<p class="accept-note">${escapeHtml(n.payment.acceptNote || '')}</p>` : ''}
                     </div>
                 </div>`).join('');
         }

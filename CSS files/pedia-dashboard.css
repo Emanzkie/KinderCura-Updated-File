@@ -469,3 +469,97 @@
     line-height: 1.45;
     color: var(--text-light);
 }
+
+/* ===========================================================================
+   Payment on a pending request: method and status badges, fee / paid /
+   balance / percent, a progress bar, and why Accept is unavailable.
+   Colours come from kc-tokens.css; badge text is always the dark text token.
+   =========================================================================== */
+
+.pay-summary {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 0.85rem;
+    margin: 0.8rem 0;
+}
+
+.pay-summary__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.6rem;
+}
+
+.pay-summary__title {
+    font-weight: 700;
+    font-size: 0.82rem;
+    color: var(--primary-dark);
+    margin-right: 0.2rem;
+}
+
+.pay-badge {
+    display: inline-block;
+    padding: 0.18rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--text-dark);
+}
+
+.pay-badge--method { background: var(--status-neutral-bg); border: 1px solid var(--border); }
+.pay-badge--paid { background: var(--status-positive-bg); }
+.pay-badge--partial { background: var(--status-caution-bg); }
+.pay-badge--pending { background: var(--status-neutral-bg); border: 1px dashed var(--primary-light); }
+.pay-badge--unpaid { background: var(--status-attention-bg); }
+
+.pay-summary__grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.pay-summary__grid span {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-light);
+}
+
+.pay-summary__grid strong {
+    font-size: 0.9rem;
+    color: var(--text-dark);
+}
+
+.pay-progress {
+    height: 6px;
+    margin-top: 0.6rem;
+    border-radius: 999px;
+    background: var(--surface-muted);
+    overflow: hidden;
+}
+
+.pay-progress span {
+    display: block;
+    height: 100%;
+    background: var(--primary);
+    border-radius: 999px;
+}
+
+.pay-summary__note,
+.accept-note {
+    margin: 0.5rem 0 0;
+    font-size: 0.75rem;
+    color: var(--text-light);
+}
+
+.btn-approve:disabled {
+    background: var(--surface-muted);
+    color: var(--text-light);
+    cursor: not-allowed;
+    opacity: 1;
+}
+
+@media (max-width: 520px) {
+    .pay-summary__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

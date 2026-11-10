@@ -1,5 +1,10 @@
 // Follow-up Check-up plans (models/FollowUpPlan.js) after they are created:
 //
+//   awaitsPayment — whether an appointment is a Follow-up Check-up still
+//     waiting on its payment. Only such an appointment (the pediatrician
+//     scheduled it) is approved by its payment; a parent's request waits for
+//     the pediatrician's Accept.
+//
 //   activateForAppointment — called by the two places where a payment confirms
 //     an appointment (receiptService.syncAppointmentAfterPayment for online and
 //     Cashier payments, paymentController.confirmWalkIn for a staff-confirmed
@@ -204,7 +209,12 @@ async function planProgress(plans, now = new Date()) {
   });
 }
 
+async function awaitsPayment(appointmentId) {
+  return Boolean(await FollowUpPlan.exists({ appointmentId, status: 'awaiting_payment' }));
+}
+
 module.exports = {
+  awaitsPayment,
   activateForAppointment,
   activateConfirmedPlans,
   planProgress,

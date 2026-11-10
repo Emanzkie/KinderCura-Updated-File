@@ -354,8 +354,11 @@ async function confirmWalkIn(req, res) {
       verifiedBy: new mongoose.Types.ObjectId(String(req.user.userId)),
     }]);
 
-    // Approve the appointment now that payment is confirmed
-    appointment.status = 'approved';
+    // Payment never approves a parent's request (the pediatrician accepts it);
+    // only a pediatrician-scheduled Follow-up Check-up is confirmed by it.
+    if (appointment.status === 'pending' && await followUpPlans.awaitsPayment(appointment._id)) {
+      appointment.status = 'approved';
+    }
     await appointment.save();
 
     // A Follow-up Check-up's assessments are assigned now (once).
@@ -364,8 +367,10 @@ async function confirmWalkIn(req, res) {
     // Notify parent
     await pushNotification(
       appointment.parentId,
-      'Payment Confirmed — Appointment Approved',
-      `Your walk-in payment for Appointment #${appointment.id} has been confirmed. Your appointment is now approved.`,
+      appointment.status === 'approved' ? 'Payment Confirmed — Appointment Approved' : 'Payment Confirmed',
+      appointment.status === 'approved'
+        ? `Your walk-in payment for Appointment #${appointment.id} has been confirmed. Your appointment is now approved.`
+        : `Your walk-in payment for Appointment #${appointment.id} has been confirmed. Your appointment is waiting for the pediatrician's approval.`,
       'payment'
     );
 

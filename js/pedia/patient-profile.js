@@ -1,6 +1,6 @@
 // js/pedia/patient-profile.js
 // Patient Profile — one child's own page for the pediatrician, opened from
-// My Patients → View Profile as /pedia/patient-profile?childId=<id>.
+// My Patients → View Patient Case as /pedia/patient-profile?childId=<id>.
 //
 // Two tabs, both existing views reused for this one child:
 //   Case File        openCaseFile()        js/pedia/pedia-case-files.js

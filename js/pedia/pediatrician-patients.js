@@ -404,7 +404,7 @@ const API = window.location.origin + '/api';
                     <a class="btn btn-primary" href="/pedia/patient-profile?childId=${encodeURIComponent(p.childId)}"
                         style="flex:1;min-width:130px;padding:0.7rem;text-align:center;"
                         title="This child's own profile: Case File (printable) and Patient History">
-                        <img src="/icons/profile_icon.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> View Profile
+                        <img src="/icons/profile_icon.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> View Patient Case
                     </a>
                     <button class="btn btn-primary" onclick="openAssessmentReview('${p.childId}')"
                         style="flex:1;min-width:130px;padding:0.7rem;"

@@ -251,8 +251,9 @@ async function settlePayment({
 }
 
 /**
- * Push the settled payment onto the appointment's denormalized snapshot and
- * approve it, mirroring what the existing walk-in confirmation already does.
+ * Push the settled payment onto the appointment's denormalized snapshot. A
+ * parent's request stays pending until the pediatrician accepts it; only a
+ * pediatrician-scheduled Follow-up Check-up is approved by its payment.
  */
 async function syncAppointmentAfterPayment(payment) {
   if (!payment.appointmentId) return null;
@@ -280,10 +281,13 @@ async function syncAppointmentAfterPayment(payment) {
     appointment.paymentType = 'Full';
   }
 
-  // A paid appointment that was still waiting on money is now confirmed.
-  // Cancelled or rejected appointments are left alone — a late payment must
-  // not silently resurrect them.
-  if (appointment.status === 'pending') appointment.status = 'approved';
+  // Payment never approves a parent's request: the pediatrician does, with
+  // Accept. A Follow-up Check-up the pediatrician scheduled is confirmed by its
+  // payment. Cancelled or rejected appointments are left alone — a late
+  // payment must not silently resurrect them.
+  if (appointment.status === 'pending' && await followUpPlans.awaitsPayment(appointment._id)) {
+    appointment.status = 'approved';
+  }
 
   await appointment.save();
 

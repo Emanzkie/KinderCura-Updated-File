@@ -259,6 +259,88 @@ async function createInitialPayment({ appointment, plan, actor, session = null }
   return payment[0];
 }
 
+// ── Accepting an appointment: verified payment records ────────────────────
+// Money that was actually received: written only by PayMongo confirmation,
+// the Cashier's Confirm, or staff recording a payment. Pending, Verification
+// Pending, Failed, Expired, Cancelled and Refunded rows never count.
+const VERIFIED_PAYMENT_STATUSES = ['Paid', 'Down Payment', 'Partially Paid'];
+const OPEN_PAYMENT_STATUSES = ['Pending', 'Verification Pending'];
+
+function pesoText(amount) {
+  return `₱${roundCurrency(amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * What an appointment's payment records say about accepting it: the
+ * consultation fee, the verified amount paid, method, state, and whether the
+ * clinic may accept it. Accept needs at least DOWN_PAYMENT_RATE of the fee in
+ * verified payments — except a booking whose parent chose Pay at Clinic, whose
+ * fee is collected at the visit (it is still only marked paid when the
+ * secretary confirms the cash). Pure: `rows` are the appointment's Payment docs.
+ */
+function summarizeConfirmationPayment(appointment, rows = []) {
+  const totalAmount = asAmount(appointment?.totalAmount) || 0;
+  const requiredToAccept = calculateRequiredDownPayment(totalAmount);
+  const verifiedPaid = roundCurrency(rows
+    .filter((r) => VERIFIED_PAYMENT_STATUSES.includes(r.status))
+    .reduce((sum, r) => sum + (Number(r.amount ?? r.amountPaid) || 0), 0));
+  const open = rows.filter((r) => OPEN_PAYMENT_STATUSES.includes(r.status));
+  const byNewest = [...rows].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  // How the money was paid wins over a later open row (e.g. the clinic balance
+  // reference opened after a 50% online deposit).
+  const shown = byNewest.find((r) => VERIFIED_PAYMENT_STATUSES.includes(r.status)) || byNewest[0] || null;
+
+  const methodKey = shown?.paymentMethod || appointment?.pendingPaymentMode || null;
+  const method = ['pay_at_clinic', 'cash', 'walk_in', 'check'].includes(methodKey) ? 'Pay at Clinic'
+    : methodKey ? 'Online Payment' : 'Not chosen yet';
+
+  let state = 'Unpaid';
+  if (totalAmount > 0 && verifiedPaid >= totalAmount) state = 'Fully Paid';
+  else if (verifiedPaid > 0) state = 'Partially Paid';
+  else if (open.length) state = 'Payment Pending';
+
+  const payAtClinicChosen = appointment?.pendingPaymentMode === 'pay_at_clinic'
+    && open.some((r) => r.paymentMethod === 'pay_at_clinic');
+  const overridden = Boolean(appointment?.paymentOverride?.isOverridden);
+
+  let canAccept = false;
+  let reason = 'unpaid';
+  if (totalAmount <= 0) { canAccept = true; reason = 'no_fee'; }
+  else if (overridden) { canAccept = true; reason = 'override'; }
+  else if (verifiedPaid >= requiredToAccept) { canAccept = true; reason = 'paid'; }
+  else if (payAtClinicChosen) { canAccept = true; reason = 'pay_at_clinic'; }
+
+  const pct = Math.round(DOWN_PAYMENT_RATE * 100);
+  return {
+    totalAmount,
+    requiredToAccept,
+    verifiedPaid,
+    balanceDue: Math.max(roundCurrency(totalAmount - verifiedPaid), 0),
+    percentPaid: totalAmount > 0 ? Math.min(Math.round((verifiedPaid / totalAmount) * 100), 100) : 0,
+    method,
+    state,
+    canAccept,
+    reason,
+    message: canAccept ? null
+      : `This appointment can't be accepted yet: at least ${pesoText(requiredToAccept)} (${pct}% of the ${pesoText(totalAmount)} consultation fee) must be paid. Verified payments so far: ${pesoText(verifiedPaid)}.`,
+    acceptNote: canAccept ? null : `Needs ${pesoText(requiredToAccept)} (${pct}%) paid to accept`,
+  };
+}
+
+/**
+ * summarizeConfirmationPayment with the appointment's own payment records.
+ * No fee, or an admin override, needs no records, so none are read.
+ */
+async function checkConfirmationPayment(appointment) {
+  const needsRecords = appointment?._id
+    && (asAmount(appointment.totalAmount) || 0) > 0
+    && !appointment.paymentOverride?.isOverridden;
+  const rows = needsRecords
+    ? await Payment.find({ appointmentId: appointment._id }).select('status amount paymentMethod createdAt').lean()
+    : [];
+  return summarizeConfirmationPayment(appointment, rows);
+}
+
 function canConfirmAppointment(appointment) {
   const total = asAmount(appointment?.totalAmount);
   if (total <= 0) {
@@ -503,6 +585,9 @@ function buildDeferredPaymentPlan({ totalAmount } = {}) {
 
 module.exports = {
   DOWN_PAYMENT_RATE,
+  VERIFIED_PAYMENT_STATUSES,
+  summarizeConfirmationPayment,
+  checkConfirmationPayment,
   amountDueFor,
   ensureBalancePayment,
   buildDeferredPaymentPlan,

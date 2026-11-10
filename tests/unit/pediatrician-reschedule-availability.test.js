@@ -118,7 +118,9 @@ function matches(doc, query) {
   return true;
 }
 
+let paymentRows = [];
 function reset({ ownDate = MONDAY, ownTime = '10:00' } = {}) {
+  paymentRows = [];
   saves = [];
   notificationsCreated = [];
   appointments = [
@@ -132,7 +134,7 @@ SystemSetting.findOneAndUpdate = () => chain({ appointmentSlots: { enforceThirty
 User.findOne = (q) => chain(String(q._id) === String(pediaId) ? pediatrician : null);
 User.findById = (id) => chain(String(id) === String(pediaId) ? pediatrician : { _id: parentId, firstName: 'Emman', lastName: 'D', email: '' });
 Child.findById = () => chain({ _id: childId, firstName: 'Kemri', lastName: 'Soto' });
-Payment.find = () => chain([]);
+Payment.find = () => chain(paymentRows);
 Payment.findOne = () => chain(null);
 Notification.create = async (payload) => { notificationsCreated.push(payload); return payload; };
 Appointment.find = (q) => chain(appointments.filter((a) => matches(a, q)));
@@ -245,9 +247,10 @@ test('valid reschedule updates the right appointment, approves it and notifies t
 
 // PEDIATRICIAN_BUGS.md #3: a clinic reschedule used to approve any pending
 // request, skipping the minimum-payment rule that PUT /:id/status enforces.
-async function rescheduleWith(paymentFields, status = 'pending') {
+async function rescheduleWith(paymentFields, status = 'pending', rows = []) {
   reset();
   Object.assign(appointments[0], { status, ...paymentFields });
+  paymentRows = rows;
   const res = await call(reschedule, {
     user: pediaUser,
     params: { appointmentId: '1' },
@@ -264,7 +267,8 @@ test('rescheduling an unpaid pending request moves it but does not approve it', 
 });
 
 test('rescheduling a pending request approves it once the minimum is paid', async () => {
-  const appt = await rescheduleWith({ totalAmount: 500, amountPaid: 500, paymentStatus: 'Paid' });
+  // Only a verified Payment record counts, not the appointment's amountPaid snapshot.
+  const appt = await rescheduleWith({ totalAmount: 500, amountPaid: 500, paymentStatus: 'Paid' }, 'pending', [{ status: 'Paid', amount: 500, paymentMethod: 'paymongo', createdAt: new Date() }]);
   assert.strictEqual(appt.status, 'approved');
 });
 

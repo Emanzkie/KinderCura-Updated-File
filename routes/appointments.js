@@ -1582,12 +1582,29 @@ router.get('/pedia-notifications', authMiddleware, secretaryOrPediatrician, asyn
     }
     const docs = await Appointment.find({ pediatricianId: pedId }).sort({ createdAt: -1 }).lean();
     const hydratedList = await hydrateAppointments(docs);
+    // Pending requests carry their payment summary (verified records, the same
+    // rule Accept enforces), from one query for all of them.
+    const pendingDocs = docs.filter((d) => d.status === 'pending');
+    const pendingPayments = pendingDocs.length
+      ? await Payment.find({ appointmentId: { $in: pendingDocs.map((d) => d._id) } })
+        .select('appointmentId status amount paymentMethod createdAt').lean()
+      : [];
+    const paymentsByAppointment = new Map();
+    for (const p of pendingPayments) {
+      const key = String(p.appointmentId);
+      if (!paymentsByAppointment.has(key)) paymentsByAppointment.set(key, []);
+      paymentsByAppointment.get(key).push(p);
+    }
     const notifications = [];
     for (const [i, doc] of docs.entries()) {
       const appt = hydratedList[i];
       notifications.push({
         id: appt.id,
         appointmentId: appt.id,
+        childId: appt.childId,
+        payment: doc.status === 'pending'
+          ? paymentService.summarizeConfirmationPayment(doc, paymentsByAppointment.get(String(doc._id)) || [])
+          : undefined,
         pediatricianId: appt.pediatricianId,
         parentName: appt.parentName,
         childName: appt.childName,
@@ -1799,8 +1816,9 @@ async function updateAppointmentStatusById({ appointmentId, status, notes = null
   assertStatusTransition(appt.status, status);
 
   if (status === 'approved') {
-    const paymentCheck = paymentService.canConfirmAppointment(appt);
-    if (!paymentCheck.ok) throw new Error(paymentCheck.message);
+    // Verified payment records, not the snapshot (paymentService.checkConfirmationPayment).
+    const paymentCheck = await paymentService.checkConfirmationPayment(appt);
+    if (!paymentCheck.canAccept) throw Object.assign(new Error(paymentCheck.message), { statusCode: 400 });
   }
 
   // The clinic's note goes in statusNote; appt.notes is the parent's booking
@@ -1919,9 +1937,9 @@ router.put('/:appointmentId/status', authMiddleware, clinicStaffOrAdmin, async (
     assertStatusTransition(appt.status, status);
 
     if (status === 'approved') {
-      const paymentCheck = paymentService.canConfirmAppointment(appt);
+      const paymentCheck = await paymentService.checkConfirmationPayment(appt);
       const wantsOverride = Boolean(req.body.overridePayment);
-      if (!paymentCheck.ok) {
+      if (!paymentCheck.canAccept) {
         if (req.user.role !== 'admin' || !wantsOverride) {
           return res.status(400).json({ error: paymentCheck.message });
         }
@@ -2127,7 +2145,7 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
     // request would be approved here without the minimum payment. A parent
     // reschedule keeps the current status: a pending request stays pending
     // (still needs clinic approval), an approved appointment stays approved.
-    if (isClinic && mayApprove && appt.status === 'pending' && paymentService.canConfirmAppointment(appt).ok) {
+    if (isClinic && mayApprove && appt.status === 'pending' && (await paymentService.checkConfirmationPayment(appt)).canAccept) {
       appt.status = 'approved';
     }
     // A reschedule note is not the booking note: it used to replace it.

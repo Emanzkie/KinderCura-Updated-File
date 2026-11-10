@@ -20,6 +20,7 @@ const Payment = require('../../models/Payment');
 const Notification = require('../../models/Notification');
 const Child = require('../../models/Child');
 const User = require('../../models/User');
+const FollowUpPlan = require('../../models/FollowUpPlan');
 const receiptService = require('../../services/receiptService');
 const controller = require('../../controllers/paymentController');
 
@@ -34,6 +35,7 @@ const call = async (fn, req) => {
 
 (async () => {
   Notification.create = async (n) => n;
+  FollowUpPlan.exists = async () => null; // ordinary requests, not Follow-up Check-ups
 
   // ── P5: walk-in confirmed once, even when two requests race ─────────────
   const apptState = { _id: new mongoose.Types.ObjectId(), id: 41, pendingPaymentMode: 'walk_in', paymentStatus: 'Pending Payment', status: 'pending', totalAmount: 800, parentId: new mongoose.Types.ObjectId() };
@@ -59,7 +61,7 @@ const call = async (fn, req) => {
   assert.deepStrictEqual([a.statusCode, b.statusCode].sort(), [200, 409], `one wins, one is told it is done: ${JSON.stringify([a.body, b.body])}`);
   assert.strictEqual(created.length, 1, 'exactly one cash payment is recorded');
   assert.strictEqual(apptState.paymentStatus, 'Paid');
-  assert.strictEqual(apptState.status, 'approved');
+  assert.strictEqual(apptState.status, 'pending', 'the payment does not approve the request; the pediatrician accepts it');
 
   // ── P7: only an open Pay-at-Clinic reference can be confirmed ───────────
   const appt = { _id: new mongoose.Types.ObjectId(), id: 42, status: 'approved', totalAmount: 500, pediatricianId: new mongoose.Types.ObjectId() };

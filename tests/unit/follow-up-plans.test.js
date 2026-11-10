@@ -85,6 +85,7 @@ FollowUpPlan.findOne = (f) => {
     && (!f.status || p.status === f.status));
   return q(found ? { ...found } : null);
 };
+FollowUpPlan.exists = (f) => q(plans.find((p) => same(p.appointmentId, f.appointmentId) && p.status === f.status) ? { _id: oid() } : null);
 FollowUpPlan.find = (f) => q(plans.filter((p) => (!f.childId || same(p.childId, f.childId))
   && (!f.pediatricianId || same(p.pediatricianId, f.pediatricianId))
   && (!f.status || (f.status.$in ? f.status.$in.includes(p.status) : p.status === f.status))));
