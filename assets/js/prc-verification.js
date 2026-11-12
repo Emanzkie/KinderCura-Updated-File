@@ -116,13 +116,122 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 
+    // ── Search / filter / sort toolbar ──
+    // Filters are applied in the browser to the records already loaded, and
+    // only when Apply is pressed (or Enter in Search). The Status filter is
+    // the tab filter above (currentFilter), so the two always agree.
+    const DEFAULT_FILTERS = { q: '', specialization: '', prcCheck: '', from: '', to: '', dir: 'desc' };
+    let appliedFilters = { ...DEFAULT_FILTERS };
+
+    // The Manila calendar day (YYYY-MM-DD) a registration falls on.
+    function manilaDay(value) {
+        if (!value) return '';
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return '';
+        return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    }
+
+    function applyToolbarFilters(items) {
+        const f = appliedFilters;
+        const q = f.q.trim().toLowerCase();
+        const out = items.filter((v) => {
+            if (q && ![v.fullName, v.email, v.prcNumber].some((s) => String(s || '').toLowerCase().includes(q))) return false;
+            if (f.specialization && v.specialization !== f.specialization) return false;
+            if (f.prcCheck && v.prcCheck !== f.prcCheck) return false;
+            if (f.from || f.to) {
+                const day = manilaDay(v.regDate);
+                if (!day) return false;
+                if (f.from && day < f.from) return false;
+                if (f.to && day > f.to) return false;
+            }
+            return true;
+        });
+        const time = (v) => { const t = new Date(v.regDate).getTime(); return Number.isNaN(t) ? null : t; };
+        return out.sort((a, b) => {
+            const ta = time(a), tb = time(b);
+            if (ta === null && tb === null) return 0;
+            if (ta === null) return 1;   // undated records go last
+            if (tb === null) return -1;
+            return f.dir === 'asc' ? ta - tb : tb - ta;
+        });
+    }
+
+    function activeFilterCount() {
+        const f = appliedFilters;
+        return [f.q.trim(), f.specialization, f.prcCheck, f.from, f.to, currentFilter !== 'all'].filter(Boolean).length;
+    }
+
+    function updateFilterSummary(shown) {
+        const el = $('prcFilterSummary');
+        if (!el) return;
+        const n = activeFilterCount();
+        el.textContent = n
+            ? `Showing ${shown} of ${verifications.length} · ${n} filter${n === 1 ? '' : 's'} active`
+            : `Showing all ${verifications.length} · No filters`;
+    }
+
+    // Specialization choices come from the records themselves.
+    function refreshSpecializationOptions() {
+        const select = $('prcFilterSpecialization');
+        if (!select) return;
+        const chosen = select.value;
+        const values = [...new Set(verifications.map((v) => v.specialization).filter((s) => s && s !== '—'))]
+            .sort((a, b) => a.localeCompare(b));
+        select.innerHTML = '<option value="">All specializations</option>'
+            + values.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+        select.value = values.includes(chosen) ? chosen : '';
+    }
+
+    function setActiveTab(status) {
+        currentFilter = status;
+        if (filterTabs) {
+            filterTabs.querySelectorAll('.prc-filter-tab').forEach((t) => {
+                t.classList.toggle('active', t.getAttribute('data-status') === status);
+            });
+        }
+        const statusSelect = $('prcFilterStatus');
+        if (statusSelect) statusSelect.value = status;
+    }
+
+    function initToolbar() {
+        const form = $('prcToolbar');
+        if (!form) return;
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            appliedFilters = {
+                q: $('prcSearch').value,
+                specialization: $('prcFilterSpecialization').value,
+                prcCheck: $('prcFilterCheck').value,
+                from: $('prcFilterFrom').value,
+                to: $('prcFilterTo').value,
+                dir: $('prcSortDir').value === 'asc' ? 'asc' : 'desc',
+            };
+            setActiveTab($('prcFilterStatus').value || 'all');
+            render();
+        });
+        $('prcClearFilters').addEventListener('click', () => {
+            form.reset();
+            appliedFilters = { ...DEFAULT_FILTERS };
+            setActiveTab('all');
+            render();
+        });
+    }
+
     function render() {
-        const filtered = currentFilter === 'all'
+        const byTab = currentFilter === 'all'
             ? verifications
             : verifications.filter(v => v.status === currentFilter);
+        const filtered = applyToolbarFilters(byTab);
         renderTable(filtered);
         renderCards(filtered);
         updateStats();
+        updateFilterSummary(filtered.length);
+    }
+
+    // Empty-state text: a filter that matches nothing says so.
+    function emptyMessage() {
+        if (activeFilterCount() > (currentFilter === 'all' ? 0 : 1)) return 'No records match your search or filters.';
+        return currentFilter === 'all' ? 'No pediatricians have submitted PRC verification requests yet.' : 'No ' + currentFilter + ' verifications at this time.';
     }
 
     function renderTable(items) {
@@ -132,7 +241,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <tr><td colspan="8" class="prc-empty-row">
                     <div style="padding:2rem;">
                         <p style="font-size:1.2rem;margin-bottom:0.5rem;">No verification requests found</p>
-                        <p style="color:var(--text-light);">${currentFilter === 'all' ? 'No pediatricians have submitted PRC verification requests yet.' : 'No ' + currentFilter + ' verifications at this time.'}</p>
+                        <p style="color:var(--text-light);">${esc(emptyMessage())}</p>
                     </div>
                 </td></tr>`;
             return;
@@ -162,7 +271,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="prc-empty">
                     <span class="prc-empty__icon"></span>
                     <p class="prc-empty-message">No verification requests found</p>
-                    <p style="color:var(--text-light);">${currentFilter === 'all' ? 'No pediatricians have submitted PRC verification requests yet.' : 'No ' + currentFilter + ' verifications at this time.'}</p>
+                    <p style="color:var(--text-light);">${esc(emptyMessage())}</p>
                 </div>`;
             return;
         }
@@ -215,9 +324,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!tab) return;
             const status = tab.getAttribute('data-status');
             if (status === currentFilter) return;
-            currentFilter = status;
-            filterTabs.querySelectorAll('.prc-filter-tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
+            setActiveTab(status); // also keeps the toolbar's Status filter in step
             render();
         });
     }
@@ -676,11 +783,13 @@ document.addEventListener('DOMContentLoaded', function() {
             verifications = [];
             showToast('Failed to load verification data: ' + (err.message || ''), 'error');
         }
+        refreshSpecializationOptions();
         render();
         handleUrlParams();
     }
 
     // ── Init ──
     initFilters();
+    initToolbar();
     loadData();
 });

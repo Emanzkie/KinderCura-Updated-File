@@ -964,3 +964,114 @@
   --bs-btn-close-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%233D4738'%3e%3cpath d='M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707a1 1 0 0 1 0-1.414z'/%3e%3c/svg%3e");
   color: #3D4738;
 }
+
+/* ── Search / filter / sort toolbar (assets/js/prc-verification.js) ── */
+.prc-toolbar {
+  background: var(--bg-primary);
+  border-radius: var(--radius-card);
+  box-shadow: 0 4px 15px rgba(61, 71, 56, 0.08);
+  padding: 1.25rem 1.5rem 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.prc-toolbar__row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.9rem 1rem;
+  align-items: end;
+}
+
+.prc-toolbar__row + .prc-toolbar__row {
+  margin-top: 0.9rem;
+}
+
+.prc-toolbar__row--top {
+  grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.prc-toolbar__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.prc-toolbar__field span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-light);
+}
+
+.prc-toolbar__field input,
+.prc-toolbar__field select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  background: var(--surface);
+  color: var(--text-dark);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.prc-toolbar__field input:focus,
+.prc-toolbar__field select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
+}
+
+.prc-toolbar__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.prc-toolbar__btn {
+  min-height: 42px;
+  justify-content: center;
+}
+
+.prc-toolbar__summary {
+  margin: 0.9rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--text-light);
+}
+
+@media (max-width: 1100px) {
+  .prc-toolbar__row--top {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .prc-toolbar__field--search {
+    grid-column: 1 / -1;
+  }
+
+  .prc-toolbar__row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .prc-toolbar {
+    padding: 1rem;
+  }
+
+  .prc-toolbar__row,
+  .prc-toolbar__row--top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .prc-toolbar__actions {
+    flex-wrap: wrap;
+  }
+
+  .prc-toolbar__btn {
+    flex: 1 1 auto;
+  }
+}

@@ -91,6 +91,71 @@
             <button class="prc-filter-tab" data-status="rejected">Rejected</button>
         </div>
 
+        <!-- Search, filters and sort (assets/js/prc-verification.js). Applied
+             in the browser to the records already loaded; the Status filter
+             and the tabs above are the same filter. -->
+        <form class="prc-toolbar" id="prcToolbar" autocomplete="off">
+            <div class="prc-toolbar__row prc-toolbar__row--top">
+                <label class="prc-toolbar__field prc-toolbar__field--search">
+                    <span>Search</span>
+                    <input type="search" id="prcSearch" placeholder="Search name, email or PRC license no.">
+                </label>
+                <label class="prc-toolbar__field">
+                    <span>Sort by</span>
+                    <select id="prcSortBy">
+                        <option value="regDate">Registration Date</option>
+                    </select>
+                </label>
+                <label class="prc-toolbar__field">
+                    <span>Direction</span>
+                    <select id="prcSortDir">
+                        <option value="desc">Newest First</option>
+                        <option value="asc">Oldest First</option>
+                    </select>
+                </label>
+                <div class="prc-toolbar__actions">
+                    <button type="submit" class="prc-btn prc-btn--approve prc-toolbar__btn" id="prcApplyFilters">Apply Filters</button>
+                    <button type="button" class="prc-btn prc-btn--outline prc-toolbar__btn" id="prcClearFilters">Clear Filters</button>
+                </div>
+            </div>
+            <div class="prc-toolbar__row">
+                <label class="prc-toolbar__field">
+                    <span>Specialization</span>
+                    <select id="prcFilterSpecialization">
+                        <option value="">All specializations</option>
+                    </select>
+                </label>
+                <label class="prc-toolbar__field">
+                    <span>Status</span>
+                    <select id="prcFilterStatus">
+                        <option value="all">All statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="verified">Approved</option>
+                        <option value="rejected">Rejected</option>
+                    </select>
+                </label>
+                <label class="prc-toolbar__field">
+                    <span>PRC Check</span>
+                    <select id="prcFilterCheck">
+                        <option value="">All PRC checks</option>
+                        <option value="pending_verification">Pending Verification</option>
+                        <option value="verified">Verified</option>
+                        <option value="needs_review">Needs Review</option>
+                        <option value="unable_to_verify">Unable to Verify</option>
+                    </select>
+                </label>
+                <label class="prc-toolbar__field">
+                    <span>Registered From</span>
+                    <input type="date" id="prcFilterFrom">
+                </label>
+                <label class="prc-toolbar__field">
+                    <span>Registered To</span>
+                    <input type="date" id="prcFilterTo">
+                </label>
+            </div>
+            <p class="prc-toolbar__summary" id="prcFilterSummary" aria-live="polite">No filters</p>
+        </form>
+
         <div id="prcTableView" class="prc-table-wrapper">
             <table class="prc-table">
                 <thead>
