@@ -38,39 +38,6 @@ let caseFileActiveIndex = -1;
 let caseFileSelectedId = null;
 let caseFileLoadToken = 0;
 let caseFileShownId = null;   // the patient whose case file is fully on screen
-let practiceReportsShown = false;       // Practice Reports has been visible at least once
-let practiceReportsDrawnHidden = false; // its charts were drawn while it was hidden
-
-// ── Tabs ────────────────────────────────────────────────────────────────────
-
-function showReportTab(tab) {
-    const caseFiles = tab !== 'practice-reports';
-    document.body.dataset.reportTab = caseFiles ? 'case-files' : 'practice-reports';
-    document.getElementById('caseFilePanel').hidden = !caseFiles;
-    document.getElementById('practiceReportsPanel').hidden = caseFiles;
-    document.getElementById('tabCaseFiles').setAttribute('aria-selected', String(caseFiles));
-    document.getElementById('tabPracticeReports').setAttribute('aria-selected', String(!caseFiles));
-    document.getElementById('caseFileMeta').hidden = !caseFiles;
-    document.getElementById('reportMeta').hidden = caseFiles;
-    document.getElementById('exportBtn').hidden = caseFiles;
-    document.getElementById('printPracticeBtn').hidden = caseFiles;
-    document.getElementById('practicePdfBtn').hidden = caseFiles;
-    // A bookmarkable view without storing anything: #practice-reports reopens it.
-    const hash = caseFiles ? '' : '#practice-reports';
-    if (window.location.hash !== hash) {
-        history.replaceState(null, '', window.location.pathname + window.location.search + hash);
-    }
-    // Chart.js charts drawn inside the hidden panel stay 0×0 even after a
-    // resize, so the first time Practice Reports is shown its sections are
-    // loaded again while visible (loadReports drops any older in-flight load).
-    if (caseFiles) {
-        practiceReportsDrawnHidden = practiceReportsDrawnHidden || !practiceReportsShown;
-    } else {
-        practiceReportsShown = true;
-        if (practiceReportsDrawnHidden && typeof loadReports === 'function') loadReports();
-        practiceReportsDrawnHidden = false;
-    }
-}
 
 // ── Pure helpers (also exercised by tests/unit/pedia-case-files.test.js) ────
 
@@ -709,11 +676,3 @@ function initCaseFilePicker() {
     });
     input.addEventListener('blur', () => setTimeout(closeCaseFileResults, 120));
 }
-
-document.addEventListener('DOMContentLoaded', () => {
-    // The Reports page's tabs and patient search. The patient profile page
-    // (js/pedia/patient-profile.js) reuses the case file without them.
-    if (!document.getElementById('practiceReportsPanel')) return;
-    showReportTab(window.location.hash === '#practice-reports' ? 'practice-reports' : 'case-files');
-    initCaseFilePicker();
-});
