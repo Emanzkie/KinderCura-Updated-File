@@ -76,6 +76,32 @@
     </div>
 </div>
 
+<!-- Schedule a recommended activity (js/parent/recommendations.js). Each
+     activity is scheduled once; the date and time cannot be changed later. -->
+<div class="kc-modal-backdrop" id="activityScheduleModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="activityScheduleTitle">
+    <div class="kc-modal activity-schedule-modal" role="document">
+        <form id="activityScheduleForm" onsubmit="confirmActivitySchedule(event)">
+            <div class="kc-modal__header">
+                <h3 id="activityScheduleTitle">Schedule Activity</h3>
+                <button type="button" class="kc-modal__close" onclick="closeActivityScheduleModal()" aria-label="Close">&times;</button>
+            </div>
+            <div class="kc-modal__body">
+                <p class="activity-schedule-name" id="activityScheduleName"></p>
+                <div class="activity-schedule-fields">
+                    <label>Date <input type="date" name="date" id="activityScheduleDate" required></label>
+                    <label>Time <input type="time" name="time" id="activityScheduleTime" required></label>
+                </div>
+                <p class="activity-schedule-note">Once confirmed, this date and time cannot be changed.</p>
+                <p class="kc-alert kc-alert--error" id="activityScheduleError" role="alert" style="display:none;"></p>
+            </div>
+            <div class="kc-modal__footer">
+                <button type="button" class="btn btn-secondary" onclick="closeActivityScheduleModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="activityScheduleConfirm">Confirm Schedule</button>
+            </div>
+        </form>
+    </div>
+</div>
+
     <script src="/api.js"></script>
 <script src="/js/shared/mobile-nav.js"></script>
 <script src="/notifications-card-ui.js"></script>

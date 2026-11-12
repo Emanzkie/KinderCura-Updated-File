@@ -536,7 +536,8 @@ router.patch('/:recommendationId/activities', authMiddleware, async (req, res) =
   }
 });
 
-// Schedule one session of a recommended activity: { activity, date, time }.
+// Schedule a recommended activity: { activity, date, time }. Each activity is
+// scheduled once; its date and time are then fixed (see PATCH and DELETE).
 router.post('/:recommendationId/schedule', authMiddleware, async (req, res) => {
   try {
     const { recommendationId } = req.params;
@@ -559,6 +560,9 @@ router.post('/:recommendationId/schedule', authMiddleware, async (req, res) => {
     const { date, time } = req.body || {};
     const invalid = scheduleError(date, time, today);
     if (invalid) return res.status(400).json({ error: invalid });
+    if (await ActivitySchedule.exists({ recommendationId: rec._id, activity })) {
+      return res.status(409).json({ error: 'This activity is already scheduled. Its date and time cannot be changed.' });
+    }
 
     const result = await AssessmentResult.findById(rec.assessmentResultId).select('assessmentId').lean();
     const task = await ActivitySchedule.create({
@@ -603,8 +607,9 @@ async function loadOwnTask(req, res) {
   return task;
 }
 
-// Reschedule ({ date, time } puts it back to pending), or set the status
-// ({ status: 'completed', score? }, 'missed' or 'pending').
+// Set the status ({ status: 'completed', score? }, 'missed' or 'pending'); the
+// parent page does this when the activity's checkbox is ticked or unticked.
+// A scheduled activity keeps its date and time: a reschedule is refused.
 router.patch('/schedule/:taskId', authMiddleware, async (req, res) => {
   try {
     const task = await loadOwnTask(req, res);
@@ -614,11 +619,7 @@ router.patch('/schedule/:taskId', authMiddleware, async (req, res) => {
     let set;
 
     if (body.date !== undefined || body.time !== undefined) {
-      const date = body.date ?? task.scheduledDate;
-      const time = body.time ?? task.scheduledTime;
-      const invalid = scheduleError(date, time, today);
-      if (invalid) return res.status(400).json({ error: invalid });
-      set = { scheduledDate: date, scheduledTime: time, status: 'pending', score: null, completedAt: null };
+      return res.status(409).json({ error: 'A scheduled activity keeps its date and time. It cannot be rescheduled.' });
     } else if (body.status === 'completed') {
       let score = null;
       if (body.score !== undefined && body.score !== null && body.score !== '') {
@@ -653,13 +654,13 @@ router.patch('/schedule/:taskId', authMiddleware, async (req, res) => {
   }
 });
 
-// Cancel a scheduled session.
+// Scheduled activities are permanent: removal is refused (after the same
+// access check as the other schedule routes, so strangers still get 403/404).
 router.delete('/schedule/:taskId', authMiddleware, async (req, res) => {
   try {
     const task = await loadOwnTask(req, res);
     if (!task) return;
-    await ActivitySchedule.deleteOne({ _id: task._id });
-    res.json({ success: true, id: String(task._id) });
+    res.status(409).json({ error: 'Scheduled activities cannot be removed.' });
   } catch (err) {
     console.error('activity schedule delete error:', err);
     res.status(500).json({ error: 'Could not cancel the scheduled activity.' });

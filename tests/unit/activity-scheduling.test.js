@@ -1,6 +1,8 @@
 // Developmental task scheduling: a parent schedules a recommended home activity
-// for a Manila date and time, marks it completed (optional 0-100% score) or
-// missed, reschedules or removes it, and gets a bell reminder before it.
+// once, for a Manila date and time that then never changes (a second schedule,
+// a reschedule and a removal are refused). The status follows the activity
+// checkbox (completed / pending, missed once the day has passed), and the
+// parent gets a bell reminder before it.
 // Exercises routes/recommendations.js (POST /:recommendationId/schedule,
 // PATCH and DELETE /schedule/:taskId, scheduledTasks on GET /:assessmentId)
 // and services/reminders.js activityReminders against an in-memory store.
@@ -67,6 +69,7 @@ ActivitySchedule.find = (f) => chain(() => db.tasks.filter((t) => {
   if (f.recommendationId) return f.recommendationId.$in.some((id) => same(id, t.recommendationId));
   return t.status === f.status && f.scheduledDate.$in.includes(t.scheduledDate);
 }));
+ActivitySchedule.exists = async (f) => (db.tasks.some((t) => same(t.recommendationId, f.recommendationId) && t.activity === f.activity) ? { _id: oid() } : null);
 ActivitySchedule.findById = (id) => chain(() => db.tasks.find((t) => same(t._id, id)) || null);
 ActivitySchedule.create = async (doc) => {
   writes += 1;
@@ -178,10 +181,14 @@ async function run() {
     ['communication', comm.activities[0], tomorrow, '16:00', 'pending', null]);
   const stored = db.tasks.find((t) => same(t._id, first.id));
   assert.ok(same(stored.childId, child._id) && same(stored.assessmentId, assessmentId) && same(stored.createdBy, parent.userId));
-  res = await schedule(parent, comm, { activity: comm.activities[0], date: today, time: '23:59' });
-  assert.strictEqual(res.statusCode, 201, 'today is allowed; one activity can have several sessions');
+  let w = writes;
+  res = await schedule(parent, comm, { activity: comm.activities[0], date: reminders.addDays(today, 2), time: '09:00' });
+  assert.strictEqual(res.statusCode, 409, 'an activity is scheduled only once');
+  assert.strictEqual(writes, w, 'a duplicate schedule never writes');
+  res = await schedule(parent, comm, { activity: comm.activities[2], date: today, time: '23:59' });
+  assert.strictEqual(res.statusCode, 201, 'today is allowed');
   const second = res.body.task;
-  ok('scheduling validates activity, date and time and records child, assessment and creator');
+  ok('scheduling validates activity, date and time, records child, assessment and creator, and happens once per activity');
 
   // 3. Authorization: only the parent or a guardian with viewRecommendations.
   const before = writes;
@@ -212,10 +219,10 @@ async function run() {
   assert.ok(res.body.task.completedAt);
   assert.deepStrictEqual(res.body.completedActivities, [comm.activities[0]], 'completing a session ticks the activity');
   assert.strictEqual(res.body.activityProgress.completed, 1);
-  res = await update(parent, second.id, { status: 'completed' });
+  res = await update(parent, first.id, { status: 'completed' });
   assert.deepStrictEqual([res.body.task.status, res.body.task.score], ['completed', null], 'score is optional');
   assert.strictEqual(res.body.activityProgress.completed, 1, 'the tick is never duplicated');
-  res = await update(parent, second.id, { status: 'pending' });
+  res = await update(parent, first.id, { status: 'pending' });
   assert.deepStrictEqual([res.body.task.status, res.body.task.score, res.body.task.completedAt], ['pending', null, null]);
   assert.deepStrictEqual(res.body.completedActivities, [comm.activities[0]], 'reverting a session never unticks');
   ok('completed with an optional 0-100 score ticks the activity once, and never unticks');
@@ -236,15 +243,23 @@ async function run() {
   assert.strictEqual(effectiveStatus({ status: 'completed', scheduledDate: yesterday }, today), 'completed');
   ok('missed is set by the parent or derived after the day ends; GET lists sessions per domain, soonest first');
 
-  // 6. Reschedule puts the session back to pending; remove deletes it.
-  assert.strictEqual((await update(parent, guardianTask.id, { date: yesterday })).statusCode, 400, 'cannot move into the past');
-  res = await update(parent, guardianTask.id, { date: reminders.addDays(today, 3), time: '10:30' });
-  assert.deepStrictEqual([res.body.task.status, res.body.task.scheduledDate, res.body.task.scheduledTime], ['pending', reminders.addDays(today, 3), '10:30']);
-  res = await remove(parent, lapsed._id.toString());
-  assert.strictEqual(res.statusCode, 200);
-  assert.ok(!db.tasks.some((t) => same(t._id, lapsed._id)));
-  assert.strictEqual((await remove(parent, String(lapsed._id))).statusCode, 404);
-  ok('reschedule resets to pending (never into the past); remove deletes');
+  // 6. The date and time are locked: reschedule and removal are refused, and
+  //    an overdue session keeps its original schedule.
+  w = writes;
+  const lockedBefore = clone(db.tasks.find((t) => same(t._id, guardianTask.id)));
+  for (const body of [{ date: reminders.addDays(today, 3), time: '10:30' }, { date: yesterday }, { time: '08:00' }]) {
+    assert.strictEqual((await update(parent, guardianTask.id, body)).statusCode, 409, 'a reschedule is refused');
+  }
+  assert.strictEqual((await update(parent, lapsed._id.toString(), { date: tomorrow, time: '10:00' })).statusCode, 409, 'an overdue session cannot be moved');
+  assert.strictEqual((await remove(parent, lapsed._id.toString())).statusCode, 409, 'removal is refused');
+  assert.strictEqual((await remove(parent, String(oid()))).statusCode, 404);
+  assert.strictEqual(writes, w, 'refused changes never write');
+  assert.deepStrictEqual(clone(db.tasks.find((t) => same(t._id, guardianTask.id))), lockedBefore);
+  assert.ok(db.tasks.some((t) => same(t._id, lapsed._id)), 'the overdue session is still there');
+  res = await getPlan(parent, assessmentId);
+  assert.deepStrictEqual(res.body.recommendations.find((r) => r.skill === 'motor').scheduledTasks.map((t) => [t.status, t.scheduledDate]),
+    [['missed', yesterday]], 'still missed on its original day');
+  ok('date and time are locked: reschedule and removal are refused; an overdue session keeps its day');
 
   // 7. Reminders: pending sessions today (still ahead) or tomorrow, once each,
   //    to whoever scheduled them; a rescheduled session is reminded again.

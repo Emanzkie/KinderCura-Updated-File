@@ -644,6 +644,66 @@ body {
     cursor: default;
 }
 
+/* The (+) that opens the schedule modal; shown until the activity is scheduled. */
+.activity-item .activity-add-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    min-height: 2.5rem;
+    padding: 0;
+    font-size: 1.4rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* Schedule modal (PARENT/recommendations.html #activityScheduleModal). */
+.activity-schedule-modal {
+    width: min(460px, 96vw);
+}
+
+.activity-schedule-name {
+    margin: 0 0 1rem;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+.activity-schedule-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+}
+
+.activity-schedule-fields label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    flex: 1 1 10rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+.activity-schedule-fields input {
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    background: var(--surface);
+    color: var(--text-dark);
+    font: inherit;
+}
+
+.activity-schedule-note {
+    margin: 0.85rem 0 0;
+    font-size: 0.8rem;
+    color: var(--text-light);
+}
+
+.activity-schedule-modal .kc-alert {
+    margin: 0.75rem 0 0;
+}
+
 .activity-form {
     display: flex;
     align-items: center;
