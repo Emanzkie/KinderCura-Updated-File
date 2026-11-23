@@ -51,6 +51,7 @@ const {
 // "approve" never implies a pediatrician sign-off and never activates anything.
 const { DATASET_REVIEW, DATASET_QUESTIONS } = require('../constants/datasetQuestions');
 const datasetEligibility = require('../services/datasetQuestionEligibility');
+const datasetImport =require('../services/datasetQuestionImport');
 const AuditLog = require('../models/AuditLog');
 // Admin-facing TWO-category view (Dataset Question / Pediatrician Question)
 // over the three real origins above. Presentation/aggregation only — see the
@@ -3102,6 +3103,46 @@ router.patch('/data-origin/dataset-questions/:id/activation', authMiddleware, ad
   }
 });
 
+// Check (dryRun, the default) or store a batch of uploaded Dataset Questions.
+// Stored rows are always pending and inactive — see services/datasetQuestionImport.js.
+router.post('/data-origin/dataset-questions/import', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { status, body } = await datasetImport.importDatasetQuestions(req.body || {});
+    if (status === 201) {
+      await AuditLog.create({
+        actorId: req.user.userId,
+        action: 'dataset_questions_imported',
+        targetType: 'CoreBankQuestion',
+        details: { importBatchId: body.importBatchId, questionIds: body.questionIds },
+      }).catch((err) => console.error('dataset question import audit error:', err.message));
+    }
+    res.status(status).json(body);
+  } catch (error) {
+    console.error('dataset question import error:', error);
+    res.status(500).json({ error: 'The questions could not be imported.' });
+  }
+});
+
+// Undo a mistaken import: only while the question is still pending.
+router.delete('/data-origin/dataset-questions/:id', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { status, body } = await datasetImport.deleteImportedQuestion(req.params.id);
+    if (status === 200) {
+      await AuditLog.create({
+        actorId: req.user.userId,
+        action: 'dataset_question_deleted',
+        targetType: 'CoreBankQuestion',
+        targetId: req.params.id,
+        details: { questionId: body.questionId, text: body.text },
+      }).catch((err) => console.error('dataset question delete audit error:', err.message));
+    }
+    res.status(status).json(body);
+  } catch (error) {
+    console.error('dataset question delete error:', error);
+    res.status(500).json({ error: 'The question could not be deleted.' });
+  }
+});
+
 // GET /api/admin/data-origin/list
 //
 // Query params:
@@ -3151,6 +3192,9 @@ router.get('/data-origin/list', authMiddleware, adminOnly, async (req, res) => {
         // was actually imported from its source, else createdAt (req 6). Never
         // array position, an ObjectId, or a hardcoded label.
         const effectiveDate = q.importedAt || q.createdAt;
+        // The wording review round covered the code catalogue only; an
+        // admin-imported question was never part of it.
+        const reviewed = DATASET_QUESTIONS.some((d) => d.questionId === q.questionId);
 
         return {
           id: String(q._id),
@@ -3186,10 +3230,11 @@ router.get('/data-origin/list', authMiddleware, adminOnly, async (req, res) => {
           isActive: q.isActive !== false,
           isUsableInAssessment: datasetEligibility.isUsableInAssessment(q),
           canActivate: datasetEligibility.canActivate(q),
+          canDelete: datasetImport.canDelete(q),
 
-          reviewerDecision: DATASET_REVIEW.decision,
-          reviewerDecisionLabel: REVIEWER_DECISION_LABELS[DATASET_REVIEW.decision] || DATASET_REVIEW.decision,
-          reviewerDecisionRound: `${DATASET_REVIEW.round} · ${DATASET_REVIEW.decidedOn}`,
+          reviewerDecision: reviewed ? DATASET_REVIEW.decision : null,
+          reviewerDecisionLabel: reviewed ? (REVIEWER_DECISION_LABELS[DATASET_REVIEW.decision] || DATASET_REVIEW.decision) : null,
+          reviewerDecisionRound: reviewed ? `${DATASET_REVIEW.round} · ${DATASET_REVIEW.decidedOn}` : null,
           hasOpenMappingQuestion: isMappingQuestionOpen(q.questionId, q.approvalStatus || null),
         };
       });

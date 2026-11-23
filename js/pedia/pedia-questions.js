@@ -1729,9 +1729,49 @@
             sel.value = current;
         }
 
+        // ── Dataset Questions awaiting review (routes/custom-questions.js) ──
+        async function loadDatasetReview() {
+            const card = document.getElementById('datasetReviewCard');
+            if (!card) return;
+            try {
+                const { questions = [] } = await apiFetch('/questions/dataset-review');
+                card.hidden = !questions.length;
+                document.getElementById('datasetReviewList').innerHTML = questions.map((q) => `
+                    <div style="padding:.8rem 0;border-top:1px solid var(--border);">
+                        <p style="margin:0 0 .35rem;font-weight:600;color:var(--text-dark);">${esc(q.text)}</p>
+                        <p style="margin:0 0 .35rem;font-size:.8rem;color:var(--text-dark);">${esc(q.domain)} &middot; From ${Number(q.minAgeMonths)} months &middot; ${esc(q.generationMethodLabel)}</p>
+                        <p style="margin:0 0 .6rem;font-size:.76rem;color:var(--text-light);line-height:1.45;overflow-wrap:anywhere;">${esc(q.questionId)} &middot; ${esc([q.sourcedFrom, q.sourceVersion].filter(Boolean).join(', '))}<br>${esc(q.sourceCitation)}</p>
+                        <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+                            <button type="button" class="btn-outline" onclick="decideDatasetQuestion('${esc(q.id)}','approve',this)">Approve</button>
+                            <button type="button" class="btn-danger" style="border-radius:8px;padding:.45rem .9rem;font-weight:600;cursor:pointer;" onclick="decideDatasetQuestion('${esc(q.id)}','reject',this)">Reject</button>
+                        </div>
+                    </div>`).join('');
+            } catch (err) {
+                console.error('Dataset Questions could not be loaded:', err.message);
+            }
+        }
+
+        async function decideDatasetQuestion(id, decision, btn) {
+            const text = decision === 'approve'
+                ? 'Approve this question? It can then be activated by the admin for parent assessments. This cannot be undone here.'
+                : 'Reject this question? It cannot be activated or imported again. This cannot be undone here.';
+            if (!confirm(text)) return;
+            const buttons = [...btn.parentElement.querySelectorAll('button')];
+            buttons.forEach((b) => { b.disabled = true; });
+            try {
+                const data = await apiFetch(`/questions/dataset-review/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ decision }) });
+                flash(`${data.questionId} ${decision === 'approve' ? 'approved' : 'rejected'}.`);
+            } catch (err) {
+                flash(err.message, 'error');
+                buttons.forEach((b) => { b.disabled = false; });
+            }
+            await loadDatasetReview();
+        }
+
         document.addEventListener('DOMContentLoaded', async () => {
             syncThresholdFilterOptions();
             syncAssignScoreNote();
+            loadDatasetReview();
             await refreshAll();
             await loadNotificationCount();
             

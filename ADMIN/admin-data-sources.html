@@ -133,6 +133,37 @@
             </div>
         </div>
 
+        <!-- Import Dataset Questions (admin-data-sources.js). Saved questions
+             wait for a pediatrician's approval, then for activation above. -->
+        <div class="card" id="dqImportCard" style="margin-top:2rem;">
+            <div class="pipeline-head">
+                <h3><img src="/icons/clipboard.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Import Dataset Questions</h3>
+                <button type="button" class="btn btn-secondary" onclick="dqDownloadTemplate()">Download CSV template</button>
+            </div>
+            <p class="pipeline-intro">Upload developmental questions from a published dataset. Saved questions stay pending until a pediatrician approves them, and reach parents only after you activate them.
+                CSV columns: <code>question</code>, <code>domain</code> (Communication, Social Skills, Cognitive or Motor Skills), <code>min_age_months</code> (36&ndash;96) and <code>wording_method</code> (verbatim, adapted or manual; if left blank, choose it for each question in the preview). Up to 100 questions per file.</p>
+            <div class="pipeline-form" id="dqSourceForm">
+                <div class="form-group"><label for="dqSourceName">Dataset / source name</label><input id="dqSourceName" maxlength="150"></div>
+                <div class="form-group"><label for="dqCitation">Full citation</label><textarea id="dqCitation" rows="3" maxlength="1000"></textarea></div>
+                <div class="form-group"><label for="dqVersion">Version or year <span class="hint">(optional)</span></label><input id="dqVersion" maxlength="150"></div>
+                <div class="form-group"><label for="dqFile">CSV file</label><input type="file" id="dqFile" accept=".csv,text/csv"></div>
+            </div>
+            <div class="pipeline-message" id="dqMessage" role="status" hidden></div>
+            <div id="dqPreview" hidden>
+                <div style="overflow-x:auto;">
+                    <table class="origin-table dq-import-table">
+                        <thead><tr><th>#</th><th>Question</th><th>Domain</th><th>Minimum age (months)</th><th>Wording</th><th>Check</th><th></th></tr></thead>
+                        <tbody id="dqRows"></tbody>
+                    </table>
+                </div>
+                <div class="pipeline-actions" style="margin:1rem 0 0;">
+                    <button type="button" class="btn btn-secondary" id="dqCheckBtn" onclick="dqSubmit(true)">Check again</button>
+                    <button type="button" class="btn btn-primary" id="dqSaveBtn" onclick="dqSubmit(false)" disabled>Save as Pending Approval</button>
+                    <button type="button" class="btn btn-secondary" id="dqCancelBtn" onclick="dqReset()">Cancel</button>
+                </div>
+            </div>
+        </div>
+
         <!-- ============================================================== -->
         <!-- Model dataset pipeline (Requirement B).                        -->
         <!-- Generate -> validate -> clean -> send to the model. "Send to    -->

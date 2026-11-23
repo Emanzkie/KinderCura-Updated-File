@@ -104,13 +104,33 @@ requireAuth();
         function activationControl(r) {
             if (r.category !== 'dataset_question') return '';
             if (!r.canActivate) {
-                return '<div class="approval-note">Activation requires pediatrician approval.</div>';
+                return `<div class="approval-note">Activation requires pediatrician approval.</div>${deleteControl(r)}`;
             }
             const next = !r.isActive;
             const label = next ? 'Activate' : 'Deactivate';
             return `<button type="button" class="btn btn-secondary" style="padding:0.3rem 0.75rem;font-size:0.78rem;margin-top:0.45rem;"
                 onclick="setDatasetQuestionActive('${escapeHtml(r.id)}', ${next}, this)"
                 aria-label="${label} ${escapeHtml(r.questionId || 'question')}">${label}</button>`;
+        }
+
+        // Delete an imported question nobody has reviewed yet (r.canDelete,
+        // decided by the server).
+        function deleteControl(r) {
+            if (!r.canDelete) return '';
+            return `<button type="button" class="btn btn-secondary delete-action" style="padding:0.3rem 0.75rem;font-size:0.78rem;margin-top:0.45rem;"
+                onclick="deleteDatasetQuestion('${escapeHtml(r.id)}', this)"
+                aria-label="Delete ${escapeHtml(r.questionId || 'question')}">Delete</button>`;
+        }
+
+        async function deleteDatasetQuestion(id, btn) {
+            if (!confirm('Delete this imported question?\n\nNo pediatrician has reviewed it and no parent has seen it. This cannot be undone.')) return;
+            btn.disabled = true;
+            try {
+                await apiFetch(`/admin/data-origin/dataset-questions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            } catch (err) {
+                alert('Could not delete the question: ' + err.message);
+            }
+            await Promise.all([loadSummary(), loadList()]);
         }
 
         // Persists first; the row only changes after the server confirms it,
@@ -1212,7 +1232,224 @@ requireAuth();
             }
         }
 
+        // ================================================================
+        // Import Dataset Questions
+        //
+        // The file is read and edited here; the server decides whether each
+        // row is valid and stores it (services/datasetQuestionImport.js).
+        // Editing a row makes its last check stale, so Save waits for a
+        // fresh check.
+        // ================================================================
+        const DQ_DOMAINS = ['Communication', 'Social Skills', 'Cognitive', 'Motor Skills'];
+        const DQ_METHODS = {
+            verbatim_from_source: 'Verbatim from source',
+            ai_generated_adaptation: 'AI-generated adaptation',
+            manually_written: 'Manually written',
+        };
+        const DQ_METHOD_ALIASES = { verbatim: 'verbatim_from_source', adapted: 'ai_generated_adaptation', manual: 'manually_written' };
+        let dqRowsState = [];
+        let dqChecked = false;
+        let dqBusy = false;
+
+        // Quoted fields, doubled quotes and line breaks inside quotes. Excel
+        // saves with semicolons in some regions, so the header decides.
+        function dqParseCsv(text) {
+            const src = String(text || '').replace(/^﻿/, '');
+            const header = src.split(/\r?\n/, 1)[0];
+            const sep = header.includes(';') && !header.includes(',') ? ';' : ',';
+            const out = [];
+            let row = [], cell = '', quoted = false;
+            for (let i = 0; i < src.length; i += 1) {
+                const ch = src[i];
+                if (quoted) {
+                    if (ch === '"' && src[i + 1] === '"') { cell += '"'; i += 1; }
+                    else if (ch === '"') quoted = false;
+                    else cell += ch;
+                } else if (ch === '"' && cell === '') quoted = true;
+                else if (ch === sep) { row.push(cell); cell = ''; }
+                else if (ch === '\n' || ch === '\r') {
+                    if (ch === '\r' && src[i + 1] === '\n') i += 1;
+                    row.push(cell); out.push(row); row = []; cell = '';
+                } else cell += ch;
+            }
+            if (quoted) throw new Error('A quoted field is never closed.');
+            if (cell !== '' || row.length) { row.push(cell); out.push(row); }
+            return out.map((r) => r.map((c) => c.trim())).filter((r) => r.some(Boolean));
+        }
+
+        function dqRowsFromCsv(text) {
+            const [head, ...body] = dqParseCsv(text);
+            const cols = (head || []).map((h) => h.toLowerCase().replace(/[\s-]+/g, '_'));
+            const missing = ['question', 'domain', 'min_age_months'].filter((c) => !cols.includes(c));
+            if (missing.length) throw new Error(`The file is missing the column${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}.`);
+            if (!body.length) throw new Error('The file has no questions.');
+            if (body.length > 100) throw new Error('Import at most 100 questions at a time.');
+            const get = (r, name) => r[cols.indexOf(name)] || '';
+            return body.map((r) => {
+                const domain = get(r, 'domain');
+                const method = get(r, 'wording_method').toLowerCase();
+                return {
+                    text: get(r, 'question'),
+                    domain: DQ_DOMAINS.find((d) => d.toLowerCase() === domain.toLowerCase()) || '',
+                    minAgeMonths: get(r, 'min_age_months'),
+                    generationMethod: DQ_METHOD_ALIASES[method] || (DQ_METHODS[method] ? method : ''),
+                    verdict: null,
+                };
+            });
+        }
+
+        function dqDownloadTemplate() {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob(['﻿question,domain,min_age_months,wording_method\r\n'], { type: 'text/csv;charset=utf-8' }));
+            a.download = 'dataset-questions-template.csv';
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        }
+
+        function dqMessage(text, kind) {
+            const el = document.getElementById('dqMessage');
+            el.className = 'pipeline-message is-' + (kind || 'info');
+            el.textContent = text || '';
+            el.hidden = !text;
+        }
+
+        function dqVerdictHtml(v) {
+            if (!v) return '<span class="pipeline-chip pipeline-chip--idle">Not checked</span>';
+            if (v.status === 'ok') return '<span class="pipeline-chip pipeline-chip--ok">OK</span>';
+            const label = v.status === 'duplicate' ? 'Duplicate' : 'Fix';
+            return `<span class="pipeline-chip pipeline-chip--bad">${label}</span><div class="approval-note">${escapeHtml(v.message)}</div>`;
+        }
+
+        function dqOptions(pairs, selected) {
+            return '<option value="">Choose…</option>' + pairs.map(([v, l]) => `<option value="${escapeHtml(v)}"${v === selected ? ' selected' : ''}>${escapeHtml(l)}</option>`).join('');
+        }
+
+        function dqRender() {
+            document.getElementById('dqPreview').hidden = !dqRowsState.length;
+            document.getElementById('dqRows').innerHTML = dqRowsState.map((r, i) => `
+                <tr data-i="${i}">
+                    <td>${i + 1}</td>
+                    <td><textarea data-f="text" rows="2" maxlength="300" aria-label="Question ${i + 1}">${escapeHtml(r.text)}</textarea></td>
+                    <td><select data-f="domain" aria-label="Domain of question ${i + 1}">${dqOptions(DQ_DOMAINS.map((d) => [d, d]), r.domain)}</select></td>
+                    <td><input data-f="minAgeMonths" type="number" min="36" max="96" step="1" value="${escapeHtml(r.minAgeMonths)}" aria-label="Minimum age in months of question ${i + 1}"></td>
+                    <td><select data-f="generationMethod" aria-label="Wording of question ${i + 1}">${dqOptions(Object.entries(DQ_METHODS), r.generationMethod)}</select></td>
+                    <td class="dq-verdict">${dqVerdictHtml(r.verdict)}</td>
+                    <td><button type="button" class="btn btn-secondary" data-remove="${i}" aria-label="Remove question ${i + 1}">Remove</button></td>
+                </tr>`).join('');
+            dqButtons();
+        }
+
+        function dqButtons() {
+            const ok = dqChecked && dqRowsState.length > 0 && dqRowsState.every((r) => r.verdict && r.verdict.status === 'ok');
+            document.getElementById('dqSaveBtn').disabled = dqBusy || !ok;
+            document.getElementById('dqCheckBtn').disabled = dqBusy;
+            document.getElementById('dqCancelBtn').disabled = dqBusy;
+            // What is being checked or saved must not change under it.
+            document.querySelectorAll('#dqRows textarea, #dqRows select, #dqRows input, #dqRows button, #dqSourceForm input, #dqSourceForm textarea')
+                .forEach((el) => { el.disabled = dqBusy; });
+        }
+
+        // A change to one row can make another a duplicate or clear it, so any
+        // edit makes the whole check stale.
+        function dqStale() {
+            if (!dqChecked) return;
+            dqChecked = false;
+            dqMessage('Changed since the last check. Choose "Check again" before saving.', 'info');
+            dqButtons();
+        }
+
+        function dqReset(message) {
+            dqRowsState = [];
+            dqChecked = false;
+            document.getElementById('dqFile').value = '';
+            dqMessage(message || '', 'success');
+            dqRender();
+        }
+
+        async function dqSubmit(dryRun) {
+            if (dqBusy || !dqRowsState.length) return;
+            dqBusy = true;
+            dqButtons();
+            dqMessage(dryRun ? 'Checking…' : 'Saving…', 'info');
+            try {
+                const data = await apiFetch('/admin/data-origin/dataset-questions/import', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        dryRun,
+                        source: {
+                            sourcedFrom: document.getElementById('dqSourceName').value,
+                            citation: document.getElementById('dqCitation').value,
+                            version: document.getElementById('dqVersion').value,
+                        },
+                        questions: dqRowsState.map(({ verdict, ...q }) => q),
+                    }),
+                });
+                if (dryRun) {
+                    dqRowsState.forEach((r, i) => { r.verdict = data.rows[i]; });
+                    dqChecked = data.ok;
+                    const bad = data.rows.filter((r) => r.status !== 'ok').length;
+                    const todo = [
+                        data.sourceError,
+                        bad ? `${bad} of ${data.rows.length} questions need fixing or removing.` : '',
+                    ].filter(Boolean);
+                    dqMessage(todo.length ? `${todo.join(' ')} Then choose "Check again".` : `All ${data.rows.length} questions are ready to save.`, todo.length ? 'info' : 'success');
+                } else {
+                    const n = data.questionIds.length;
+                    dqReset(`${n} question${n === 1 ? '' : 's'} saved (${data.questionIds.join(', ')}). Waiting for pediatrician approval.`);
+                    ['dqSourceName', 'dqCitation', 'dqVersion'].forEach((id) => { document.getElementById(id).value = ''; });
+                    loadAll();
+                }
+            } catch (err) {
+                dqChecked = false;
+                dqMessage(err.message, 'error');
+            } finally {
+                dqBusy = false;
+                dqRender();
+            }
+        }
+
+        function initDqImport() {
+            const rows = document.getElementById('dqRows');
+            if (!rows) return;
+            rows.addEventListener('input', (e) => {
+                const tr = e.target.closest('tr');
+                if (!tr || !e.target.dataset.f) return;
+                const row = dqRowsState[Number(tr.dataset.i)];
+                row[e.target.dataset.f] = e.target.value;
+                row.verdict = null;
+                tr.querySelector('.dq-verdict').innerHTML = dqVerdictHtml(null);
+                dqStale();
+            });
+            rows.addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-remove]');
+                if (!btn) return;
+                dqRowsState.splice(Number(btn.dataset.remove), 1);
+                if (!dqRowsState.length) { dqReset(); return; }
+                dqStale();
+                dqRender();
+            });
+            ['dqSourceName', 'dqCitation', 'dqVersion'].forEach((id) => document.getElementById(id).addEventListener('input', dqStale));
+            document.getElementById('dqFile').addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                try {
+                    if (!/\.csv$/i.test(file.name)) throw new Error('Choose a .csv file.');
+                    if (file.size > 200 * 1024) throw new Error('The file is larger than 200 KB.');
+                    const text = await file.text();
+                    if (text.includes('�')) throw new Error('Some characters could not be read. Save the file as "CSV UTF-8" and try again.');
+                    dqRowsState = dqRowsFromCsv(text);
+                    dqChecked = false;
+                    dqRender();
+                    await dqSubmit(true);
+                } catch (err) {
+                    dqReset();
+                    dqMessage(err.message, 'error');
+                }
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
+            initDqImport();
             loadAll();
             loadPipelineStatus();
             loadDemoDataSummary();

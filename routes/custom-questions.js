@@ -21,7 +21,9 @@ const GuardianLink = require('../models/GuardianLink');
 const User = require('../models/User');
 const Appointment = require('../models/Appointment');
 const Notification = require('../models/Notification');
-const { DATA_ORIGIN } = require('../constants/dataOrigin');
+const CoreBankQuestion = require('../models/CoreBankQuestion');
+const AuditLog = require('../models/AuditLog');
+const { DATA_ORIGIN, APPROVAL_STATUS, generationMethodLabel } = require('../constants/dataOrigin');
 const { ASSESSMENT_DOMAINS, normalizeDomain, isValidNewDomain } = require('../constants/assessmentDomains');
 
 // Custom questions feed assessment scoring, which only understands a yes/no
@@ -210,7 +212,8 @@ const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
 router.param('id', (req, res, next, value) => (NUMERIC_ID.test(value) ? next() : res.status(400).json({ error: 'Invalid question id.' })));
 router.param('assignmentId', (req, res, next, value) => (NUMERIC_ID.test(value) ? next() : res.status(400).json({ error: 'Invalid assignment id.' })));
 router.param('setId', (req, res, next, value) => (OBJECT_ID.test(value) ? next() : res.status(400).json({ error: 'Invalid question set id.' })));
-router.param('childId', (req, res, next, value) => (OBJECT_ID.test(value) ? next() : res.status(400).json({ error: 'Invalid child id.' })));
+router.param('datasetQuestionId', (req, res, next, value) => (OBJECT_ID.test(value) ? next() : res.status(400).json({ error: 'Invalid question id.' })));
+router.param('childId',(req, res, next, value) => (OBJECT_ID.test(value) ? next() : res.status(400).json({ error: 'Invalid child id.' })));
 
 // Once a question has reached a parent its wording is frozen, so the answers
 // stay answers to the question that was asked. A question in a set is locked
@@ -236,6 +239,71 @@ async function isQuestionDeleteLocked(doc) {
   }
   return Boolean(await PediaCustomQuestionAssignment.exists({ questionId: doc._id, answeredAt: { $ne: null } }));
 }
+
+// ── Pediatrician review of Dataset Questions ──────────────────────────────
+// System-wide questions from an external dataset, waiting for a pediatrician.
+// Approving records the sign-off only; an admin activates separately.
+router.get('/dataset-review', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== 'pediatrician') return res.status(403).json({ error: 'Pediatricians only.' });
+    const rows = await CoreBankQuestion.find({ origin: DATA_ORIGIN.DATASET_QUESTION, approvalStatus: APPROVAL_STATUS.PENDING })
+      .select('questionId text domain minAgeMonths sourcedFrom sourceCitation sourceVersion generationMethod')
+      .sort({ importedAt: 1, questionId: 1 }).lean();
+    res.json({
+      questions: rows.map((q) => ({
+        id: String(q._id),
+        questionId: q.questionId,
+        text: q.text,
+        domain: q.domain,
+        minAgeMonths: q.minAgeMonths,
+        sourcedFrom: q.sourcedFrom || '',
+        sourceCitation: q.sourceCitation || '',
+        sourceVersion: q.sourceVersion || '',
+        generationMethodLabel: generationMethodLabel(q.generationMethod) || '',
+      })),
+    });
+  } catch (err) {
+    console.error('dataset review list error:', err);
+    res.status(500).json({ error: 'The Dataset Questions could not be loaded.' });
+  }
+});
+
+router.patch('/dataset-review/:datasetQuestionId', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== 'pediatrician') return res.status(403).json({ error: 'Pediatricians only.' });
+    const id = req.params.datasetQuestionId;
+    const decisions = { approve: APPROVAL_STATUS.APPROVED, reject: APPROVAL_STATUS.REJECTED };
+    const decision = (req.body || {}).decision;
+    if (decision !== 'approve' && decision !== 'reject') return res.status(400).json({ error: 'The decision must be approve or reject.' });
+
+    // The pending filter is the lock: of two decisions at once, one wins.
+    // approvedBy/approvedAt record who signed off and when (model comment), so
+    // a rejection leaves them empty; the audit log names who rejected it.
+    const filter = { _id: id, origin: DATA_ORIGIN.DATASET_QUESTION };
+    const signOff = decision === 'approve' ? { approvedBy: req.user.userId, approvedAt: new Date() } : {};
+    const updated = await CoreBankQuestion.findOneAndUpdate(
+      { ...filter, approvalStatus: APPROVAL_STATUS.PENDING },
+      { $set: { approvalStatus: decisions[decision], ...signOff } },
+      { new: true }
+    );
+    if (!updated) {
+      return await CoreBankQuestion.exists(filter)
+        ? res.status(409).json({ error: 'This question was already reviewed.' })
+        : res.status(404).json({ error: 'Dataset Question not found.' });
+    }
+    await AuditLog.create({
+      actorId: req.user.userId,
+      action: decision === 'approve' ? 'dataset_question_approved' : 'dataset_question_rejected',
+      targetType: 'CoreBankQuestion',
+      targetId: updated._id,
+      details: { questionId: updated.questionId },
+    }).catch((err) => console.error('dataset review audit error:', err.message));
+    res.json({ success: true, id, questionId: updated.questionId, approvalStatus: updated.approvalStatus });
+  } catch (err) {
+    console.error('dataset review error:', err);
+    res.status(500).json({ error: 'Your decision could not be saved.' });
+  }
+});
 
 // GET /api/questions
 // Load all custom questions created by the logged-in pediatrician, grouped by QuestionSet

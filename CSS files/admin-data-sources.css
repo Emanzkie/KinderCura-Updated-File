@@ -675,6 +675,39 @@
   font-weight: 600;
 }
 
+/* Import Dataset Questions: the citation takes a full row, then the preview */
+#dqSourceForm .form-group:has(#dqCitation) { grid-column: 1 / -1; order: 1; }
+
+#dqCitation {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-dark);
+  font: inherit;
+  resize: vertical;
+}
+
+.dq-import-table th,
+.dq-import-table td { padding: 0.6rem; }
+
+.dq-import-table textarea,
+.dq-import-table select,
+.dq-import-table input {
+  width: 100%;
+  min-width: 7rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-dark);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.dq-import-table textarea { min-width: 18rem; resize: vertical; }
+
 /* Header cells for numeric columns line up with their right-aligned values. */
 .pipeline-table th.num { text-align: right; }
 
