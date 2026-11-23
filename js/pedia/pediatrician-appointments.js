@@ -258,6 +258,7 @@ function paymentSection(a) {
         <div class="payment-section" style="margin:0.25rem 0 1rem;padding:0.75rem 0.9rem;background:var(--surface-muted,#FAFAF6);border-radius:10px;">
             <p style="font-weight:700;font-size:0.8rem;color:var(--text-dark);margin:0 0 0.5rem;text-transform:uppercase;letter-spacing:0.03em;">Payment</p>
             <div class="info-grid">${rows.join('')}</div>
+            ${Number(a.totalAmount) > 0 ? `<p style="margin:0.5rem 0 0;font-size:0.82rem;font-weight:600;"><a href="/statement?appointmentId=${Number(a.id)}" target="_blank" rel="noopener">Statement of Account</a></p>` : ''}
             ${collect}
         </div>`;
 }

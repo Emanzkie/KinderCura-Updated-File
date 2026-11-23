@@ -13,6 +13,7 @@ const SystemSetting = require('../models/SystemSetting');
 const paymongoService = require('../services/paymongoService');
 const receiptService = require('../services/receiptService');
 const refundService = require('../services/refundService');
+const statementOfAccount = require('../services/statementOfAccount');
 const followUpPlans = require('../services/followUpPlans');
 const adminOps = require('../services/adminOperationsAnalytics');
 const { SECRETARY_DEFAULT_PERMISSIONS } = require('../services/secretaryPermissions');
@@ -161,6 +162,50 @@ async function getAppointmentPayments(req, res) {
   } catch (err) {
     console.error('getAppointmentPayments error:', err);
     res.status(500).json({ error: err.message });
+  }
+}
+
+// The clinic header of a printed statement or receipt: the pediatrician's own
+// clinic details (Settings > Account), with the system Clinic Profile filling
+// in anything they left blank.
+async function documentIssuer(pediatricianId, clinic) {
+  const pedia = pediatricianId
+    ? await User.findById(pediatricianId).select('clinicName clinicAddress phoneNumber').lean()
+    : null;
+  return {
+    clinicName: pedia?.clinicName || clinic?.clinicName || null,
+    address: pedia?.clinicAddress || clinic?.address || null,
+    phoneNumber: pedia?.phoneNumber || clinic?.phoneNumber || null,
+  };
+}
+
+// GET /api/payments/appointments/:appointmentId/statement
+// Statement of Account, worked out from the stored payment records. Read-only.
+async function getAppointmentStatement(req, res) {
+  try {
+    const id = Number(req.params.appointmentId);
+    const appointment = Number.isSafeInteger(id) ? await Appointment.findOne({ id }).lean() : null;
+    if (!appointment) return res.status(404).json({ error: 'Appointment not found.' });
+    if (!await canAccessAppointment(req, appointment)) return res.status(403).json({ error: 'Access denied.' });
+
+    const [rows, people, clinic] = await Promise.all([
+      paymentService.getPaymentsForAppointment(appointment._id),
+      hydrateBalanceAppointment(appointment),
+      SystemSetting.getClinic(),
+    ]);
+    res.json({
+      success: true,
+      statement: {
+        ...statementOfAccount.buildStatement(appointment, rows),
+        childName: people.childName,
+        parentName: people.parentName,
+        pediatricianName: people.pediatricianName ? `Dr. ${people.pediatricianName}` : 'Unassigned',
+        issuer: await documentIssuer(appointment.pediatricianId, clinic),
+      },
+    });
+  } catch (err) {
+    console.error('getAppointmentStatement error:', err.message);
+    res.status(500).json({ error: 'Could not load the statement of account.' });
   }
 }
 
@@ -1493,7 +1538,8 @@ async function getPaymentReceipt(req, res) {
     // premature poll, a modified client). Only a settled payment has a real
     // receiptNumber and a final paidAt/amount worth showing. A refunded payment
     // was still paid, so its original receipt stays available.
-    if (!['Paid', 'Refunded'].includes(payment.status)) {
+    // A confirmed deposit or partial payment is money received, so it has one too.
+    if (!statementOfAccount.RECEIPT_STATUSES.includes(payment.status)) {
       return res.status(409).json({
         error: 'This payment has not been confirmed yet. A receipt is not available.',
         status: payment.status,
@@ -1501,6 +1547,13 @@ async function getPaymentReceipt(req, res) {
     }
 
     const receipt = await receiptService.buildReceiptContext(payment);
+    receipt.paidAt = statementOfAccount.paidDate(payment);
+    const pediatricianId = payment.pediatricianId
+      || (await Appointment.findById(payment.appointmentId).select('pediatricianId').lean())?.pediatricianId;
+    // Separate from receipt.clinic, which the payment page's receipt card shows.
+    receipt.issuer = await documentIssuer(pediatricianId, receipt.clinic);
+    // buildReceiptContext has no label for a staff-recorded installment.
+    if (payment.paymentType === 'partial_installment') receipt.paymentTypeLabel = 'Partial payment';
     res.json({ success: true, receipt });
   } catch (err) {
     console.error('getPaymentReceipt error:', err.message);
@@ -1681,6 +1734,7 @@ module.exports = {
   getClinicConfig,
   updateClinicConfig,
   getAppointmentPayments,
+  getAppointmentStatement,
   getPendingBalances,
   quoteDownPayment,
   recordManualPayment,

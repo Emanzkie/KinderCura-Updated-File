@@ -8,6 +8,7 @@ const router = express.Router();
 router.get('/quote', authMiddleware, paymentController.quoteDownPayment);
 router.get('/pending-balances', authMiddleware, paymentController.getPendingBalances);
 router.get('/appointments/:appointmentId', authMiddleware, paymentController.getAppointmentPayments);
+router.get('/appointments/:appointmentId/statement', authMiddleware, paymentController.getAppointmentStatement);
 router.post('/appointments/:appointmentId/manual', authMiddleware, paymentController.recordManualPayment);
 
 // New payment flow routes

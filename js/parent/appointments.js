@@ -743,6 +743,7 @@ function renderPaymentSummary(a) {
             <span class="mini">Paid ${formatMoney(paid)} of ${formatMoney(total)}</span>
             <span class="mini">Balance ${formatMoney(balance)}</span>
             <button type="button" class="payment-link-btn" onclick="viewReceipt(${a.id})">Receipt</button>
+            <button type="button" class="payment-link-btn" onclick="window.open('/statement?appointmentId=${Number(a.id)}', '_blank', 'noopener')">Statement of Account</button>
         </div>
         ${paymentStatus === 'Down Payment' && balance > 0 && ['pending', 'approved'].includes(a.status) ? `
         <p class="mini" style="margin:.45rem 0 0;">Deposit paid online. Pay the remaining ${formatMoney(balance)} at the clinic on ${fmtDate(a.appointmentDate)}.
@@ -780,6 +781,7 @@ function renderReceiptDetails(appointment, payments) {
                 <div style="text-align:right;">
                     <strong>${formatMoney(payment.amount ?? payment.amountPaid ?? 0)}</strong>
                     <p class="mini">Balance ${formatMoney(payment.balanceDue || 0)}</p>
+                    ${['Paid', 'Down Payment', 'Partially Paid', 'Refunded'].includes(payment.status) && (payment.receiptNumber || payment.paymentRef) ? `<a class="mini" href="/statement?receipt=${encodeURIComponent(payment.receiptNumber || payment.paymentRef)}" target="_blank" rel="noopener">Print receipt</a>` : ''}
                 </div>
             </div>`).join('')
         : '<p class="mini">No payment transactions recorded yet.</p>';

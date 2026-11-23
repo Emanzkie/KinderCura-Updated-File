@@ -229,7 +229,14 @@ async function confirmPayment() {
             data.receiptEmailed ? 'emailed to the parent' : 'created (email pending)',
             `for ${formatMoney(data.amount)}`,
         ].join(' · ');
-        document.getElementById('paidDetail').textContent = detail;
+        const paidDetail = document.getElementById('paidDetail');
+        paidDetail.textContent = `${detail} · `;
+        const receiptLink = document.createElement('a');
+        receiptLink.href = `/statement?receipt=${encodeURIComponent(data.receiptNumber || ref)}`;
+        receiptLink.target = '_blank';
+        receiptLink.rel = 'noopener';
+        receiptLink.textContent = 'Print receipt';
+        paidDetail.append(receiptLink);
         document.getElementById('paidBanner').style.display = 'block';
 
         await loadToday();
@@ -283,7 +290,7 @@ async function loadToday() {
                 <td style="padding:0.6rem 0.5rem;">${escapeHtml(a.service)}</td>
                 <td style="padding:0.6rem 0.5rem;color:${payColor};font-weight:600;">${payText}</td>
                 <td style="padding:0.6rem 0.5rem;text-transform:capitalize;">${escapeHtml(a.appointmentStatus)}</td>
-                <td style="padding:0.6rem 0.5rem;text-align:right;">${action}</td>
+                <td style="padding:0.6rem 0.5rem;text-align:right;">${action} <a href="/statement?appointmentId=${Number(a.id)}" target="_blank" rel="noopener" style="font-size:0.82rem;white-space:nowrap;">Statement</a></td>
             </tr>`;
         }).join('');
     } catch (err) {

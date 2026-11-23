@@ -141,11 +141,17 @@ requireAuth();
             const collected = groups.find((g) => g.key === 'collected') || { count: 0, amount: 0 };
 
             setText('collectedAmount', money(collected.amount));
-            setText('collectedDef', `${KCI.formatCount(collected.count)} Paid ${collected.count === 1 ? 'record' : 'records'} · ${period}`);
+            setText('collectedDef', `${KCI.formatCount(collected.count)} collected ${collected.count === 1 ? 'record' : 'records'} · ${period}`);
             const currencyText = (t.currencies || []).length > 1
                 ? ` Records use more than one currency (${t.currencies.join(', ')}), so amounts are shown without a currency label.`
                 : (t.recordsWithoutCurrency ? ` ${KCI.formatCount(t.recordsWithoutCurrency)} older records have no stored currency.` : '');
-            setText('collectedSource', `Sum of the amount on payment records with status Paid, created ${createdText(period)}. Pending, failed and refunded records are not included.${currencyText}`);
+            setText('collectedSource', `Sum of the amount on payment records with status Paid, Down Payment or Partially Paid, created ${createdText(period)}. Pending, failed and refunded records are not included.${currencyText}`);
+
+            const o = data.outstanding;
+            setText('outstandingAmount', o ? KCI.formatMoney(o.amount, 'PHP') : '—');
+            setText('outstandingDef', o
+                ? `${KCI.formatCount(o.unpaid)} unpaid · ${KCI.formatCount(o.partiallyPaid)} partially paid · ${KCI.formatCount(o.fullyPaid)} fully paid · all dates`
+                : UNAVAILABLE);
 
             setText('transactionsNote', `${KCI.formatCount(t.totalCount)} payment ${t.totalCount === 1 ? 'record' : 'records'} created ${createdText(period)}, grouped by stored status.${currency ? ` Amounts in ${currency}.` : ''}`);
             const rows = groups.filter((g) => g.key !== 'other' || g.count > 0);
@@ -230,6 +236,8 @@ requireAuth();
                 setText('collectedAmount', '—');
                 setText('collectedDef', UNAVAILABLE);
                 setText('collectedSource', '');
+                setText('outstandingAmount', '—');
+                setText('outstandingDef', UNAVAILABLE);
                 setText('transactionsNote', UNAVAILABLE);
                 byId('transactionGroupsTable').innerHTML = unavailableRow(4);
                 byId('transactionGroupsTotal').innerHTML = '';

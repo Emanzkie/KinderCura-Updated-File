@@ -2311,8 +2311,8 @@ router.put('/settings/appointments', authMiddleware, adminOnly, async (req, res)
 // filters on); every other figure is labelled all-time.
 //
 // No clinical field is read or returned. Every figure is a count or a sum
-// from one $group per collection, so nothing is joined and nothing is
-// double-counted. The clinic profile is read with findOne — never
+// from one $group per collection, so nothing is double-counted; only the
+// outstanding balance joins appointments to their payments. The clinic profile is read with findOne — never
 // SystemSetting.getClinic(), which creates the settings document when it is
 // missing — so this endpoint never writes.
 router.get('/analytics/operations', authMiddleware, adminOnly, async (req, res) => {
@@ -2331,6 +2331,7 @@ router.get('/analytics/operations', authMiddleware, adminOnly, async (req, res) 
       childCount,
       appointmentRows,
       monthlyRows,
+      outstandingRows,
     ] = await Promise.all([
       User.aggregate([{ $group: { _id: { key: '$role', synthetic }, count: { $sum: 1 } } }]),
       User.aggregate([{ $group: { _id: { key: '$status', synthetic }, count: { $sum: 1 } } }]),
@@ -2359,6 +2360,7 @@ router.get('/analytics/operations', authMiddleware, adminOnly, async (req, res) 
       Child.countDocuments(),
       Appointment.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
       User.aggregate(adminOps.monthlySignupsPipeline()),
+      Appointment.aggregate(adminOps.outstandingPipeline()),
     ]);
 
     const sumSplit = (rows) => rows.reduce((acc, r) => ({
@@ -2401,6 +2403,7 @@ router.get('/analytics/operations', authMiddleware, adminOnly, async (req, res) 
         updatedAt: settingsDoc ? settingsDoc.updatedAt || null : null,
       },
       transactions: adminOps.summarizePayments(paymentRows),
+      outstanding: adminOps.summarizeOutstanding(outstandingRows),
       // All dates, every status. active = pending + approved, the same rule as
       // summaryTotals.activeAppointments on GET /analytics.
       appointments: {

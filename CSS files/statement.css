@@ -1,0 +1,41 @@
+/* Printable Statement of Account and payment receipt (/statement). */
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg-secondary); color: var(--text-dark); font-family: 'Segoe UI', Arial, sans-serif; font-size: 14px; line-height: 1.5; }
+.soa-toolbar { max-width: 800px; margin: 1rem auto 0; padding: 0 1rem; text-align: right; }
+.soa-btn { padding: 0.6rem 1.2rem; border: 1px solid var(--primary-dark); border-radius: var(--radius-btn); background: var(--bg-primary); color: var(--primary-dark); font-weight: 600; cursor: pointer; }
+.soa-btn:hover { background: var(--primary-dark); color: var(--bg-primary); }
+.soa-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.soa-sheet { max-width: 800px; margin: 1rem auto 2rem; padding: 2.5rem; background: var(--bg-primary); border: 1px solid var(--border); }
+.soa-head { text-align: center; border-bottom: 2px solid var(--text-dark); padding-bottom: 1rem; }
+.soa-head h1 { margin: 0; font-size: 1.4rem; }
+.soa-head p { margin: 0.1rem 0; color: var(--text-light); }
+.soa-title { margin: 1rem 0; text-align: center; font-size: 1.1rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.soa-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem 2rem; margin: 0 0 1.25rem; }
+.soa-fields div { display: flex; gap: 0.5rem; }
+.soa-fields dt { flex: 0 0 8.5rem; color: var(--text-light); }
+.soa-fields dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.soa-table-wrap { overflow-x: auto; }
+.soa-table { width: 100%; border-collapse: collapse; margin-bottom: 1.25rem; }
+.soa-table th, .soa-table td { border: 1px solid var(--border); padding: 0.45rem 0.6rem; text-align: left; vertical-align: top; }
+.soa-table th { background: var(--bg-secondary); }
+.soa-table .num { text-align: right; white-space: nowrap; }
+.soa-totals { width: 22rem; max-width: 100%; margin: 0 0 1.25rem auto; border-collapse: collapse; }
+.soa-totals th { text-align: left; font-weight: 400; padding: 0.3rem 0.6rem; }
+.soa-totals td { text-align: right; font-weight: 600; padding: 0.3rem 0.6rem; white-space: nowrap; }
+.soa-totals .due th, .soa-totals .due td { border-top: 2px solid var(--text-dark); font-weight: 700; font-size: 1.05rem; }
+.soa-note { color: var(--text-light); font-size: 0.85rem; margin: 0.4rem 0; }
+.soa-sign { display: flex; justify-content: flex-end; margin-top: 3rem; }
+.soa-sign span { width: 15rem; border-top: 1px solid var(--text-dark); text-align: center; padding-top: 0.3rem; }
+@media (max-width: 600px) {
+    .soa-sheet { margin: 1rem; padding: 1.25rem; }
+    .soa-fields { grid-template-columns: 1fr; }
+}
+@media print {
+    @page { size: A4; margin: 15mm; }
+    body { background: none; font-size: 11pt; }
+    .soa-toolbar, .soa-receipt-link { display: none !important; }
+    .soa-sheet { margin: 0; padding: 0; border: 0; max-width: none; background: none; }
+    .soa-fields { grid-template-columns: 1fr 1fr; }
+    .soa-table-wrap { overflow: visible; }
+    .soa-table tr, .soa-totals, .soa-sign { break-inside: avoid; }
+}

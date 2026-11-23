@@ -114,6 +114,49 @@ function summarizePayments(rows) {
 }
 
 /**
+ * Pipeline over Appointment: the fee and the money actually received ("collected"
+ * payment rows) of each visit that was not cancelled or rejected.
+ * Synthetic demo appointments are billed but never paid, so they are left out.
+ */
+function outstandingPipeline() {
+  const collected = PAYMENT_STATUS_GROUPS.find((g) => g.key === 'collected').statuses.slice();
+  return [
+    { $match: { status: { $nin: ['cancelled', 'rejected'] }, totalAmount: { $gt: 0 }, isSynthetic: { $ne: true } } },
+    { $project: { totalAmount: 1 } },
+    { $lookup: { from: 'payments', localField: '_id', foreignField: 'appointmentId', as: 'rows' } },
+    {
+      $project: {
+        totalAmount: 1,
+        paid: {
+          $sum: {
+            $map: {
+              input: { $filter: { input: '$rows', as: 'p', cond: { $in: ['$$p.status', collected] } } },
+              as: 'p',
+              in: { $ifNull: ['$$p.amount', 0] },
+            },
+          },
+        },
+      },
+    },
+  ];
+}
+
+/** rows: [{ totalAmount, paid }] from outstandingPipeline(). Totals only. */
+function summarizeOutstanding(rows) {
+  const out = { amount: 0, unpaid: 0, partiallyPaid: 0, fullyPaid: 0 };
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const total = round2(r.totalAmount);
+    const paid = round2(r.paid);
+    if (!(total > 0)) continue;
+    if (paid >= total) out.fullyPaid += 1;
+    else if (paid > 0) out.partiallyPaid += 1;
+    else out.unpaid += 1;
+    out.amount = round2(out.amount + Math.max(total - paid, 0));
+  }
+  return out;
+}
+
+/**
  * rows: [{ _id: { key, synthetic }, count }] — counts per key (role, status,
  * PRC status) split into real and synthetic (isSynthetic: true) records.
  */
@@ -189,5 +232,7 @@ module.exports = {
   parsePeriod,
   periodMatch,
   summarizePayments,
+  outstandingPipeline,
+  summarizeOutstanding,
   splitBySynthetic,
 };

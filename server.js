@@ -278,6 +278,11 @@ app.get('/parent/payment', (req, res) => {
   sendPage(res, path.join(__dirname, 'PARENT', 'payment.html'));
 });
 
+// Printable Statement of Account / receipt, shared by every role.
+app.get('/statement', (req, res) => {
+  sendPage(res, path.join(__dirname, 'PARENT', 'statement.html'));
+});
+
 // Role page folders are served by bare file name. The name comes straight from
 // the URL, and Express decodes %2F before routing, so "/parent/..%2Fserver.js"
 // arrived here as "../server.js" — path.join resolved it to the project root
