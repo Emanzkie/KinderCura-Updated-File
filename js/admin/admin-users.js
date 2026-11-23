@@ -42,8 +42,8 @@
             suspendedTab.className = isSuspended ? 'btn btn-primary' : 'btn btn-secondary';
             activeTab.setAttribute('aria-selected', String(!isSuspended));
             suspendedTab.setAttribute('aria-selected', String(isSuspended));
-            document.getElementById('userSectionTitle').textContent = isSuspended ? 'Suspended Users' : 'Active Users';
-            document.getElementById('userDateHeader').textContent = isSuspended ? 'Suspended On' : 'Joined';
+            document.getElementById('userSectionTitle').textContent = isSuspended ? 'Deactivated Users' : 'Active Users';
+            document.getElementById('userDateHeader').textContent = isSuspended ? 'Deactivated On' : 'Joined';
             const shown = usersBySection[currentSection];
             document.getElementById('userCount').textContent = `(${shown.length})`;
             renderUsers(shown);
@@ -104,7 +104,7 @@
                         <td style="padding:1rem;font-weight:600;">${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)}</td>
                         <td style="padding:1rem;color:var(--text-light);">${escapeHtml(u.email)}</td>
                         <td style="padding:1rem;"><span style="background:var(--bg-primary);padding:0.3rem 0.8rem;border-radius:4px;font-size:0.85rem;text-transform:capitalize;">${escapeHtml(u.role)}</span></td>
-                        <td style="padding:1rem;"><span style="background:${statusColor[u.status]||'var(--border)'};color:#3D4738;padding:0.3rem 0.8rem;border-radius:4px;font-size:0.85rem;text-transform:capitalize;">${escapeHtml(u.status)}</span></td>
+                        <td style="padding:1rem;"><span style="background:${statusColor[u.status]||'var(--border)'};color:#3D4738;padding:0.3rem 0.8rem;border-radius:4px;font-size:0.85rem;text-transform:capitalize;">${escapeHtml(u.status === 'suspended' ? 'deactivated' : u.status)}</span></td>
                         <td style="padding:1rem;color:var(--text-light);">${escapeHtml(u.status === 'suspended' ? (u.suspendedAt || '—') : u.createdAt)}</td>
                         <td style="padding:1rem;text-align:center;">
                             ${u.status === 'pending' ? `
@@ -113,15 +113,15 @@
                                     : `<button class="admin-act-btn" onclick="approveUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;border:none;border-radius:4px;cursor:pointer;margin-right:0.3rem;">Approve</button>`}
                                 <button class="admin-act-btn admin-act-btn--danger" onclick="rejectUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;border:none;border-radius:4px;cursor:pointer;">Reject</button>
                             ` : (u.status === 'active' || !u.status) ? `
-                                <button class="admin-act-btn admin-act-btn--danger" onclick="suspendUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;border:none;border-radius:4px;cursor:pointer;">Suspend</button>
+                                <button class="admin-act-btn admin-act-btn--danger" onclick="suspendUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;border:none;border-radius:4px;cursor:pointer;">Deactivate</button>
                             ` : needsPrcReview(u) ? `
                                 <a href="${PRC_PAGE}" class="admin-act-btn" style="display:inline-block;padding:0.4rem 0.8rem;border-radius:4px;text-decoration:none;">Review PRC</a>
                             ` : `
-                                <button class="admin-act-btn" onclick="approveUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;border:none;border-radius:4px;cursor:pointer;">Re-activate</button>
+                                <button class="admin-act-btn" onclick="approveUser('${escapeHtml(u.id)}')" style="padding:0.4rem 0.8rem;border:none;border-radius:4px;cursor:pointer;">Reactivate</button>
                             `}
                         </td>
                     </tr>`).join('')
-                : `<tr><td colspan="6" style="padding:2rem;text-align:center;color:var(--text-light);">${currentSection === 'suspended' ? 'No suspended users' : 'No active users found'}</td></tr>`;
+                : `<tr><td colspan="6" style="padding:2rem;text-align:center;color:var(--text-light);">${currentSection === 'suspended' ? 'No deactivated users' : 'No active users found'}</td></tr>`;
         }
 
         // ── renderPending ────────────────────────────────────────────────────────
@@ -158,7 +158,7 @@
             catch (e) { alert(e.message); }
         }
         async function suspendUser(userId) {
-            const reason = prompt('Suspend this user? They will be signed out.\n\nReason (optional, kept in the admin logs):');
+            const reason = prompt('Deactivate this user? They will be signed out.\n\nReason (optional, kept in the admin logs):');
             if (reason === null) return;
             try { await apiFetch('/admin/users/suspend', { method:'POST', body: JSON.stringify({ userId, reason }) }); loadUsers(); }
             catch (e) { alert(e.message); }

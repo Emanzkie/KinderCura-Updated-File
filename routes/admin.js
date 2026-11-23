@@ -917,16 +917,16 @@ router.post('/users/approve', authMiddleware, adminOnly, async (req, res) => {
     if (user.role === 'pediatrician') {
       await pushNotification(
         user._id,
-        reactivated ? 'Account re-activated' : 'Account approved',
+        reactivated ? 'Account reactivated' : 'Account approved',
         reactivated
-          ? 'Your pediatrician account has been re-activated. You can log in again.'
+          ? 'Your pediatrician account has been reactivated. You can log in again.'
           : 'Your pediatrician account has been approved. You can now log in and start using KinderCura.',
         'admin',
         '/pedia/pediatrician-dashboard.html'
       );
     }
 
-    res.json({ success: true, message: reactivated ? 'User re-activated.' : 'User approved.' });
+    res.json({ success: true, message: reactivated ? 'User reactivated.' : 'User approved.' });
   } catch (err) {
     console.error('admin approve user error:', err);
     res.status(500).json({ error: 'Could not update the user.' });
@@ -939,16 +939,16 @@ router.post('/users/suspend', authMiddleware, adminOnly, async (req, res) => {
     const { userId } = req.body || {};
     const reason = String((req.body || {}).reason || '').trim().slice(0, 500) || null;
     if (String(userId) === String(req.user.userId)) {
-      return res.status(400).json({ error: 'You cannot suspend your own account.' });
+      return res.status(400).json({ error: 'You cannot deactivate your own account.' });
     }
     const user = await loadTargetUser(userId);
     if (!user) return res.status(404).json({ error: 'User not found.' });
-    if (user.status === 'suspended') return res.json({ success: true, message: 'User is already suspended.' });
+    if (user.status === 'suspended') return res.json({ success: true, message: 'User is already deactivated.' });
 
     if (user.role === 'admin') {
       const otherSignInAdmins = await User.countDocuments({ ...SIGN_IN_ADMIN_FILTER, _id: { $ne: user._id } });
       if (otherSignInAdmins === 0) {
-        return res.status(409).json({ error: 'You cannot suspend the last active admin.' });
+        return res.status(409).json({ error: 'You cannot deactivate the last active admin.' });
       }
     }
 
@@ -963,10 +963,10 @@ router.post('/users/suspend', authMiddleware, adminOnly, async (req, res) => {
       details: { role: user.role, previousStatus: user.status || null, reason },
     });
 
-    res.json({ success: true, message: 'User suspended.' });
+    res.json({ success: true, message: 'User deactivated.' });
   } catch (err) {
     console.error('admin suspend user error:', err);
-    res.status(500).json({ error: 'Could not suspend the user.' });
+    res.status(500).json({ error: 'Could not deactivate the user.' });
   }
 });
 
@@ -986,14 +986,14 @@ router.delete('/users/:id', authMiddleware, adminOnly, async (req, res) => {
       return res.status(409).json({ error: 'Admin accounts cannot be deleted here.' });
     }
     if (user.status !== 'pending') {
-      return res.status(409).json({ error: 'Only a pending sign-up can be rejected and removed. Suspend an active account instead.' });
+      return res.status(409).json({ error: 'Only a pending sign-up can be rejected and removed. Deactivate an active account instead.' });
     }
     const [children, appointments] = await Promise.all([
       Child.countDocuments({ parentId: user._id }),
       Appointment.countDocuments({ $or: [{ parentId: user._id }, { pediatricianId: user._id }] }),
     ]);
     if (children || appointments) {
-      return res.status(409).json({ error: 'This account already has children or appointments on record, so it cannot be deleted. Suspend it instead.' });
+      return res.status(409).json({ error: 'This account already has children or appointments on record, so it cannot be deleted. Deactivate it instead.' });
     }
 
     await User.deleteOne({ _id: user._id });

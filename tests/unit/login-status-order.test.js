@@ -45,7 +45,7 @@ const ok = (m) => console.log('  ok -', m);
   for (const [status, role, message] of [
     ['pending', 'pediatrician', /pending admin approval/],
     ['pending', 'parent', /not yet active/],
-    ['suspended', 'parent', /suspended/],
+    ['suspended', 'parent', /deactivated/],
   ]) {
     account = { _id: new mongoose.Types.ObjectId(), role, status, passwordHash };
 

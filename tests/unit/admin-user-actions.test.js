@@ -102,10 +102,10 @@ const quiet = async (fn) => {
     notifications.length = 0;
     r = await call('POST', '/api/admin/users/approve', { userId: verifiedPedia });
     assert.strictEqual(r.status, 200);
-    assert.strictEqual(r.body.message, 'User re-activated.');
+    assert.strictEqual(r.body.message, 'User reactivated.');
     assert.strictEqual(logs.at(-1).action, 'user_reactivated');
     assert.strictEqual(notifications.length, 1);
-    assert.strictEqual(notifications[0].title, 'Account re-activated', 'a re-activation is not announced as a first approval');
+    assert.strictEqual(notifications[0].title, 'Account reactivated', 'a re-activation is not announced as a first approval');
 
     const logCount = logs.length;
     r = await call('POST', '/api/admin/users/approve', { userId: pendingParent });
@@ -194,7 +194,7 @@ const quiet = async (fn) => {
     assert.strictEqual(String(logs.at(-1).targetId), roundTrip, 'the suspension is logged against the account');
     r = await call('POST', '/api/admin/users/approve', { userId: roundTrip });
     assert.strictEqual(r.status, 200);
-    assert.strictEqual(r.body.message, 'User re-activated.');
+    assert.strictEqual(r.body.message, 'User reactivated.');
     assert.strictEqual(accounts.get(roundTrip).status, 'active');
     assert(accounts.has(roundTrip), 'a suspended account is never deleted');
     ok('Suspend then Re-activate flips the status, logs the suspension and keeps the account');

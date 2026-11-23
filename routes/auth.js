@@ -1265,7 +1265,7 @@ router.post('/login', async (req, res) => {
     }
     if (user.status === 'suspended') {
       console.log(`[LOGIN] Account SUSPENDED: _id=${user._id}`);
-      return res.status(403).json({ error: 'Your account has been suspended.' });
+      return res.status(403).json({ error: 'Your account has been deactivated.' });
     }
 
     let childId = null;

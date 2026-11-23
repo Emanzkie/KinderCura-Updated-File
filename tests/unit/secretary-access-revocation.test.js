@@ -84,7 +84,7 @@ const bearer = (token) => ({ authorization: `Bearer ${token}` });
   account = { status: 'suspended', linkedPediatricianId: pediaA };
   r = await viaAuth(bearer(secretaryToken));
   assert.strictEqual(r.status, 403);
-  assert.match(r.body.error, /suspended/);
+  assert.match(r.body.error, /deactivated/);
   assert.strictEqual(r.reachedEnd, false);
   account = { status: 'pending', linkedPediatricianId: pediaA };
   r = await viaAuth(bearer(secretaryToken));

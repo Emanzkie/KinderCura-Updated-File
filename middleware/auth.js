@@ -15,7 +15,7 @@ require('dotenv').config();
 // access until it expires — for an admin, that means admin access. Accounts
 // with no stored status keep working, as at login.
 function blockedStatusMessage(role, status) {
-    if (status === 'suspended') return 'Your account has been suspended.';
+    if (status === 'suspended') return 'Your account has been deactivated.';
     if (status === 'pending') {
         return role === 'pediatrician'
             ? 'Your pediatrician account is still pending admin approval.'

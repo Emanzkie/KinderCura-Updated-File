@@ -151,15 +151,15 @@ const noRawTag = (html) => !/<img|<script|<b>/i.test(html);
   assert(normal.users.includes('Ana Cruz') && normal.users.includes('Old Account'));
   assert(!normal.users.includes('Ben Reyes') && !normal.users.includes('Enrique Domingo'), 'no suspended account in Active Users');
   assert(!normal.users.includes('Lucas Dumaniel'), 'pending sign-ups are not in Active Users');
-  assert(!normal.users.includes('Re-activate'));
+  assert(!normal.users.includes('Reactivate'));
   assert.strictEqual(normal.userCount, '(2)');
   assert.strictEqual(normal.activeCount, '(2)');
   assert.strictEqual(normal.suspendedCount, '(2)');
   ok('Active Users is the default, lists only active accounts, and both tab counts are shown');
 
   // 5. Suspended Users lists every suspended account with its date and Re-activate.
-  assert.strictEqual(normal.suspendedTitle, 'Suspended Users');
-  assert.strictEqual(normal.suspendedDateHeader, 'Suspended On');
+  assert.strictEqual(normal.suspendedTitle, 'Deactivated Users');
+  assert.strictEqual(normal.suspendedDateHeader, 'Deactivated On');
   assert.strictEqual(normal.suspendedTabClass, 'btn btn-primary');
   assert.strictEqual(normal.suspendedUserCount, '(2)');
   assert(normal.suspended.includes('Ben Reyes') && normal.suspended.includes('Enrique Domingo'));
@@ -167,7 +167,9 @@ const noRawTag = (html) => !/<img|<script|<b>/i.test(html);
   assert(normal.suspended.includes('Oct 20, 2026'), 'suspension date shown');
   assert(!normal.suspended.includes('Oct 3, 2026'), 'the join date is not shown as the suspension date');
   assert(normal.suspended.includes('—'), 'a missing suspension date shows a dash');
-  assert.strictEqual((normal.suspended.match(/Re-activate/g) || []).length, 2);
+  assert.strictEqual((normal.suspended.match(/>Reactivate</g) || []).length, 2);
+  assert.strictEqual((normal.suspended.match(/>deactivated</g) || []).length, 2, 'the badge says deactivated');
+  assert(!/>[^<]*suspend/i.test(normal.suspended + normal.users), 'no visible text says suspend');
   assert(!normal.suspended.includes('suspendUser('));
   ok('Suspended Users lists only suspended accounts with name, email, role, suspension date and Re-activate');
 

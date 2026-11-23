@@ -52,7 +52,7 @@ async function runMiddleware(role, lookup) {
 
 (async () => {
   // ── authMiddleware ──────────────────────────────────────────────────────
-  for (const [status, pattern] of [['pending', /pending admin approval/], ['suspended', /suspended/]]) {
+  for (const [status, pattern] of [['pending', /pending admin approval/], ['suspended', /deactivated/]]) {
     const r = await runMiddleware('pediatrician', () => ({ status }));
     assert.strictEqual(r.status, 403, `${status} pediatrician must be refused`);
     assert.match(r.body.error, pattern);
