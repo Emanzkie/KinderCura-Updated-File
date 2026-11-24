@@ -104,18 +104,18 @@ function renderReceiptCard(r) {
  */
 async function loadReceiptInto(containerId, ref) {
     const el = document.getElementById(containerId);
-    if (!el) return false;
+    if (!el) return null;
     if (!ref) {
         el.innerHTML = '<p class="mini">No receipt is available for this payment yet.</p>';
-        return false;
+        return null;
     }
     try {
         const data = await apiFetch(`/payments/ref/${encodeURIComponent(ref)}/receipt`);
         el.innerHTML = renderReceiptCard(data.receipt || {});
-        return true;
+        return data.receipt || null;
     } catch (err) {
         el.innerHTML = `<p class="mini">${escapeHtml(err.message || 'Could not load your receipt right now.')}</p>`;
-        return false;
+        return null;
     }
 }
 
@@ -284,8 +284,16 @@ function buildSummaryHtml(appt) {
         ${paidLines}`;
 }
 
-// After the deposit settles, say so (not "Payment Successful / Paid") and
-// offer the clinic QR for the balance.
+// After the deposit settles, say so (not "Payment Successful / Paid").
+function showDepositText(balance, date) {
+    document.getElementById('successTitle').textContent = '✓ Deposit Paid';
+    document.getElementById('successText').textContent =
+        `Your 50% deposit was received and your appointment is confirmed. Please pay the remaining ${formatMoney(balance)} at the clinic on ${fmtDate(date)}.`;
+    document.getElementById('successBadge').textContent = 'Down Payment';
+}
+
+// Once the appointment is updated too, refresh its box and offer the clinic QR
+// for the balance.
 async function showDepositOutcome() {
     try {
         const user = KC.user();
@@ -301,10 +309,7 @@ async function showDepositOutcome() {
         if (!appt || !owesClinicBalance(appt)) return;
         appointmentData = appt;
         document.getElementById('apptSummary').innerHTML = buildSummaryHtml(appt);
-        document.getElementById('successTitle').textContent = '✓ Deposit Paid';
-        document.getElementById('successText').textContent =
-            `Your 50% deposit was received and your appointment is confirmed. Please pay the remaining ${formatMoney(appt.balanceDue)} at the clinic on ${fmtDate(appt.appointmentDate)}.`;
-        document.getElementById('successBadge').textContent = 'Down Payment';
+        showDepositText(appt.balanceDue, appt.appointmentDate);
         document.getElementById('balanceQrBtn').style.display = 'inline-block';
     } catch { /* the receipt is already shown; the appointments page has the balance too */ }
 }
@@ -436,10 +441,12 @@ async function resolveOnlineResult(result, paymentRef) {
             const status = await apiFetch(`/payments/ref/${encodeURIComponent(paymentRef)}/status`);
             if (status.paid) {
                 sessionStorage.removeItem(`kc_pay_ref_${appointmentId}`);
-                showPanel('onlineSuccessPanel');
                 // Load the actual confirmed receipt — the same database record
                 // the email receipt was built from — rather than just a number.
-                await loadReceiptInto('receiptCardContainer', paymentRef);
+                // It already knows the balance, before the appointment does.
+                const receipt = await loadReceiptInto('receiptCardContainer', paymentRef);
+                if (receipt && Number(receipt.balanceDue) > 0) showDepositText(receipt.balanceDue, receipt.appointmentDate);
+                showPanel('onlineSuccessPanel');
                 await showDepositOutcome();
                 return;
             }

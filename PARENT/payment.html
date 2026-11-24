@@ -153,7 +153,18 @@
         .receipt-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
         @media print {
             .top-nav, .payment-options, .receipt-actions, .refund-policy, #errorMsg, .notification-modal { display: none !important; }
+
+            /* A shown receipt prints alone; other screens (the clinic QR) print as before. */
+            body:has(#onlineSuccessPanel.active .official-receipt) { page: receipt; height: auto !important; min-height: 0 !important; background: #fff !important; }
+            body:has(#onlineSuccessPanel.active .official-receipt) .payment-page-wrap > .parent-card:first-child,
+            body:has(#onlineSuccessPanel.active .official-receipt) .appt-summary-card,
+            body:has(#onlineSuccessPanel.active .official-receipt) .success-banner { display: none !important; }
+            body:has(#onlineSuccessPanel.active .official-receipt) .dashboard-container,
+            body:has(#onlineSuccessPanel.active .official-receipt) .payment-page-wrap > .parent-card { min-height: 0 !important; margin: 0 auto !important; padding: 0 !important; background: none !important; box-shadow: none !important; }
+            body:has(#onlineSuccessPanel.active .official-receipt) .official-receipt { margin: 14mm; break-inside: avoid; }
         }
+        /* No page margin: the browser then leaves out its date, title and address lines. */
+        @page receipt { margin: 0; }
     </style>
     <link rel="stylesheet" href="/css/mobile-nav.css">
     <link rel="stylesheet" href="/css/nav-drawer.css">

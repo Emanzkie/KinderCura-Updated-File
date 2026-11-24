@@ -60,7 +60,7 @@ const quietly = async (fn) => {
 };
 
 // The payment page's real resolver, with fake timers that only record waits.
-async function page({ check, statuses, result = 'success', appts = [] }) {
+async function page({ check, statuses, result = 'success', appts = [], receipt = { receiptNumber: 'KC-RCPT-1', amount: 400, balanceDue: 0 }, onPanel }) {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'js', 'parent', 'payment.js'), 'utf8');
   const els = new Map();
   const el = (id) => { if (!els.has(id)) els.set(id, { id, style: {}, textContent: '', innerHTML: '', classList: { add() {}, remove() {} } }); return els.get(id); };
@@ -72,13 +72,14 @@ async function page({ check, statuses, result = 'success', appts = [] }) {
     apiFetch: async (url) => {
       if (url.endsWith('/reconcile')) { checks += 1; return check(checks); }
       if (url.endsWith('/status')) { reads += 1; return statuses[Math.min(reads, statuses.length) - 1]; }
-      if (url.endsWith('/receipt')) return { receipt: { receiptNumber: 'KC-RCPT-1', amount: 200 } };
+      if (url.endsWith('/receipt')) return { receipt };
       if (url.startsWith('/appointments/')) { apptReads += 1; return { appointments: [appts[Math.min(apptReads, appts.length) - 1]].filter(Boolean) }; }
       return {};
     },
   };
   vm.createContext(sandbox);
   vm.runInContext(src, sandbox);
+  if (onPanel) { const show = sandbox.showPanel; sandbox.showPanel = (id) => { show(id); onPanel(id, el); }; }
   await sandbox.resolveOnlineResult(result, 'KC-PAY-1');
   const panel = ['onlineSuccessPanel', 'onlineFailedPanel', 'onlinePendingPanel'].find((id) => el(id).style.display === 'block');
   return { panel, checks, reads, waited, el };
@@ -150,6 +151,29 @@ setTimeout(() => { console.error('FAILED: timed out'); process.exit(1); }, 20000
   p = await page({ check: async () => PAID, statuses: [PAID], appts: [before, before, { id: 9, paymentStatus: 'Down Payment', amountPaid: 200, balanceDue: 200, totalAmount: 400 }] });
   assert.match(p.el('successTitle').textContent, /Deposit Paid/, 'a deposit still reads as a deposit when its appointment is saved a moment later');
   results.push('the page shows the saved status without waiting for the check');
+
+  // 5. A deposit never shows as "Payment Successful", even before its appointment is updated.
+  let first = null;
+  p = await page({
+    check: async () => PAID, statuses: [PAID], appts: [before],
+    receipt: { receiptNumber: 'KC-RCPT-1', amount: 200, balanceDue: 200, appointmentDate: '2026-11-30' },
+    onPanel: (id, el) => { if (id === 'onlineSuccessPanel') first = [el('successTitle').textContent, el('successBadge').textContent, /200\.00/.test(el('successText').textContent)]; },
+  });
+  assert.deepStrictEqual(first, ['✓ Deposit Paid', 'Down Payment', true], 'right from the moment it is shown');
+  assert.notStrictEqual(p.el('balanceQrBtn').style.display, 'inline-block', 'the balance QR still waits for the appointment');
+  p = await page({ check: async () => PAID, statuses: [PAID], appts: [{ id: 9, paymentStatus: 'Paid' }] });
+  assert.strictEqual(p.el('successTitle').textContent, '', 'a full payment keeps the page\'s own wording');
+  results.push('a deposit reads as a deposit from the start');
+
+  // 6. Only the receipt prints.
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'PARENT', 'payment.html'), 'utf8').replace(/\r\n/g, '\n');
+  const print = html.slice(html.indexOf('@media print'), html.indexOf('@page receipt'));
+  const scope = 'body:has(#onlineSuccessPanel.active .official-receipt)';
+  for (const part of ['.payment-page-wrap > .parent-card:first-child', '.appt-summary-card', '.success-banner']) {
+    assert.ok(print.includes(`${scope} ${part}`), `${part} is not printed with a receipt`);
+  }
+  assert.match(html, /@page receipt \{ margin: 0; \}/);
+  results.push('printing a receipt leaves out the rest of the page');
 
   results.forEach((m) => console.log(`  ok - ${m}`));
   console.log(`Payment confirmation speed tests OK - ${results.length} groups`);
