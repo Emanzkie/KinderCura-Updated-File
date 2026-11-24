@@ -1087,7 +1087,7 @@ router.get('/analytics', authMiddleware, adminOnly, async (req, res) => {
           $group: {
             _id: '$paymentType',
             count: { $sum: 1 },
-            totalCollected: { $sum: { $ifNull: ['$amount', { $ifNull: ['$amountPaid', 0] }] } },
+            totalCollected: { $sum: adminOps.NET_AMOUNT },
           },
         },
         { $sort: { totalCollected: -1 } },
@@ -2349,7 +2349,7 @@ router.get('/analytics/operations', authMiddleware, adminOnly, async (req, res) 
           $group: {
             _id: { status: '$status', currency: '$currency' },
             count: { $sum: 1 },
-            amount: { $sum: { $ifNull: ['$amount', 0] } },
+            amount: { $sum: adminOps.NET_AMOUNT },
           },
         },
       ]),

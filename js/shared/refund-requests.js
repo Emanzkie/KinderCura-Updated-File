@@ -26,7 +26,8 @@ function renderRefundRequestRow(r) {
     const pill = `<span style="${REFUND_STATUS_STYLE[r.status] || ''}padding:.25rem .7rem;border-radius:999px;font-size:.78rem;font-weight:700;white-space:nowrap;">${escapeHtml(r.statusLabel)}</span>`;
     const lines = [
         `Appointment #${escapeHtml(r.appointmentId)}${r.appointmentDate ? ` · ${escapeHtml(fmtDate(r.appointmentDate))}${r.appointmentTime ? ` at ${escapeHtml(fmtTime(r.appointmentTime))}` : ''}` : ''}${r.appointmentStatus ? ` · ${escapeHtml(r.appointmentStatus)}` : ''}`,
-        `Paid ${escapeHtml(refundMoney(r.amount))} via ${escapeHtml(r.ewallet || 'E-Wallet')}${r.paymentRef ? ` · ${escapeHtml(r.paymentRef)}` : ''}`,
+        `Paid ${escapeHtml(refundMoney(r.paidAmount ?? r.amount))} via ${escapeHtml(r.ewallet || 'E-Wallet')}${r.paymentRef ? ` · ${escapeHtml(r.paymentRef)}` : ''}`,
+        `Refund: ${escapeHtml(refundMoney(r.amount))}${r.refundPercent < 100 ? ` (${Number(r.refundPercent)}%, cancelled by the parent)` : ''}`,
         `Parent's reason: ${escapeHtml(r.reason)}`,
     ];
     if (r.reviewNote) lines.push(`Clinic note: ${escapeHtml(r.reviewNote)}`);
@@ -35,7 +36,8 @@ function renderRefundRequestRow(r) {
 
     const actions = r.status === 'pending_review' ? `
         <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.7rem;">
-            <button type="button" class="btn btn-primary" style="padding:.5rem 1rem;" data-refund-approve="${escapeHtml(r.id)}">Approve &amp; Refund ${escapeHtml(refundMoney(r.amount))}</button>
+            <button type="button" class="btn btn-primary" style="padding:.5rem 1rem;" data-refund-approve="${escapeHtml(r.id)}">Approve &amp; Refund ${r.refundPercent < 100 ? `${Number(r.refundPercent)}% ` : ''}${escapeHtml(refundMoney(r.amount))}</button>
+            ${r.refundPercent < 100 ? `<button type="button" class="btn btn-secondary" style="padding:.5rem 1rem;" data-refund-full="${escapeHtml(r.id)}">Refund 100% ${escapeHtml(refundMoney(r.paidAmount))}</button>` : ''}
             <button type="button" class="btn btn-secondary" style="padding:.5rem 1rem;" data-refund-reject="${escapeHtml(r.id)}">Reject</button>
         </div>` : '';
 
@@ -68,10 +70,14 @@ async function loadRefundRequests() {
     }
 }
 
-async function reviewRefundRequest(refundId, decision) {
+async function reviewRefundRequest(refundId, decision, full = false) {
     if (refundRequestsBusy) return;
     let note = '';
-    if (decision === 'reject') {
+    if (full) {
+        note = window.prompt('Reason for refunding 100%, such as a system or service problem (the parent will see it). The refund is sent to PayMongo now:', '');
+        if (note === null) return;
+        if (!note.trim()) { alert('Please enter a reason for the full refund.'); return; }
+    } else if (decision === 'reject') {
         note = window.prompt('Reason for rejecting this refund (the parent will see it):', '');
         if (note === null) return;
         if (!note.trim()) { alert('Please enter a reason for the parent.'); return; }
@@ -80,11 +86,11 @@ async function reviewRefundRequest(refundId, decision) {
     }
 
     refundRequestsBusy = true;
-    document.querySelectorAll(`[data-refund-approve="${refundId}"], [data-refund-reject="${refundId}"]`).forEach((b) => { b.disabled = true; });
+    document.querySelectorAll(`[data-refund-approve="${refundId}"], [data-refund-full="${refundId}"], [data-refund-reject="${refundId}"]`).forEach((b) => { b.disabled = true; });
     try {
         const result = await apiFetch(`/payments/refunds/${encodeURIComponent(refundId)}/review`, {
             method: 'POST',
-            body: JSON.stringify({ decision, note }),
+            body: JSON.stringify({ decision, note, full }),
         });
         if (result.status === 'failed') {
             alert(`PayMongo did not accept the refund: ${result.failureReason || 'unknown reason'}`);
@@ -104,7 +110,9 @@ function initRefundRequests(containerId) {
     el.addEventListener('click', (e) => {
         const approve = e.target.closest('[data-refund-approve]');
         const reject = e.target.closest('[data-refund-reject]');
+        const full = e.target.closest('[data-refund-full]');
         if (approve) reviewRefundRequest(approve.dataset.refundApprove, 'approve');
+        if (full) reviewRefundRequest(full.dataset.refundFull, 'approve', true);
         if (reject) reviewRefundRequest(reject.dataset.refundReject, 'reject');
     });
     loadRefundRequests();

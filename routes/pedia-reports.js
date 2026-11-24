@@ -977,7 +977,8 @@ function buildIncomeSummary(payments, now = new Date()) {
     const when = p.paidAt || p.transactionDate || p.createdAt;
     if (!when || Number.isNaN(new Date(when).getTime())) continue;
     const ymd = manilaYmd(when);
-    const amount = Number(p.amount || 0);
+    // Less any partial refund: only the money kept is income.
+    const amount = Number(p.amount || 0) - Number(p.refundedAmount || 0);
     const mode = paymentModeFor(p.paymentMethod);
     for (const row of [weekByStart.get(weekStartOf(ymd)), monthByKey.get(ymd.slice(0, 7))]) {
       if (!row) continue;
@@ -1018,7 +1019,7 @@ router.get('/income', authMiddleware, pediatriciansOnly, async (req, res) => {
         { pediatricianId: null, appointmentId: { $in: appointmentIds } },
       ],
     })
-      .select('amount status paymentMethod paidAt transactionDate createdAt')
+      .select('amount refundedAmount status paymentMethod paidAt transactionDate createdAt')
       .lean();
     res.json({ success: true, ...buildIncomeSummary(payments) });
   } catch (err) {

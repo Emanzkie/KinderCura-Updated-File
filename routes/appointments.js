@@ -1298,6 +1298,7 @@ function derivePaymentDisplayStatus(appointmentDoc, payment) {
   const rec = payment?.status;
   // A refund keeps the appointment snapshot at 'Paid'; the payment row knows.
   if (rec === 'Refunded') return 'Refunded';
+  if (rec === 'Paid' && Number(payment.refundedAmount) > 0) return 'Partially Refunded';
   if (apptStatus === 'Paid') return 'Paid';
   if (['Failed', 'Expired', 'Refunded'].includes(rec)) return rec;
   if (apptStatus === 'Cancelled' || rec === 'Cancelled') return 'Cancelled';
@@ -1346,7 +1347,7 @@ async function hydrateAppointments(appointmentDocs) {
 
 function buildHydratedAppointment(appointmentDoc, { child, parent, pediatrician, payment }) {
   const paymentDisplayStatus = derivePaymentDisplayStatus(appointmentDoc, payment);
-  const isPaid = paymentDisplayStatus === 'Paid';
+  const isPaid = ['Paid', 'Partially Refunded'].includes(paymentDisplayStatus);
   // The exact wallet PayMongo reported ('GCash' / 'Maya'); 'Pay at Clinic' for
   // counter payments; 'E-Wallet' only when the money is in but the wallet is
   // genuinely unknown (legacy record). Never a "GCash / Maya" guess. '—' while
@@ -1825,6 +1826,8 @@ async function updateAppointmentStatusById({ appointmentId, status, notes = null
   // note and used to be overwritten here.
   if (notes != null && String(notes).trim()) appt.statusNote = String(notes).trim();
   appt.status = status;
+  // Decides how much of an online payment may be refunded.
+  if (status === 'cancelled') appt.cancelledBy = familyActorName ? 'family' : 'clinic';
   // A cancelled or rejected booking that already took money keeps its payment
   // status (Paid / Down Payment / Partially Paid) so the payment stays on record
   // for a refund; only unpaid bookings become 'Cancelled'.

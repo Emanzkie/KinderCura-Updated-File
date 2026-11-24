@@ -988,7 +988,7 @@ async function cancelAppointment(appointmentId) {
     const who = appt.pediatricianName ? `Dr. ${appt.pediatricianName}` : 'the pediatrician';
     const paid = String(appt.paymentStatus || '').toLowerCase() === 'paid' || Number(appt.amountPaid || 0) > 0;
     const message = `Cancel the appointment with ${who} on ${fmtDate(appt.appointmentDate)} at ${fmtTime(appt.appointmentTime)}? This cannot be undone.`
-        + (paid ? '\n\nYour payment stays on record. After cancelling, an online payment can be refunded with Request Refund on this appointment; clinic payments are refunded at the clinic.' : '');
+        + (paid ? '\n\nYour payment stays on record. Because you are the one cancelling, 50% of an online payment may be refunded. After cancelling, use Request Refund on this appointment; clinic payments are refunded at the clinic.' : '');
     if (!window.confirm(message)) return;
 
     cancellingAppointments.add(appt.id);
@@ -1155,7 +1155,8 @@ function openRefundRequest(appointmentId) {
     const eligible = refundInfo.eligible.find((e) => e.appointmentId === Number(appointmentId));
     if (!eligible) return;
     refundTarget = eligible;
-    document.getElementById('refundAmount').textContent = formatMoney(eligible.amount);
+    document.getElementById('refundAmount').textContent = formatMoney(eligible.amount)
+        + (eligible.refundPercent < 100 ? ` (${eligible.refundPercent}% of ${formatMoney(eligible.paidAmount)})` : '');
     document.getElementById('refundAppointmentNo').textContent = `#${eligible.appointmentId}`;
     document.getElementById('refundReason').value = '';
     setRefundSubmitting(false);

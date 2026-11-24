@@ -26,6 +26,10 @@ const PAYMENT_STATUS_GROUPS = Object.freeze([
   Object.freeze({ key: 'refunded', label: 'Refunded', statuses: Object.freeze(['Refunded']) }),
 ]);
 
+// What a payment row adds to a total: the amount charged, less any partial
+// refund (Payment.refundedAmount). A full refund changes the status instead.
+const NET_AMOUNT = Object.freeze({ $subtract: [{ $ifNull: ['$amount', 0] }, { $ifNull: ['$refundedAmount', 0] }] });
+
 function paymentGroupFor(status) {
   const g = PAYMENT_STATUS_GROUPS.find((x) => x.statuses.includes(status));
   return g ? g.key : 'other';
@@ -228,6 +232,7 @@ module.exports = {
   monthlySignupsPipeline,
   buildMonthlySignups,
   PAYMENT_STATUS_GROUPS,
+  NET_AMOUNT,
   paymentGroupFor,
   parsePeriod,
   periodMatch,

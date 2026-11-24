@@ -140,7 +140,7 @@ function paymentRowsByClinic(period, clinicIds) {
       // other reason (besides booking before a clinic link) a payment has no clinic.
       _id: { clinicId: '$clinicId', status: '$status', currency: '$currency', noAppointment: { $eq: [{ $size: '$appt' }, 0] } },
       count: { $sum: 1 },
-      amount: { $sum: { $ifNull: ['$amount', 0] } },
+      amount: { $sum: adminOps.NET_AMOUNT },
     },
   });
   return Payment.aggregate(stages);

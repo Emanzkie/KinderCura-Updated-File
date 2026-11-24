@@ -106,6 +106,11 @@ const paymentSchema = new mongoose.Schema(
     // a duplicate delivery is a no-op instead of a second receipt.
     lastWebhookEventId: { type: String, trim: true, default: null },
     failureReason: { type: String, trim: true, default: null },
+
+    // Money returned by a PARTIAL refund. The row stays 'Paid' and `amount`
+    // keeps what was charged; totals subtract this. A full refund sets status
+    // 'Refunded' instead and leaves this at 0.
+    refundedAmount: { type: Number, min: 0, default: 0 },
   },
   { timestamps: true, collection: 'payments' }
 );

@@ -17,6 +17,10 @@ const refundSchema = new mongoose.Schema(
     requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 
     amount: { type: Number, required: true, min: 0 },
+    // What was paid, and the share of it being refunded. Null on requests filed
+    // before the 50% rule, which refund their full stored amount.
+    paidAmount: { type: Number, min: 0, default: null },
+    refundPercent: { type: Number, min: 0, max: 100, default: null },
     currency: { type: String, trim: true, uppercase: true, default: 'PHP' },
     reason: { type: String, trim: true, maxlength: 500, required: true },
 

@@ -254,7 +254,7 @@ async function loadPaymentMonitor() {
                 <td style="padding:0.6rem 0.5rem;">${escapeHtml(monMethodLabel(p.paymentMethod))}</td>
                 <td style="padding:0.6rem 0.5rem;font-family:monospace;font-size:0.8rem;">${escapeHtml(p.paymongoPaymentId || '—')}</td>
                 <td style="padding:0.6rem 0.5rem;font-weight:700;color:${monStatusColor(p.status)};">${escapeHtml(p.status)}</td>
-                <td style="padding:0.6rem 0.5rem;text-align:right;font-weight:600;">${monMoney(COLLECTED_STATUSES.includes(p.status) ? p.amount : p.totalAmount)}</td>
+                <td style="padding:0.6rem 0.5rem;text-align:right;font-weight:600;">${monMoney(COLLECTED_STATUSES.includes(p.status) ? p.amount : p.totalAmount)}${Number(p.refundedAmount) > 0 ? `<br><span style="font-weight:400;font-size:0.8rem;">${monMoney(p.refundedAmount)} refunded</span>` : ''}</td>
                 <td style="padding:0.6rem 0.5rem;white-space:nowrap;">${p.paidAt ? escapeHtml(new Date(p.paidAt).toLocaleString('en-PH')) : '—'}</td>
                 <td style="padding:0.6rem 0.5rem;white-space:nowrap;">${p.status === 'Paid' && (p.paymentRef || p.receiptNumber) ? `<button class="btn btn-secondary" style="padding:0.3rem 0.7rem;font-size:0.78rem;" onclick="viewReceipt('${escapeHtml(p.paymentRef || p.receiptNumber)}')">Receipt</button>` : ''}
                     ${[...COLLECTED_STATUSES, 'Refunded'].includes(p.status) && (p.receiptNumber || p.paymentRef) ? `<a href="/statement?receipt=${encodeURIComponent(p.receiptNumber || p.paymentRef)}" target="_blank" rel="noopener">Print</a>` : ''}

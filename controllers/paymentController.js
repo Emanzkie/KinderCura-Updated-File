@@ -1441,7 +1441,7 @@ async function getAdminPaymentMonitor(req, res) {
       Payment.find(query).sort({ createdAt: -1 }).limit(ADMIN_MONITOR_ROW_LIMIT).lean(),
       Payment.aggregate([
         { $match: query },
-        { $group: { _id: { status: '$status', method: '$paymentMethod' }, count: { $sum: 1 }, amount: { $sum: { $ifNull: ['$amount', 0] } } } },
+        { $group: { _id: { status: '$status', method: '$paymentMethod' }, count: { $sum: 1 }, amount: { $sum: adminOps.NET_AMOUNT } } },
       ]),
     ]);
 
@@ -1485,6 +1485,7 @@ async function getAdminPaymentMonitor(req, res) {
         childName: childMap.get(String(p.childId)) || null,
         pediatricianName: pediatricianMap.get(String(p.pediatricianId)) || null,
         amount: p.amount,
+        refundedAmount: p.refundedAmount || 0,
         totalAmount: p.totalAmount,
         currency: p.currency || 'PHP',
         paymentMethod: p.paymentMethod,
@@ -1548,6 +1549,7 @@ async function getPaymentReceipt(req, res) {
 
     const receipt = await receiptService.buildReceiptContext(payment);
     receipt.paidAt = statementOfAccount.paidDate(payment);
+    receipt.refundedAmount = payment.refundedAmount || 0;
     const pediatricianId = payment.pediatricianId
       || (await Appointment.findById(payment.appointmentId).select('pediatricianId').lean())?.pediatricianId;
     // Separate from receipt.clinic, which the payment page's receipt card shows.
@@ -1614,7 +1616,7 @@ async function getClinicRefunds(req, res) {
   }
 }
 
-// POST /api/payments/refunds/:refundId/review   { decision: 'approve'|'reject', note }
+// POST /api/payments/refunds/:refundId/review   { decision: 'approve'|'reject', note, full }
 async function reviewRefund(req, res) {
   try {
     const scopePediatricianId = await resolveRefundScope(req);
@@ -1624,6 +1626,7 @@ async function reviewRefund(req, res) {
       refundId: req.params.refundId,
       decision: req.body?.decision,
       note: req.body?.note,
+      full: req.body?.full === true,
     });
     res.json({
       success: true,

@@ -34,8 +34,9 @@ function buildStatement(appointment, rows = []) {
     .map((r) => {
       const amount = Number(r.amount ?? r.amountPaid) || 0;
       const isRefunded = r.status === REFUNDED;
-      if (isRefunded) refunded += amount;
-      else running = Math.max(paymentService.roundCurrency(running - amount), 0);
+      const returned = isRefunded ? amount : Number(r.refundedAmount) || 0;
+      refunded += returned;
+      if (!isRefunded) running = Math.max(paymentService.roundCurrency(running - amount), 0);
       return {
         date: paidDate(r),
         receiptNumber: r.receiptNumber || null,
@@ -44,6 +45,7 @@ function buildStatement(appointment, rows = []) {
         type: paymentService.paymentTypeLabel(r.paymentType),
         amount,
         refunded: isRefunded,
+        refundedAmount: returned,
         balanceAfter: closed ? null : running,
       };
     });

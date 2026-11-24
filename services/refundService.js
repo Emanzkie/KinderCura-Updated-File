@@ -24,7 +24,8 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const paymongoService = require('./paymongoService');
 const { hasPermission } = require('../middleware/guardianAccess');
-const { REFUND_WINDOW_DAYS, REFUNDABLE_APPOINTMENT_STATUSES, REFUND_POLICY } = require('../constants/refundPolicy');
+const { CLINIC_TIMEZONE } = require('../constants/clinicTime');
+const { refundFor, REFUND_WINDOW_DAYS, REFUNDABLE_APPOINTMENT_STATUSES, REFUND_POLICY } = require('../constants/refundPolicy');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const IN_FLIGHT = ['approved', 'processing'];
@@ -118,7 +119,8 @@ async function requestRefund({ user, appointmentNumericId, reason, now = new Dat
       childId: appointment.childId || null,
       pediatricianId: appointment.pediatricianId || null,
       requestedBy: new mongoose.Types.ObjectId(String(user.userId)),
-      amount: Number(payment.amount),
+      // Worked out here, never taken from the browser.
+      ...refundFor(appointment, payment.amount),
       currency: payment.currency || 'PHP',
       reason: text,
       status: 'pending_review',
@@ -159,7 +161,23 @@ function reviewer(user, note) {
   };
 }
 
-async function reviewRefund({ user, scopePediatricianId, refundId, decision, note }) {
+/**
+ * PayMongo takes only a full Maya refund on the day of payment; a partial one
+ * can be sent from the next day (docs.paymongo.com, payment acceptance refunds).
+ */
+async function assertPartialAllowedToday(refund, now = new Date()) {
+  const payment = await Payment.findById(refund.paymentId).lean();
+  const isMaya = ['paymaya', 'maya'].includes(String(payment?.paymongoSourceType || '').toLowerCase());
+  const day = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone: CLINIC_TIMEZONE });
+  const paidAt = payment?.paidAt || payment?.transactionDate || payment?.createdAt;
+  if (isMaya && paidAt && day(paidAt) === day(now)) {
+    throw httpError(409, 'Maya allows a partial refund only from the day after payment. Please approve it tomorrow.', 'MAYA_SAME_DAY');
+  }
+}
+
+// `full`: staff give 100% of a request the rule set to 50% (a system or service
+// problem). It can only raise the refund to the stored payment, never lower it.
+async function reviewRefund({ user, scopePediatricianId, refundId, decision, note, full = false }) {
   const text = String(note || '').trim().slice(0, 500);
   if (!['approve', 'reject'].includes(decision)) throw httpError(400, 'Decision must be approve or reject.');
   if (decision === 'reject' && !text) throw httpError(400, 'Please give the parent a reason for rejecting the refund.');
@@ -179,9 +197,15 @@ async function reviewRefund({ user, scopePediatricianId, refundId, decision, not
     return refund;
   }
 
+  const isPartial = current.refundPercent != null && current.refundPercent < 100;
+  const raise = full === true && isPartial;
+  if (raise && !text) throw httpError(400, 'Please give a reason for the full refund.');
+  if (current.status !== 'pending_review') throw alreadyReviewed;
+  if (isPartial && !raise) await assertPartialAllowedToday(current);
+
   const claimed = await Refund.findOneAndUpdate(
     { _id: current._id, status: 'pending_review' },
-    { $set: { status: 'approved', ...reviewer(user, text) } },
+    { $set: { status: 'approved', ...reviewer(user, text), ...(raise ? { amount: current.paidAmount, refundPercent: 100 } : {}) } },
     { new: true }
   ).lean();
   if (!claimed) throw alreadyReviewed;
@@ -237,7 +261,15 @@ async function processApprovedRefund(refund) {
 
     await Refund.updateOne(
       { _id: refund._id, status: 'approved' },
-      { $set: { status: 'processing', paymongoPaymentId, paymongoRefundId: providerRefund.id } }
+      {
+        $set: {
+          status: 'processing',
+          paymongoPaymentId,
+          paymongoRefundId: providerRefund.id,
+          // An adopted refund may be for another amount: record the real one.
+          ...(existing && Number(existing.amount) > 0 ? { amount: Number(existing.amount) } : {}),
+        },
+      }
     );
     return applyProviderRefund(refund._id, providerRefund);
   } catch (err) {
@@ -258,7 +290,13 @@ async function applyProviderRefund(refundId, providerRefund) {
       { new: true }
     ).lean();
     if (refunded) {
-      await Payment.updateOne({ _id: refunded.paymentId, status: 'Paid' }, { $set: { status: 'Refunded' } });
+      // A partial refund leaves the payment Paid: the clinic kept the rest.
+      const payment = await Payment.findById(refunded.paymentId).lean();
+      const partial = payment && Number(refunded.amount) < Number(payment.amount);
+      await Payment.updateOne(
+        { _id: refunded.paymentId, status: 'Paid' },
+        { $set: partial ? { refundedAmount: Number(refunded.amount) } : { status: 'Refunded' } }
+      );
       await notifyParent(refunded, 'Refund Completed',
         `PayMongo confirmed your refund of ${money(refunded.amount)} for Appointment #${refunded.appointmentNumericId}. It should reach your GCash or Maya account within 24 hours.`);
       return refunded;
@@ -336,6 +374,8 @@ function serialize(refund, extra = {}) {
     status: refund.status,
     statusLabel: STATUS_LABELS[refund.status] || refund.status,
     amount: refund.amount,
+    paidAmount: refund.paidAmount ?? refund.amount,
+    refundPercent: refund.refundPercent ?? 100,
     currency: refund.currency || 'PHP',
     reason: refund.reason,
     reviewNote: refund.reviewNote || null,
@@ -349,7 +389,7 @@ function serialize(refund, extra = {}) {
 
 /** The parent's refunds, which appointments can still be refunded, and the policy. */
 async function listForParent(user, now = new Date()) {
-  const appointments = await Appointment.find({ parentId: user.userId }).select('_id id status').lean();
+  const appointments = await Appointment.find({ parentId: user.userId }).select('_id id status cancelledBy').lean();
   const appointmentIds = appointments.map((a) => a._id);
 
   const refunds = await syncStale(
@@ -358,6 +398,7 @@ async function listForParent(user, now = new Date()) {
   const live = new Set(refunds.filter((r) => !['rejected', 'failed'].includes(r.status)).map((r) => String(r.paymentId)));
 
   const closed = appointments.filter((a) => REFUNDABLE_APPOINTMENT_STATUSES.includes(a.status));
+  const closedById = new Map(closed.map((a) => [String(a._id), a]));
   const paid = closed.length
     ? await Payment.find({ appointmentId: { $in: closed.map((a) => a._id) }, status: 'Paid' })
       .select('appointmentId appointmentNumericId paymentMethod amount paidAt transactionDate createdAt').lean()
@@ -370,7 +411,7 @@ async function listForParent(user, now = new Date()) {
     const paidAt = p.paidAt || p.transactionDate || p.createdAt;
     const inWindow = !paidAt || now.getTime() - new Date(paidAt).getTime() <= REFUND_WINDOW_DAYS * DAY_MS;
     if (inWindow && Number(p.amount) > 0 && !live.has(String(p._id))) {
-      eligible.push({ appointmentId: p.appointmentNumericId, amount: p.amount });
+      eligible.push({ appointmentId: p.appointmentNumericId, ...refundFor(closedById.get(String(p.appointmentId)), p.amount) });
     }
   }
 

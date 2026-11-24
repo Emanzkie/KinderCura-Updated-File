@@ -42,7 +42,7 @@
                 <td>${esc(dayTime(p.date))}</td>
                 <td>${esc(ref || '—')}${ref ? ` <a class="soa-receipt-link" href="/statement?receipt=${encodeURIComponent(ref)}" target="_blank" rel="noopener">Receipt</a>` : ''}</td>
                 <td>${esc(p.method)}</td>
-                <td>${p.refunded ? 'Refunded' : esc(p.type || 'Payment')}</td>
+                <td>${p.refunded ? 'Refunded' : esc(p.type || 'Payment')}${!p.refunded && p.refundedAmount > 0 ? `<br>Refunded ${money(p.refundedAmount)}` : ''}</td>
                 <td class="num">${money(p.amount)}</td>
                 <td class="num">${p.balanceAfter == null ? '—' : money(p.balanceAfter)}</td>
             </tr>`;
@@ -62,13 +62,13 @@
             </table></div>
             <table class="soa-totals"><tbody>
                 <tr><th>Consultation fee</th><td>${money(s.totalAmount)}</td></tr>
-                <tr><th>Total payments received</th><td>${money(s.totalPaid)}</td></tr>
+                <tr><th>Total payments received${s.totalRefunded > 0 ? ' (after refunds)' : ''}</th><td>${money(s.totalPaid)}</td></tr>
                 ${s.totalRefunded > 0 ? `<tr><th>Refunded</th><td>${money(s.totalRefunded)}</td></tr>` : ''}
                 <tr class="due"><th>Remaining balance</th><td>${money(s.balanceDue)}</td></tr>
                 <tr><th>Payment status</th><td>${esc(s.status)}</td></tr>
             </tbody></table>
             ${s.closed ? `<p class="soa-note">This appointment was ${esc(s.appointmentStatus)}, so no balance is due.</p>` : ''}
-            ${s.totalRefunded > 0 ? '<p class="soa-note">Refunded payments are listed for reference and are not counted as received.</p>' : ''}
+            ${s.totalRefunded > 0 ? '<p class="soa-note">Refunded amounts are listed for reference and are not counted as received.</p>' : ''}
             ${footer()}`;
     }
 
@@ -86,6 +86,7 @@
                 <tr><th>Consultation fee</th><td>${money(r.totalAmount)}</td></tr>
                 <tr class="due"><th>Amount paid</th><td>${money(r.amount)}</td></tr>
                 <tr><th>Balance after this payment</th><td>${money(r.balanceDue)}</td></tr>
+                ${r.status !== 'Refunded' && r.refundedAmount > 0 ? `<tr><th>Refunded</th><td>${money(r.refundedAmount)}</td></tr>` : ''}
                 ${r.status === 'Refunded' ? '<tr><th>Status</th><td>Refunded</td></tr>' : ''}
             </tbody></table>
             ${footer()}`;

@@ -283,7 +283,7 @@ function summarizeConfirmationPayment(appointment, rows = []) {
   const requiredToAccept = calculateRequiredDownPayment(totalAmount);
   const verifiedPaid = roundCurrency(rows
     .filter((r) => VERIFIED_PAYMENT_STATUSES.includes(r.status))
-    .reduce((sum, r) => sum + (Number(r.amount ?? r.amountPaid) || 0), 0));
+    .reduce((sum, r) => sum + (Number(r.amount ?? r.amountPaid) || 0) - (Number(r.refundedAmount) || 0), 0));
   const open = rows.filter((r) => OPEN_PAYMENT_STATUSES.includes(r.status));
   const byNewest = [...rows].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   // How the money was paid wins over a later open row (e.g. the clinic balance

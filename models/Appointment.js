@@ -99,6 +99,10 @@ const appointmentSchema = new mongoose.Schema(
       default: 'pending',
       index: true,
     },
+    // Who cancelled it, for the refund rule (constants/refundPolicy.js): 'family'
+    // is the parent or a guardian. Null on anything not cancelled, and on
+    // bookings cancelled before this was recorded.
+    cancelledBy: { type: String, enum: ['family', 'clinic', null], default: null },
     hasVideo: { type: Boolean, default: false },
 
     // True while the booking is pending or approved, i.e. while it occupies its
