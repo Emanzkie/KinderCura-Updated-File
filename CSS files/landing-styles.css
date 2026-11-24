@@ -257,22 +257,23 @@ body {
 }
 
 .visual-shape {
-    /* Rotating 15deg makes the painted box ~1.22x the side length, so the side is
-       held to 78% of the column and the square never spills past it. 350px is the
-       original desktop size and still applies from ~1100px up. */
+    /* KC mascot. The square layout space is the original decoration's size; KC is
+       drawn ~1.2x larger, so the side is held to 78% of the column and never
+       spills past it. 350px still applies from ~1100px up. */
     width: min(350px, 78%);
+    height: auto;
     aspect-ratio: 1 / 1;
-    background: linear-gradient(135deg, var(--primary-light) 0%, var(--accent-red) 100%);
+    object-fit: cover; /* trims only the image's empty top and bottom margins */
+    object-position: 50% 61%;
     max-width: 100%;
-    border-radius: clamp(24px, 8vw, 40px);
-    transform: rotate(15deg);
-    box-shadow: 0 20px 60px rgba(107, 142, 111, 0.2);
+    transform: rotate(5deg) scale(1.2);
+    filter: drop-shadow(0 -3px 8px rgba(250, 250, 246, 0.7)) drop-shadow(0 20px 30px rgba(107, 142, 111, 0.3));
     animation: float 6s ease-in-out infinite;
 }
 
 @keyframes float {
-    0%, 100% { transform: rotate(15deg) translateY(0); }
-    50% { transform: rotate(15deg) translateY(-20px); }
+    0%, 100% { transform: rotate(5deg) translateY(0) scale(1.2); }
+    50% { transform: rotate(5deg) translateY(-20px) scale(1.2); }
 }
 
 /* Features Section */
