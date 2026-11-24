@@ -560,7 +560,7 @@ async function getParentPreAssessmentState(parentId) {
   const childIds = new Set();
 
   // Own children (parentId match)
-  const own = await Child.find({ parentId }).sort({ createdAt: -1 }).select('_id').lean();
+  const own = await Child.find({ parentId }).sort({ createdAt: -1 }).select('_id dateOfBirth').lean();
   own.forEach(c => childIds.add(String(c._id)));
 
   // Linked children via GuardianLink
@@ -583,6 +583,15 @@ async function getParentPreAssessmentState(parentId) {
     return { defaultChildId, needsPreAssessment: false, preAssessmentChildId: null };
   }
 
+  // Only a child the assessment still accepts (3 to 8) can be required to take
+  // it; otherwise every login led to a page that refuses the child.
+  const today = childAge.todayInTimeZone(childAge.CLINIC_TIME_ZONE);
+  const eligible = own.find((c) => c.dateOfBirth
+    && childAge.checkChildAge(new Date(c.dateOfBirth).toISOString().slice(0, 10), today).ok);
+  if (!eligible) {
+    return { defaultChildId, needsPreAssessment: false, preAssessmentChildId: null };
+  }
+
   // Important:
   // Treat the first completed screening as the end of the required pre-assessment flow.
   // If the parent has not completed any screening yet, send them to screening on first login.
@@ -594,7 +603,7 @@ async function getParentPreAssessmentState(parentId) {
   return {
     defaultChildId,
     needsPreAssessment: !completedExists,
-    preAssessmentChildId: defaultChildId,
+    preAssessmentChildId: String(eligible._id),
   };
 }
 

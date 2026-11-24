@@ -446,8 +446,21 @@ async function resolveOnlineResult(result, paymentRef) {
     showPanel('onlineFailedPanel');
 }
 
+// Same policy text as the Appointments page (constants/refundPolicy.js).
+async function loadRefundPolicy() {
+    const el = document.getElementById('refundPolicyBody');
+    try {
+        const { policy } = await apiFetch('/payments/refunds/mine');
+        el.innerHTML = `<ul class="refund-policy-list">${policy.points.map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ul>`;
+    } catch {
+        el.innerHTML = '<p class="mini">The refund policy could not be loaded. Please close and open it to try again.</p>';
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     initNav();
+    const refundPolicy = document.getElementById('refundPolicy');
+    refundPolicy?.addEventListener('toggle', () => { if (refundPolicy.open) loadRefundPolicy(); });
     document.querySelectorAll('a.logout').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); logout(); }));
     await loadAppointmentSummary();
 

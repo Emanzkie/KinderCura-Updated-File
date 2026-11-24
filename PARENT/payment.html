@@ -68,6 +68,11 @@
         .payment-option-card h3 { margin: 0 0 0.4rem; color: var(--text-dark); font-size: 1rem; }
         .payment-option-card p { margin: 0; font-size: 0.82rem; color: var(--text-light); }
         .payment-option-card .btn { margin-top: 1rem; width: 100%; }
+        .refund-policy { margin-bottom: 1.5rem; }
+        .refund-policy summary { display: inline-block; list-style: none; }
+        .refund-policy summary::-webkit-details-marker { display: none; }
+        .refund-policy summary:focus-visible { outline: 3px solid var(--primary-light); outline-offset: 2px; }
+        .refund-policy__body { margin-top: 0.8rem; }
         .panel { display: none; }
         .panel.active { display: block; }
         .success-banner {
@@ -147,7 +152,7 @@
         .official-receipt .receipt-emailed { font-size: 0.85rem; color: var(--text-light); margin: 0 0 0.2rem; }
         .receipt-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
         @media print {
-            .top-nav, .payment-options, .receipt-actions, #errorMsg, .notification-modal { display: none !important; }
+            .top-nav, .payment-options, .receipt-actions, .refund-policy, #errorMsg, .notification-modal { display: none !important; }
         }
     </style>
     <link rel="stylesheet" href="/css/mobile-nav.css">
@@ -208,6 +213,11 @@
             <div id="apptSummary" class="appt-summary-card">
                 <p class="loading-placeholder">Loading appointment details…</p>
             </div>
+
+            <details class="refund-policy" id="refundPolicy">
+                <summary class="payment-link-btn">Refund Policy</summary>
+                <div class="refund-policy__body" id="refundPolicyBody"><p class="mini">Loading…</p></div>
+            </details>
 
             <div id="errorMsg" class="error-msg" style="display:none;margin-bottom:1rem;"></div>
 
