@@ -548,3 +548,32 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
+// Loading animation: an element whose whole text is "Loading…" or "Loading users…"
+// gets .kc-loading (dashboard-new-styles.css), which shows the GIF in place of the
+// text. The class comes off when the page replaces that text. The text itself stays
+// for screen readers. Buttons and dropdown options keep plain text, and so does a
+// chat message that happens to say "Loading...".
+(function showLoadingAnimation() {
+    if (typeof MutationObserver !== 'function' || !document.documentElement) return;
+    const LOADING = /^loading\b[^.…]{0,60}(\.\.\.|…)$/i;
+    const SKIP = 'button, option, textarea, script, style, .msg-bubble';
+
+    const check = (el) => {
+        if (!el || !el.classList) return;
+        const own = Array.from(el.childNodes).filter((n) => n.nodeType === 3).map((n) => n.data).join('').trim();
+        const loading = LOADING.test(own) && el.textContent.trim() === own && !el.closest(SKIP);
+        if (loading !== el.classList.contains('kc-loading')) el.classList.toggle('kc-loading', loading);
+    };
+    const checkTree = (node) => {
+        if (node.nodeType === 3) return; // its parent is the mutation target, checked below
+        check(node);
+        if (node.querySelectorAll) node.querySelectorAll('*').forEach(check);
+    };
+
+    checkTree(document.documentElement);
+    new MutationObserver((changes) => changes.forEach((m) => {
+        check(m.type === 'characterData' ? m.target.parentElement : m.target);
+        m.addedNodes.forEach(checkTree);
+    })).observe(document.documentElement, { childList: true, characterData: true, subtree: true });
+})();

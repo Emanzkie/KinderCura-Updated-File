@@ -1631,3 +1631,30 @@ textarea:focus-visible,
         transition-duration: .001ms !important;
     }
 }
+
+/* ---- Loading animation (class set by api.js) ----------------------------- */
+/* !important: some pages draw their own icon in the same place (.empty-msg::before). */
+.kc-loading {
+    color: transparent !important;
+    font-size: 0 !important;
+    max-width: none !important; /* a limit in ch or em is 0 at this font size */
+}
+.kc-loading::before {
+    content: '' !important;
+    display: inline-block !important;
+    width: 120px !important;
+    max-width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    aspect-ratio: 291 / 91;
+    vertical-align: middle;
+    opacity: 1 !important;
+    background: url('/icons/kindercura-loading.gif') center / contain no-repeat !important;
+}
+/* The animation replaces the spinner or icon shown with the text. */
+.kc-loading > *,
+p:has(> img:only-child):has(+ .kc-loading),
+.prc-empty__icon:has(+ .kc-loading),
+.prc-loading-spinner:has(+ .kc-loading),
+.spinner-border:has(+ .kc-loading),
+.ai-spinner:has(+ .kc-loading) { display: none !important; }
