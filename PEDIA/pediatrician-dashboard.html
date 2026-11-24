@@ -16,6 +16,7 @@ Purpose:
     <link rel="stylesheet" href="/notifications-card-ui.css">
     <link rel="stylesheet" href="/css/mobile-nav.css">
     <link rel="stylesheet" href="/css/pedia-responsive.css">
+    <link rel="stylesheet" href="/css/consultation-setup.css">
 </head>
 <body>
     <header class="top-nav has-mobile-nav">
@@ -126,6 +127,7 @@ Purpose:
 <!-- Must load before pediatrician-dashboard.js — provides window.KCScoring (score ranges in the Assessment Results explanation). -->
 <script src="/constants/scoring.js"></script>
 <script src="/js/pedia/pediatrician-dashboard.js"></script>
+<script src="/js/pedia/consultation-setup.js"></script>
 
 <!-- Reschedule dialog. Deliberately outside #pendingList: loadDashboard() rewrites
      that list every 5 seconds, which would wipe a half-filled form. -->
