@@ -715,7 +715,8 @@ async function loadAppointments() {
         const all = (data.appointments || []).sort((a, b) => (b.id || 0) - (a.id || 0));
         activeAppointments = all.filter((a) => ['pending', 'approved'].includes(a.status));
         renderActive(activeAppointments);
-        renderPast(all.filter((a) => ['completed', 'cancelled', 'rejected'].includes(a.status)));
+        renderPast(all.filter((a) => a.status === 'completed'), 'completedList', 'No completed appointments');
+        renderPast(all.filter((a) => ['cancelled', 'rejected'].includes(a.status)));
     } catch {
         document.getElementById('activeList').innerHTML = '<p style="color:var(--text-light);text-align:center;">Could not load appointments.</p>';
     }
@@ -1038,10 +1039,10 @@ function renderActive(list) {
         </div>`).join('');
 }
 
-function renderPast(list) {
-    const el = document.getElementById('pastList');
+function renderPast(list, id = 'pastList', emptyText = 'No cancelled or rejected appointments') {
+    const el = document.getElementById(id);
     if (!list.length) {
-        el.innerHTML = '<p style="color:var(--text-light);text-align:center;padding:1rem;">No past appointments</p>';
+        el.innerHTML = `<p style="color:var(--text-light);text-align:center;padding:1rem;">${emptyText}</p>`;
         return;
     }
     el.innerHTML = list.map((a) => `

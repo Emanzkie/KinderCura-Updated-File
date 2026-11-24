@@ -55,6 +55,10 @@ const APPTS = [
     assert.ok(html.includes('cancelAppointment(11)') && html.includes('cancelAppointment(12)'), 'both active cards have Cancel');
     p.run(`renderPast(${JSON.stringify([{ ...APPTS[0], id: 13, status: 'completed' }])})`);
     assert.ok(!p.el('pastList').innerHTML.includes('cancelAppointment'), 'no Cancel on past appointments');
+    // Completed appointments have their own list, also without Cancel.
+    p.run(`renderPast(${JSON.stringify([{ ...APPTS[0], id: 14, status: 'completed' }])}, 'completedList', 'None')`);
+    assert.ok(p.el('completedList').innerHTML.includes('viewReceipt(14)') || p.el('completedList').innerHTML.includes('appt-card completed'), 'completed card in its own list');
+    assert.ok(!p.el('completedList').innerHTML.includes('cancelAppointment'), 'no Cancel on completed appointments');
     ok('pending and approved cards show Cancel; past appointments do not');
   }
 

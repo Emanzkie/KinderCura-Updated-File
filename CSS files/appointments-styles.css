@@ -872,3 +872,45 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* Parent Appointments: each list scrolls on its own; headers sit outside. */
+#activeList,
+#completedList,
+#pastList {
+    max-height: min(480px, 60vh);
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+/* Keep a long list's scrolling from moving the page. */
+#activeList:has(> :nth-child(3)),
+#completedList:has(> :nth-child(3)),
+#pastList:has(> :nth-child(3)) {
+    overscroll-behavior: contain;
+}
+
+/* Two columns: the lists fill the card down to the end of the booking form. */
+@media (min-width: 1025px) {
+    .split:has(#activeList) > .parent-card {
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* A list with 2+ cards takes the spare height; a short one keeps its own. */
+    .split > .parent-card > div:has(> #activeList > :nth-child(2)),
+    .split > .parent-card > div:has(> #completedList > :nth-child(2)),
+    .split > .parent-card > div:has(> #pastList > :nth-child(2)) {
+        flex: 1 0 auto;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* Zero basis: the list adds no height of its own to the row. */
+    #activeList:has(> :nth-child(2)),
+    #completedList:has(> :nth-child(2)),
+    #pastList:has(> :nth-child(2)) {
+        flex: 1 1 0px;
+        min-height: min(280px, 60vh);
+        max-height: none;
+    }
+}
