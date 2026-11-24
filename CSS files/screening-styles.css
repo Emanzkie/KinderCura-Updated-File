@@ -955,3 +955,31 @@ body {
         min-height: 56px;
     }
 }
+
+/* Required first assessment (body.pre-assessment, set by api.js): the rest of
+   the parent site is closed until it is submitted, so its links are hidden. */
+.pre-assessment-note {
+    display: none;
+}
+
+body.pre-assessment .assessment-hero-card .pre-assessment-note {
+    display: block;
+    margin: 0.65rem 0 0;
+    padding: 0.7rem 0.9rem;
+    border-left: 4px solid var(--accent);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-dark);
+    font-weight: 600;
+}
+
+body.pre-assessment .top-nav .main-nav .nav-link:not(.nav-logout),
+body.pre-assessment .top-nav .notification-btn,
+body.pre-assessment .profile-menu a[href^="/parent/"] {
+    display: none;
+}
+
+body.pre-assessment .top-nav .logo,
+body.pre-assessment .top-nav .main-nav .nav-profile {
+    pointer-events: none;
+}

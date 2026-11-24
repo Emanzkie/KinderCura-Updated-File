@@ -832,8 +832,14 @@ async function verifyAndRegister() {
         // registration instead of being dropped on navigation.
         const result = await postRegistrationWithPhotos(payload);
         if (result.token) {
+            // Nothing from an earlier account on this browser may carry over.
+            // A leftover kc_remember '0' made api.js end the new session at once.
+            ['kc_remember', 'kc_childId', 'kc_assessmentId', 'kc_viewChildId',
+                'kc_viewChildName', 'kc_prefPediaId', 'kc_preAssessmentRequired',
+            ].forEach((key) => localStorage.removeItem(key));
             localStorage.setItem('kc_token', result.token);
             localStorage.setItem('kc_user', JSON.stringify(result.user));
+            if (result.needsPreAssessment) localStorage.setItem('kc_preAssessmentRequired', 'true');
             if (result.childId) localStorage.setItem('kc_childId', result.childId);
         }
 

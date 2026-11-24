@@ -76,6 +76,32 @@ if (localStorage.getItem('kc_remember') === '0' && !/(?:^|;\s*)kc_session=1(?:;|
     if (staffHome) window.location.replace(staffHome);
 })();
 
+// A parent must finish the first assessment before the other parent pages open.
+// login.js, signup.js and /auth/me (below) keep kc_preAssessmentRequired; the
+// server decides its value. Returns true when the parent is being sent away.
+// The invitation page stays open. The server still checks access on every API
+// call; this only controls which pages can be used.
+function preAssessmentRequired() {
+    const role = (window.KC.user() || {}).role;
+    return Boolean(window.KC.token())
+        && (role === 'parent' || role === 'legal_guardian')
+        && localStorage.getItem('kc_preAssessmentRequired') === 'true';
+}
+
+function enforcePreAssessment() {
+    const path = String((window.location && window.location.pathname) || '').toLowerCase().replace(/\/+$/, '');
+    if (!path.startsWith('/parent/') || path.startsWith('/parent/accept-invitation')) return false;
+    const required = preAssessmentRequired();
+    if (path === '/parent/screening' || path === '/parent/screening.html') {
+        // screening-styles.css hides the menu while this class is set.
+        document.body?.classList?.toggle('pre-assessment', required);
+        return false;
+    }
+    if (required) window.location.replace('/parent/screening');
+    return required;
+}
+enforcePreAssessment();
+
 // Repeats fn every intervalMs, but only while the tab is visible, and never
 // starts a run while the previous one is still waiting on the server. A plain
 // setInterval kept the dashboard firing its API calls every few seconds in
@@ -416,6 +442,15 @@ async function refreshCurrentUser() {
                 mergedUser.profileIcon = cached.profileIcon;
             }
             localStorage.setItem('kc_user', JSON.stringify(mergedUser));
+            if (typeof data.needsPreAssessment === 'boolean') {
+                if (data.needsPreAssessment) {
+                    localStorage.setItem('kc_preAssessmentRequired', 'true');
+                    if (data.preAssessmentChildId) localStorage.setItem('kc_childId', data.preAssessmentChildId);
+                } else {
+                    localStorage.removeItem('kc_preAssessmentRequired');
+                }
+                enforcePreAssessment();
+            }
             return mergedUser;
         }
     } catch {

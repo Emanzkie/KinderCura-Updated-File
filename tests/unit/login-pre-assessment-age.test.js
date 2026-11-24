@@ -69,5 +69,33 @@ const kid = (dateOfBirth) => ({ _id: new mongoose.Types.ObjectId(), dateOfBirth 
   assert.strictEqual((await run({ linked: [five] })).needsPreAssessment, false, 'linked guardians are never required');
   assert.strictEqual((await run({ own: [nine], linked: [five] })).needsPreAssessment, false);
 
+  // GET /auth/me reports the same rule, for the parent-page gate in api.js.
+  const meLayer = router.stack.find((l) => l.route && l.route.path === '/me' && l.route.methods.get);
+  const me = meLayer.route.stack[meLayer.route.stack.length - 1].handle;
+  const runMe = async (role, setup) => {
+    ({ own = [], linked = [], completed = false } = setup);
+    User.findById = async () => ({ _id: parentId, role, status: 'active' });
+    const res = { statusCode: 200, status(c) { this.statusCode = c; return this; }, json(b) { this.body = b; return this; } };
+    await me({ user: { userId: String(parentId) }, method: 'GET', originalUrl: '/api/auth/me' }, res);
+    assert.strictEqual(res.statusCode, 200);
+    return res.body;
+  };
+  r = await runMe('parent', { own: [five] });
+  assert.strictEqual(r.needsPreAssessment, true);
+  assert.strictEqual(r.preAssessmentChildId, String(five._id));
+  assert.ok(!('needsPreAssessment' in r.user), 'not mixed into the stored user');
+  assert.strictEqual((await runMe('parent', { own: [five], completed: true })).needsPreAssessment, false);
+  assert.strictEqual((await runMe('parent', { own: [nine] })).needsPreAssessment, false);
+  assert.strictEqual((await runMe('parent', { linked: [five] })).needsPreAssessment, false);
+  assert.ok(!('needsPreAssessment' in await runMe('pediatrician', { own: [five] })), 'staff get no gate fields');
+  const { exists } = Assessment;
+  const { error } = console;
+  Assessment.exists = async () => { throw new Error('db down'); };
+  console.error = () => {};
+  r = await runMe('parent', { own: [five] });
+  console.error = error;
+  Assessment.exists = exists;
+  assert.ok(r.user && !('needsPreAssessment' in r), 'a failed lookup never fails /auth/me');
+
   console.log('Login pre-assessment age tests OK');
 })().catch((e) => { console.error('FAILED:', e.stack || e.message); process.exit(1); });

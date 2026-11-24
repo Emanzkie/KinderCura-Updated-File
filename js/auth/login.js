@@ -81,7 +81,19 @@ const API = window.location.origin + '/api';
                   } catch { return null; }
                 })();
 
-                if (nextUrl && nextUrl.startsWith('/')) {
+                // A parent who still owes the first assessment goes there instead of
+                // following ?next=, except to answer an invitation.
+                const mustAssess = Boolean(data.needsPreAssessment);
+                const nextIsInvitation = /^\/parent\/accept-invitation(\.html)?([?#]|$)/i.test(nextUrl || '');
+                if (mustAssess) {
+                    localStorage.setItem('kc_preAssessmentRequired', 'true');
+                    localStorage.setItem('kc_childId', data.preAssessmentChildId || data.childId);
+                    localStorage.removeItem('kc_assessmentId');
+                } else {
+                    localStorage.removeItem('kc_preAssessmentRequired');
+                }
+
+                if (nextUrl && nextUrl.startsWith('/') && (!mustAssess || nextIsInvitation)) {
                   window.location.href = nextUrl;
                   return;
                 }
@@ -96,15 +108,9 @@ const API = window.location.origin + '/api';
                     window.location.href = '/secretary/secretary-dashboard.html';
                 } else {
                     // First parent login should continue to the required pre-assessment.
-                    if (data.needsPreAssessment) {
-                        localStorage.setItem('kc_preAssessmentRequired', 'true');
-                        if (data.preAssessmentChildId || data.childId) {
-                            localStorage.setItem('kc_childId', data.preAssessmentChildId || data.childId);
-                        }
-                        localStorage.removeItem('kc_assessmentId');
+                    if (mustAssess) {
                         window.location.href = `/parent/screening?mode=pre&source=login&childId=${encodeURIComponent(data.preAssessmentChildId || data.childId || '')}`;
                     } else {
-                        localStorage.removeItem('kc_preAssessmentRequired');
                         window.location.href = '/parent/dashboard';
                     }
                 }

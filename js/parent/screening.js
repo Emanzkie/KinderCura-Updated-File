@@ -457,6 +457,9 @@ requireAuth();
                     localStorage.setItem('kc_assessmentId', data.assessmentId);
                 }
 
+                // The first assessment is done, so the other parent pages open now.
+                localStorage.removeItem('kc_preAssessmentRequired');
+
                 // Important: after finishing the assessment, return the parent to the dashboard first.
                 // The latest result will still appear in Dashboard, Results, and Recommendations.
                 window.location.href = '/parent/dashboard';
@@ -505,6 +508,11 @@ requireAuth();
 
                 const ageMonths = getAgeInMonths(selectedChild.dateOfBirth);
                 if (isNaN(ageMonths) || ageMonths < 36) {
+                    // The dashboard would send a parent who still owes the first
+                    // assessment straight back here, so say it in the page instead.
+                    if (preAssessmentRequired()) {
+                        throw new Error('This assessment is available for children aged 3 to 8 only.');
+                    }
                     alert('This assessment is available for children aged 3 to 8 only.');
                     window.location.href = '/parent/dashboard';
                     return;

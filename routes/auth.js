@@ -1315,7 +1315,19 @@ router.get('/me', authMiddleware, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found.' });
     // /auth/me is called on every page load by every signed-in user, so the
     // per-request identity log was the noisiest line in the server output.
-    res.json({ success: true, user: publicUser(user) });
+    // Parent pages stay closed until the required first assessment is done
+    // (api.js enforcePreAssessment). If the lookup fails the fields are left
+    // out and the page keeps whatever it already knew.
+    let preAssessment = {};
+    if (user.role === 'parent' || user.role === 'legal_guardian') {
+      try {
+        const { needsPreAssessment, preAssessmentChildId } = await getParentPreAssessmentState(user._id);
+        preAssessment = { needsPreAssessment, preAssessmentChildId };
+      } catch (err) {
+        console.error('[auth/me] pre-assessment state unavailable:', err.message);
+      }
+    }
+    res.json({ success: true, user: publicUser(user), ...preAssessment });
   } catch (err) {
     sendServerError(req, res, err);
   }
