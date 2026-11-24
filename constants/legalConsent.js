@@ -13,7 +13,7 @@
 
 // Must equal the "Version:" line of the Terms file — asserted in
 // tests/unit/signup-consent.test.js so the two cannot drift apart silently.
-const TERMS_VERSION = '1.0';
+const TERMS_VERSION = '1.1';
 
 // Registration arrives either as JSON (booleans) or as multipart form fields
 // (strings), so both forms are accepted. Anything else counts as "not selected".

@@ -104,7 +104,14 @@ The parties shall first attempt to resolve any dispute or concern relating to th
 Where a dispute cannot be resolved through such communication, the matter may be referred to the appropriate Philippine court, government agency, or other dispute-resolution mechanism having jurisdiction over the matter.
 Nothing in this section prevents a user from exercising any rights or remedies available under applicable Philippine law.
 ________________________________________
-Effective Date: October 11, 2026
-Last Updated: October 11, 2026
-Version: 1.0
+16. REFUND POLICY
+KinderCura allows parents or legal guardians to request a refund for a cancelled or rejected appointment that was paid online through GCash or Maya. Refunds are based on the amount actually paid online.
+Partial refund (50%): Half of the amount paid online may be refunded when the parent or legal guardian cancels the appointment.
+Full refund (100%): The full amount paid online may be refunded when the pediatrician or clinic cancels or rejects the appointment, or when a system or service-related problem prevents the consultation.
+Completed appointments are not refundable, except where required by applicable law. Payments made at the clinic are refunded at the clinic.
+Refunds must be requested from the Appointments page within 180 days of payment. Requests are reviewed by the pediatrician or clinic, and approved refunds are returned to the same GCash or Maya account.
+________________________________________
+Effective Date: November 24, 2026
+Last Updated: November 24, 2026
+Version: 1.1
 

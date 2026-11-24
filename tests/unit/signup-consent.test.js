@@ -1,7 +1,7 @@
 // Unit tests for the sign-up Terms of Service / consent flow.
 //
 // Source of truth for every word of the Terms:
-//   SIGN-UP,LOGIN/legal/KINDERCURA-TERMS-OF-SERVICE.txt  (sections 1-15 + dates at the end)
+//   SIGN-UP,LOGIN/legal/KINDERCURA-TERMS-OF-SERVICE.txt  (sections 1-16 + dates at the end)
 // The three selections used to be section 17 of that file. Section 17 was removed from
 // the Terms on 2026-10-11, so their wording is frozen below and the parent and
 // pediatrician checkbox labels in signup.html are compared against it, so a wording
@@ -31,7 +31,7 @@ const signupJs = fs.readFileSync(JS_PATH, 'utf8');
 const TERMS_LABEL = 'I have read, understood, and agree to the KinderCura Terms of Service. I understand that KinderCura is a developmental assessment and monitoring support system and does not provide medical diagnosis, treatment, therapy, or emergency medical services.';
 const PRIVACY_LABEL = 'I have read and understood the KinderCura Privacy Notice and acknowledge the information provided regarding the collection, processing, storage, access, sharing, retention, and protection of personal information.';
 const ML_LABEL = "I voluntarily consent to the use of eligible information that I submit through KinderCura for the training, testing, evaluation, research, and improvement of KinderCura's machine learning models, subject to the KinderCura Privacy Notice and applicable data privacy requirements. I understand that this consent is optional and may be withdrawn subject to applicable law and the procedures provided by KinderCura.";
-const TERMS_DATE = 'October 11, 2026';
+const TERMS_DATE = 'November 24, 2026';
 
 const { TERMS_VERSION, parseSignupConsent } = require('../../constants/legalConsent');
 const User = require('../../models/User');
@@ -46,7 +46,7 @@ const ok = (label) => results.push(label);
   ok('constants: TERMS_VERSION matches the Terms file');
 }
 
-// ── 0b. Terms content: sections 1-15 only, dates once and at the very end ─────
+// ── 0b. Terms content: sections 1-16 only, dates once and at the very end ─────
 {
   assert.ok(!/\[Insert/.test(termsText), 'no [Insert ...] placeholders remain');
   for (const field of ['Effective Date:', 'Last Updated:', 'Version:']) {
@@ -54,14 +54,16 @@ const ok = (label) => results.push(label);
   }
   assert.deepStrictEqual(termsLines.slice(-3), [`Effective Date: ${TERMS_DATE}`, `Last Updated: ${TERMS_DATE}`, `Version: ${TERMS_VERSION}`],
     'Effective Date, Last Updated and Version are the last lines of the Terms');
-  assert.ok(/^_{5,}$/.test(termsLines[termsLines.length - 4]), 'a divider separates section 15 from the dates');
+  assert.ok(/^_{5,}$/.test(termsLines[termsLines.length - 4]), 'a divider separates section 16 from the dates');
   assert.deepStrictEqual(termsLines.slice(0, 2), ['KINDERCURA', 'TERMS OF SERVICE'], 'title block unchanged, no dates at the top');
   const headings = termsLines.filter((l) => /^\d+\.\s/.test(l) && l === l.toUpperCase());
-  assert.deepStrictEqual(headings.map((h) => Number(/^(\d+)\./.exec(h)[1])), Array.from({ length: 15 }, (_, i) => i + 1), 'sections 1-15, in order, nothing else');
-  assert.ok(!termsLines.some((l) => /CONTACT INFORMATION|ACCEPTANCE AND CONSENT|^☐/.test(l)), 'sections 16 and 17 removed entirely');
+  assert.deepStrictEqual(headings.map((h) => Number(/^(\d+)\./.exec(h)[1])), Array.from({ length: 16 }, (_, i) => i + 1), 'sections 1-16, in order, nothing else');
+  assert.ok(termsLines.includes('16. REFUND POLICY'), 'section 16 is the Refund Policy');
+  assert.ok(termsLines.some((l) => l.startsWith('Partial refund (50%):')) && termsLines.some((l) => l.startsWith('Full refund (100%):')), 'partial and full refunds are distinguished');
+  assert.ok(!termsLines.some((l) => /CONTACT INFORMATION|ACCEPTANCE AND CONSENT|^☐/.test(l)), 'former sections 16 and 17 removed entirely');
   assert.ok(termsLines.includes('The Last Updated date displayed at the end of these Terms indicates when the Terms were most recently revised.'),
     'section 14 points to where the date is now shown');
-  ok('Terms content: sections 1-15 in order, 16/17 removed, no placeholders, dates (October 11, 2026) + version once at the end');
+  ok('Terms content: sections 1-16 in order, former 16/17 removed, no placeholders, dates (November 24, 2026) + version once at the end');
 }
 
 // ── 1. Server rule: cases A–E ────────────────────────────────────────────────
@@ -621,25 +623,25 @@ async function clientTests() {
     assert.strictEqual(container.children.filter((c) => c.tag === 'hr').length, termsLines.filter((l) => /^_{5,}$/.test(l)).length, 'separators become dividers');
     assert.strictEqual(container.children[0].textContent, 'KINDERCURA');
     assert.strictEqual(container.children[1].textContent, 'TERMS OF SERVICE');
-    assert.strictEqual(container.children.filter((c) => c.tag === 'h4').length, 15, '15 numbered section headings preserved');
+    assert.strictEqual(container.children.filter((c) => c.tag === 'h4').length, 16, '16 numbered section headings preserved');
     const text = rendered.join('\n');
-    for (const keep of ['1. INTRODUCTION', '15. GOVERNING LAW AND DISPUTE RESOLUTION', `Effective Date: ${TERMS_DATE}`, `Last Updated: ${TERMS_DATE}`, 'Version: 1.0']) {
+    for (const keep of ['1. INTRODUCTION', '15. GOVERNING LAW AND DISPUTE RESOLUTION', '16. REFUND POLICY', `Effective Date: ${TERMS_DATE}`, `Last Updated: ${TERMS_DATE}`, `Version: ${TERMS_VERSION}`]) {
       assert.ok(text.includes(keep), `rendered: ${keep}`);
     }
     for (const gone of ['[Insert', '16. CONTACT INFORMATION', '17. ACCEPTANCE AND CONSENT', '☐']) {
       assert.ok(!text.includes(gone), `not rendered: ${gone}`);
     }
-    // Dates are the last thing the reader shows, after section 15 and a divider.
+    // Dates are the last thing the reader shows, after section 16 and a divider.
     const tail = container.children.slice(-4);
     assert.strictEqual(tail[0].tag, 'hr');
     assert.deepStrictEqual(tail.slice(1).map((c) => [c.textContent, c.className]),
-      [[`Effective Date: ${TERMS_DATE}`, 'terms-meta'], [`Last Updated: ${TERMS_DATE}`, 'terms-meta'], ['Version: 1.0', 'terms-meta']]);
+      [[`Effective Date: ${TERMS_DATE}`, 'terms-meta'], [`Last Updated: ${TERMS_DATE}`, 'terms-meta'], [`Version: ${TERMS_VERSION}`, 'terms-meta']]);
     assert.ok(!container.children.slice(0, -3).some((c) => c.className === 'terms-meta'), 'no dates rendered anywhere else');
     // Text goes in via textContent — markup in the source could never become elements.
     const evil = { children: [], appendChild(c) { this.children.push(c); }, textContent: '' };
     env.run('renderTermsDocument')('KINDERCURA\nTERMS OF SERVICE\n<img src=x onerror=alert(1)>', evil);
     assert.strictEqual(evil.children[2].textContent, '<img src=x onerror=alert(1)>'); assert.strictEqual(evil.children[2].tag, 'p');
-    ok('Terms reader: all source lines rendered verbatim + in order, sections 1-15 only, dates + version once at the end, text inserted as text');
+    ok('Terms reader: all source lines rendered verbatim + in order, sections 1-16 only, dates + version once at the end, text inserted as text');
 
     // open / fallback behaviour
     const dlg = env.el('termsDialog'); let shown = 0; dlg.showModal = () => { shown += 1; dlg.open = true; };
@@ -659,7 +661,7 @@ async function clientTests() {
     const container4 = { children: [], appendChild(c) { this.children.push(c); }, textContent: '' };
     env4.run('renderTermsDocument')(termsText, container4);
     const sectionHeadings = container4.children.filter((c) => c.tag === 'h4');
-    assert.strictEqual(sectionHeadings.length, 15);
+    assert.strictEqual(sectionHeadings.length, 16);
     for (const h of sectionHeadings) {
       const n = /^(\d+)\./.exec(h.textContent)[1];
       assert.strictEqual(h.id, `terms-section-${n}`, `${h.textContent}: anchored by the source's own section number`);
@@ -691,5 +693,5 @@ async function clientTests() {
   await routeTests();
   await clientTests();
   console.log(results.map((r) => `  ok - ${r}`).join('\n'));
-  console.log(`Sign-up consent tests OK — ${results.length} groups: cases A–E (server, route, client), labels, Terms content (sections 1-15, dates at the end), required vs optional, field preservation, verbatim Terms rendering.`);
+  console.log(`Sign-up consent tests OK — ${results.length} groups: cases A–E (server, route, client), labels, Terms content (sections 1-16, dates at the end), required vs optional, field preservation, verbatim Terms rendering.`);
 })().catch((err) => { console.error(err); process.exit(1); });
