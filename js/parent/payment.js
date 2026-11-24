@@ -289,8 +289,15 @@ function buildSummaryHtml(appt) {
 async function showDepositOutcome() {
     try {
         const user = KC.user();
-        const data = await apiFetch(`/appointments/${user.id}`);
-        const appt = (data.appointments || []).find((a) => String(a.id) === String(appointmentId));
+        let appt = null;
+        // The payment is saved a moment before its appointment, so an appointment
+        // that still shows nothing paid is read again.
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+            if (attempt) await new Promise((r) => setTimeout(r, 1000));
+            const data = await apiFetch(`/appointments/${user.id}`);
+            appt = (data.appointments || []).find((a) => String(a.id) === String(appointmentId));
+            if (!appt || appt.paymentStatus === 'Paid' || owesClinicBalance(appt)) break;
+        }
         if (!appt || !owesClinicBalance(appt)) return;
         appointmentData = appt;
         document.getElementById('apptSummary').innerHTML = buildSummaryHtml(appt);
@@ -410,14 +417,21 @@ async function resolveOnlineResult(result, paymentRef) {
     document.getElementById('onlinePendingRef').textContent = `Reference: ${paymentRef}`;
     showPanel('onlinePendingPanel');
 
-    // Ask the server to reconcile once, then poll our own record briefly. The
-    // webhook usually wins the race; the reconcile covers the case where it
-    // has not landed yet.
-    try {
-        await apiFetch(`/payments/ref/${encodeURIComponent(paymentRef)}/reconcile`, { method: 'POST' });
-    } catch { /* fall through to polling */ }
+    // Ask the server to check with PayMongo, and read our own record meanwhile:
+    // the record says Paid as soon as it is saved, while the check also waits for
+    // the receipt email. An early "not yet" is checked again. The webhook may win.
+    let checking = false;
+    const checkWithPaymongo = () => {
+        if (checking) return;
+        checking = true;
+        apiFetch(`/payments/ref/${encodeURIComponent(paymentRef)}/reconcile`, { method: 'POST' })
+            .catch(() => { /* the record below decides */ })
+            .finally(() => { checking = false; });
+    };
 
-    for (let attempt = 0; attempt < 6; attempt += 1) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+        checkWithPaymongo();
+        await new Promise((r) => setTimeout(r, attempt === 0 ? 1500 : 2500));
         try {
             const status = await apiFetch(`/payments/ref/${encodeURIComponent(paymentRef)}/status`);
             if (status.paid) {
@@ -436,7 +450,6 @@ async function resolveOnlineResult(result, paymentRef) {
                 return;
             }
         } catch { /* keep polling */ }
-        await new Promise((r) => setTimeout(r, 2500));
     }
 
     // Still unconfirmed. Say so honestly rather than implying success.

@@ -24,6 +24,11 @@ const followUpPlans = require('./followUpPlans');
 // (paymentService.amountDueFor); every other row settles for the whole fee.
 const PARTIAL_TYPES = ['down_payment', 'balance_payment'];
 
+// How long settling a payment waits for its receipt email. The money is already
+// recorded by then; a slow mail server once kept the parent on "Confirming your
+// payment" for two minutes. The email itself is not cancelled.
+const EMAIL_WAIT_MS = 3000;
+
 /**
  * Collect everything a receipt needs to display, from the database rather than
  * from anything the caller passed in.
@@ -246,8 +251,19 @@ async function settlePayment({
 
   await syncAppointmentAfterPayment(updated);
 
-  const emailed = await sendReceiptOnce(updated);
+  const emailed = await withinEmailWait(sendReceiptOnce(updated));
   return { payment: updated.toObject(), alreadySettled: false, emailed };
+}
+
+/** True when the receipt went out within EMAIL_WAIT_MS; false if it failed or is still going. */
+async function withinEmailWait(sending) {
+  let timer;
+  const waited = new Promise((resolve) => { timer = setTimeout(() => resolve(false), EMAIL_WAIT_MS); });
+  const sent = sending.catch((err) => {
+    console.error('[receiptService] Receipt email failed:', err.message);
+    return false;
+  });
+  return Promise.race([sent, waited]).finally(() => clearTimeout(timer));
 }
 
 /**
@@ -322,7 +338,8 @@ async function sendReceiptOnce(payment) {
       console.warn('[receiptService] No parent email on file for payment', String(payment._id));
       return false;
     }
-    await emailService.sendPaymentReceiptEmail(context);
+    const result = await emailService.sendPaymentReceiptEmail(context);
+    if (result && result.sent === false) throw new Error(result.reason || result.message || 'not sent');
     return true;
   } catch (err) {
     // Roll the claim back so a later retry (or a manual resend) can try again.

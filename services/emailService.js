@@ -509,20 +509,13 @@ ${clinic.address || ''}
 ${clinic.phoneNumber || ''}
   `.trim();
 
-  const transporter = getTransporter();
-  if (!transporter) {
-    console.log(`\n[EMAIL – PAYMENT RECEIPT]\nTo: ${parentEmail}\n${text}\n`);
-    return { sent: false, message: 'No transporter configured — logged to console.' };
-  }
-
-  await transporter.sendMail({
-    from: `"KinderCura" <${process.env.EMAIL_USER}>`,
-    to: String(parentEmail).trim(),
+  return deliver({
+    to: parentEmail,
     subject: `KinderCura Payment Receipt ${receiptNumber || ''} — ${amountStr}`.replace(/\s+/g, ' ').trim(),
     html,
     text,
+    kind: 'payment receipt',
   });
-  return { sent: true };
 }
 
 /* ─────────────────── reminders ─────────────────── */
