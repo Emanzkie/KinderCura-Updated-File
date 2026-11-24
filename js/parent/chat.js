@@ -78,7 +78,8 @@ async function loadThreads() {
     }).join('');
 
     /* Open appointment from URL if passed */
-    const urlAppt = new URLSearchParams(window.location.search).get('apptId');
+    const params = new URLSearchParams(window.location.search);
+    const urlAppt = params.get('appointmentId') || params.get('apptId');
     if (urlAppt && !activeApptId) openThread(parseInt(urlAppt, 10));
     else if (!activeApptId && threads.length) openThread(threads[0].appointmentId);
   } catch (e) {
@@ -97,17 +98,21 @@ async function openThread(apptId) {
     '<div style="text-align:center;padding:2rem;color:var(--text-light);font-size:.85rem;">Loading…</div>';
 
   await loadMessages();
+  if (activeApptId !== apptId) return; // another chat was opened meanwhile
 
+  if (pollTimer) pollTimer.stop();
   /* Poll every 4 seconds for new messages while the tab is visible */
   pollTimer = window.KC.poll(pollMessages, 4000);
 }
 
 /* Load all messages of current thread */
 async function loadMessages() {
-  if (!activeApptId) return;
+  const apptId = activeApptId;
+  if (!apptId) return;
 
   try {
-    const data = await chatFetch(`/chat/${activeApptId}`);
+    const data = await chatFetch(`/chat/${apptId}`);
+    if (activeApptId !== apptId) return; // late reply for a chat already left
     const msgs = data.messages || [];
     const info = data.appointmentInfo || {};
 
@@ -132,6 +137,7 @@ async function loadMessages() {
 
     loadThreads();
   } catch (e) {
+    if (activeApptId !== apptId) return;
     /* If appointment is not approved yet, lock chat */
     if (e.message.includes('not yet available')) {
       document.getElementById('chatMessages').innerHTML =
@@ -146,10 +152,12 @@ async function loadMessages() {
 
 /* Check if new messages arrived */
 async function pollMessages() {
-  if (!activeApptId) return;
+  const apptId = activeApptId;
+  if (!apptId) return;
 
   try {
-    const data = await chatFetch(`/chat/${activeApptId}`);
+    const data = await chatFetch(`/chat/${apptId}`);
+    if (activeApptId !== apptId) return;
     const msgs = data.messages || [];
 
     if (msgs.length && msgs[msgs.length - 1].id !== lastMsgId) {
@@ -284,7 +292,8 @@ async function sendMessage() {
   const text = input.value.trim();
 
   if (!text && !pendingVideoFile) return;
-  if (!activeApptId) return;
+  const apptId = activeApptId; // the chat Send was clicked in
+  if (!apptId) return;
 
   const btn = document.getElementById('sendBtn');
   btn.disabled = true;
@@ -305,7 +314,7 @@ async function sendMessage() {
       vSize = pendingVideoFile.size;
     }
 
-    await chatFetch(`/chat/${activeApptId}`, {
+    await chatFetch(`/chat/${apptId}`, {
       method: 'POST',
       body: JSON.stringify({
         message: text || null,

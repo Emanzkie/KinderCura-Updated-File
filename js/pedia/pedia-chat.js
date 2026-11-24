@@ -63,7 +63,8 @@ async function loadThreads(){
                 </div>
             </div>`;
         }).join('');
-        const urlAppt = new URLSearchParams(window.location.search).get('apptId');
+        const params = new URLSearchParams(window.location.search);
+        const urlAppt = params.get('appointmentId') || params.get('apptId');
         if(urlAppt&&!activeApptId) openThread(parseInt(urlAppt));
         else if(!activeApptId&&threads.length) openThread(threads[0].appointmentId);
     }catch(e){
@@ -82,15 +83,19 @@ async function openThread(apptId){
     document.getElementById('chatInputArea').style.display = 'block';
     document.getElementById('chatMessages').innerHTML     = '<div style="text-align:center;padding:2rem;color:var(--text-light);">Loading…</div>';
     await loadMessages();
+    if(activeApptId!==apptId) return; // another chat was opened meanwhile
+    if(pollTimer) pollTimer.stop();
     pollTimer = window.KC.poll(pollMessages, 4000);
 }
 
 /* ── Load messages + populate header ───────────────────── */
 // Load messages and fill the rich patient header
 async function loadMessages(){
-    if(!activeApptId) return;
+    const apptId=activeApptId;
+    if(!apptId) return;
     try{
-        const data = await apiFetch(`/chat/${activeApptId}`);
+        const data = await apiFetch(`/chat/${apptId}`);
+        if(activeApptId!==apptId) return; // late reply for a chat already left
         const msgs = data.messages||[];
         const info = data.appointmentInfo||{};
 
@@ -136,12 +141,13 @@ async function loadMessages(){
 
         /* Video link */
         try{
-            const vd   = await apiFetch(`/videos/appointment/${activeApptId}`);
+            const vd   = await apiFetch(`/videos/appointment/${apptId}`);
+            if(activeApptId!==apptId) return;
             const vids = vd.videos||[];
             const vbtn = document.getElementById('pchVideoBtn');
             if(vids.length){ vbtn.href=vids[0].filePath; vbtn.innerHTML=`<img src="/icons/change_photo.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> View Video (${Number(vids.length)})`; vbtn.style.display='inline-flex'; }
             else { vbtn.style.display='none'; }
-        }catch{ document.getElementById('pchVideoBtn').style.display='none'; }
+        }catch{ if(activeApptId!==apptId) return; document.getElementById('pchVideoBtn').style.display='none'; }
 
         renderMessages(msgs);
         if(msgs.length) lastMsgId = msgs[msgs.length-1].id;
@@ -150,9 +156,11 @@ async function loadMessages(){
 
 // Poll for new messages while this thread is open
 async function pollMessages(){
-    if(!activeApptId) return;
+    const apptId=activeApptId;
+    if(!apptId) return;
     try{
-        const data=await apiFetch(`/chat/${activeApptId}`);
+        const data=await apiFetch(`/chat/${apptId}`);
+        if(activeApptId!==apptId) return;
         const msgs=data.messages||[];
         if(msgs.length&&msgs[msgs.length-1].id!==lastMsgId){ renderMessages(msgs); lastMsgId=msgs[msgs.length-1].id; loadThreads(); }
     }catch{}
@@ -243,7 +251,8 @@ async function sendMessage(){
     const input=document.getElementById('msgInput');
     const text=input.value.trim();
     if(!text&&!pendingVideoFile) return;
-    if(!activeApptId) return;
+    const apptId=activeApptId; // the chat Send was clicked in
+    if(!apptId) return;
     const btn=document.getElementById('sendBtn'); btn.disabled=true;
     try{
         let vPath=null,vName=null,vSize=null;
@@ -253,7 +262,7 @@ async function sendMessage(){
             if(!r) throw new Error('The video could not be uploaded, so nothing was sent. Please try again.');
             vPath=r.path; vName=r.fileName; vSize=pendingVideoFile.size;
         }
-        await apiFetch(`/chat/${activeApptId}`,{ method:'POST', body:JSON.stringify({ message:text||null, videoPath:vPath, videoName:vName, videoSize:vSize }) });
+        await apiFetch(`/chat/${apptId}`,{ method:'POST', body:JSON.stringify({ message:text||null, videoPath:vPath, videoName:vName, videoSize:vSize }) });
         input.value=''; input.style.height='auto';
         clearAttach(); await loadMessages();
     }catch(e){ alert(e.message); }

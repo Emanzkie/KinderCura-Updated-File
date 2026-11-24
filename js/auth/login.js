@@ -75,11 +75,13 @@ const API = window.location.origin + '/api';
                 const nextUrl = (() => {
                   try {
                     const p = new URLSearchParams(window.location.search).get('next');
-                    return p ? decodeURIComponent(p) : null;
+                    const next = p ? decodeURIComponent(p) : null;
+                    // This site only: "//other.com" and "/\\other.com" also start with "/".
+                    return next && new URL(next, window.location.origin).origin === window.location.origin ? next : null;
                   } catch { return null; }
                 })();
 
-                if (nextUrl && (nextUrl.startsWith('/') || nextUrl.startsWith(window.location.origin))) {
+                if (nextUrl && nextUrl.startsWith('/')) {
                   window.location.href = nextUrl;
                   return;
                 }
