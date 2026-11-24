@@ -218,7 +218,7 @@ function renderMessages(msgs){
 // Attach one local video file before sending
 function handleChatVideo(e){
     const f=e.target.files[0]; if(!f) return;
-    if(f.size>150*1024*1024){ alert('Video must be under 150 MB.'); return; }
+    if(f.size>4*1024*1024){ alert('Video must be 4 MB or smaller.'); e.target.value=''; return; } // same as MAX_VIDEO in routes/videos.js
     pendingVideoFile=f;
     document.getElementById('videoAttachName').textContent=`${f.name} (${(f.size/1024/1024).toFixed(1)} MB)`;
     document.getElementById('videoAttachPreview').style.display='flex';

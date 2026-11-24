@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const Child = require('../models/Child');
 const GuardianLink = require('../models/GuardianLink');
 const { authMiddleware } = require('../middleware/auth');
+const { sendServerError } = require('../middleware/serverError');
 const childAge = require('../js/shared/child-age');
 
 const router = express.Router();
@@ -87,8 +88,7 @@ router.get('/', authMiddleware, async (req, res) => {
         
         res.json({ success: true, children: normalized });
     } catch (err) {
-        console.error('Error fetching children:', err);
-        res.status(500).json({ error: err.message });
+        sendServerError(req, res, err);
     }
 });
 
@@ -146,7 +146,7 @@ router.post('/register', authMiddleware, async (req, res) => {
             message: 'Child registered successfully.',
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        sendServerError(req, res, err);
     }
 });
 
@@ -217,7 +217,7 @@ router.put('/:childId', authMiddleware, async (req, res) => {
             },
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        sendServerError(req, res, err);
     }
 });
 
@@ -239,7 +239,7 @@ router.get('/:childId', authMiddleware, async (req, res) => {
             } 
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        sendServerError(req, res, err);
     }
 });
 

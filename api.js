@@ -117,14 +117,20 @@ window.KC.poll = function poll(fn, intervalMs) {
 
 // Shared fetch helper that automatically sends the JWT token
 async function apiFetch(endpoint, options = {}) {
-    const res = await fetch(`${API}${endpoint}`, {
-        ...options,
-        headers: {
-            'Content-Type': 'application/json',
-            ...(KC.token() ? { Authorization: `Bearer ${KC.token()}` } : {}),
-            ...options.headers
-        }
-    });
+    let res;
+    try {
+        res = await fetch(`${API}${endpoint}`, {
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                ...(KC.token() ? { Authorization: `Bearer ${KC.token()}` } : {}),
+                ...options.headers
+            }
+        });
+    } catch (err) {
+        console.error('[apiFetch]', endpoint, err);
+        throw new Error('Could not reach the server. Please check your internet connection and try again.');
+    }
 
     let data = {};
     try {
@@ -145,7 +151,7 @@ async function apiFetch(endpoint, options = {}) {
         const e = data.error;
         const text = typeof e === 'string' ? e
             : (e && typeof e === 'object' ? ([e.code, e.message].filter(Boolean).join(': ') || JSON.stringify(e)) : '');
-        throw new Error(text || `Error ${res.status}`);
+        throw new Error(text || `Something went wrong. Please try again. (Error ${res.status})`);
     }
     return data;
 }

@@ -222,8 +222,9 @@ function handleChatVideo(e) {
   if (!f) return;
 
   /* Limit video size */
-  if (f.size > 150 * 1024 * 1024) {
-    alert('Video must be under 150 MB.');
+  if (f.size > 4 * 1024 * 1024) { // same as MAX_VIDEO in routes/videos.js
+    alert('Video must be 4 MB or smaller.');
+    e.target.value = '';
     return;
   }
 

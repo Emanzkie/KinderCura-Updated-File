@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const { authMiddleware } = require('../middleware/auth');
+const { sendServerError } = require('../middleware/serverError');
 const { hasPermission, canViewChild } = require('../middleware/guardianAccess');
 const {
   ACCESS_APPOINTMENT_STATUSES, patientAccessFilter, pediatricianHasPatient, findLinkedAppointment,
@@ -763,8 +764,7 @@ router.post('/initialize', authMiddleware, async (req, res) => {
       datasetQuestions,
     });
   } catch (err) {
-    console.error('assessments initialize error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -813,8 +813,7 @@ router.post('/save-draft', authMiddleware, async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error('assessments save-draft error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1130,8 +1129,7 @@ router.post('/submit', authMiddleware, async (req, res) => {
       scoringGaps,
     });
   } catch (err) {
-    console.error('assessments submit error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1260,8 +1258,7 @@ router.get('/pedia-patients', authMiddleware, async (req, res) => {
       })),
     });
   } catch (err) {
-    console.error('assessments pedia-patients error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1346,8 +1343,7 @@ router.get('/patients', authMiddleware, async (req, res) => {
       patients
     });
   } catch (err) {
-    console.error('assessments patients filter error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1509,8 +1505,7 @@ router.post('/diagnose/:childId', authMiddleware, async (req, res) => {
       isLabelled: Boolean(latest.clinicalOutcome),
     });
   } catch (err) {
-    console.error('assessments diagnose error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1626,8 +1621,7 @@ router.post('/:assessmentId/ml-label', authMiddleware, async (req, res) => {
     res.json({ success: true, ...result });
   } catch (err) {
     if (err instanceof HttpError) return res.status(err.statusCode).json({ error: err.message });
-    console.error('assessments ml-label error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1665,8 +1659,7 @@ router.post('/:assessmentId/ml-label/exclude', authMiddleware, async (req, res) 
 
     res.json({ success: true, mlReviewStatus: assessment.mlReviewStatus });
   } catch (err) {
-    console.error('assessments ml-label exclude error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1740,7 +1733,7 @@ router.get('/:assessmentId/results', authMiddleware, async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1758,7 +1751,7 @@ router.get('/:childId/history', authMiddleware, async (req, res) => {
     const history = await buildHistoryForChild(child._id, req.user);
     res.json({ success: true, assessments: history });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1806,8 +1799,7 @@ router.get('/child/:childId/progress-notes', authMiddleware, async (req, res) =>
       })),
     });
   } catch (err) {
-    console.error('assessments progress-notes get error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1871,8 +1863,7 @@ router.post('/child/:childId/progress-notes', authMiddleware, async (req, res) =
       },
     });
   } catch (err) {
-    console.error('assessments progress-notes post error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1983,8 +1974,7 @@ router.get('/:childId/review-answers', authMiddleware, async (req, res) => {
       answersByDomain: grouped,
     });
   } catch (err) {
-    console.error('assessments review-answers error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -2064,8 +2054,7 @@ router.get('/:assessmentId/compare', authMiddleware, async (req, res) => {
       } : null,
     });
   } catch (err) {
-    console.error('assessments compare error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 

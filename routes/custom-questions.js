@@ -12,6 +12,7 @@ const mongoose = require('mongoose');
 const router = express.Router();
 
 const { authMiddleware } = require('../middleware/auth');
+const { sendServerError } = require('../middleware/serverError');
 const { hasPermission } = require('../middleware/guardianPermission');
 const PediaCustomQuestion = require('../models/PediaCustomQuestion');
 const PediaCustomQuestionAssignment = require('../models/PediaCustomQuestionAssignment');
@@ -356,7 +357,7 @@ router.get('/', authMiddleware, async (req, res) => {
 
     res.json(response);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(req, res, e);
   }
 });
 
@@ -476,7 +477,7 @@ router.post('/bulk', authMiddleware, async (req, res) => {
       errors: errors.length > 0 ? errors : undefined
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(req, res, e);
   }
 });
 
@@ -534,7 +535,7 @@ router.post('/', authMiddleware, async (req, res) => {
 
     res.status(201).json({ success: true, question: normalizeQuestion(doc.toObject()) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(req, res, e);
   }
 });
 
@@ -609,7 +610,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
     await doc.save();
     res.json({ success: true, question: normalizeQuestion(doc.toObject()) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(req, res, e);
   }
 });
 
@@ -643,7 +644,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(req, res, e);
   }
 });
 
@@ -721,7 +722,7 @@ router.post('/:id/assign', authMiddleware, async (req, res) => {
 
     res.json({ success: true, assignmentId: assignment.id });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(req, res, e);
   }
 });
 
@@ -811,7 +812,7 @@ router.post('/set/:setId/assign', authMiddleware, async (req, res) => {
       message: `${assignments.length} question(s) assigned successfully.`
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(req, res, e);
   }
 });
 
@@ -856,7 +857,7 @@ router.get('/assigned/:childId', authMiddleware, hasPermission('view_assessments
 
     res.json({ success: true, assignments: assignments.map(normalizeAssignment) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(req, res, e);
   }
 });
 
@@ -913,7 +914,7 @@ router.post('/answer/:assignmentId', authMiddleware, async (req, res) => {
 
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(req, res, e);
   }
 });
 
@@ -1062,7 +1063,7 @@ router.post('/set/:setId/answer-batch', authMiddleware, async (req, res) => {
       message: `All ${allAssignmentsInGroup.length} answer${allAssignmentsInGroup.length !== 1 ? 's' : ''} submitted successfully for this set.`
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(req, res, e);
   }
 });
 

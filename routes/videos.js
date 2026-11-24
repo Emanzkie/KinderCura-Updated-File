@@ -9,6 +9,7 @@ const fs = require('fs');
 const mongoose = require('mongoose');
 
 const { authMiddleware } = require('../middleware/auth');
+const { sendServerError } = require('../middleware/serverError');
 const { hasPermission } = require('../middleware/guardianAccess');
 const fileStorage = require('../services/fileStorage');
 
@@ -112,7 +113,13 @@ function makeStorage(subdir, label) {
 }
 
 const VIDEO_TYPES = ['.mp4', '.webm', '.mov', '.avi', '.mkv'];
-const MAX_VIDEO = 150 * 1024 * 1024; // 150 MB
+// Vercel refuses request bodies over about 4.5 MB, so a larger video could never
+// be sent online. The chat pages check the same limit before uploading.
+const MAX_VIDEO = 4 * 1024 * 1024; // 4 MB
+
+function uploadErrorMessage(err) {
+    return err.code === 'LIMIT_FILE_SIZE' ? 'Video must be 4 MB or smaller.' : err.message;
+}
 
 function videoFilter(req, file, cb) {
     const ext = path.extname(file.originalname).toLowerCase();
@@ -132,7 +139,7 @@ const VIDEO_ACCESS = { access: 'public' };
 const uploadAppt = multer({
     storage: makeStorage(APPT_VIDEO_SUBDIR, 'appointment_video'),
     fileFilter: videoFilter,
-    limits: { fileSize: MAX_VIDEO }
+    limits: { fileSize: MAX_VIDEO + 1 } // multer refuses a file that reaches the limit
 });
 const finalizeAppt = fileStorage.finalizeUploads(
     videoDir(APPT_VIDEO_SUBDIR), makeFilename('appointment_video'), VIDEO_ACCESS
@@ -141,7 +148,7 @@ const finalizeAppt = fileStorage.finalizeUploads(
 const uploadChat = multer({
     storage: makeStorage(CHAT_VIDEO_SUBDIR, 'chat_video'),
     fileFilter: videoFilter,
-    limits: { fileSize: MAX_VIDEO }
+    limits: { fileSize: MAX_VIDEO + 1 } // multer refuses a file that reaches the limit
 });
 const finalizeChat = fileStorage.finalizeUploads(
     videoDir(CHAT_VIDEO_SUBDIR), makeFilename('chat_video'), VIDEO_ACCESS
@@ -163,7 +170,7 @@ router.post('/appointment/:appointmentId', authMiddleware, (req, res) => {
     uploadAppt.single('video')(req, res, (multerErr) => finalizeAppt(req, res, async (storeErr) => {
         const err = multerErr || storeErr;
         if (err) {
-            return res.status(400).json({ error: err.message });
+            return res.status(400).json({ error: uploadErrorMessage(err) });
         }
 
         if (!req.file) {
@@ -236,8 +243,7 @@ router.post('/appointment/:appointmentId', authMiddleware, (req, res) => {
                 fileSize: req.file.size
             });
         } catch (error) {
-            console.error('Appointment video upload error:', error);
-            return res.status(500).json({ error: error.message });
+            return sendServerError(req, res, error);
         }
     }));
 });
@@ -290,8 +296,7 @@ router.get('/appointment/:appointmentId', authMiddleware, async (req, res) => {
             }))
         });
     } catch (error) {
-        console.error('Get appointment videos error:', error);
-        return res.status(500).json({ error: error.message });
+        return sendServerError(req, res, error);
     }
 });
 
@@ -299,14 +304,14 @@ router.get('/appointment/:appointmentId', authMiddleware, async (req, res) => {
 /* Upload chat video first, then chat route sends the message using returned path */
 const CHAT_ROLES = ['parent', 'legal_guardian', 'foster_parent', 'court_appointed', 'pediatrician'];
 router.post('/chat', authMiddleware, (req, res) => {
-    // Checked before multer: a refused request used to store up to 150 MB first.
+    // Checked before multer: a refused request used to store its file first.
     if (!CHAT_ROLES.includes(req.user.role)) {
         return res.status(403).json({ error: 'Only parents, guardians and pediatricians can send chat videos.' });
     }
     uploadChat.single('video')(req, res, (multerErr) => finalizeChat(req, res, async (storeErr) => {
         const err = multerErr || storeErr;
         if (err) {
-            return res.status(400).json({ error: err.message });
+            return res.status(400).json({ error: uploadErrorMessage(err) });
         }
 
         if (!req.file) {
@@ -324,8 +329,7 @@ router.post('/chat', authMiddleware, (req, res) => {
                 mimeType: req.file.mimetype
             });
         } catch (error) {
-            console.error('Chat video upload error:', error);
-            return res.status(500).json({ error: error.message });
+            return sendServerError(req, res, error);
         }
     }));
 });
@@ -387,8 +391,7 @@ router.delete('/:videoId', authMiddleware, async (req, res) => {
 
         return res.json({ success: true });
     } catch (error) {
-        console.error('Delete video error:', error);
-        return res.status(500).json({ error: error.message });
+        return sendServerError(req, res, error);
     }
 });
 

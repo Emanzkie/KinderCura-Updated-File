@@ -18,6 +18,7 @@ const Assessment = require('../models/Assessment');
 const OtpCode = require('../models/OtpCode');
 const Notification = require('../models/Notification');
 const { authMiddleware, adminOnly, signPrcResubmitToken } = require('../middleware/auth');
+const { sendServerError } = require('../middleware/serverError');
 const sse = require('../sse');
 const fileStorage = require('../services/fileStorage');
 const { parseSignupConsent } = require('../constants/legalConsent');
@@ -1316,8 +1317,7 @@ router.get('/me', authMiddleware, async (req, res) => {
     // per-request identity log was the noisiest line in the server output.
     res.json({ success: true, user: publicUser(user) });
   } catch (err) {
-    console.error('[/api/auth/me] Error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1381,7 +1381,7 @@ router.put('/update-profile', authMiddleware, async (req, res) => {
     await user.save();
     res.json({ success: true, user: publicUser(user) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1556,7 +1556,7 @@ router.put('/change-password', authMiddleware, async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1571,7 +1571,7 @@ router.get('/pediatrician/settings', authMiddleware, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found.' });
     res.json({ success: true, user: publicUser(user) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1690,7 +1690,7 @@ router.put('/pediatrician/settings', authMiddleware, async (req, res) => {
     await user.save();
     res.json({ success: true, user: publicUser(user) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 

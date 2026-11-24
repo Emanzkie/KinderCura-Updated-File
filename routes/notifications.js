@@ -10,6 +10,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
 const { authMiddleware } = require('../middleware/auth');
+const { sendServerError } = require('../middleware/serverError');
 const Notification = require('../models/Notification');
 const GuardianLink = require('../models/GuardianLink');
 const Child = require('../models/Child');
@@ -228,8 +229,7 @@ router.get('/', authMiddleware, async (req, res) => {
       notifications: notifications.map(formatNotification),
     });
   } catch (err) {
-    console.error('[GET /api/notifications] Error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -240,8 +240,7 @@ router.get('/count', authMiddleware, async (req, res) => {
     const unread = await countUnreadForUser(req.user.userId);
     res.json({ success: true, unread });
   } catch (err) {
-    console.error('notifications count error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -259,8 +258,7 @@ router.put('/read-all', authMiddleware, async (req, res) => {
       updatedCount: result?.modifiedCount ?? result?.nModified ?? 0,
     });
   } catch (err) {
-    console.error('notifications read-all error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -274,8 +272,7 @@ router.delete('/clear-all', authMiddleware, async (req, res) => {
       deletedCount: result?.deletedCount ?? 0,
     });
   } catch (err) {
-    console.error('notifications clear-all error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -289,8 +286,7 @@ router.delete('/all', authMiddleware, async (req, res) => {
       deletedCount: result?.deletedCount ?? 0,
     });
   } catch (err) {
-    console.error('notifications all delete error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -310,8 +306,7 @@ router.put('/:id/read', authMiddleware, async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error('notifications read error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -324,8 +319,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     await deleteOneNotification(filter);
     res.json({ success: true });
   } catch (err) {
-    console.error('notifications delete error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -357,8 +351,7 @@ router.get('/child/:childId', authMiddleware, hasPermission('view_notifications'
 
     res.json({ success: true, notifications: results.map(formatNotification) });
   } catch (err) {
-    console.error('notifications child error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -415,8 +408,7 @@ router.post('/send', authMiddleware, async (req, res) => {
 
     res.json({ success: true, sentCount: payloads.length });
   } catch (err) {
-    console.error('notifications send error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -467,8 +459,7 @@ router.put('/read/:id', authMiddleware, async (req, res) => {
 
     return res.status(403).json({ error: 'Access denied.' });
   } catch (err) {
-    console.error('notifications read-by-id error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 

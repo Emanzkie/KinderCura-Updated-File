@@ -11,6 +11,7 @@ const User = require('../models/User');
 const Child = require('../models/Child');
 const GuardianLink = require('../models/GuardianLink');
 const { authMiddleware } = require('../middleware/auth');
+const { sendServerError } = require('../middleware/serverError');
 const { hasPermission } = require('../middleware/guardianAccess');
 const fileStorage = require('../services/fileStorage');
 
@@ -94,7 +95,7 @@ router.post('/profile', authMiddleware, (req, res) => {
 
             res.json({ success: true, path: picPath });
         } catch (e) {
-            res.status(500).json({ error: e.message });
+            sendServerError(req, res, e);
         }
     }));
 });
@@ -118,7 +119,7 @@ async function requireChildUploadAccess(req, res, next) {
         next();
     } catch (e) {
         if (e && e.name === 'CastError') return res.status(404).json({ error: 'Child not found.' });
-        res.status(500).json({ error: e.message });
+        sendServerError(req, res, e);
     }
 }
 
@@ -154,7 +155,7 @@ router.post('/child/:childId', authMiddleware, requireChildUploadAccess, (req, r
 
             res.json({ success: true, path: picPath, childId: String(child._id) });
         } catch (e) {
-            res.status(500).json({ error: e.message });
+            sendServerError(req, res, e);
         }
     }));
 });
@@ -197,7 +198,7 @@ router.post(
 
             res.json({ success: true, path: normalizedPath });
         } catch (e) {
-            res.status(500).json({ error: e.message });
+            sendServerError(req, res, e);
         }
     }
 );

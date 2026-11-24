@@ -22,6 +22,7 @@ const mongoose = require('mongoose');
 const router = express.Router();
 
 const { authMiddleware } = require('../middleware/auth');
+const { sendServerError } = require('../middleware/serverError');
 const { hasPermission } = require('../middleware/guardianAccess');
 const { pediatricianHasPatient } = require('../services/patientAccess');
 const { clinicToday } = require('../services/reminders');
@@ -836,8 +837,7 @@ router.get('/child/:childId', authMiddleware, async (req, res) => {
     res.json({ success: true, checkups: records.map(shapeCheckup), referrals, referralsError });
   } catch (err) {
     if (err instanceof HttpError) return res.status(err.statusCode).json({ error: err.message });
-    console.error('checkups list error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -849,8 +849,7 @@ router.post('/child/:childId', authMiddleware, async (req, res) => {
     res.status(201).json({ success: true, checkup: shapeCheckup(created) });
   } catch (err) {
     if (err instanceof HttpError) return res.status(err.statusCode).json({ error: err.message });
-    console.error('checkups create error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -909,8 +908,7 @@ router.get('/child/:childId/:checkupId', authMiddleware, async (req, res) => {
     res.json({ success: true, checkup: shapeCheckup(record) });
   } catch (err) {
     if (err instanceof HttpError) return res.status(err.statusCode).json({ error: err.message });
-    console.error('checkups get error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -924,8 +922,7 @@ router.patch('/child/:childId/:checkupId', authMiddleware, async (req, res) => {
     res.json({ success: true, checkup: shapeCheckup(record) });
   } catch (err) {
     if (err instanceof HttpError) return res.status(err.statusCode).json({ error: err.message });
-    console.error('checkups update error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 

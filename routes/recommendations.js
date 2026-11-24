@@ -8,6 +8,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
 const { authMiddleware } = require('../middleware/auth');
+const { sendServerError } = require('../middleware/serverError');
 const { canViewChild, hasPermission } = require('../middleware/guardianAccess');
 const AssessmentResult = require('../models/AssessmentResult');
 const Recommendation = require('../models/Recommendation');
@@ -483,8 +484,7 @@ router.get('/:assessmentId', authMiddleware, async (req, res) => {
       } : null,
     });
   } catch (err) {
-    console.error('recommendations load error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -531,8 +531,7 @@ router.patch('/:recommendationId/activities', authMiddleware, async (req, res) =
       ...await activityState(rec),
     });
   } catch (err) {
-    console.error('activity completion update error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 

@@ -5,6 +5,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
 const { authMiddleware } = require('../middleware/auth');
+const { sendServerError } = require('../middleware/serverError');
 const Appointment = require('../models/Appointment');
 const ChatMessage = require('../models/ChatMessage');
 const Notification = require('../models/Notification');
@@ -169,8 +170,7 @@ router.get('/summary/child/:childId', authMiddleware, async (req, res) => {
       })),
     });
   } catch (err) {
-    console.error('chat summary error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -246,8 +246,7 @@ router.get('/threads', authMiddleware, async (req, res) => {
 
     res.json({ success: true, threads });
   } catch (err) {
-    console.error('chat threads error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -311,8 +310,7 @@ router.get('/:appointmentId', authMiddleware, hasPermission('view_messages'), as
       },
     });
   } catch (err) {
-    console.error('chat get thread error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -385,8 +383,7 @@ router.post('/:appointmentId', authMiddleware, hasPermission('send_messages'), a
       },
     });
   } catch (err) {
-    console.error('chat send error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -400,7 +397,7 @@ router.get('/:appointmentId/unread', authMiddleware, async (req, res) => {
     });
     res.json({ success: true, unread });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 

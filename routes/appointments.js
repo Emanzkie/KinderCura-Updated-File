@@ -8,6 +8,7 @@ const mongoose = require('mongoose');
 require('dotenv').config();
 
 const { authMiddleware, adminOnly, secretaryOrPediatrician } = require('../middleware/auth');
+const { sendServerError } = require('../middleware/serverError');
 const { hasPermission } = require('../middleware/guardianAccess');
 const Appointment = require('../models/Appointment');
 const Notification = require('../models/Notification');
@@ -1444,8 +1445,7 @@ router.get('/slot-settings', authMiddleware, async (req, res) => {
     const settings = await getAppointmentSlotSettings();
     res.json({ success: true, settings });
   } catch (err) {
-    console.error('appointments /slot-settings error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1478,8 +1478,7 @@ router.get('/pediatricians/list', authMiddleware, async (req, res) => {
     const slotSettings = await getAppointmentSlotSettings();
     res.json({ success: true, ...built, slotSettings });
   } catch (err) {
-    console.error('appointments /pediatricians/list error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1532,8 +1531,7 @@ router.get('/availability/check', authMiddleware, async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('appointments availability check error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1561,8 +1559,7 @@ router.get('/pedia', authMiddleware, secretaryOrPediatrician, async (req, res) =
 
     res.json({ success: true, appointments });
   } catch (err) {
-    console.error('appointments /pedia error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1621,8 +1618,7 @@ router.get('/pedia-notifications', authMiddleware, secretaryOrPediatrician, asyn
 
     res.json({ success: true, notifications });
   } catch (err) {
-    console.error('appointments /pedia-notifications error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -1779,6 +1775,7 @@ router.post('/create', authMiddleware, async (req, res) => {
     console.error('appointments create error:', err);
     if (isSlotTakenError(err)) return res.status(409).json({ error: SLOT_TAKEN_MESSAGE });
     const status = /payment|amount|fee|installment|minimum|required/i.test(err.message) ? 400 : 500;
+    if (status === 500) return sendServerError(req, res, err);
     res.status(status).json({ error: err.message });
   }
 });
@@ -1812,7 +1809,7 @@ function assertStatusTransition(from, to) {
 // the pediatrician is told, since nobody else will.
 async function updateAppointmentStatusById({ appointmentId, status, notes = null, secretaryName = null, pediatricianId = null, familyActorName = null }) {
   const appt = await Appointment.findOne({ id: Number(appointmentId) });
-  if (!appt) throw new Error('Appointment not found.');
+  if (!appt) throw Object.assign(new Error('Appointment not found.'), { statusCode: 404 });
 
   assertStatusTransition(appt.status, status);
 
@@ -1969,6 +1966,7 @@ router.put('/:appointmentId/status', authMiddleware, clinicStaffOrAdmin, async (
   } catch (err) {
     console.error('appointments status error:', err);
     const statusCode = err.statusCode || (/payment|minimum|paid/i.test(err.message) ? 400 : 500);
+    if (statusCode === 500) return sendServerError(req, res, err);
     res.status(statusCode).json({ error: err.message });
   }
 });
@@ -1994,7 +1992,8 @@ router.put('/pedia-notifications/:id', authMiddleware, async (req, res) => {
     res.json({ success: true, status: incoming });
   } catch (err) {
     console.error('appointments pedia-notifications update error:', err);
-    res.status(err.statusCode || 500).json({ error: err.message });
+    if (!err.statusCode) return sendServerError(req, res, err);
+    res.status(err.statusCode).json({ error: err.message });
   }
 });
 
@@ -2032,8 +2031,7 @@ router.post('/:appointmentId/cancel', authMiddleware, async (req, res) => {
     });
     res.json({ success: true });
   } catch (err) {
-    console.error('appointments cancel error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -2296,7 +2294,7 @@ router.post('/:appointmentId/reschedule', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('appointments reschedule error:', err);
     if (isSlotTakenError(err)) return res.status(409).json({ error: SLOT_TAKEN_MESSAGE });
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 
 });
@@ -2328,8 +2326,7 @@ router.get('/:userId', authMiddleware, async (req, res) => {
 
     res.json({ success: true, appointments });
   } catch (err) {
-    console.error('appointments history error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -2356,7 +2353,7 @@ router.put('/:appointmentId', authMiddleware, async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
@@ -2370,7 +2367,7 @@ router.delete('/:appointmentId', authMiddleware, adminOnly, async (req, res) => 
     await Appointment.deleteOne({ _id: appt._id });
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 

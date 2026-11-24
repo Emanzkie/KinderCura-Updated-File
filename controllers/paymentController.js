@@ -7,6 +7,7 @@ const Child = require('../models/Child');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { hasPermission } = require('../middleware/guardianAccess');
+const { sendServerError } = require('../middleware/serverError');
 const paymentService = require('../services/paymentService');
 const QRCode = require('qrcode');
 const SystemSetting = require('../models/SystemSetting');
@@ -143,7 +144,7 @@ async function quoteDownPayment(req, res) {
       downPaymentRate: paymentService.DOWN_PAYMENT_RATE,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 }
 
@@ -160,8 +161,7 @@ async function getAppointmentPayments(req, res) {
       payments: payments.map(paymentService.serializePayment),
     });
   } catch (err) {
-    console.error('getAppointmentPayments error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 }
 
@@ -316,8 +316,7 @@ async function selectPaymentMode(req, res) {
 
     res.json({ success: true, mode, paymentStatus: appointment.paymentStatus });
   } catch (err) {
-    console.error('selectPaymentMode error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 }
 
@@ -559,6 +558,12 @@ function assertPayable(appointment) {
  * Reusing the row keeps a single KC-PAY reference per appointment attempt
  * instead of minting a new record every time the parent revisits the page.
  */
+// PayMongo's own wording and HTTP status are for the server log: its 401 (a bad
+// key) would otherwise sign the parent out of KinderCura.
+function isPaymongoError(err) {
+  return err.paymongoErrors !== undefined;
+}
+
 async function ensureAutomatedPayment({ appointment, method, actor, parentEmail, receiptPhone = null, paymentType = 'full_payment' }) {
   const total = Number(appointment.totalAmount || 0);
 
@@ -716,9 +721,10 @@ async function startOnlineCheckout(req, res) {
       testMode: paymongoService.isTestMode(),
     });
   } catch (err) {
-    const status = err.statusCode || 500;
-    console.error('startOnlineCheckout error:', err.message);
-    res.status(status).json({ error: err.message });
+    if (!err.statusCode || isPaymongoError(err)) {
+      return sendServerError(req, res, err, 'Online payment is not available right now. Please try again later or choose Pay at Clinic.');
+    }
+    res.status(err.statusCode).json({ error: err.message });
   }
 }
 
@@ -748,8 +754,7 @@ async function getPaymentStatusByRef(req, res) {
       appointmentId: payment.appointmentNumericId,
     });
   } catch (err) {
-    console.error('getPaymentStatusByRef error:', err.message);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 }
 
@@ -814,8 +819,10 @@ async function reconcileCheckout(req, res) {
       alreadySettled: result.alreadySettled,
     });
   } catch (err) {
-    console.error('reconcileCheckout error:', err.message);
-    res.status(err.statusCode || 500).json({ error: err.message });
+    if (!err.statusCode || isPaymongoError(err)) {
+      return sendServerError(req, res, err, 'Your payment could not be checked right now. Please try again in a few minutes.');
+    }
+    res.status(err.statusCode).json({ error: err.message });
   }
 }
 
@@ -1154,8 +1161,8 @@ async function startPayAtClinic(req, res) {
       clinicAddress: clinic.address,
     });
   } catch (err) {
-    console.error('startPayAtClinic error:', err.message);
-    res.status(err.statusCode || 500).json({ error: err.message });
+    if (!err.statusCode) return sendServerError(req, res, err);
+    res.status(err.statusCode).json({ error: err.message });
   }
 }
 
@@ -1558,16 +1565,18 @@ async function getPaymentReceipt(req, res) {
     if (payment.paymentType === 'partial_installment') receipt.paymentTypeLabel = 'Partial payment';
     res.json({ success: true, receipt });
   } catch (err) {
-    console.error('getPaymentReceipt error:', err.message);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 }
 
 // ── Refunds (see services/refundService.js) ────────────────────────────────
 
 function sendRefundError(res, err, label) {
-  if (!err.statusCode) console.error(`${label} error:`, err.message);
-  res.status(err.statusCode || 500).json({ error: err.message, code: err.code || undefined });
+  if (!err.statusCode) {
+    console.error(`${label} error:`, err);
+    return res.status(500).json({ error: 'Something went wrong on the server. Please try again.' });
+  }
+  res.status(err.statusCode).json({ error: err.message, code: err.code || undefined });
 }
 
 // Refund decisions belong to the appointment's pediatrician or their secretary
@@ -1665,7 +1674,7 @@ async function getClinicConfig(req, res) {
   try {
     res.json(await clinicConfigBody());
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 }
 

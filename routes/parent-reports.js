@@ -20,6 +20,7 @@ const mongoose = require('mongoose');
 const router = express.Router();
 
 const { authMiddleware } = require('../middleware/auth');
+const { sendServerError } = require('../middleware/serverError');
 const { hasPermission } = require('../middleware/guardianAccess');
 const Assessment = require('../models/Assessment');
 const AssessmentAnswer = require('../models/AssessmentAnswer');
@@ -318,8 +319,7 @@ router.get('/children/:childId/report', authMiddleware, async (req, res) => {
       unrenderable,
     });
   } catch (err) {
-    console.error('parent-reports report error:', err);
-    res.status(500).json({ error: err.message });
+    sendServerError(req, res, err);
   }
 });
 
