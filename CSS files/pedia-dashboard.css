@@ -30,6 +30,11 @@
     color: var(--primary);
 }
 
+/* Pending Approvals: same colour as its "Needs attention" label. */
+.stat-num.red:has(+ .stat-sub[style*="--accent-red"]) {
+    color: var(--accent-red);
+}
+
 .stat-sub {
     font-size: 0.82rem;
     margin-top: 0.4rem;
