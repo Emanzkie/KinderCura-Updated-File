@@ -15,13 +15,7 @@ if(_user){
         document.getElementById('navProfilePic').src = _user.profileIcon;
 }
 
-// Shared API fetch helper with JWT token
-async function apiFetch(url, opts={}){
-    const r = await fetch(`${API}${url}`, { ...opts, headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${getToken()}`, ...opts.headers } });
-    const d = await r.json();
-    if(!r.ok) throw new Error(d.error||`Error ${r.status}`);
-    return d;
-}
+// apiFetch comes from /api.js: it also sends an expired session to the login page.
 
 // Active chat state
 let activeApptId=null, pollTimer=null, lastMsgId=0, pendingVideoFile=null;
@@ -151,7 +145,16 @@ async function loadMessages(){
 
         renderMessages(msgs);
         if(msgs.length) lastMsgId = msgs[msgs.length-1].id;
-    }catch(e){ console.error(e); }
+    }catch(e){
+        console.error(e);
+        if(activeApptId!==apptId) return;
+        const locked = e.message.includes('not yet available');
+        document.getElementById('chatMessages').innerHTML = `<div class="empty-chat">${locked ? 'Chat is available once the appointment is approved.' : escapeHtml(e.message)}</div>`;
+        if(locked){
+            document.getElementById('pchHeader').style.display     = 'none';
+            document.getElementById('chatInputArea').style.display = 'none';
+        }
+    }
 }
 
 // Poll for new messages while this thread is open

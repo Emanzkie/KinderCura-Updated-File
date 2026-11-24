@@ -63,6 +63,7 @@ sandbox.window = sandbox;
 sandbox.location = { origin: 'http://localhost', href: '', search: '' };
 sandbox.window.location = sandbox.location;
 vm.createContext(sandbox);
+require('../helpers/load-api-fetch')(sandbox);
 vm.runInContext(fs.readFileSync(path.join(ROOT, 'constants/scoring.js'), 'utf8'), sandbox);
 vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/pedia/pedia-questions.js'), 'utf8'), sandbox);
 const run = (code) => vm.runInContext(code, sandbox);

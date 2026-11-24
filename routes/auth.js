@@ -1343,6 +1343,12 @@ router.put('/update-profile', authMiddleware, async (req, res) => {
     const user = await User.findById(req.user.userId);
     if (!user) return res.status(404).json({ error: 'User not found.' });
 
+    // The license number is what the admin verified, so it cannot be edited here.
+    if (user.role === 'pediatrician' && licenseNumber !== undefined
+      && String(licenseNumber || '').trim() !== String(user.licenseNumber || '').trim()) {
+      return res.status(400).json({ error: 'The license number was verified by the admin and cannot be changed here.' });
+    }
+
     let cleanConsultationFee;
     try {
       cleanConsultationFee = parseConsultationFee(consultationFee);

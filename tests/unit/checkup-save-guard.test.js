@@ -128,6 +128,7 @@ const chainable = (value) => {
   sandbox.window = sandbox;
   sandbox.location = { origin: 'http://localhost', href: '', search: '' };
   vm.createContext(sandbox);
+  require('../helpers/load-api-fetch')(sandbox);
   for (const file of ['constants/scoring.js', 'js/shared/care-plan-labels.js', 'js/pedia/pediatrician-patients.js']) {
     vm.runInContext(fs.readFileSync(path.join(ROOT, file), 'utf8'), sandbox);
   }

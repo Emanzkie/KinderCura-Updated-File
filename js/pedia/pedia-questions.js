@@ -45,25 +45,7 @@
             }
         }
 
-        // Reusable fetch helper with token header
-        async function apiFetch(endpoint, options = {}) {
-            const res = await fetch(`${API}${endpoint}`, {
-                ...options,
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${getToken()}`,
-                    ...options.headers
-                }
-            });
-
-            const data = await res.json().catch(() => ({}));
-
-            if (!res.ok) {
-                throw new Error(data.error || `Error ${res.status}`);
-            }
-
-            return data;
-        }
+        // apiFetch comes from /api.js: it also sends an expired session to the login page.
 
         let allQuestions = []; // Legacy: standalone questions not in a set
         let allQuestionSets = []; // New: question sets with their questions grouped
@@ -95,6 +77,7 @@
             const age = readAgeRange();
 
             if (!questionText) { errEl.textContent = 'Question text is required.'; errEl.style.display = 'block'; return; }
+            if (!domain) { errEl.textContent = 'Choose a category.'; errEl.style.display = 'block'; return; }
             if (age.error) { errEl.textContent = age.error; errEl.style.display = 'block'; return; }
             const options = questionType === 'multiple_choice' ? getOptions() : [];
             if (questionType === 'multiple_choice' && options.length < 2) { errEl.textContent = 'Add at least 2 options.'; errEl.style.display = 'block'; return; }
@@ -105,7 +88,7 @@
             // Clear form for next question
             document.getElementById('qText').value = '';
             document.getElementById('qType').value = 'yes_no';
-            document.getElementById('qDomain').value = 'Other';
+            document.getElementById('qDomain').value = 'Communication';
             document.getElementById('qAgeMin').value = '0';
             document.getElementById('qAgeMax').value = '18';
             clearOptions();
@@ -156,13 +139,19 @@
             try {
                 const data = await apiFetch('/questions/bulk', { method: 'POST', body: JSON.stringify({ questions: questionBatch }) });
 
-                let msg = `✅ ${data.createdCount} question${data.createdCount !== 1 ? 's' : ''} created successfully!`;
-                if (data.errorCount > 0) msg += ` (${data.errorCount} had errors)`;
-
-                flash(msg);
-                questionBatch = [];
+                // Questions the server refused stay in the batch, with the reason.
+                const errors = data.errors || [];
+                const failed = new Set(errors.map(e => e.index));
+                questionBatch = questionBatch.filter((q, i) => failed.has(i + 1));
                 updateBatchPreview();
-                closeModal();
+                flash(`✅ ${data.createdCount} question${data.createdCount !== 1 ? 's' : ''} created successfully!`);
+                if (errors.length) {
+                    const errEl = document.getElementById('modalError');
+                    errEl.textContent = `Not saved and kept in the batch: ${errors.map(e => e.error).join(' ')}`;
+                    errEl.style.display = 'block';
+                } else {
+                    closeModal();
+                }
                 await refreshAll();
             } catch (e) {
                 flash(e.message, 'error');
@@ -756,12 +745,11 @@
             document.getElementById('modalSub').textContent = 'Create custom assessment questions for your patients';
             document.getElementById('qText').value = '';
             document.getElementById('qType').value = 'yes_no';
-            document.getElementById('qDomain').value = 'Other';
+            document.getElementById('qDomain').value = 'Communication';
             document.getElementById('qAgeMin').value = '0';
             document.getElementById('qAgeMax').value = '18';
             document.getElementById('modalError').style.display = 'none';
-            // Reset batch when opening new create modal
-            questionBatch = [];
+            // Questions staged earlier stay in the batch until submitted or removed.
             updateBatchPreview();
             clearOptions();
             onTypeChange();
@@ -830,7 +818,7 @@
             if (questionBatch.length === 0) {
                 document.getElementById('qText').value = '';
                 document.getElementById('qType').value = 'yes_no';
-                document.getElementById('qDomain').value = 'Other';
+                document.getElementById('qDomain').value = 'Communication';
                 document.getElementById('qAgeMin').value = '0';
                 document.getElementById('qAgeMax').value = '18';
                 document.getElementById('modalError').style.display = 'none';
@@ -930,6 +918,12 @@
 
             if (!questionText) {
                 errEl.textContent = 'Question text is required.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            if (!domain) {
+                errEl.textContent = 'Choose a category.';
                 errEl.style.display = 'block';
                 return;
             }

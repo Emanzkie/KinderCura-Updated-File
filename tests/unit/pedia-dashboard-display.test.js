@@ -109,6 +109,7 @@ const RealDate = Date;
   sandbox.Date = Date;
   sandbox.location = { origin: 'http://localhost', href: '', search: '' };
   vm.createContext(sandbox);
+  require('../helpers/load-api-fetch')(sandbox);
   for (const file of ['constants/scoring.js', 'js/pedia/pediatrician-dashboard.js']) {
     vm.runInContext(fs.readFileSync(path.join(ROOT, file), 'utf8'), sandbox);
   }

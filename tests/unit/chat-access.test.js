@@ -162,6 +162,7 @@ const asGuardian = { userId: String(guardian), role: 'legal_guardian' };
   sandbox.window = sandbox;
   sandbox.location = { origin: 'http://localhost', href: '', search: '' };
   vm.createContext(sandbox);
+  require('../helpers/load-api-fetch')(sandbox);
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/pedia/pedia-chat.js'), 'utf8'), sandbox);
   await vm.runInContext('loadThreads()', sandbox);
   const html = el('threadsList').innerHTML;

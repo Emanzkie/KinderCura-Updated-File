@@ -57,7 +57,7 @@ function reset(fields = {}) {
   sent.length = 0;
   appt = {
     _id: oid(), id: 1, pediatricianId: pediaId, parentId, childId, status: 'pending',
-    appointmentDate: new Date(monday), appointmentTime: '10:00', reason: 'Check', totalAmount: 0, amountPaid: 0,
+    appointmentDate: new Date(fields.status === 'approved' ? '2025-01-06' : monday), appointmentTime: '10:00', reason: 'Check', totalAmount: 0, amountPaid: 0,
     notes: 'Please use the side entrance, he is shy.', ...fields,
   };
   appt.save = async function save() {};

@@ -1813,6 +1813,11 @@ async function updateAppointmentStatusById({ appointmentId, status, notes = null
 
   assertStatusTransition(appt.status, status);
 
+  // Completed is final, so a visit that has not happened yet cannot be closed by mistake.
+  if (status === 'completed' && new Date(appt.appointmentDate) > getClinicNow().dateStart) {
+    throw Object.assign(new Error('This appointment is in the future. It can be marked completed on its appointment date.'), { statusCode: 400 });
+  }
+
   if (status === 'approved') {
     // Verified payment records, not the snapshot (paymentService.checkConfirmationPayment).
     const paymentCheck = await paymentService.checkConfirmationPayment(appt);

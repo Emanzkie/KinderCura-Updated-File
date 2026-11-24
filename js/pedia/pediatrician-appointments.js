@@ -16,15 +16,7 @@ if (_u) {
         document.getElementById('navProfilePic').src = _u.profileIcon;
 }
 
-async function apiFetch(ep, opts={}) {
-    const res = await fetch(`${API}${ep}`, {
-        ...opts,
-        headers: { 'Content-Type':'application/json', Authorization:`Bearer ${getToken()}`, ...opts.headers }
-    });
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.error || `Error ${res.status}`);
-    return d;
-}
+// apiFetch comes from /api.js: it also sends an expired session to the login page.
 
 let appointmentSlotSettings = { enforceThirtyMinuteSlots: true, slotMinutes: 60 };
 

@@ -27,12 +27,7 @@ if (!getToken() || !_u) {
                 document.getElementById('navProfilePic').src=_u.profileIcon;
         }
 
-        async function apiFetch(ep,opts={}){
-            const res=await fetch(`${API}${ep}`,{...opts,headers:{'Content-Type':'application/json',Authorization:`Bearer ${getToken()}`,...opts.headers}});
-            const d=await res.json();
-            if(!res.ok)throw new Error(d.error||`Error ${res.status}`);
-            return d;
-        }
+        // apiFetch comes from /api.js: it also sends an expired session to the login page.
 
         function fmtDate(d) {
             if (!d) return '—';
@@ -442,6 +437,7 @@ if (!getToken() || !_u) {
         }
 
         async function respond(id,status){
+            if(status==='declined'&&!confirm('Decline this appointment request? This cannot be undone, and the parent will be notified.')) return;
             const card=document.getElementById(`apt-${id}`);
             if(card){card.style.opacity='.5';card.style.pointerEvents='none';}
             try{

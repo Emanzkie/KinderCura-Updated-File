@@ -21,15 +21,7 @@ const API = window.location.origin + '/api';
             document.getElementById('navProfilePic').src = _u.profileIcon;
     }
 
-    async function apiFetch(ep, opts = {}) {
-        const res = await fetch(`${API}${ep}`, {
-            ...opts,
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}`, ...opts.headers }
-        });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`);
-        return d;
-    }
+    // apiFetch comes from /api.js: it also sends an expired session to the login page.
 
     // ── Helpers ──────────────────────────────────────────────────────────────
     function fmtTime(t){
@@ -424,7 +416,7 @@ const API = window.location.origin + '/api';
                         title="Every record for this child in one timeline: assessments, appointments, check-ups, notes, questions and chat">
                         <img src="/icons/logs.png" alt="" aria-hidden="true" style="width:1.1em;height:1.1em;object-fit:contain;vertical-align:-0.18em;"> Patient History
                     </button>
-                    ${p.appointmentId ? `<button class="btn btn-secondary" onclick="window.location.href='/pedia/pedia-chat?appointmentId=${p.appointmentId}'" style="flex:1;min-width:130px;padding:0.7rem;"> Chat with Parent</button>` : ''}
+                    ${p.chatAppointmentId ? `<button class="btn btn-secondary" onclick="window.location.href='/pedia/pedia-chat?appointmentId=${Number(p.chatAppointmentId)}'" style="flex:1;min-width:130px;padding:0.7rem;"> Chat with Parent</button>` : ''}
                 </div>
             </div>`;
         }).join('');

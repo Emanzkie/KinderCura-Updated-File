@@ -15,15 +15,7 @@ const API = window.location.origin + '/api';
             if(_u.role==='admin') window.location.href='/admin/admin-dashboard.html'; else if(_u.role==='parent') window.location.href='/parent/dashboard.html'; else window.location.href='/login.html';
         }
 
-        async function apiFetch(endpoint, options = {}) {
-            const res = await fetch(`${API}${endpoint}`, {
-                ...options,
-                headers: { 'Content-Type':'application/json', Authorization:`Bearer ${getToken()}`, ...options.headers }
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
-            return data;
-        }
+        // apiFetch comes from /api.js: it also sends an expired session to the login page.
 
         async function loadProfile() {
             try {
@@ -102,7 +94,6 @@ const API = window.location.origin + '/api';
                 await apiFetch('/auth/update-profile', {
                     method: 'PUT',
                     body: JSON.stringify({
-                        licenseNumber:  document.getElementById('editLicense').value.trim(),
                         institution:    document.getElementById('editInstitution').value.trim(),
                         specialization: document.getElementById('editSpecialization').value.trim()
                     })

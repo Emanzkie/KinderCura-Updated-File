@@ -64,7 +64,7 @@ function reset(fields) {
     parentId,
     childId,
     status: 'pending',
-    appointmentDate: new Date('2030-01-07T00:00:00Z'),
+    appointmentDate: new Date(fields.status === 'approved' ? '2025-01-06T00:00:00Z' : '2030-01-07T00:00:00Z'),
     appointmentTime: '09:00',
     reason: 'Check',
     totalAmount: 0,

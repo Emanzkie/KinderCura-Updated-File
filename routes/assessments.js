@@ -1189,6 +1189,9 @@ router.get('/pedia-patients', authMiddleware, async (req, res) => {
         parentLastName: parent?.lastName || '',
         parentEmail: linked ? (parent?.email || '') : '',
         appointmentId: appt.id,
+        // Newest visit chat is open for (routes/chat.js), which may not be the newest booking.
+        chatAppointmentId: appointments.find((a) => String(a.childId) === String(appt.childId)
+          && ['approved', 'completed'].includes(a.status))?.id ?? null,
         appointmentStatus: appt.status,
         appointmentDate: appt.appointmentDate,
         reason: appt.reason,

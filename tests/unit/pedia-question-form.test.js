@@ -166,6 +166,7 @@ const base = { questionText: 'Does the child wave?', questionType: 'yes_no' };
     sandbox.window = sandbox;
     sandbox.location = { hostname: 'kindercura.example', origin: 'http://kindercura.example', pathname: '/pedia/x.html', href: '', search: '', replace() {} };
     vm.createContext(sandbox);
+    require('../helpers/load-api-fetch')(sandbox);
     return { sandbox, el };
   }
   const load = (sandbox, files) => files.forEach((f) => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox));
