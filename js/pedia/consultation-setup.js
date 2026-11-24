@@ -45,57 +45,42 @@
         };
     }
 
-    const field = (name, label, attrs) => `
+    const field = (name, label, icon, attrs) => `
         <div class="cs-field">
             <label for="cs-${name}">${label}</label>
-            <input id="cs-${name}" aria-describedby="cs-${name}-err" required ${attrs}>
+            <span class="cs-input"><img src="/icons/${icon}.png" alt=""><input id="cs-${name}" aria-describedby="cs-${name}-err" required ${attrs}></span>
             <p class="cs-err" id="cs-${name}-err"></p>
         </div>`;
 
-    const ILLUSTRATION = `
-        <svg class="cs-art" viewBox="0 0 280 220" aria-hidden="true" focusable="false">
-            <circle cx="140" cy="112" r="96" fill="#8BA98D"/>
-            <ellipse cx="140" cy="196" rx="112" ry="12" fill="#5A7560"/>
-            <path d="M74 196c0-40 18-62 44-62s44 22 44 62z" fill="#F4D89F"/>
-            <circle cx="118" cy="96" r="36" fill="#F0DCD8"/>
-            <path d="M82 94c0-26 16-40 36-40s36 14 36 40c-8-14-20-20-36-20s-28 6-36 20z" fill="#3D4738"/>
-            <circle cx="106" cy="100" r="4" fill="#3D4738"/><circle cx="130" cy="100" r="4" fill="#3D4738"/>
-            <circle cx="97" cy="110" r="5" fill="#E8A5A5"/><circle cx="139" cy="110" r="5" fill="#E8A5A5"/>
-            <path d="M108 113q10 9 20 0" fill="none" stroke="#3D4738" stroke-width="3" stroke-linecap="round"/>
-            <circle cx="184" cy="134" r="10" fill="#F8E5B5"/><circle cx="220" cy="134" r="10" fill="#F8E5B5"/>
-            <ellipse cx="202" cy="180" rx="28" ry="20" fill="#F8E5B5"/>
-            <circle cx="202" cy="148" r="24" fill="#F8E5B5"/>
-            <ellipse cx="202" cy="156" rx="10" ry="8" fill="#FAFAF6"/>
-            <circle cx="193" cy="145" r="3" fill="#3D4738"/><circle cx="211" cy="145" r="3" fill="#3D4738"/>
-            <circle cx="202" cy="153" r="3" fill="#3D4738"/>
-            <path d="M102 138v20a16 16 0 0 0 32 0v-20M118 174v6q0 10 22 10 24 0 30-14" fill="none" stroke="#3D4738" stroke-width="4" stroke-linecap="round"/>
-            <circle cx="172" cy="172" r="8" fill="#FAFAF6" stroke="#3D4738" stroke-width="4"/>
-            <path d="M62 60h10v-10h10v10h10v10h-10v10h-10v-10h-10z" fill="#FAFAF6"/>
-            <path d="M214 92c-10-8-16-13-16-20a9 9 0 0 1 16-5 9 9 0 0 1 16 5c0 7-6 12-16 20z" fill="#E8A5A5"/>
+    // Decorative only; filled from consultation-setup.css.
+    const WAVES = `
+        <svg class="cs-waves" viewBox="0 0 340 260" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+            <path class="cs-wave-back" d="M0 178C130 160 190 30 340 0v260H0z"/>
+            <path class="cs-wave-front" d="M0 260c130-30 190-138 340-150v150z"/>
         </svg>`;
 
     const TEMPLATE = `
         <div class="cs-brand">
             <p class="cs-logo"><img src="/icons/logo.png" alt=""> KinderCura</p>
             <h2 id="cs-title" tabindex="-1" autofocus></h2>
-            <p class="cs-lead">Set up your consultation details so parents can find you and book their child's visit.</p>
-            ${ILLUSTRATION}
+            <p class="cs-lead">Set up your consultation details and availability so parents can find you and book their child's appointment.</p>
+            ${WAVES}
         </div>
         <div class="cs-main">
             <form id="cs-form" novalidate>
-                <h3 class="cs-heading">Consultation profile</h3>
-                <p class="cs-note">All fields are required. This takes about a minute.</p>
+                <h3 class="cs-heading">Consultation Profile</h3>
+                <p class="cs-note">Fill in your consultation details to complete your setup.</p>
                 <fieldset><legend>Contact Information</legend>
                     <div class="cs-grid">
-                        ${field('phoneNumber', 'Phone Number', 'type="tel" autocomplete="tel" maxlength="20" placeholder="09123456789"')}
-                        ${field('clinicName', 'Clinic Name', 'type="text" maxlength="120"')}
-                        ${field('institution', 'Hospital / Institution Name', 'type="text" maxlength="120"')}
+                        ${field('phoneNumber', 'Phone Number', 'mobile_number', 'type="tel" autocomplete="tel" maxlength="20" placeholder="09123456789"')}
+                        ${field('clinicName', 'Clinic Name', 'address', 'type="text" maxlength="120"')}
+                        ${field('institution', 'Hospital / Institution Name', 'pediatrician', 'type="text" maxlength="120" placeholder="Enter hospital or institution name"')}
                     </div>
                 </fieldset>
                 <fieldset><legend>Consultation Details</legend>
                     <div class="cs-grid">
-                        ${field('consultationFee', 'Consultation Fee (PHP)', 'type="number" min="1" step="0.01" inputmode="decimal"')}
-                        ${field('maxPatientsPerDay', 'Maximum Patients per Day', 'type="number" min="1" max="50" step="1" inputmode="numeric"')}
+                        ${field('consultationFee', 'Consultation Fee (PHP)', 'consultation_fee', 'type="number" min="1" step="0.01" inputmode="decimal" placeholder="Enter consultation fee"')}
+                        ${field('maxPatientsPerDay', 'Maximum Patients per Day', 'maximum_patients', 'type="number" min="1" max="50" step="1" inputmode="numeric"')}
                     </div>
                 </fieldset>
                 <fieldset><legend>Availability Schedule</legend>
@@ -105,14 +90,14 @@
                         <p class="cs-err" id="cs-days-err"></p>
                     </div>
                     <div class="cs-grid">
-                        ${field('startTime', 'Consultation Start Time', 'type="time"')}
-                        ${field('endTime', 'Consultation End Time', 'type="time"')}
+                        ${field('startTime', 'Consultation Start Time', 'pedia_hours', 'type="time"')}
+                        ${field('endTime', 'Consultation End Time', 'pedia_hours', 'type="time"')}
                     </div>
                 </fieldset>
                 <p class="cs-err cs-err--form" id="cs-form-err" role="alert"></p>
                 <div class="cs-actions">
                     <button type="button" class="cs-link" id="cs-logout">Log Out</button>
-                    <button type="submit" class="btn btn-primary" id="cs-save">Confirm</button>
+                    <button type="submit" class="btn btn-primary" id="cs-save">Save and Continue</button>
                 </div>
             </form>
             <div class="cs-done" id="cs-done" role="status" hidden>
@@ -176,7 +161,7 @@
             } finally {
                 saving = false;
                 $('save').disabled = false;
-                $('save').textContent = 'Confirm';
+                $('save').textContent = 'Save and Continue';
             }
         });
         $('logout').addEventListener('click', () => doLogout());

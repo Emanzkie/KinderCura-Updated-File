@@ -3,7 +3,7 @@
 body.cs-open { overflow: hidden; }
 
 .cs-dialog {
-    width: min(1000px, calc(100vw - 2rem));
+    width: min(1040px, calc(100vw - 2rem));
     max-height: calc(100vh - 2rem);
     max-height: calc(100dvh - 2rem);
     margin: auto;
@@ -15,77 +15,121 @@ body.cs-open { overflow: hidden; }
     box-shadow: var(--shadow-raised);
     overflow: hidden;
 }
-.cs-dialog[open] { display: grid; grid-template-columns: 340px minmax(0, 1fr); }
+.cs-dialog[open] { display: grid; grid-template-columns: 320px minmax(0, 1fr); min-height: min(600px, calc(100vh - 2rem)); }
 .cs-dialog::backdrop { background: rgba(61, 71, 56, 0.55); }
 .cs-dialog [hidden] { display: none; }
 
+/* ── Left panel ── */
 .cs-brand {
-    display: flex;
-    flex-direction: column;
-    padding: 2rem;
-    background: var(--primary-dark);
+    position: relative;
+    padding: 2.5rem 2.25rem;
+    overflow: hidden;
+    background: linear-gradient(160deg, var(--primary-dark) 35%, var(--text-dark) 190%);
     color: var(--bg-primary);
 }
-.cs-logo { display: flex; align-items: center; gap: 0.6rem; margin: 0 0 1.5rem; font-size: 1.2rem; font-weight: 700; color: var(--bg-primary); }
-.cs-logo img { width: 44px; height: 44px; object-fit: contain; }
-.cs-brand h2 { margin: 0 0 0.6rem; font-size: 1.5rem; line-height: 1.3; color: var(--bg-primary); overflow-wrap: anywhere; }
+.cs-brand > :not(.cs-waves) { position: relative; z-index: 1; }
+.cs-logo { display: flex; align-items: center; gap: 0.7rem; margin: 0 0 2.75rem; padding-left: 0.9rem; border-left: 2px solid var(--success); font-size: 1.35rem; font-weight: 700; color: var(--bg-primary); }
+.cs-logo img { width: 42px; height: 42px; object-fit: contain; }
+.cs-brand h2 { margin: 0; font-size: 2rem; line-height: 1.25; color: var(--bg-primary); overflow-wrap: anywhere; }
 .cs-brand h2:focus { outline: none; box-shadow: none; }
-.cs-lead { margin: 0; line-height: 1.5; color: var(--bg-primary); }
-.cs-art { width: 100%; max-width: 280px; margin: auto; padding-top: 1rem; }
+.cs-lead { margin: 0; line-height: 1.65; color: var(--bg-primary); }
+.cs-lead::before { content: ''; display: block; width: 64px; height: 4px; margin: 1.25rem 0; border-radius: var(--radius-pill); background: var(--success); }
+.cs-waves { position: absolute; inset: auto 0 0; width: 100%; height: 38%; }
+.cs-wave-back { fill: var(--primary); opacity: 0.75; }
+.cs-wave-front { fill: var(--primary-light); opacity: 0.75; }
 
-.cs-main { padding: 2rem; overflow-y: auto; max-height: calc(100vh - 2rem); max-height: calc(100dvh - 2rem); }
-.cs-heading { margin: 0 0 0.25rem; font-size: 1.3rem; color: var(--primary-dark); }
-.cs-note { margin: 0 0 1rem; font-size: 0.9rem; color: var(--text-light); }
-.cs-dialog fieldset { margin: 0 0 1rem; padding: 0; border: 0; min-width: 0; }
-.cs-dialog legend { width: 100%; padding: 0 0 0.35rem; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border); font-weight: 700; color: var(--text-dark); }
-.cs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem 1rem; }
-.cs-field { min-width: 0; }
-.cs-grid > .cs-field:last-child:nth-child(odd) { grid-column: 1 / -1; }
-.cs-field > label, .cs-label { display: block; margin-bottom: 0.3rem; font-size: 0.88rem; font-weight: 600; }
-.cs-field > input {
+/* ── Form ── */
+.cs-main { padding: 2rem 2.25rem; overflow-y: auto; max-height: calc(100vh - 2rem); max-height: calc(100dvh - 2rem); }
+.cs-heading { margin: 0 0 0.2rem; font-size: 1.55rem; color: var(--primary-dark); }
+.cs-note { margin: 0 0 1.25rem; font-size: 0.95rem; color: var(--text-light); }
+.cs-dialog fieldset { margin: 0 0 0.6rem; padding: 0; border: 0; min-width: 0; }
+.cs-dialog legend {
     width: 100%;
     box-sizing: border-box;
-    padding: 0.65rem 0.75rem;
-    border: 2px solid var(--border);
-    border-radius: var(--radius-input);
+    margin-bottom: 0.8rem;
+    padding: 0.45rem 0.75rem;
+    border-radius: 8px;
+    background: rgba(168, 196, 157, 0.35);
+    font-size: 1.02rem;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+.cs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1.5rem; }
+.cs-field { min-width: 0; }
+.cs-grid > .cs-field:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.cs-field > label, .cs-label { display: block; margin-bottom: 0.35rem; font-size: 0.9rem; font-weight: 600; }
+.cs-field > label::after, .cs-label::after { content: ' *'; color: var(--accent-red); }
+.cs-input { position: relative; display: block; }
+.cs-input > img { position: absolute; left: 0.85rem; top: 50%; width: 20px; height: 20px; object-fit: contain; transform: translateY(-50%); pointer-events: none; }
+.cs-input > input {
+    width: 100%;
+    min-height: 44px;
+    box-sizing: border-box;
+    padding: 0.6rem 0.85rem 0.6rem 2.75rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-panel);
     background: var(--bg-primary);
     color: var(--text-dark);
     font: inherit;
     font-size: 0.95rem;
+    transition: border-color 0.2s ease;
 }
-.cs-field > input:focus { outline: none; border-color: var(--primary); box-shadow: var(--focus-ring); }
-.cs-field > input[aria-invalid="true"] { border-color: var(--accent-red); }
-.cs-err { min-height: 1.1em; margin: 0.2rem 0 0.35rem; font-size: 0.8rem; color: var(--text-dark); }
-.cs-err--form:not(:empty) { padding: 0.6rem 0.8rem; border-radius: var(--radius-btn); background: var(--status-attention-bg); }
+.cs-input > input::placeholder { color: var(--text-light); opacity: 0.8; }
+.cs-input > input:hover { border-color: var(--primary-light); }
+.cs-input > input:focus { outline: none; border-color: var(--primary); box-shadow: var(--focus-ring); }
+.cs-input > input[aria-invalid="true"] { border-color: var(--accent-red); }
+.cs-err { min-height: 1.1em; margin: 0.2rem 0 0.3rem; font-size: 0.8rem; color: var(--text-dark); }
+.cs-err--form:empty { display: none; }
+.cs-err--form:not(:empty) { margin-bottom: 1rem; padding: 0.6rem 0.8rem; border-radius: var(--radius-btn); background: var(--status-attention-bg); }
 
-[role="group"].cs-field { margin-bottom: 0.5rem; }
-.cs-days { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.cs-days label { position: relative; cursor: pointer; }
-.cs-days input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.cs-days span { display: block; padding: 0.4rem 0.8rem; border: 2px solid var(--border); border-radius: var(--radius-pill); font-size: 0.85rem; }
-.cs-days input:checked + span { border-color: var(--primary-dark); background: var(--primary-dark); color: var(--bg-primary); }
-.cs-days input:focus-visible + span { box-shadow: var(--focus-ring); }
+.cs-days + .cs-err { margin-bottom: 0.7rem; }
+.cs-days { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+.cs-days label {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 0.75rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-btn);
+    background: rgba(168, 196, 157, 0.15);
+    font-size: 0.87rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.cs-days input { width: 16px; height: 16px; margin: 0; accent-color: var(--primary-dark); cursor: pointer; }
+.cs-days label:has(:checked) { border-color: var(--primary); background: rgba(168, 196, 157, 0.45); }
+.cs-days label:has(:focus-visible) { box-shadow: var(--focus-ring); }
+.cs-days input:focus-visible { outline: none; }
 
-.cs-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
-.cs-actions .btn, .cs-done .btn { padding: 0.75rem 1.8rem; }
-.cs-link { flex: none; white-space: nowrap; padding: 0.5rem 0; border: 0; background: none; color: var(--text-light); font: inherit; font-size: 0.9rem; text-decoration: underline; cursor: pointer; }
-.cs-link:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* ── Buttons ── */
+.cs-actions { display: flex; justify-content: center; gap: 1rem; padding-top: 1.25rem; border-top: 1px solid var(--border); }
+.cs-link, #cs-save.btn, #cs-close.btn { min-height: 46px; padding: 0.7rem 1.75rem; border-radius: var(--radius-panel); font: inherit; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
+.cs-link { flex: 0 0 auto; min-width: 140px; border: 1.5px solid var(--primary-dark); background: var(--bg-primary); color: var(--primary-dark); }
+.cs-link:hover { background: var(--bg-secondary); }
+#cs-save.btn, #cs-close.btn { min-width: 220px; border: 1.5px solid var(--primary-dark); outline: none; background: var(--primary-dark); color: var(--bg-primary); }
+#cs-save.btn:hover, #cs-close.btn:hover { border-color: var(--text-dark); background: var(--text-dark); color: var(--bg-primary); }
+#cs-save.btn:disabled { opacity: 0.7; cursor: wait; }
+.cs-link:focus-visible, #cs-save.btn:focus-visible, #cs-close.btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
-.cs-done { padding: 4rem 1rem; text-align: center; }
-.cs-done img { width: 56px; height: 56px; object-fit: contain; margin-bottom: 1rem; }
-.cs-done p { margin: 0.5rem auto 1.5rem; max-width: 26rem; line-height: 1.6; }
+.cs-done { padding: 7rem 1rem; text-align: center; }
+.cs-done img { width: 60px; height: 60px; object-fit: contain; margin-bottom: 1rem; }
+.cs-done p { margin: 0.6rem auto 1.75rem; max-width: 26rem; line-height: 1.65; }
 
 @media (max-width: 900px) {
     .cs-dialog { overflow-y: auto; }
-    .cs-dialog[open] { display: block; }
-    .cs-brand { padding: 1.25rem 1.5rem; }
-    .cs-logo { margin-bottom: 0.75rem; }
-    .cs-brand h2 { font-size: 1.2rem; margin-bottom: 0.3rem; }
-    .cs-lead { font-size: 0.9rem; }
-    .cs-art { display: none; }
+    .cs-dialog[open] { display: block; min-height: 0; }
+    .cs-brand { padding: 1.4rem 1.5rem; }
+    .cs-logo { margin-bottom: 0.9rem; font-size: 1.1rem; }
+    .cs-logo img { width: 34px; height: 34px; }
+    .cs-brand h2 { font-size: 1.35rem; }
+    .cs-lead { font-size: 0.92rem; line-height: 1.5; }
+    .cs-lead::before { margin: 0.7rem 0; }
+    .cs-waves { display: none; }
     .cs-main { padding: 1.5rem; overflow: visible; max-height: none; }
 }
 @media (max-width: 520px) {
     .cs-grid { grid-template-columns: minmax(0, 1fr); }
-    .cs-field > input { font-size: 16px; } /* no zoom on focus (iOS) */
+    .cs-input > input { font-size: 16px; } /* no zoom on focus (iOS) */
+    .cs-actions { flex-direction: column-reverse; }
+    .cs-link, #cs-save.btn, #cs-close.btn { width: 100%; }
 }
