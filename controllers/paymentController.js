@@ -809,7 +809,7 @@ async function reconcileCheckout(req, res) {
       notes: 'Confirmed by server-side reconciliation with PayMongo.',
     });
 
-    if (!result.alreadySettled) await notifyPaymentSettled(result.payment);
+    if (!result.alreadySettled) await notifyPaymentSettled(result.payment, result.emailed);
 
     res.json({
       success: true,
@@ -834,8 +834,9 @@ async function reconcileCheckout(req, res) {
  * Called only when `settlePayment` reported a fresh settlement
  * (`alreadySettled === false`), so a retried webhook or a later reconcile does
  * not produce a duplicate "Payment Received" notification.
+ * `emailed` is settlePayment's: true only when the receipt email really went out.
  */
-async function notifyPaymentSettled(payment) {
+async function notifyPaymentSettled(payment, emailed) {
   try {
     const appointment = await Appointment.findById(payment.appointmentId).lean();
     if (!appointment) return;
@@ -857,7 +858,9 @@ async function notifyPaymentSettled(payment) {
       appointment.parentId,
       'Payment Received — Appointment Confirmed',
       `We received ${amount} for Appointment #${appointment.id}. `
-        + `Receipt ${payment.receiptNumber} has been emailed to you.`
+        + (emailed
+          ? `Receipt ${payment.receiptNumber} has been emailed to you.`
+          : `You can view receipt ${payment.receiptNumber} in Appointments.`)
         + (balanceText ? ` The remaining ${balanceText}` : ''),
       'payment',
       { relatedPage: '/parent/appointments.html', relatedId: String(appointment.id) }
@@ -1052,7 +1055,7 @@ async function handlePaymongoWebhook(req, res) {
         notes: `Confirmed by PayMongo webhook (${eventType}).`,
       });
 
-      if (!result.alreadySettled) await notifyPaymentSettled(result.payment);
+      if (!result.alreadySettled) await notifyPaymentSettled(result.payment, result.emailed);
       return res.status(200).json({ received: true, settled: true, duplicate: result.alreadySettled });
     }
 
@@ -1303,7 +1306,7 @@ async function confirmClinicPayment(req, res) {
       notes: String(req.body?.notes || '').trim() || 'Cash payment received at clinic counter.',
     });
 
-    if (!result.alreadySettled) await notifyPaymentSettled(result.payment);
+    if (!result.alreadySettled) await notifyPaymentSettled(result.payment, result.emailed);
 
     res.json({
       success: true,

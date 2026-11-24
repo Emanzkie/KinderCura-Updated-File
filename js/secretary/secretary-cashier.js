@@ -226,7 +226,7 @@ async function confirmPayment() {
 
         const detail = [
             `Receipt ${data.receiptNumber}`,
-            data.receiptEmailed ? 'emailed to the parent' : 'created (email pending)',
+            data.receiptEmailed ? 'emailed to the parent' : 'created (email not confirmed)',
             `for ${formatMoney(data.amount)}`,
         ].join(' · ');
         const paidDetail = document.getElementById('paidDetail');

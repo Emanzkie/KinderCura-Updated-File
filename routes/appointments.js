@@ -21,6 +21,7 @@ const AssessmentResult = require('../models/AssessmentResult');
 const SystemSetting = require('../models/SystemSetting');
 const scoring = require('../constants/scoring');
 const paymentService = require('../services/paymentService');
+const httpEmail = require('../services/httpEmail');
 const { getSecretaryPermissions } = require('../services/secretaryPermissions');
 const { CLINIC_TIME_ZONE } = require('../js/shared/child-age');
 const sse = require('../sse');
@@ -49,7 +50,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const emailConfigured = () => Boolean(
+const emailConfigured = () => httpEmail.httpEmailConfigured() || Boolean(
   process.env.EMAIL_USER &&
   process.env.EMAIL_PASS &&
   process.env.EMAIL_USER !== 'your_email@gmail.com' &&
@@ -102,6 +103,12 @@ async function sendEmail(to, subject, html) {
     return false;
   }
   try {
+    // EMAIL_API_KEY selects the provider's HTTPS API, as in routes/auth.js: the
+    // production host blocks outbound SMTP, so Gmail alone never delivered these.
+    if (httpEmail.httpEmailConfigured()) {
+      await httpEmail.sendViaHttp({ to, subject, html: wrapEmail(html) });
+      return true;
+    }
     await transporter.sendMail({
       from: `"KinderCura" <${process.env.EMAIL_USER}>`,
       to,

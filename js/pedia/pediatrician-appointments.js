@@ -554,7 +554,9 @@ async function collectBalance(btn, id, amount) {
     btn.textContent = 'Recording…';
     try {
         const r = await apiFetch(`/payments/appointments/${encodeURIComponent(id)}/collect-balance`, { method: 'POST' });
-        alert(r.receiptNumber ? `Balance recorded. Receipt ${r.receiptNumber} was sent to the parent.` : 'Balance recorded.');
+        alert(r.receiptNumber
+            ? `Balance recorded. Receipt ${r.receiptNumber} ${r.receiptEmailed ? 'was emailed to the parent.' : "is ready in the parent's Appointments."}`
+            : 'Balance recorded.');
         await loadAppointments();
     } catch (err) {
         alert(err.message || 'Could not record the balance.');

@@ -21,6 +21,7 @@ const nodemailer = require('nodemailer');
 mongoose.set('bufferCommands', false);
 process.env.EMAIL_USER = 'clinic@example.invalid';
 process.env.EMAIL_PASS = 'test-only';
+process.env.EMAIL_API_KEY = '';
 
 let relay = () => Promise.resolve({ messageId: 'm' });
 let relayCalls = 0;

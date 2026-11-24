@@ -91,7 +91,7 @@ function renderReceiptCard(r) {
                 <div><dt>Paid At</dt><dd>${fmtDateTime(r.paidAt)}</dd></div>
                 <div><dt>Status</dt><dd style="color:var(--status-positive-fg);">${escapeHtml(String(r.status || '').toUpperCase())}</dd></div>
             </dl>
-            <p class="receipt-emailed">Receipt emailed to: <strong>${escapeHtml(r.parentEmail || '—')}</strong></p>
+            <p class="receipt-emailed">Receipt email: <strong>${escapeHtml(r.parentEmail || '—')}</strong></p>
             ${r.contactPhone ? `<p class="receipt-emailed">Contact mobile: <strong>${escapeHtml(r.contactPhone)}</strong></p>` : ''}
         </div>`;
 }

@@ -17,6 +17,7 @@ const ROOT = path.join(__dirname, '..', '..');
 const sent = [];
 process.env.EMAIL_USER = 'clinic@example.invalid';
 process.env.EMAIL_PASS = 'test-only';
+process.env.EMAIL_API_KEY = '';
 nodemailer.createTransport = () => ({ sendMail: async (msg) => { sent.push(msg); return { messageId: 'm' }; } });
 
 const Appointment = require('../../models/Appointment');
