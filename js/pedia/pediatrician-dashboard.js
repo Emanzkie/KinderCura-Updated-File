@@ -349,7 +349,7 @@ if (!getToken() || !_u) {
             const dateEl = rsEl('rsDate');
             dateEl.value = '';
             // The backend refuses a past date; do not offer one in the picker either.
-            dateEl.min = new Date().toISOString().slice(0,10);
+            dateEl.min = new Date().toLocaleDateString('en-CA'); // local YYYY-MM-DD; the UTC date is yesterday until 8 AM in Manila
             renderRsTimeField();
             rsEl('rsReason').value = '';
             rescheduleError('');

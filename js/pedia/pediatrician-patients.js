@@ -484,9 +484,26 @@ const API = window.location.origin + '/api';
         window.open(`/parent/results.html?assessmentId=${assessmentId}&childId=${childId}`, '_blank');
     }
 
+    // ── Unsaved text in the Diagnosis and Check-up windows ─────────────────────
+    // Fields the pediatrician typed in since the window opened. Only typing fires
+    // 'input', so prefilled values do not count.
+    const _editedFields = new Set();
+    document.addEventListener('input', (e) => {
+        if (e.target.closest && e.target.closest('#diagnosisModal, #progressModal')) _editedFields.add(e.target);
+    });
+
+    function okToDiscard(modalId) {
+        const modal = document.getElementById(modalId);
+        const unsaved = [..._editedFields].some((el) => modal.contains(el) && el.offsetParent !== null
+            // Saving a check-up, referral or note empties or hides its own text fields.
+            && (modalId === 'diagnosisModal' || (['textarea', 'text'].includes(el.type) && el.value.trim())));
+        return !unsaved || confirm('You have unsaved text. Close without saving it?');
+    }
+
     // assessmentId is the child's latest COMPLETED assessment (resultAssessmentId):
     // the one the diagnosis, outcome label and ML label all belong to.
     function openDiagnosis(childId, childName, existingDiag, existingRec, existingNextDate, existingNextReason, overallScore, assessmentId) {
+        _editedFields.clear();
         window.currentChildId = childId;
         window.currentDiagnosisScore = overallScore;
         window.currentAssessmentId = assessmentId || null;
@@ -575,6 +592,8 @@ const API = window.location.origin + '/api';
                 body: JSON.stringify({ riskCategory, notes: notes || null }),
             });
             const statusEl = document.getElementById('ml-label-status');
+            _editedFields.delete(document.getElementById('ml-label-select'));
+            _editedFields.delete(document.getElementById('ml-label-notes'));
             if (statusEl) statusEl.textContent = `Saved — reviewed ${formatDisplayDate(toDateInputValue(result.mlLabel?.reviewedAt)) || 'just now'}`;
             alert('✅ ML developmental risk label saved. This does not replace medical diagnosis.');
             loadPatients();
@@ -583,7 +602,11 @@ const API = window.location.origin + '/api';
         }
     }
 
+    // Set while a save is in flight, so a double click cannot send it twice.
+    let _diagnosisSaving = false;
+
     async function submitDiagnosis() {
+        if (_diagnosisSaving) return;
         const diagnosis = document.getElementById('diagnosis-text').value.trim();
         const recommendations = document.getElementById('recommendations-text').value.trim();
         const nextAssessmentDate = document.getElementById('next-assessment-date').value;
@@ -604,6 +627,7 @@ const API = window.location.origin + '/api';
             alert('Next assessment date cannot be in the past.');
             return;
         }
+        _diagnosisSaving = true;
         try {
             await apiFetch(`/assessments/diagnose/${window.currentChildId}`, {
                 method: 'POST',
@@ -619,10 +643,12 @@ const API = window.location.origin + '/api';
             alert(clinicalOutcome
                 ? '✅ Diagnosis submitted with a recorded clinical outcome. The parent will be notified.'
                 : '✅ Diagnosis submitted! The parent will be notified.\n\nNote: no clinical outcome was recorded, so this assessment cannot be used to validate the scoring.');
-            closeDiagnosisModal();
+            closeDiagnosisModal(true);
             loadPatients();
         } catch (err) {
             alert('Failed to submit: ' + err.message);
+        } finally {
+            _diagnosisSaving = false;
         }
     }
 
@@ -637,7 +663,9 @@ const API = window.location.origin + '/api';
         if (!show) document.querySelectorAll('.outcome-domain:checked').forEach(el => { el.checked = false; });
     }
 
-    function closeDiagnosisModal() {
+    function closeDiagnosisModal(saved) {
+        if (!saved && (_diagnosisSaving || !okToDiscard('diagnosisModal'))) return;
+        _editedFields.clear();
         document.getElementById('diagnosisModal').style.display = 'none';
         document.getElementById('diagnosis-text').value = '';
         document.getElementById('recommendations-text').value = '';
@@ -1508,6 +1536,7 @@ const API = window.location.origin + '/api';
     }
 
     function openProgressModal(childId, childName) {
+        _editedFields.clear();
         window.currentProgressChildId = childId;
         document.getElementById('progressModalTitle').textContent = `Patient Check-up History — ${childName}`;
         document.getElementById('progressPatientName').textContent = `Patient: ${childName}`;
@@ -1527,13 +1556,17 @@ const API = window.location.origin + '/api';
         });
     }
 
+    let _progressNoteSaving = false;
+
     async function submitProgressNote() {
+        if (_progressNoteSaving) return;
         const childId = window.currentProgressChildId;
         const progressStatus = document.getElementById('progress-status').value;
         const note = document.getElementById('progress-note').value.trim();
         if (!childId) { alert('Child is missing. Please reopen the progress history modal.'); return; }
         if (!note) { alert('Please write a progress note first.'); return; }
 
+        _progressNoteSaving = true;
         try {
             await apiFetch(`/assessments/child/${childId}/progress-notes`, {
                 method: 'POST',
@@ -1547,10 +1580,14 @@ const API = window.location.origin + '/api';
             alert('✅ Progress note saved.');
         } catch (err) {
             alert('Failed to save progress note: ' + err.message);
+        } finally {
+            _progressNoteSaving = false;
         }
     }
 
     function closeProgressModal() {
+        if (!okToDiscard('progressModal')) return;
+        _editedFields.clear();
         document.getElementById('progressModal').style.display = 'none';
         document.getElementById('progress-note').value = '';
         document.getElementById('checkupFormWrap').style.display = 'none';

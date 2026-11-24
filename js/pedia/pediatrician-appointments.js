@@ -454,7 +454,7 @@ function openReschedule(aptId, childName, parentName) {
     const safeChild = decodeURIComponent(childName || 'Unknown Patient');
     const safeParent = decodeURIComponent(parentName || '—');
     document.getElementById('rSub').textContent = `Patient: ${safeChild}  |  Parent: ${safeParent}`;
-    document.getElementById('rDate').min = new Date().toISOString().split('T')[0];
+    document.getElementById('rDate').min = new Date().toLocaleDateString('en-CA'); // local YYYY-MM-DD; the UTC date is yesterday until 8 AM in Manila
     ['rDate','rReason','rNote'].forEach(id => document.getElementById(id).value = '');
     loadRescheduleSlotSettings();
     document.getElementById('rescheduleModal').style.display = 'flex';

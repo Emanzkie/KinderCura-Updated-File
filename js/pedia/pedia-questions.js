@@ -117,8 +117,8 @@
             previewList.innerHTML = questionBatch.map((q, i) => `
             <div style="background:var(--surface-muted);border:1px solid var(--border);border-radius:6px;padding:.6rem .8rem;display:flex;justify-content:space-between;align-items:center;">
             <div style="flex:1;">
-                <p style="font-size:.8rem;font-weight:600;margin:0;color:var(--text-dark);">${i + 1}. ${q.questionText.substring(0, 60)}${q.questionText.length > 60 ? '…' : ''}</p>
-                <p style="font-size:.7rem;color:var(--text-light);margin:.2rem 0 0;">Type: ${q.questionType.replace('_', ' ')} | Domain: ${q.domain}</p>
+                <p style="font-size:.8rem;font-weight:600;margin:0;color:var(--text-dark);">${i + 1}. ${esc(q.questionText.substring(0, 60))}${q.questionText.length > 60 ? '…' : ''}</p>
+                <p style="font-size:.7rem;color:var(--text-light);margin:.2rem 0 0;">Type: ${q.questionType.replace('_', ' ')} | Domain: ${esc(q.domain)}</p>
             </div>
             <button class="btn-danger" onclick="removeFromBatch(${i})" style="font-size:.7rem;padding:.2rem .5rem;">Remove</button>
             </div>
@@ -1264,12 +1264,6 @@
                                                 </div>
                                             ` : ''}
                                         </div>
-                                        ${isDraft ? `
-                                            <div style="display:flex;gap:.4rem;">
-                                                <button class="btn-outline" onclick="editQuestionInSet('${set.setId}', '${q.id}')" style="font-size:.75rem;padding:.25rem .5rem;white-space:nowrap;">Edit</button>
-                                                <button class="btn-danger" onclick="removeQuestionFromSet('${set.setId}', '${q.id}')" style="font-size:.75rem;padding:.25rem .5rem;white-space:nowrap;">Remove</button>
-                                            </div>
-                                        ` : ''}
                                     </div>
                                 </div>
                             `).join('')}
@@ -1297,7 +1291,6 @@
             `;
 
             document.getElementById('viewSetContent').innerHTML = html;
-            document.getElementById('editSetBtn').style.display = isDraft ? 'block' : 'none';
             document.getElementById('assignSetFromViewBtn').style.display = isDraft ? 'block' : 'none';
             document.getElementById('viewSetModal').style.display = 'flex';
         }
@@ -1307,36 +1300,11 @@
             currentViewingSetId = null;
         }
 
-        function editQuestionSet() {
-            // TODO: Open modal to edit set title and description
-            flash('Edit set functionality coming soon.', 'info');
-        }
-
         function assignSetFromView() {
             const setId = currentViewingSetId;
             if (!setId) return;
             closeViewSetModal();
             openAssignSetModal(setId);
-        }
-
-        function editQuestionInSet(setId, questionId) {
-            // TODO: Open modal to edit the question
-            flash('Edit question functionality coming soon.', 'info');
-        }
-
-        async function removeQuestionFromSet(setId, questionId) {
-            if (!confirm('Remove this question from the set?')) return;
-
-            try {
-                const q = allQuestionSets.find(s => String(s.setId) === String(setId))?.questions?.find(q => String(q.id) === String(questionId));
-                if (!q) return;
-
-                // TODO: Call API endpoint to delete/remove question
-                // For now, just show a message
-                flash('Remove question functionality coming soon.', 'info');
-            } catch (e) {
-                flash(e.message, 'error');
-            }
         }
 
         let currentViewingSetId = null;
